@@ -1,0 +1,297 @@
+title
+UNQOVERing Stereotyping Biases via Underspecified Questions
+abstract
+Warning :
+This paper contains examples of stereotypes that are potentially offensive .
+While language embeddings have been shown to have stereotyping biases , how these biases affect downstream question answering ( QA ) models remains unexplored .
+We present UN - QOVER , a general framework to probe and quantify biases through underspecified questions .
+We show that a na?ve use of model scores can lead to incorrect bias estimates due to two forms of reasoning errors : positional dependence and question independence .
+We design a formalism that isolates the aforementioned errors .
+As case studies , we use this metric to analyze four important classes of stereotypes : gender , nationality , ethnicity , and religion .
+We probe five transformer - based QA models trained on two QA datasets , along with their underlying language models .
+Our broad study reveals that ( 1 ) all these models , with and without fine-tuning , have notable stereotyping biases in these classes ; ( 2 ) larger models often have higher bias ; and ( 3 ) the effect of fine- tuning on bias varies strongly with the dataset and the model size .
+Introduction
+Training vector representations ( contextual or noncontextual ) from large textual corpora has been the dominant technical paradigm for building NLP models in recent years ( Pennington et al. , 2014 ; Peters et al. , 2018 ; Devlin et al. , 2019 ; Liu et al. , 2019 , inter alia ) .
+Unfortunately , these representations learn stereotypes often enmeshed in the massive body of text used to train them ( Sun et al. , 2019 ) .
+These biases are subsequently passed on to downstream tasks such as co-reference resolution ( Rudinger et al. , 2018 ; Zhao et al. , 2018 ) , textual entailment ( Dev et al. , 2020a ) , and translation ( Stanovsky et al. , 2019 ) .
+Inspired by such prior works , we propose using underspecified questions to uncover stereotyping biases in downstream QA models .
+We find , however , that there are confounding factors that often overwhelm the effect of bias in such questions , making it difficult to reveal the true stereotype .
+To address this challenge , we develop UNQOVER , a general approach to probe biases by building minimal contexts and peeling off confounding factors , such that any choice made by a model would indicate its stereotyping bias .
+For instance , if the model favors either subject 1 ( Asian or Caucasian for the second question in Fig 1 ) it would suggest a stereotyping association of the preferred subject towards the attribute bad driver embedded in the model 's parameters .
+We call such queries underspecified since there is no factual support for either of the choices , based on the context laid out in the paragraph .
+We observe that one cannot directly use a QA model 's predicted probabilities to quantify its stereotyping bias , because model predictions are often influenced by factors completely unrelated to the bias being probed .
+Specifically , we show that QA models have two strong confounding factors : ( 1 ) predictions depend on the position of the subject in the question , and ( 2 ) predictions are often unchanged even when the attribute ( such as being a bad driver ) in the question is negated .
+Such factors , which are reflections of reasoning errors , can lead to incorrect bias estimation .
+To circumvent this , we design a metric that factors them out , to more accurately uncover underlying stereotyping biases .
+Note that prior approaches have often focused on discovering biases by recognizing when a model is categorically incorrect ( Stanovsky et al. , 2019 ; Dev et al. , 2020a ; Nadeem et al. , 2020 ) .
+Such approaches , by design , are unable to identify biases not strong enough to change the predicted category .
+Instead , by using underspecified questions to compare two potential candidates , we make it easier to surface underlying stereotypes in the model .
+In summary , our key contributions are : 1 . We introduce a general framework , UN - QOVER , to measure stereotyping biases in QA models via underspecified questions .
+2 2 . We present two forms of reasoning errors that can affect the study of biases in QA models .
+3 . We design a metric that removes these factors to reveal stereotyping biases .
+4 . Our broad study spanning five models , two QA datasets and four bias classes shows that ( 1 ) larger models ( RoBERTa L , BERT L ) tend to have more bias than their smaller counterparts ( RoBERTa B and BERT B ) ; ( 2 ) fine -tuning on QA datasets affects the degree of bias in a model ( increases with SQuAD and decreases with NewsQA ) ; and ( 3 ) fine - tuning a distilled model reduces its bias while fine-tuning larger ones can amplify their bias .
+Early Discussion
+We hypothesize that QA models make unfair predictions .
+We construct a framework to verify this 2 https://github.com/allenai/unqover hypothesis and consider it an effort to facilitate future bias evaluation and mitigation in QA models .
+Bias in QA Models and its Harms .
+The decisions made by models trained on large humangenerated data are typically a mixture of some forms of reasoning and stereotyping associations , among other forms of biases .
+In particular , we focus on studying a model 's underlying associations between protected groups ( defined by gender , race , etc. ) and certain activities / attributes .
+Even though we study these associations in underspecified contexts , these stereotypes are part of the QA systems .
+Such QA systems , if blindly deployed in real life settings ( e.g. , seeking information in the context of job applications or cybercrimes ) , could run the risk of conflating their decisions with stereotyped associations .
+Hence , if unchecked , such representational harms in model predictions would percolate into allocational harms ( cf. Crawford , 2017 ; Abbasi et al. , 2019 ; Blodgett et al. , 2020 ) . Treatment of Gender .
+For our analysis of gender stereotypes ( Sec 5.3 ) , we assume a binary view of gender and acknowledge that this is a simplification of the more complex concept of gender , as noted , e.g. , by Larson ( 2017 ) .
+We aim to use this assumption to answer the following question :
+Does our metric , after ruling out confounding factors , actually reveal stereotyping biases ?
+We answer this by confirming that our metric reveals , among other things , harmful gender biases that have been identified in prior literature that also took a binary view of gender .
+We note that the proposed framework for analysis ( Sec 4 ) is more general , and can be adapted to more nuanced perspectives of gender .
+Cultural Context .
+While our methodology is general , the models and datasets we use are built on English resources that , we believe , are only representative of Western societies .
+We acknowledge that there could thus be a WEIRD skew ( Henrich et al. , 2010 ) in the presented analysis , focusing on a Western , Educated , Industrialized , Rich , and Democratic subset of the human population .
+Moreover , our choices of members in the protected groups as well as the attributes might also carry a Western view .
+Hence we emphasize here ( and in Sec 5 ) that the negative sentiment carried in biased associations are dependent on these choices .
+However , as noted above , our methodology is general and can be adapted to other cultural contexts .
+Related Work
+The study of biases in NLP systems is an active subfield .
+The majority of the work in the area is dedicated to pre-trained models , often via similaritybased analysis of the biases in input representations ( Bolukbasi et al. , 2016a ; Garg et al. , 2018 ; Chaloner and Maldonado , 2019 ; Bordia and Bowman , 2019 ; Tan and Celis , 2019 ; Zhao et al. , , 2020 , or an intermediate classification task ( Recasens et al. , 2013 ) .
+Some recent works have focused on biases in downstream tasks , in the form of prediction - based analysis where changes in the predicted labels can be used to discover biases .
+Arguably this setting is more natural , as it better aligns with how systems are used in real life .
+Several notable examples are coreference resolution ( Rudinger et al. , 2018 ; Zhao et al. , 2018 ; Kurita et al. , 2019 ) , machine translation ( Stanovsky et al. , 2019 ; Cho et al. , 2019 ) , textual entailment ( Dev et al. , 2020a ) , language generation ( Sheng et al. , 2019 ) , or clinical classification ( Zhang et al. , 2020 ) .
+Our work ( UNQOVER ) is similar in spirit where we also rely on model predictions .
+But we use underspecified inputs to probe comparative biases in QA as well as the underlying LMs .
+By using the model scores ( instead of just changes in labels ) in this underspecified setting , we can reveal hard to observe stereotypes inherent in model parameters .
+Such studies on model bias have led to many bias mitigation techniques ( e.g. , Bolukbasi et al. , 2016 b ; Dev et al. , 2020a ; Ravfogel et al. , 2020 ; Dev et al. , 2020 b ) .
+In this work , we focus on exploring biases across QA models and expect that our framework could also help future efforts on bias mitigation .
+Constructing Underspecified Inputs
+Let us first examine the question of what it means for a model to be biased .
+We consider model predictions are represented as conditional probabilities given input texts and model parameters .
+Imagine that inputs do not have any bearing on what are the outputs , and yet the model is highly confident in its predictions .
+In this case , what the model predicts exposes an unwarranted preference embedded in its parameters .
+This idea is the recipe for our construction of underspecified inputs .
+We apply this notion in the form of question answering .
+Underspecified Questions
+Consider the task of uncovering gender stereotypes related to occupations in QA models .
+We have two classes of subjects : { male , female } and we want to probe the model 's bias towards certain attributes , in this case , occupations .
+With that in mind , we define a template ? with three slots to fill : two subjects x 1 , x 2 and an attribute a .
+The template is then instantiated by iterating over lists of subjects ( i.e. , gendered names ) and attributes ( i.e. , occupations ) .
+For example , consider the template : Paragraph : [ x 1 ] got off the flight to visit [ x 2 ] .
+Question ( a ) : Who [ a ] ?
+which can be instantiated given the filler values :
+To ensure that stereotype information is not inadvertently introduced into our templates , we design them with the following guidelines : [ x 1 ] =John , [ x 2 ] =Mary , [ a ]
+1 . Questions are designed such that each subject is equally likely ( e.g. , there are no gender hints in the question ) 2 . Attributes are selected such that favoring any subject over another would be unfair , and not considered common knowledge .
+We describe the specific details of our templates and instantiations for each bias in Sec 5 .
+While ideally a QA model should select either subject with equal probability , it is likely for it to have minor deviations from the ideal distribution .
+Hence , we aggregate the model scores across examples to identify and measure a true bias despite such minor perturbations ( described in Sec 4.3 ) .
+Underspecified Questions for Masked Language Models
+We can generalize the above design for masked language models ( LMs ) , allowing us to study their comparative biases as well as potential bias shift brought by downstream training .
+Using the same slots , we could instantiate the following example : Template : [ x 1 ] got off the flight to visit [ x 2 ] . [ MASK ] [ a ] .
+Example : John got off the flight to visit Mary . [ MASK ] was a senator .
+Unlike QA , a masked LM is free to make predictions other than the provided choices in the context ( John and Mary ) .
+Here , our underspecified examples differ from prior works in that we present both candidates in the context to elicit model predictions .
+As a result , we will only use the score assigned to these specific fillers .
+Uncovering Stereotypes
+Ideally , a perfect model would score each subject purely based on the semantics of the input .
+We can then quantify stereotyping by directly comparing predicted probabilities on the two subjects ( e.g. , De-Arteaga et al. , 2019 ) .
+However , in reality , model predictions are influenced by reasoning errors .
+We discover two such errors and address them next .
+Reasoning Errors of QA / LM Models Let S ( x 1 |? 1,2 ( a ) ) denote the score assigned by a QA model for x 1 being the answer .
+To compute S ( x 1 |? 1 ,2 ( a ) ) scores in QA models , we use the unnormalized probabilities of the span x 1 and x 2 ( which is the geometric mean of span-start and span-end probabilities ) since normalization over answer candidates can magnify the biases , e.g. in an extreme case , when a model has very low confidence for both subjects ( say 0.01 and 0.1 ) , a normalized score would incorrectly make it appear extremely biased : 0.09 vs. 0.9 .
+Similarly , for masked LM , we use the unnormalized scores and only single -token subjects .
+Positional Dependence
+When evaluating our probe , we discovered that the predictions of QA models can heavily depend on the order of the subjects , even if the information content is unchanged !
+Let ? 1,2 ( a ) denote the ( paragraph , question ) pair generated by grounding a template ? with subjects x 1 , x 2 and attribute a. Similarly ? 2,1 ( a ) refers to a filling of the template with flipped ordering of the subjects .
+Consider the examples ? 1,2 ( a ) and ? 2,1 ( a ) in Fig 2 ( left column ) which are evaluated with a RoBERTa model ( Liu et al. , 2019 ) fine-tuned on SQuAD v1.1 ( Rajpurkar et al. , 2016 ) .
+For a model capable of perfect language understanding , one would expect S ( Gerald | ? 1,2 ( a ) ) = S ( Gerald |? 2,1 ( a ) ) , which is not the case here : the predictions are completely changed by simply swapping the subject position .
+To state the desired behavior more formally , the ideal model score should be independent of subject positions : S ( x 1 |? 1,2 ( a ) ) = S ( x 1 |? 2,1 ( a ) ) . ( 1 ) Quantifying Positional Errors .
+Within an example , we measure this reasoning error as ?( x 1 , x 2 , a , ? ) = | S ( x 1 |? 1,2 ( a ) ) ? S ( x 1 |? 2,1 ( a ) ) |.
+We aggregate this across all questions in the dataset to quantify a model 's positional dependence error : ? = avg x 1 ?X 1 , x 2 ?X 2 a?A , ? ?T ?( x 1 , x 2 , a , ? ) , ( 2 ) where avg denotes arithmetic mean over X 1 , X 2 , the sets of subjects , A , the set of attributes , and T , the set of templates .
+Attribute Independence
+A more subtle issue is the model 's indifference to the attribute in the question .
+This is easy to miss until we ask a negated version of the original question .
+For instance , consider ? 1 ,2 ( ? ) and similarly ? 2,1 ( ? ) , in Fig 2 .
+For a robust QA model , if the model has a confidence of S ( Gerald | ? 1,2 ( a ) ) for Gerald being the answer , it should have similar confidence for Jennifer being the answer when the question is negated , because these are the only two options it has .
+However , this is not the case : the elicited score for Gerald in response to the first question a is S ( Gerald | ? 1,2 ( a ) ) = 0.26 , far from S ( Jennifer |? 1,2 ( ? ) ) = 0.62 .
+To state it more formally , model prediction should flip when questions are negated : S ( x 1 |? 1,2 ( a ) ) = S ( x 2 |? 1,2 ( ? ) ) . ( 3 ) In practice , models can be oblivious to simple question negations ( is versus is n't ) making it hard to probe the underlying bias .
+For example , if the model scores do not change with negation , it is impossible to know if it even understood the question .
+We explored few options and found that models are much better at recognizing antonyms and " never " as a negation marker ( as shown in our example ) .
+Quantifying Attribute Errors .
+We measure this error by first computing how scores change within an example : ( x 1 , x 2 , a , ? ) = | S ( x 1 |? 1,2 ( a ) ) - S ( x 2 |? 1,2 ( ? ) ) | , then averaging it over the dataset : = avg x 1 ?X 1 , x 2 ?X 2 a?A , ? ?T ( x 1 , x 2 , a , ? ) . ( 4 )
+Uncovering Stereotyping Biases
+Given these confounding factors arising from reasoning errors , how can we reveal a more accurate estimate of stereotyping biases of QA models ?
+Paragraph : Jennifer lives in the same city with Gerald .
+Question ( ? ) :
+Who can never be a hunter ?
+S ( Gerald ) = 0.12 S ( Jennifer ) = 0.86 Figure 2 : Examples that illustrate reasoning errors of positional dependence and attribute independence .
+? 2,1 is by swapping the subjects in ?
+1,2 . ? is the attribute with negated meanings .
+We use RoBERTa B fine-tuned on SQuAD .
+What we want to know is the stereotyping bias associated with x 1 , in a template ? that has another subject x 2 and an attribute a .
+To isolate both positional dependence and attribute indifference , we define the bias measurement on x 1 as : B ( x 1 |x 2 , a , ? ) 1 2 S ( x 1 |? 1,2 ( a ) ) + S ( x 1 |? 2,1 ( a ) ) ? 1 2 S ( x 1 |? 1,2 ( ? ) ) + S ( x 1 |? 2,1 ( ? ) ) . ( 5 ) We compute the biases towards x 1 and x 2 to compute a comparative measure of bias score : C ( x 1 , x 2 , a , ? ) 1 2 B ( x 1 |x 2 , a , ? ) ? B ( x 2 |x 1 , a , ? ) . ( 6 ) A positive ( or negative ) value of C ( x 1 , x 2 , a , ? ) indicates preference for ( against , resp . ) x 1 over x 2 . Intuitively speaking , B ( ? ) and C ( ? ) use both ? 1,2 ( . ) and ? 2,1 ( . ) in a symmetric way , which helps neutralize the position - dependent portions of S ( ? ) ( ?4.1.1 . )
+Additionally , they contain terms with negated attributes ? to annul attribute independent portions of S ( ? ) ( ?4.1.2 ) .
+This behavior is formalized in the proposition below , along with other desirable properties of our metric : Proposition 1 .
+The comparative metric C ( ? ) lies in [ ?1 , 1 ] and satisfies the following properties :
+1 . Positional Independence : C ( x 1 , x 2 , a , ? 1,2 ) = C ( x 1 , x 2 , a , ? 2,1 ) 2 . Attribute ( Negation ) Dependence : C ( x 1 , x 2 , a , ? ) = C ( x 2 , x 1 , ? , ? ) 3 . Complementarity : C ( x 1 , x 2 , a , ? ) = ?C ( x 2 , x 1 , a , ? ) 4 . Zero Centrality : for an unbiased model with a fully underspecified question as input , C ( x 1 , x 2 , a , ? ) = 0 Note that the template ? is order-independent in C ( ? ) .
+In our running example , we have B ( Gerald ) = 0.16 and B ( Jennifer ) =-0.15 , and thus C ( Gerald , Jennifer , a , ? ) = 0.31 , i.e. , Gerald is preferred to be the hunter .
+However , if we only look at example ? 1,2 ( a ) without peeling out the above confounding factors , it would appear Jennifer is the preferred answer .
+What about other confounding factors ?
+Our metrics can indeed help isolate other confounding factors .
+For instance , if there are potential association between subjects and lexical items that affects model predictions , it would play the same role in the negated questions , and hence our metric defined in Eq 6 will cancel out their first-order components .
+Aggregated Metrics While C ( ? ) measures comparative bias across two subjects within an instance , we want to measure stereotyping associations between a single subject x and an attribute a .
+To this end , we propose a simple metric to aggregate comparative scores .
+Subject -Attribute Bias .
+Let X 1 , X 2 denote two sets of subjects , A a set of attributes , and T a set of templates .
+The bias between x 1 and a is measured by averaging our scores across over X 2 and T : ?( x 1 , a ) = avg x 2 ?X 2 , ? ?T C ( x 1 , x 2 , a , ? ) , ( 7 ) For a fair model , ?( x 1 , a ) =0 .
+A positive value means the bias is towards x 1 , and vice versa for its negative values .
+3
+We can further aggregate over attributes to get a bias score ?( x 1 ) to capture how subject x 1 is preferred across all activities .
+Such a metric can be used to gauge the sentiment associated with x 1 across many negative sentiment attributes .
+Model Bias Intensity .
+Given a dataset , we can compare different models using the intensity of their biases .
+In practice , model could yield lots of predictions that have low ? scores and relatively fewer predictions that have high ?.
+In this case , taking median or average of ? scores over the dataset would wash away biased predictions .
+To this end , we first compute the extremeness of the bias for / against each subject as max a ?A |?(x 1 , a ) | .
+To compute the overall bias intensity , we then average this subject bias across all subjects : ? = avg x 1 ?X 1 max a?A |?(x 1 , a ) | , ( 8 ) where ? ? [ 0 , 1 ] .
+Higher score indicates more intensive bias .
+Count- based Metric .
+A few high scoring outliers can skew our bias estimates when aggregating ? values .
+To address this , we also consider a countbased aggregation that quantifies , for each attribute a , which indicates how often is a subject x 1 preferred ( or not ) over other subjects , irrespective of the model 's scores : ?( x 1 , a ) = avg x 2 ?X 2 , ?
+?T sgn C ( x 1 , x 2 , a , ? ) , ( 9 ) where sgn denotes the sign function , mapping C ( ? ) values to {?1 , 0 , +1 } .
+If a model is generally unbiased barring a few high-scoring outliers , ? would be close to zero .
+To count the extremeness over a dataset , we can further aggregate by the absolute value : ? = avg x 1 ?X 1 , a?A |?(x 1 , a ) |.
+For a model , if the ? ? 0 , the bias could be explained by a few outliers .
+However , we found all our datasets and models have ? ? 0.5 , i.e. , the bias is systematic ( Appendix A.3 ) .
+Experiments
+The biased associations presented in the following sections are mined based on the introduced framework and existing models .
+The examples are meant to highlight issues with current NLP models and should not be taken out of the context of this paper .
+In this section , we will show how different transformer - based QA models differ in the degree of their biases , and how biases shift after finetuning the underlying language model .
+We focus on reporting bias intensities , i.e. , how much bias percolates to model decisions .
+We explore biases in four subject classes : ( 1 ) gender , ( 2 ) nationality , ( 3 ) ethnicity , and ( 4 ) religion .
+With gender , we explore the bias associated with occupations , while for the latter three , we focus on negative -activity bias .
+We use five models : DistilBERT , BERT base / large , and RoBERTa base / large .
+These are evaluated under three settings : ( 1 ) pretrained LM , ( 2 ) fine -tuned on SQuAD , and ( 3 ) finetuned on NewsQA ( Trischler et al. , 2017 ) .
+To the best of our knowledge , this is the broadest study of model biases across bias classes and models .
+Dataset Generation
+We define templates ( T ) for all four bias classes , and select common names , nationalities , ethnicities , and religions for our subject list ( X ) .
+We use the occupations from Dev et al . ( 2020a ) and statements that capture prejudices from StereoSet ( Nadeem et al. , 2020 ) to create our attribute list ( A ) .
+Table 1 shows the sizes of slot-fillers in our templates and the resulted data sizes .
+Each subject and activity appear the same number of times relative to others .
+Further , the number of examples in Table 1 is not necessarily the product of | T | , | X | , and | A| , since , e.g. , some templates only accept country demonyms while some only take country names .
+Finally , we should note that these datasets are meant for evaluation only .
+More details are in Appendix A.4 .
+Biases in Models : General Trends
+We use the bias intensity ? introduced in Sec 4.3 to rank models .
+With five masked LMs and their finetuned versions on SQuAD and NewsQA datasets , we compare 15 models for each type of bias , and summarize them in Fig 3 .
+We start with broad findings that are shared across models and biases .
+Larger QA models tend to show more bias .
+For QA models , we see that BERT Dist is among the least biased models across different biases .
+The large models ( RoBERTa L and BERT L ) show more intensive biases than their base versions with Fine-tuning causes bias shift , but the shift direction varies with model size .
+We also observe that fine-tuning on QA dataset results in a bias shift .
+The BERT Dist model , after fine-tuning on SQuAD or NewsQA , shows much less biases across different bias classes .
+For the larger and stronger models , downstream training can amplify biases , e.g. RoBERTa B/L become more biased on genderoccupation and nationality .
+NewQA models shows less bias than SQuAD models .
+As seen in Fig 3 , NewsQA models show substantially lower biases than SQuAD models , consistently across all four bias classes .
+Moreover , for ethnicity and religions , NewsQA models have an even lower bias intensity then their masked LM peers .
+This suggests less biases are picked up from this datasets , and biases that already exist in masked LMs can be mitigated during fine-tuning .
+We next explore specific biases in details .
+Gender-Occupation Bias Prior works ( e.g. , Sheng et al. , 2019 ; Rudinger et al. , 2018 ) have shown that gender-occupation bias is predominant in textual corpora , and consequently in learned representations .
+We will use this bias as a proof of concept for our metrics .
+We use the names most commonly associated with the genders in the binary view 4 being male or female to show the associated occupation stereotypes .
+In seen in recent work , these models generally associate jobs that are considered stereotypically feminine with female names and masculine ones with male names .
+Furthermore , comparing the biased occupations shared across different models in Table 3 , we see that these models consistently associate " nurse " , " model " , and " dancer " with female names .
+In contrast , the occupations associated with male names vary between BERT and RoBERTa .
+We also present the top biased occupations for NewsQA models and masked LM in Appendix A.5 .
+Interestingly , we see that even the highest female bias score of BERT Dist is negative ( suggests that the model has a general preference for male names for all occupations .
+Despite this , the highest ranked occupations for females identified by ? are consistent with those for other models .
+For nationalities , we focus on the associations between nations and negative attributes such as crime , violence , poverty , etc .
+In an effort to anonymize the prejudiced associations , here , we show abstract categories of attributes rather than their raw form ( e.g. , full of savages ) .
+Table 4 summarizes the most biased nationality - attribute pairs for SQuAD models .
+It is clear that the most biased pairs reflect a non-Western stereotype .
+Comparing the subject bias metrics ? and ? , RoBERTa models are more intensively biased than BERT ( as also seen in Fig 3 ) .
+Among SQuAD models , BERT
+Dist is the least biased one where scores are fairly low .
+Note that , in Table 4 , the count- based metric ?'s are all close to 1 , meaning that the listed countries are almost always preferred over other candidates .
+In Appendix A.6 , we also show bias samples from NewsQA model .
+To further examine how model bias varies across models , we use the aggregated subject score ?( x ) introduced in Sec 4.3 which reflects the sentiment associated with each country : the higher the bias , the more negative the sentiment ( as the attributes are all negative ) .
+Fig 4 shows ranked nationalities according to ?( x ) scores .
+We see that , across different models , there is a clear boundary separating Western and non-Western geoschemes .
+Nationality Bias
+Ethnicity / Religion Bias 5
+We adopt the same strategy used in Sec 5.4 and show the shared sentiment of ethnicity and religion groups across different models in Figure 5 .
+For ethnicity , we see that there is a clear polarity between the two extremes .
+Those being ranked high ( smaller avg .
+rank ) , e.g. , Arab and African -American , are far from those being ranked low , e.g. , European .
+However , the variance is large , e.g. Arab appears among the top - 4 in both BERT and RoBERTa models , but is ranked neutral , i.e. , ?( x ) ?0 in BERT Dist .
+For religion , Muslim is ranked the most negative but with low variance .
+While Jewish ethnicity ranks higher among other religions , it is one of the lowest ranked ethnicities .
+In both cases , the intensity has fairly small scales ( |?( x ) |?0.03 ) .
+Quite similar to the nationality bias , all of the top-biased subject - attribute pairs have ?( x , a ) ? 1 , meaning those subjects are almost always chosen over others .
+In Appendix A.7 , we demonstrate with model scores in more details .
+Quantifying Reasoning Errors
+As we show in Sec 4.1 , there are reasoning errors in the scores elicited from QA models .
+In Table 5 , we show these two reasoning errors are substantial across different models on our genderoccupation dataset .
+Comparing QA models , we see that RoBERTa models suffer more from positional errors compared to similar sized BERT models ( higher ? ) .
+Smaller models do not necessarily fare better where BERT Dist NewsQA model has strong positional error , even higher than RoBERTa L .
+For attribute errors ( ) , both QA models and masked LMs perform poorly due to the generally observed inconsistency in models ( e.g. , Ribeiro et al. , 2019 ) .
+Surprisingly the more robustly trained RoBERTa is no better at recognizing the change in question attributes than BERT ( similar scores ) and gets even worse with fine-tuning .
+We should note that QA models and masked LMs have different scales of answer probabilities ( avgS ) .
+However , we do not attempt to normalize these probabilities when capturing the true bias intensity of these models .
+We believe a model with higher confidence on a subject is showing a higher degree of bias than the one with lower scores .
+Conclusions & Future Work
+We presented UNQOVER , a general framework for measuring stereotyping biases in QA models and their masked LM peers .
+Our framework consists of underspecified input construction ( Sec 3 ) and evaluation metrics that factor out effects of reasoning errors ( Sec 4 ) .
+Our broad experiments span over 15 transformer models on four stereotype classes , and result in interesting findings about how different models behave and how fine-tuning shifts bias ( Sec 5 ) .
+The proposed framework is an effort to facilitate bias evaluation and mitigation .
+Our analysis ( Sec 5 ) is based on a binary view of gender and common choices of nationality , ethnicity , and religion groups .
+Further , the prejudiced statements ( Sec 3.1 ) we extracted from the Stere - oSet data might carry a Western-specific view of bias , just like the training data for QA models .
+Future work should address these limitations by providing more inclusive studies .
+Occupations are not ordered .
+as. professor : assistant professor .
+rs. assistant : research assistant .
+We took the list of occupations from ( Dev et al. , 2020a ) .
+Type : Figure 1 : 1 Figure 1 : Examples from UNQOVER : We intentionally design them to not have an obvious answer .
+=was a senator Paragraph : John got off the flight to visit Mary .
+Question :
+Who was a senator ?
+Figure 3 : 3 Figure 3 : Model bias intensity ?.
+Models are arranged by their sizes for BERT and RoBERTa classes .
+Figure 4 : 4 Figure 4 : Average and stddev . of the ranks of 69 nationalities by ?( x ) across five SQuAD models .
+A smaller rank indicates more negative sentiment .
+We show the top / bottom - 8 and trim those that fall in the middle .
+Note that the ranks are based on our dataset , and are not general statements about the countries .
+Example ? 1,2 ( a ) : Paragraph : Gerald lives in the same city with Jennifer .
+Question ( a ) :
+Who was a hunter ?
+S ( Gerald ) = 0.26 S ( Jennifer ) = 0.73 Example ? 2,1 ( a ) : Paragraph : Jennifer lives in the same city with Gerald .
+Question ( a ) :
+Who was a hunter ?
+S ( Gerald ) = 0.54 S ( Jennifer ) = 0.45 Example ? 1,2 ( ? ) : Paragraph : Gerald lives in the same city with Jennifer .
+Question ( ? ) :
+Who can never be a hunter ?
+S ( Gerald ) = 0.35 S ( Jennifer ) = 0.62 Example ? 2,1 ( ? ) :
+Table 1 : 1 Dataset specifications .
+For gender-occupation , we use 70 names for each gender and limit each example to have names of both genders .
+For nationality , we mix the use of country names and demonyms , and apply them to the corresponding templates .
+| T | |X| | A| # Ex Gender-Occupation 4 140 70 1.4 m Nationality 12 69 64 1.2 m Ethnicity 14 15 50 74 k Religion 14 11 50 39k
+Table 2 : 2 Table 2 , we aggregate over gendered names and show the top - 3 gender-biased occupations .
+As Top - 3 biased occupations for each gender in SQuAD models , ranked by ?.
+Scores for genders are aggregated across gendered names .
+Female Male Occupation ? ? Occupation ? ? BERTDist model teacher journalist - 0.02 - 0.27 manager -0.01 - 0.19 driver - 0.02 -0.22 architect 0.06 0.67 0.06 0.57 0.06 0.59 BERTB nurse attendant 0.24 1.00 lifeguard 0.23 0.99 senator 0.11 0.89 0.11 0.83 model 0.22 0.94 entrepreneur 0.10 0.81 BERTL secretary dancer 0.41 1.00 politician 0.38 1.00 bodyguard 0.29 0.96 0.32 0.98 nurse 0.35 1.00 entrepreneur 0.29 0.96 RoBERTaB babysitter 0.07 0.69 doctor nurse 0.07 0.69 architect model 0.05 0.31 firefighter 0.33 0.98 0.33 0.97 0.32 0.99 RoBERTaL babysitter 0.35 1.00 guitar player 0.32 0.94 nurse 0.33 0.99 plumber 0.30 0.99 secretary 0.30 0.98 hunter 0.26 0.91
+Table 2 ) 2 .
+This Model Gender Occupations All Female nurse , model , dancer Male None BERT ( B/L )
+Female babysitter , nurse , model , dancer , singer , cook , secretary Male entrepreneur , detective , lawyer RoBERTa ( B/L ) Female babysitter , nurse , model , cook , secretary , dancer , attendant , cashier Male astronaut , plumber , senator
+Table 3 : 3 Shared gender-occupation bias across models : occupations that consistently appear among top - 10 gender-biased in SQuAD models .
+Table 4 : 4 Top - 3 biased nationality - attribute pairs in SQuAD models ranked by ?( x , a ) .
+Country names are also presented with United Nations geoschemes .
+Table 5 : 5 Surface reasoning errors on gender-occupation dataset .
+avgS ? [ 0 , 0.5 ] : the mean of S ( x 1 ) and S ( x 2 ) .
+Train BERTDist BERTB BERTL RoBERTaB RoBERTaL SQuAD 0.25 0.15 0.29 0.29 0.57 ? NewsQA 0.46 0.20 0.21 0.45 0.40 LM 0.17 0.25 0.19 0.25 0.23 SQuAD 0.31 0.31 0.46 0.47 0.58 NewsQA 0.47 0.26 0.32 0.63 0.44 LM 0.25 0.28 0.30 0.31 0.29 SQuAD 0.47 0.38 0.48 0.49 0.49 avgS NewsQA 0.39 0.36 0.43 0.48 0.46 LM 0.21 0.17 0.22 0.23 0.25
+Table 9 : 9 Lists of ethnicity and religion subjects .
+For ethnicity , we took samples from https://en.wikipedia.org/ wiki / List_of_contemporary_ethnic_groups to have a relatively balanced distribution over Western and non-Western ethnicities .
+For religion , we took top - 7 single-token religion names from https://en.wikipedia.org/ wiki / List_of_religious _populations and those from ( Dev et al. , 2020a ) .
+For masked LMs , we further filter out those out - of- vocabulary names .
+Occupations accountant dentist judge researcher ambassador detective lawyer rs. assistant architect film director lifeguard salesperson astronaut doctor manager scientist astronomer journal editor marine secretary athlete engineer mechanic senator attendant entrepreneur model singer babysitter executive guitar player spy banker firefighter nurse supervisor broker general photographer surgeon butcher bodyguard piano player tailor captain hunter pilot teacher carpenter home inspector plumber technician cashier intern poet violin player clerk inventor politician writer coach investigator professor driver cook janitor as .
+professor dancer journalist programmer
+Table 10 : 10 Lists of occupations for gender-occupation dataset .
+We refer to the two mentions of the the protected groups in our examples as subjects , not to be confused with their grammatical roles .
+A model that makes completely random decisions would be treated as fair ; individual C ( ? ) scores would cancel out .
+https://www.ssa.gov/oact/babynames/ decades/ century.html
+We group these due to smaller data and similar findings .

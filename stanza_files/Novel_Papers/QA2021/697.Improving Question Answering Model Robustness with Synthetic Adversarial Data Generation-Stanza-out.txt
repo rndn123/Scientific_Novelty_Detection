@@ -1,0 +1,303 @@
+title
+Improving Question Answering Model Robustness with Synthetic Adversarial Data Generation
+abstract
+Despite recent progress , state - of - the - art question answering models remain vulnerable to a variety of adversarial attacks .
+While dynamic adversarial data collection , in which a human annotator tries to write examples that fool a model - in- the -loop , can improve model robustness , this process is expensive which limits the scale of the collected data .
+In this work , we are the first to use synthetic adversarial data generation to make question answering models more robust to human adversaries .
+We develop a data generation pipeline that selects source passages , identifies candidate answers , generates questions , then finally filters or relabels them to improve quality .
+Using this approach , we amplify a smaller human-written adversarial dataset to a much larger set of synthetic question - answer pairs .
+By incorporating our synthetic data , we improve the state - of- theart on the AdversarialQA dataset by 3.7F 1 and improve model generalisation on nine of the twelve MRQA datasets .
+We further conduct a novel human- in- the -loop evaluation and show that our models are considerably more robust to new human-written adversarial examples : crowdworkers can fool our model only 8.8 % of the time on average , compared to 17.6 % for a model trained without synthetic data .
+Introduction Large-scale labelled datasets like SQuAD ( Rajpurkar et al. , 2016 ) and SNLI ( Bowman et al. , 2015 ) have been driving forces in natural language processing research .
+Over the past few years , however , such " statically collected " datasets have been shown to suffer from various problems .
+In particular , they often exhibit inadvertent spurious statistical patterns that models learn to exploit , leading to poor model robustness and generalisation ( Jia and Liang , 2017 ; Gururangan et al. , 2018 ; Geva et al. , 2019 ; McCoy et al. , 2019 ; Lewis et al. , 2021a ) .
+Wikipedia
+" Old English was not static , and its usage covered a period of 700 years , from the Anglo - Saxon settlement of Britain in the 5th century to the late 11th century ?
+Albert Baugh dates Old English from 450 to 1150 , a period of full inflections , a synthetic language .
+Perhaps around 85 per cent ? "
+BART < s> ? settlement of Britain </s>
+Old English was not ? </s>
+When did Old English begin to be used ? ( ii ) answer candidate selection and filtering by model confidence ( an example retained answer shown in green , and a dropped answer candidate in red ) ; ( iii ) question generation using BART Large ; and ( iv ) answer re-labelling using self-training .
+The generated synthetic data is then used as part of the training data for a downstream Reading Comprehension model .
+A recently proposed alternative is dynamic data collection ( Bartolo et al. , 2020 ; Nie et al. , 2020 ) , where data is collected with both humans and models in the annotation loop .
+Usually , these humans are instructed to ask adversarial questions that fool existing models .
+Dynamic adversarial data collection is often used to evaluate the capabilities of current state - of - the - art models , but it can also create higher -quality training data ( Bartolo et al. , 2020 ; Nie et al. , 2020 ) due to the added incentive for crowdworkers to provide challenging examples .
+It can also reduce the prevalence of dataset biases and annotator artefacts over time ( Bartolo et al. , 2020 ; Nie et al. , 2020 ) , since such phenomena can be subverted by model- fooling examples collected in subsequent rounds .
+However , dynamic data collection can be more expensive than its static predecessor as creating examples that elicit a certain model response ( i.e. , fooling the model ) requires more annotator effort , resulting in more time spent , and therefore higher cost per example .
+In this work , we develop a synthetic adversarial data generation pipeline , making novel contributions to the answer selection , question generation , and filtering and re-labelling tasks .
+We show that dynamic adversarial data collection can be made more sample efficient by synthetically generating ( see Figure 1 ) examples that improve the robustness of models in terms of performance on adversariallycollected datasets , comprehension skills , and domain generalisation .
+We are also the first to evaluate models in -theloop for robustness to human adversaries using the macro-averaged validated model error rate , demonstrating considerable improvements with crowdworkers only able to fool the model- in- theloop 8.8 % of the time on average , compared to 17.6 % for our best baseline .
+The collected dataset will form part of the evaluation for a new round of the Dynabench QA task .
+1 2 Related Work
+Adversarial Data Collection
+We directly extend the AdversarialQA dataset collected in " Beat the AI " ( Bartolo et al. , 2020 ) , which uses the same passages as SQuAD1.1 .
+Adversar-ialQA was collected by asking crowdworkers to write extractive question - answering examples that three different models - in- the - loop were unable to answer correctly , creating the D BiDAF , D BERT , and D RoBERTa subsets .
+Other datasets for question answering ( Rajpurkar et al. , 2018 ; Dua et al. , 2019 ; Wallace et al. , 2019 ) , sentiment analysis , hate speech detection , and natural language inference ( Nie et al. , 2020 ) have been collected in a similar manner .
+While appealing , human- generated adversarial data is expensive to collect ; our work is complementary in that it explores methods to extract further value from existing adversarially collected datasets without requiring additional annotation effort .
+1 https://dynabench.org/tasks/qa
+Synthetic Question Generation
+Many approaches have been proposed to generate question - answer pairs given a passage ( Du et al. , 2017 ; Du and Cardie , 2018 ; Zhao et al. , 2018 ; Lewis and Fan , 2019 ; Alberti et al. , 2019 ; Puri et al. , 2020 ; Lewis et al. , 2021 b ) .
+These generally use a two -stage pipeline that first identifies an answer conditioned on a passage , then generates a question conditioned on the passage and answer ; we train a similar pipeline in our work .
+G-DAUG ( Yang et al. , 2020 ) trains generative models to synthesise training data for commonsense reasoning .
+Our work focuses on extractive question - answering ( QA ) , which motivates the need for different generative models .
+Yang et al. ( 2020 ) filter generated examples using influence functions , or methods that attempt to maximise diversity ; we find that a different approach that considers answer agreement between QA models trained with different random seeds leads to better performance in our setting .
+Self-training
+In self- training , a model is trained to both predict correctly on labelled examples and increase its confidence on unlabelled examples .
+Self- training can yield complementary accuracy gains with pretraining ( Du et al. , 2020 ) and can improve robustness to domain shift ( Kumar et al. , 2020 ) .
+In our setting , large amounts of unlabelled adversarial -style questions are not readily available , which motivates our use of a question generation model .
+Human Evaluation
+The ultimate goal of automatic machine learning model evaluation is usually stated as capturing human judgements ( Callison - Burch et al. , 2006 ; Hill et al. , 2015 ; Vedantam et al. , 2015 ; Liu et al. , 2016 ) .
+Evaluation with real humans is considered beneficial , but not easily scalable , and as such is rarely conducted in - the -loop .
+With NLP model capabilities ever improving , adversarial worst case evaluation becomes even more pertinent .
+To our knowledge , this work is the first to compare models explicitly by their adversarial validated model error rate ( vMER ) , which we define in Section 4.4 .
+Synthetic Data Generation
+We develop a synthetic data generation pipeline for QA that involves four stages : passage selection , answer candidate selection , question generation , and synthetic data filtering and re-labelling .
+Due to the complexity of the system , we study each of these in isolation , and then combine our best identified approaches for the final systems .
+We evaluate each component both intrinsically and on their contribution to downstream QA performance on the AdversarialQA test sets and an unseen split of the SQuAD1.1 dev set .
+The final synthetic data generation pipeline consists of : 1 . Passage selection : we use passages from Wikipedia for this work .
+2 . Answer Candidate selection : the model identifies spans within the passage that are likely to be answers to a question .
+3 . Question Generation : a generative model is used to generate a question , conditioned on the passage and each answer .
+4 . Filtering and Re-labelling : synthetic questionanswer pairs that do not meet the necessary criteria are discarded , or have their answers re-labelled using self-training .
+Results for the baseline and overall best performing systems are shown in Table 7 . Further results for ELECTRA Large ( Clark et al. , 2020 ) are shown in Appendix J.
+Data Generation Pipeline
+In order to generate synthetic adversarial examples , we first select passages , then identify candidate answers in those passages , generate corresponding questions for these answers , and then filter or relabel for improved quality based on various criteria .
+Passage Selection
+The text passages we use are sourced from SQuAD ( further details can be found in Appendix A ) .
+We also experiment with using passages external to SQuAD , which also sourced from Wikipedia .
+To preserve evaluation integrity , we analyse the 8 gram overlap of all external passages to the evaluation datasets , after normalisation to lower - cased alphanumeric words with a single space delimiter ( Radford et al. , 2019 ) .
+We find that just 0.3 % of the external passages have any overlap with the evaluation sets , and filter these out .
+Answer Candidate Selection
+The next step is to identify which spans of text within the passages are likely to be answers to a question .
+We investigate a range of existing methods for answer candidate selection , which takes the passage as input and outputs a set of possible answers .
+We further propose a self-attention - based classification head that jointly models span starts and ends , with improved performance .
+Since SQuAD and the AdversarialQA datasets use the same passages partitioned into the same data splits , we align the annotated answers to create representative answer selection training , validation and test sets .
+Dataset statistics ( see Appendix C ) , highlight the high percentage of overlapping answers suggesting that existing answer tagging methods ( Zhou et al. , 2017 ; Zhao et al. , 2018 ) might struggle , and models should ideally be capable of handling span overlap .
+Baseline Systems
+We investigate three baseline systems ; noun phrases and named entities following , as well as an extended part- of-speech tagger incorporating named entities , adjectives , noun phrases , numbers , distinct proper nouns , and clauses .
+Span Extraction
+We fine- tune a RoBERTa Large span extraction model as investigated in previous work ( Alberti et al. , 2019 ; Lewis and Fan , 2019 ) .
+We treat the number of candidates to sample as a hyper-parameter and select the optimal value for k ? { 1 , 5 , 10 , 15 , 20 } on the validation set .
+Generative Answer Detection
+We use BART Large ( Lewis et al. , 2020 ) in two settings ; one generating answer and question , and the other where we generate the answer only , as we find that this setting provides better control of answer diversity .
+We use the same range of k ? { 1 , 5 , 10 , 15 , 20 } for both settings .
+Self-Attention Labelling ( SAL )
+We propose a multi-label classification head to jointly model candidate start and end tokens , and provide a binary label for whether each possible span of text from the passage is a candidate answer .
+We adapt scaled dot-product attention ( Vaswani et al. , 2017 ) the candidate start , S , and end , E , token representations are analogous to the projected layer input queries and keys .
+We apply a sigmoid over the computed attention scores , giving a matrix where each cell gives the probability p( a ij | c ) of whether the span in the context , c , with start index i and end index j is a valid answer candidate .
+Formally : p( a ij | c ) = ?
+d k=1 s ik e kj ? d
+We optimise using binary cross-entropy , masking out impossible answer spans defined as those not in the passage , with end indices before start , or longer than the maximum permitted answer length , and upweigh positive examples to help counteract the class imbalance .
+We decode from the output probability matrix to the original passage tokens using a reversible tokeniser and use a probability threshold of 0.5 for candidate selection , which can be adapted to tune precision and recall .
+While answer candidate selection only requires a single attention head , the multi-head implementation allows application to any labelling task requiring span modelling with overlaps , where each head is trained to predict labels for each class , such as for nested Named Entity Recognition .
+We implement this in Transformers ( Wolf et al. , 2020 ) and fine- tune RoBERTa Large with SAL on the answer selection dataset .
+Evaluation
+We evaluate performance on the answer selection dataset using entity - level precision , recall , and F 1 on unique normalised candidates .
+Results are shown in Table 1 .
+We further investigate the effects of different answer candidate selection methods on downstream QA model performance ( see Table 2 ) by training a RoBERTa Large model on synthetic QA pairs generated when using different answer selection methods .
+To eliminate generated dataset size as a potential confounder , we also replicate these experiments using a sample of 87,000 examples and find similar results ( see Appendix C ) .
+Question Generation
+Once answer candidates have been identified for a selected passage , we then generate a corresponding question by directly fine-tuning a BART Large ( Lewis et al. , 2020 ) autoregressive sequence generation decoder .
+2
+To discourage the model from memorising the questions in the SQuAD training set and directly reproducing these , we train on a subset of 10k examples from SQuAD , selected such that they correspond to the same source passages as the AdversarialQA training data .
+This ensures that when scaling up synthetic generation , the vast majority of passages are previously completely unseen to the generator .
+Source Questions
+Since the types of questions a generative model is trained on can impact both performance and diversity , we experiment with training on SQuAD and different subsets of Adversari-alQA , and the combination of both .
+Examples of the generated questions are shown in Table 3 .
+We carry out a manual answerability analysis on a random sample of 30 generated questions ( using beam search with k = 5 ) in each of these settings ( see Table 4 and Appendix B ) .
+We define answerability by the following criteria : ( i ) The question must be answerable from a single continuous span in the passage ; ( ii )
+There must be only one valid ( or clearly one most valid ) answer ( e.g. in the case of a co-reference the canonical entity name should be the answer ) ; ( iii ) A human should be able to answer the question correctly given sufficient time ; and ( iv )
+The correct answer is the one on which the model was conditioned during question gen -
+Context : Following the series revival in 2005 , Derek Jacobi ANS provided the character 's re-introduction in the 2007 episode " Utopia " .
+During that story the role was then assumed by John Simm who returned to the role multiple times through the Tenth Doctor 's tenure .
+As of the 2014 episode " Dark Water , " it was revealed that the Master had become a female incarnation or " Time Lady , " going by the name of " Missy " , played by Michelle Gomez .
+SQuAD 10k
+Who portrayed the Master in the 2007 episode " Utopia " ?
+eration .
+We find that when the models attempt to generate complex questions , the generated question is often inconsistent with the target answer , despite remaining well -formed .
+We also observe that when the generated question requires external knowledge ( e.g . " What is a tribe ? " or " Which is not a country ? " ) the models are reasonably consistent with the answer , however , they often lose answer consistency when answering the question requires resolving information in the passage ( e.g . " What is the first place mentioned ? " ) .
+For each of these models , we generate 87 k examples ( the same size as the SQuAD training set to facilitate comparison ) using the human-provided answers , and then measure the effects on downstream performance by training a QA model on this synthetic data .
+Results are shown in Table 5 .
+We find that , in this setting , the best source data for the generative model is consistently the combination of SQuAD and AdversarialQA .
+We also note that using only synthetic generated data , we can achieve good performance on D SQuAD consistent with the findings of Puri et al . ( 2020 ) , and outperform the model trained on the human-written SQuAD data on D BERT ( +0.6 F 1 ) and D RoBERTa ( + 6.6 F 1 ) .
+This is in line with the observations of Bartolo et al . ( 2020 ) suggesting that the distribution of the questions collected using progressively stronger modelsin-the - loop is less similar to that of SQuAD .
+It also shows that the generator can successfully identify and reproduce patterns of adversarially - written questions .
+However , the results using synthetic data alone are considerably worse than when training the QA model on human-written adversarial data with , for example , a performance drop of 21.2 F 1 for D BERT .
+This suggests that while we can do well on SQuAD using synthetic questions alone , we may need to combine the synthetic data with the human-written data for best performance in the more challenging adversarial settings .
+Question Diversity
+In order to provide training signal diversity to the downstream QA model , we experiment with a range of decoding techniques ( see Appendix D ) , and then evaluate these by downstream performance of a QA model trained on the questions generated in each setting .
+We observe minimal variation in downstream performance as a result of question decoding strategy , with the best downstream results obtained using nucleus sampling ( top p = 0.75 ) .
+However , we also obtain similar downstream results with standard beam search using a beam size of 5 .
+We find that , given the same computational resources , standard beam search is roughly twice as efficient , and therefore opt for this approach for our following experiments .
+Filtering and Re-labelling
+The synthetic question generation process can introduce various sources of noise , as seen in the previous analysis , which could negatively impact downstream results .
+To mitigate these effects , we explore a range of filtering and re-labelling methods .
+Results for the best performing hyper-parameters of each method are shown in Table 6 Question Generator Confidence
+We filter out samples below various thresholds of the probability score assigned to the generated question by the question generation model .
+Influence Functions
+We use influence functions ( Cook and Weisberg , 1982 ; Koh and Liang , 2017 ) to estimate the effect on the validation loss of including a synthetic example as explored by Yang et al . ( 2020 ) , but adapted for QA .
+We filter out examples estimated to increase the validation loss .
+Ensemble Roundtrip Consistency Roundtrip consistency ( Alberti et al. , 2019 ; Fang et al. , 2021 ) uses an existing fine- tuned QA model to attempt to answer the generated questions , ensuring that the predicted answer is consistent with the target answer prompted to the generator .
+Since our setup is designed to generate questions which are intentionally challenging for the QA model to answer , we attempt to exploit the observed variation in model behaviour over multiple random seeds , and replace the single QA model with a six-model ensemble .
+We find that filtering based on the number of downstream models that correctly predict the original target answer for the generated question produces substantially better results than relying on the model confidence scores , which could be prone to calibration imbalances across models .
+Self-training Filtering out examples that are not roundtrip-consistent can help eliminate noisy data , however , it also results in ( potentially difficult to answer ) questions to which a valid answer may still exist being unnecessarily discarded .
+Self- training has been shown to improve robustness to domain shift ( Kumar et al. , 2020 ) and , in our case , we relabel answers to the generated questions based on the six QA model predictions .
+Specifically , in our best- performing setting , we keep any examples where at least five of the six QA models agree with the target answer ( i.e. the one with which the question generator was originally prompted ) , re-label the answers for any examples where at least two of the models QA agree among themselves , and discard the remaining examples ( i.e. those for which there is no agreement between any of the QA models ) .
+We find that the best method combines selftraining with answer candidate confidence filtering .
+By using appropriate filtering of the synthetic generated data , combined with the ability to scale to many more generated examples , we approach the performance of R SQuAD + AQA , practically matching performance on SQuAD and reducing the performance disparity to just 2.2 F 1 on D BiDAF , 6.6F 1 on D BERT , and 8.3F 1 on D RoBERTa , while still training solely on synthetic data .
+Bartolo et al . ( 2020 ) .
+We report the mean and standard deviation ( subscript ) over 6 runs with different random seeds .
+mvMER is the macro-averaged validated model error rate in the adversarial human evaluation setting ( * lower is better ) .
+End-to-end Synthetic Data Generation
+We also try using BART to both select answers and generate questions in an end-to - end setting .
+We experiment with different source datasets , number of generations per passage , and decoding hyperparameters , but our best results fall short of the best pipeline approach at 62.7/77.9 EM / F 1 on D SQuAD , 30.8/47.4 on D BiDAF , 23.6/35.6 on D BERT , and 18.0/28.3 on D RoBERTa .
+These results are competitive when compared to some of the other answer candidate selection methods we explored , however , fall short of the results obtained when using SAL .
+We find that this approach tends to produce synthetic examples with similar answers , but leave exploring decoding diversity to future work .
+Fine-tuning Setup
+We investigate two primary fine-tuning approaches : combining all training data , and a two -stage set - up in which we first fine-tune on the generated synthetic data , and then perform a second-stage of finetuning on the SQuAD and AdversarialQA humanwritten datasets .
+Similar to Yang et al. ( 2020 ) , we find that two -stage training marginally improves performance over standard mixed training , and we use this approach for all subsequent experiments .
+Measuring Model Robustness
+Based on the findings in the previous section , we select four final models for robustness evaluation : 1 . R SQuAD : using the SQuAD1.1 training data .
+2 . R SQuAD +AQA : trained on SQuAD combined and shuffled with AdversarialQA .
+3 . SynQA : uses a two -stage fine-tuning approach , first trained on 380,785 synthetically generated questions on the passages in the SQuAD training set , and then further finetuned on SQuAD and AdversarialQA .
+4 . SynQA
+Ext first trained on the same synthetic SQuAD examples as ( iii ) combined with 1.5 M synthetic questions generated on the previously described Wikipedia passages external to SQuAD , and then further fine-tuned on SQuAD and AdversarialQA .
+Individual models are selected for the best combined and equally - weighted performance on a split of the SQuAD validation set and all three Adver-sarialQA validation sets .
+We first evaluate model robustness using three existing paradigms : adversarially - collected datasets , checklists , and domain generalisation .
+We also introduce adversarial human evaluation , a new way of measuring robustness with direct interaction between the human and model .
+Adversarially - collected Data
+We evaluate the final models on AdversarialQA , with results shown in Table 7 .
+We find that synthetic data augmentation yields state - of- the - art results on AdversarialQA , providing performance gains of 2.3F 1 on D BiDAF , 4.1F 1 on D BERT , and 4.9F 1 on D RoBERTa over the baselines while retaining good performance on SQuAD , a considerable improvement at no additional annotation cost .
+Comprehension Skills CheckList ( Ribeiro et al. , 2020 ) is a model agnostic approach that serves as a convenient test- bed for evaluating what comprehension skills a QA model could learn .
+We find that some skills that models struggle to learn when trained on SQuAD , such as discerning between profession and nationality , or handling negation in questions , can be learnt by incorporating adversarially - collected data during training ( see Appendix H ) .
+Furthermore , augmenting with synthetic data improves performance on a variety of these skills , with a 1.7 % overall gain for SynQA and 3.1 % for SynQA Ext .
+Adding the external synthetic data improves performance on most taxonomy - related skills , considerably so on " profession vs nationality " , as well as skills such as " his / her " coreference , or subject / object distinction .
+While many of these skills seem to be learnable , it is worth noting the high variation in model performance over multiple random initialisations .
+Domain Generalisation
+We evaluate domain generalisation of our final models on the MRQA ( Fisch et al. , 2019 ) dev sets , with results shown in Table 8 . 3 We find that augmenting training with synthetic data provides performance gains on nine of the twelve tasks .
+Performance improvements on some of the tasks can be quite considerable ( up to 8.8 F 1 on Search QA ) , which does not come at a significant cost on the three tasks where synthetic data is not beneficial .
+Adversarial Human Evaluation
+While existing robustness measures provide valuable insight into model behaviour , they fail to capture how robust a model might be in a production setting .
+We use Dynabench , a research platform for dynamic benchmarking and evaluation , to measure model robustness in an adversarial human evaluation setting .
+This allows for live interaction between the model and human annotator , and more closely simulates realistic and challenging scenarios a deployed system might encounter , compared to evaluation on static datasets .
+We set up the experiment as a randomised controlled trial where annotators are randomly allocated to interact with each of our four final models based on a hash of their annotator identifier .
+We run the experiment through Amazon Mechanical Turk ( AMT ) using Mephisto .
+4 Workers ( see Appendix I ) are first required to complete an onboarding phase to ensure familiarity with the interface , and are then required to ask five questions of the model .
+We pay $ 0.20 per question and given a strong incentive to try to beat the model with a $ 0.50 bonus for each validated question that the model fails to answer correctly .
+5
+The model identity is kept hidden and workers are awarded an equal base pay irrespective of the model - in- the -loop to avoid creating an incentive imbalance .
+Each annotator is allowed to write at most 50 questions , to avoid having a few productive annotators dominate our findings .
+All model- fooling examples are further validated by an expert annotator .
+We skip validation of questions the model answered correctly , as manual validation of a sample of 50 such examples found that all are valid , suggesting that the QA model 's ability to answer them is a good indicator of their validity .
+We measure performance as the validated model error rate ( vMER ) , that is , the percentage of validated examples that the model fails to answer correctly .
+Despite limiting the number of collected examples to 50 per annotator , there is still the potential of an imbalance in the number of QA pairs produced by each annotator .
+In order to eliminate annotator effect as a potential confounder , we propose using the macro- averaged validated model error rate ( mvMER ) over annotators , defined as : increased challenges for the adversarial human annotation paradigm as the effort required for each model - fooling example increases , and provides motivation to expand the current extractive QA task beyond single answer spans on short passages .
+These findings further suggest that while static adversarial benchmarks are a good evaluation proxy , performance gains on these may be underestimating the effect on model robustness in a setting involving direct interaction between the models - inthe-loop and human adversaries .
+Discussion and Conclusion
+In this work , we develop a synthetic adversarial data generation pipeline for QA , identify the best components , and evaluate on a variety of robustness measures .
+We propose novel approaches for answer candidate selection , adversarial question generation , and synthetic example filtering and relabelling , demonstrating improvements over existing methods .
+Furthermore , we evaluate the final models on three existing robustness measures and achieve state - of - the - art results on AdversarialQA , improved learnability of various comprehension skills for CheckList , and improved domain generalisation for the suite of MRQA tasks .
+We then put the synthetically - augmented models back in - the -loop in an adversarial human evaluation setting to assess whether these models are actually harder for a human adversary to beat .
+We find that our best synthetically - augmented model is roughly twice as hard to beat .
+Our findings suggest that synthetic adversarial data generation can be used to improve QA model robustness , both when measured using standard methods and when evaluated directly against human adversaries .
+Looking forward , the methods explored in this work could also be used to scale the dynamic adversarial annotation process in multiple ways .
+Synthetic adversarial data generation could facilitate faster iteration over rounds of adversarial human annotation as it reduces the amount of human data required to effectively train an improved QA model .
+Generative models could also help guide or inspire human annotators as they try to come up with more challenging examples .
+Furthermore , while our work focuses on improving adversarial robustness , this approach is not limited to the adversarial setting .
+We believe that our findings can motivate similar investigations for tasks where data acquisition can be challenging due to limited resources , or for improving different aspects of robustness , for example for model bias mitigation .
+Ethical Considerations
+We collect an evaluation dataset as a part of the adversarial human evaluation process .
+The passages are sourced from the SQuAD1.1 dataset distributed under the CC BY -SA 4.0 license .
+As described in the main text , we designed our incentive structure to ensure that crowdworkers were fairly compensated .
+Full details are provided in the main text and Appendix I .
+Our datasets focus on the English language .
+As this data is not collected for the purpose of designing NLP applications , we do not foresee any risks associated with the use of this data .
+A Further Details on Passage Selection Passages are sourced from SQuAD1.1 , and are therefore from Wikipedia .
+For training answer candidate selection models and question generation models , we use a subset of 10,000 examples from the SQuAD1.1 training set asked on 2,596 of the 18,891 available training passages .
+This ensures that both the answer candidate selection and question generation models do not simple reproduce their respective training sets .
+Bartolo et al. ( 2020 )
+B Manual Answerability Analysis
+For the manual answerability analysis , we define answerability by the following criteria : ( i ) The question must be answerable from a single continuous span in the passage ; ( ii )
+There must be only one valid ( or clearly one most valid ) answer ( e.g. in the case of a co-reference the canonical entity name should be the answer ) ; ( iii ) A human should be able to answer the question correctly given sufficient time ; and ( iv )
+The correct answer is the one on which the model was conditioned during question generation .
+C Further Details on Answer Candidate Selection Dataset statistics for the passage-aligned splits are shown in Table 9 .
+Furthermore , the different answer candidate selection approaches we explore in this work have different behaviours that could make one method more appropriate depending on the particular use case .
+To facilitate this process , we provide some example answer candidates of each of the methods in Table 11 .
+D Further Details on Question Diversity
+In order to provide training signal diversity to the downstream QA model , we experiment with a range of diversity decoding techniques and hyperparameters .
+Specifically , we explore standard beam search with beam_size ? { 1 , 3 , 5 , 10 } , number of questions to generate per example with nbest ? { 1 , 3 , 5 , 10 } , diverse beam search with beam_strength ? { 0.1 , 0.3 , 0.5 , 0.7 , 0.9 , 1.0} , and nucleus sampling with top p ? { 0.1 , 0.5 , 0.75 } .
+We observe minimal variation in downstream performance ( see Table 13 ) as a result of question decoding strategy , with the best downstream results obtained using nucleus sampling ( top p = 0.75 ) .
+However , we also obtain similar downstream results with standard beam search using a beam size of 5 .
+We find that , given the same computational resources , standard beam search is roughly twice as efficient , with minimal performance drop when compared to nucleus sampling , and therefore opt for this approach for our following experiments .
+E Controlling for Data Size
+Since the synthetic data generation process allows for scale to a large number of unseen passages , at the limit the bottleneck becomes the quality of generating data rather than quantity .
+Due to this , we provide results for experiments controlling for dataset size for both answer candidate selection ( see Table 12 ) and filtering method ( see Table 14 ) .
+Our findings are in line with those on the full sets of generated data , in that both answer candidate selection using SAL and filtering using self-training provide considerable downstream benefits .
+F A Note on Data Efficiency
+It is challenging to compare the efficiency of the synthetic generation process to manually collecting additional data .
+Figure 3 shows that , for RoBERTa Large , performance starts to converge when trained on around 5 - 6 k manually - collected adversarial examples .
+In fact , the performance gain between training on 10 k instead of 8 k examples is just 0.5F 1 on the overall AdversarialQA test set .
+The performance gain achieved using our approach is inherently more efficient from a data collection point of view as it requires no additional manual annotation .
+G AdversarialQA Dev Set Results Results for the final models on the AdversarialQA validations sets are shown in Table 15 .
+H Results on CheckList
+We provide a breakdown of results by comprehension skill and example model failure cases on CheckList in Table 17 .
+I Adversarial Human Evaluation
+For adversarial human evaluation , crowdworkers are required to be based in Canada , the UK , or the US , have a Human Intelligence Task ( HIT ) Approval Rate greater than 98 % , and have previously completed at least 1,000 HITs .
+We provide a breakdown of results from the Adversarial Human Evaluation experiments in Table 10 , showing the number of annotators ( # Ann. ) , number of questions per model ( # QAs ) , average time per collected question - answer pair ( time / QA ) , as well as the validated model error rate ( vMER ) and macro-averaged validated model error rate ( mvMER ) .
+We also show some examples of questions that fool each model in Table 18 .
+J Results for ELECTRA Large In Table 16 we show results for ELECTRA Large demonstrating similar performance gains as those seen for RoBERTa Large when using the additional synthetic data .
+We show results for a single initialisation due to computational cost .
+We also note that we use the same synthetic training data ( i. Figure 1 : 1 Figure 1 : The Synthetic Adversarial Data Generation Pipeline showing : ( i ) passage selection from Wikipedia ; ( ii ) answer candidate selection and filtering by model confidence ( an example retained answer shown in green , and a dropped answer candidate in red ) ; ( iii ) question generation using BART Large ; and ( iv ) answer re-labelling using self-training .
+The generated synthetic data is then used as part of the training data for a downstream Reading Comprehension model .
+Figure 2 : 2 Figure 2 : The Adversarial Human Evaluation Interface .
+Figure 3 : 3 Figure 3 : F1 -scores on the respective test datasets for RoBERTa Large trained on varying amounts of humanannotated adversarial training data .
+Table 1 : 1 Answer selection results on aligned test set .
+Model Precision ( % ) Recall ( % ) F 1 ( % ) POS Extended 12.7 65.2 20.7 Noun Chunks 17.4 36.9 22.5 Named Entities 30.3 30.0 27.1 Span Extraction , k=15 22.5 26.6 23.7 BARTans. only , k=15 27.7 31.3 28.6 SAL ( ours ) 28.6 44.2 33.7
+Table 2 : 2 where Downstream test results for a RoBERTa Large QA model trained on synthetic data generated using different answer selection methods combined with a BART Large question generator ( trained on SQuAD 10 k + D AQA ) .
+Method # QA pairs DSQuAD EM F1 DBiDAF EM F1 DBERT EM F1 DRoBERTa EM F1 POS Extended 999,034 53.8 71.4 32.7 46.9 30.8 40.2 20.4 27.9 Noun Chunks 581,512 43.3 63.7 28.7 43.1 22.3 31.4 18.2 27.4 Named Entities 257,857 54.2 69.7 30.5 42.5 26.6 35.4 18.1 24.0 Span Extraction 377,774 64.7 80.1 37.8 53.9 27.7 39.1 16.7 26.9 SAL ( ours ) 566,730 68.2 82.6 43.2 59.3 34.9 45.4 25.2 32.8 SAL threshold ( ours ) 393,164 68.5 82.0 46.0 60.3 36.5 46.8 24.2 32.4
+Table 3 : 3 Examples of questions generated using BART trained on different source datasets .
+Model Valid Answer Ungramm - Invalid Mismatch atical SQuAD 10k 90.0 % 10.0 % 0.0 % 0.0 % DBiDAF 70.0 % 30.0 % 0.0 % 0.0 % DBERT 76.7 % 23.3 % 0.0 % 0.0 % DRoBERTa 70.0 % 20.0 % 0.0 % 10.0 % DAQA 76.7 % 16.7 % 0.0 % 6.7 % SQuAD 10 k + DAQA 93.3 % 6.7 % 0.0 % 0.0 %
+Table 4 : 4 Manual analysis of questions generated when training on different source data .
+Table 5 : 5 and results controlling for dataset size are in Appendix E.Answer Candidate ConfidenceWe select candidate answers using SAL ( see section 3.1.2 ) , and filter based on the span extraction confidence of the answer candidate selection model .
+Downstream QA test results using generative models trained on different source data .
+We compare these results to baseline RoBERTa models trained on SQuAD , and on the combination of SQuAD and AdversarialQA .
+Method # QA pairs DSQuAD EM F1 DBiDAF EM F1 DBERT EM F1 DRoBERTa EM F1 RSQuAD 87,599 73.2 86.3 48.9 64.3 31.3 43.5 16.1 26.7 RSQuAD+AQA 117,599 74.2 86.9 57.4 72.2 53.9 65.3 43.4 54.2 SQuAD 10 k 87,598 69.2 82.6 37.1 52.1 22.4 32.3 13.9 22.3 DBiDAF 87,598 67.1 80.4 41.4 56.5 33.1 43.8 22.0 32.5 DBERT 87,598 67.4 80.2 36.3 51.1 30.3 40.6 18.8 29.5 DRoBERTa 87,598 63.4 77.9 32.6 47.9 27.2 37.5 20.6 32.0 DAQA 87,598 65.5 80.1 37.0 53.0 31.1 40.9 23.2 33.3 SQuAD 10 k + DAQA 87,598 71.9 84.7 44.1 58.8 32.9 44.1 19.1 28.8 Filtering Method # QA pairs DSQuAD EM F1 DBiDAF EM F1 DBERT EM F1 DRoBERTa EM F1 Answer Candidate Conf. ( thresh = 0.6 ) 362,281 68.4 82.4 42.9 57.9 36.3 45.9 28.0 36.5 Question Generator Conf. ( thresh = 0.3 ) 566,725 69.3 83.1 43.5 58.9 36.3 46.6 26.2 34.8 Influence Functions 288,636 68.1 81.9 43.7 58.6 36.1 46.6 27.4 36.4 Ensemble Roundtrip Consistency ( 6/6 correct ) 250,188 74.2 86.2 55.1 67.7 45.8 54.6 31.9 40.3 Self-training ( ST ) 528,694 74.8 87.0 53.9 67.9 47.5 57.6 35.2 44.6 Answer Candidate Conf. ( thresh = 0.5 ) & ST 380,785 75.1 87.0 56.5 70.0 47.9 58.7 36.0 45.9
+Table 6 : 6 Downstream QA test results for different filtering strategies , showing best hyper-parameter settings .
+Table 7 : 7 Test set results for RoBERTa Large trained on different datasets , and augmented with synthetic data .
+AQA is the AdversarialQA data consisting of the combined D BiDAF , D BERT , and D RoBERTa from
+Table 8 : 8 .3 90.4 1.3 41.0 1.2 57.5 1.6 60.2 0.7 69.0 0.8 16.0 1.8 20.8 2.7 53.6 0.8 68.9 0.8 40.5 2.7 58.5 2.0 49.2 60.9 RSQuAD+AQA 84.4 1.0 90.2 1.1 41.7 1.6 58.0 1.7 62.7 0.4 70.8 0.3 20.6 2.9 25.5 3.6 56.31.1 72.0 1.0 54.4 0.5 68.7 0.4 53.3 64.2 SynQA 88.8 0.3 94.3 0.2 42.9 1.6 60.0 1.4 62.3 1.1 70.2 1.1 23.7 3.7 29.5 4.4 59.8 1.1 75.3 1.0 55.1 1.0 68.7 0.8 55.4 66.3 SynQAExt 89.0 0.3 94.3 0.2 46.2 0.9 63.1 0.8 58.1 1.8 65.5 1.9 28.7 3.2 34.3 4.1 59.6 0.6 75.5 0.4 55.3 1.1 68.8 0.9 56.2 66.9 RSQuAD+AQA 54.6 1.2 69.4 0.8 59.8 1.3 68.4 1.5 51.8 1.1 62.2 1.0 38.4 0.9 51.6 0.9 75.4 2.3 85.8 2.4 40.1 3.1 48.2 3.6 53.3 64.3 SynQA 55.1 1.5 68.7 1.2 64.3 1.5 72.5 1.7 51.7 1.3 62.1 0.9 40.2 1.2 54.2 1.3 78.1 0.2 87.8 0.2 40.2 1.3 49.2 1.5 54.9 65.8 SynQAExt 54.9 1.3 68.5 0.9 64.9 1.1 73.0 0.9 48.8 1.2 58.0 1.2 38.6 0.4 52.2 0.6 78.9 0.4 88.6 0.2 41.4 1.1 50.2 1.0 54.6 65.1 Domain generalisation results on the in- domain ( top ) and out-of- domain ( bottom ) subsets of MRQA .
+mvMER = 1 n ann nann i=1 validated model errors i number of examples i
+We find that SynQA roughly halves the model error rate compared to R SQuAD + AQA from 17.6 % to 8.8 % ( see Table 7 , further details in Appendix I ) , meaning that it is considerably harder for human adversaries to ask questions that the model cannot answer .
+While SynQA Ext still considerably outper - forms R SQuAD + AQA at a 12.3 % mvMER , we find that it is not as hard to beat as SynQA in this set - ting .
+A low model error rate also translates into
+split the SQuAD1.1 dev set into a dev and test set , with passages allocated between the two .
+They also reduce multiple answers to single majority vote responses for evaluation consistency with AdversarialQA .
+These two splits are referred to as D SQuAD dev and D SQuAD test .
+We use D SQuAD dev and the AdversarialQA dev sets for validation , and report results on D SQuAD test and the Adversari-alQA test sets .
+For adversarial human evaluation , we use passages from the test sets to ensure that they are completely unseen to all models during both training and validation .
+Table 9 : 9 Dataset statistics for answer candidate selection showing high answer overlap .
+Table 10 : 10 Adversarial Human Evaluation results for the four final models .
+Table 12 : 12 Super Bowl 50 was an American football game to determine the champion of the National Football League ( NFL ) for the 2015 season .
+The American Football Conference ( AFC ) champion Denver Broncos defeated the National Football Conference ( NFC ) champion Carolina Panthers 24 - 10 to earn their third Super Bowl title .
+The game was played on February 7 , 2016 , at Levi's Stadium in the San Francisco Bay Area at Santa Clara , California .
+As this was the 50th Super Bowl , the league emphasized the " golden anniversary " with various gold - themed initiatives , as well as temporarily suspending the tradition of naming each Super Bowl game with Roman numerals ( under which the game would have been known as " Super Bowl L " ) , so that the logo could prominently feature the Arabic numerals 50 .
+Stadium in the San Francisco Bay Area at Santa Clara " , " Levi's Stadium in the San Francisco Bay Area at Santa Clara , California " , ' Santa Clara ' , ' Santa Clara , California ' , ' the league emphasized the " golden anniversary " with various gold - themed initiatives , as well as temporarily suspending the tradition of naming each Super Bowl game with Roman numerals ( under which the game would have been known as " Super Bowl L " ) , so that the logo could prominently feature the Arabic numerals 50 ' , ' gold ' , ' golden anniversary ' , ' gold - themed ' , ' Super Bowl L ' , 'L ' Downstream QA test results for different answer candidate selection methods combined with a question generator , controlling for dataset size .
+e. us - Context :
+Table 13 : 13 Downstream QA test results for different question diversity decoding strategies and hyper-parameter settings .
+Synthetic data for these experiments was generated on the human-annotated answers and using the generator trained on SQuAD 10 k + D AQA .
+Filtering Method # QA pairs DSQuAD EM F1 DBiDAF EM F1 DBERT EM F1 DRoBERTa EM F1 Answer Candidate Conf. ( thresh = 0.6 ) 15,000 65.3 79.9 39.7 53.3 30.9 41.2 20.1 30.6 Question Generator Conf. ( thresh = 0.5 ) 15,000 65.0 80.0 38.7 53.8 29.4 40.8 20.6 31.8 Influence Functions 15,000 63.8 79.3 37.2 53.1 28.4 39.0 19.1 29.7 Ensemble Roundtrip Consistency ( 6/6 correct ) 15,000 70.4 83.5 44.0 57.4 32.5 44.1 22.3 31.0 Self-training ( ST ) 15,000 71.5 84.3 42.4 56.2 35.4 45.5 23.6 33.0 Answer Candidate Conf. ( thresh = 0.5 ) & ST 15,000 71.0 84.0 47.1 60.6 32.3 43.4 24.9 34.9
+Table 14 : 14 Downstream QA test results for different question - answer pair filtering strategies , showing the best hyper-parameter setting for each method , controlling for dataset size .
+Model Training Data EM DBiDAF F1 EM DBERT F1 DRoBERTa EM F1 RSQuAD SQuAD 51.8 1.4 65.5 0.8 30.2 1.8 42.2 1.6 15.1 2.4 24.8 2.8 RSQuAD+AQA ? + AQA 59.5 1.1 72.7 0.9 49.4 1.0 60.4 0.9 36.4 1.6 46.6 1.9 SynQA ? + SynQASQuAD 63.9 1.0 76.6 0.9 54.5 1.8 65.8 2.0 42.7 1.5 52.6 1.5 SynQAExt ? + SynQAExt 63.5 0.2 75.7 0.4 54.2 0.9 65.5 0.6 41.2 0.4 51.9 0.4
+Table 15 : 15 Validation set results for RoBERTa Large trained on different datasets , and augmented with synthetic data .
+AQA is the AdversarialQA data consisting of the combined D BiDAF , D BERT , and D RoBERTa from Bartolo et al . ( 2020 ) .
+We report the mean and standard deviation ( subscript ) over 6 runs with different random seeds .
+Training Data DSQuAD EM F1 DBiDAF EM F1 EM DBERT F1 DRoBERTa EM F1 SQuAD + AQA 77.1 88.5 62.2 76.5 58.2 68.1 46.9 58.0 SQuAD + AQA + SynQASQuAD 77.0 88.6 63.5 76.9 60.0 70.3 50.1 61.0
+Table 16 : 16
+Test set results for ELECTRA Large trained on the SQuAD and AdversarialQA datasets , and then augmented with synthetic data .
+It is worth noting that ELECTRA Large without augmentation performs similarly to RoBERTa Large with synthetic augmentation , and synthetically augmenting ELECTRA
+Large further provides performance gains of up to 3F 1 on the most challenging questions .
+We also try generating multiple questions but consistently find that generating one question per answer provides the best downstream results despite the additional data .
+We note that our results are not directly comparable to systems submitted to the MRQA shared task , which were trained on six " in- domain " datasets ; we simply reuse the MRQA datasets for evaluation purposes .
+github.com/facebookresearch / Mephisto
+5
+Our evaluation setup is different to " Beat the AI " where annotators could n't submit unless they beat the model a certain number of times .
+This creates a different an annotation dynamic that we believe is better suited for model evaluation .

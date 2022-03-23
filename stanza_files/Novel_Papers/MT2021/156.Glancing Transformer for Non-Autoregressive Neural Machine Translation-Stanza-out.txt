@@ -1,0 +1,252 @@
+title
+Glancing Transformer for Non-Autoregressive Neural Machine Translation
+abstract
+Recent work on non-autoregressive neural machine translation ( NAT ) aims at improving the efficiency by parallel decoding without sacrificing the quality .
+However , existing NAT methods are either inferior to Transformer or require multiple decoding passes , leading to reduced speedup .
+We propose the Glancing Language Model ( GLM ) for single - pass parallel generation models .
+With GLM , we develop Glancing Transformer ( GLAT ) for machine translation .
+With only single - pass parallel decoding , GLAT is able to generate high-quality translation with 8 ? - 15 ? speedup .
+Note that GLAT does not modify the network architecture , which is a training method to learn word interdependency .
+Experiments on multiple WMT language directions show that GLAT outperforms all previous single pass non-autoregressive methods , and is nearly comparable to Transformer , reducing the gap to 0.25 - 0.9 BLEU points .
+Introduction
+Transformer has been the most widely used architecture for machine translation ( Vaswani et al. , 2017 ) .
+Despite its strong performance , the decoding of Transformer is inefficient as it adopts the sequential auto-regressive factorization for its probability model ( Figure 1a ) .
+Recent work such as the non-autoregressive transformer ( NAT ) , aims to decode target tokens in parallel to speed up the generation ( Gu et al. , 2018 ) .
+However , the vanilla NAT still lags behind the Transformer in translation quality - with a gap of about 7.0 BLEU points .
+NAT assumes the conditional independence of the target tokens given the source sentence .
+We suspect that NAT 's conditional independence assumption prevents learning word interdependency in the target *
+The work was done when the first author was an intern at Bytedance .
+sentence .
+Notice that such word interdependency is crucial , as the Transformer explicitly captures that via decoding from left to right ( Figure 1a ) .
+Several remedies are proposed ( Ghazvininejad et al. , 2019 ; Gu et al. , 2019 ) to capture word interdependency while keeping parallel decoding .
+Their common idea is to decode the target tokens iteratively while each pass of decoding is trained using the masked language model ( Figure 1 c ) .
+Since these methods require multiple passes of decoding , its generation speed is measurably slower than the vanilla NAT .
+With single - pass generation only , these methods still largely lag behind the autoregressive Transformer .
+One open question is whether a complete parallel decoding model can achieve comparable machine translation performance to the Transformer .
+It should be non-autoregressive and take only one pass of decoding during the inference time .
+To address the quest , we propose glancing language model ( GLM ) , a new method to train a probabilistic sequence model .
+Based on GLM , we develop the glancing Transformer ( GLAT ) for neural machine translation .
+It achieves parallel text generation with only single decoding .
+Yet , it outperforms previous NAT methods and achieves comparable performance as the strong Transformer baseline in multiple cases .
+Intuitively , GLM adopts a adaptive glancing sampling strategy , which glances at some fragments of the reference if the reference is too difficult to fit in the training of GLAT .
+Correspondingly , when the model is well tuned , it will adaptively reduce the percentage of glancing sampling , making sure that the resulting model could learn to generate the whole sentence in the single - pass fashion .
+The gradual learning process smooths the learning curve of single - pass parallel generation .
+Specifically , our proposed GLM differs from MLM in two aspects .
+Firstly , GLM proposes an adaptive glancing sampling strategy , which enables GLAT to generate sentences in a one-iteration way , working by gradual training instead of iterative inference ( see Figure 1d ) .
+Generally , GLM is quite similar to curriculum learning ( Bengio et al. , 2009 ) in spirit , namely first learning to generate some fragments and gradually moving to learn the whole sentences ( from easy to hard ) .
+To achieve the adaptive glancing sampling , GLM performs decoding twice in training .
+The first decoding is the same as the vanilla NAT , and the prediction accuracy indicates whether the current reference is " difficult " for fitting .
+In the second decoding , GLM gets words of the reference via glancing sampling according to the first decoding , and learn to predict the remaining words that are not sampled .
+Note that only the second decoding will update the model parameters .
+Secondly , instead of using the [ MASK ] token , GLM directly uses representations from the encoder at corresponding positions , which is more natural and could enhance the interactions between sampled words and signals from the encoder .
+Note that GLAT does not modify the network architecture , which is a training method to explicityly learn word interdependency .
+Experimental results show that GLAT obtains significant improvements ( about 5 BLEU ) on standard benchmarks compared to the vanilla NAT , without losing inference speedup .
+GLAT achieves competitive results against iterative approaches like Mask -Predict ( Ghazvininejad et al. , 2019 ) , even outperforming the Mask - Predict model on WMT14 Compared to the strong AT baseline , GLAT can still close the performance gap within 0.9 BLEU point while keeping 7.9 ? speed- up .
+Empirically , we even find that GLAT outperforms AT when the length of the reference is less than 20 on WMT14 DE-EN .
+We speculate this is because GLM could capture bidirectional context for generation while its left-to- right counterpart is only unidirectional , which indicates the potential of parallel generation approaches like GLAT .
+Probability Models of Machine Translation
+We state and compare different probability models for machine translation .
+A machine translation task can be formally defined as a sequence to sequence generation problem : given the source sentence X = {x 1 , x 2 , ... , x N } , to generate the target sentence Y = {y 1 , y 2 , ... , y T } according to the conditional probability P ( Y |X ; ? ) , where ? denotes the parameter set of a network .
+Different methods factorize the conditional probability differently .
+The Transformer uses the autoregressive factorization to maximize the following likelihood : L AT = log P ( Y |X ; ? ) = T t=1 log p(y t |y <t , X ; ? ) , where y <t = { [ BOS ] , y 1 , ... , y t?1 }. For simplicity , we omit the number of samples in the equation .
+Note the training of AT adopts left-to- right teacher forcing on the target tokens ( Vaswani et al. , 2017 ) .
+The word interdependency is learned in a unidirectional way .
+During inference , the preceding predicted token is fed into the decoder to generate the next token .
+The vanilla NAT consists of the same encoder as the Transformer and a parallel decoder with layers of multi-head attention ( Gu et al. , 2018 ) .
+During training , it uses the conditional independent factorization for the target sentence :
+Notice that , NAT 's log-likelihood is an approximation to the full log-likelihood log P ( Y | X ; ? ) .
+During inference , the encoder representation is copied as the input to the decoder , therefore all tokens on the target side can be generated in parallel .
+Such a conditional independence assumption does not hold in general , which explains the inferior performance of NAT .
+L NAT = T t=1 log P ( y t | X ; ? ) .
+Multi-pass iterative decoding approaches such as Mask -Predict ( Ghazvininejad et al. , 2019 ) extends the vanilla NAT .
+It still uses the conditional independent factorization , together with the random masking scheme : L MLM = yt ?RM ( Y ) log p y t |?
+Y , RM ( Y ) , X ; ? , where RM ( Y ) is a set of randomly selected words from Y , and ?(? ) replaces these selected words in Y with the [ MASK ] token .
+For example in Figure 1 c , RM ( Y ) = {y 2 , y 3 } , ? Y , RM ( Y ) = {y 1 , [ MASK ] , [ MASK ] , y 4 , y 5 }.
+The number of masked tokens distributes uniformly from 1 to the total number of tokens in the target sequence .
+Such training objective is used to learn a refinement model ? that can predict the masked tokens given the source sentence X and words generated in the previous iteration .
+The vanilla NAT breaks word interdependency , while MLM requires multiple passes of decoding to re-establish the word interdependency .
+Our goal in this work is to design a better probability model and a training objective to enable word interdependency learning for single - pass parallel generation .
+Glancing Transformer
+In this section , we present GLAT in detail .
+GLAT uses the same encoder-decoder architecture as the vanilla NAT ( Gu et al. , 2018 ) .
+GLAT differs from the vanilla NAT in that it explicitly encourages word interdependency via training with glancing language model ( GLM ) .
+It differs from the iterative NAT with MLM in that it is trained to produce single pass parallel decoding while MLM is used for prediction refinement .
+The Glancing Language Model Given the input source sentence X = {x 1 , x 2 , ... , x N } , the task is to predict Y = {y 1 , y 2 , ... , y T }.
+The glancing Transformer ( GLAT ) formulates a glancing language model ( GLM ) during training .
+It maximizes the following : L GLM = yt?GS ( Y , ? ) log p(y t | GS ( Y , ? ) , X ; ? ) ( 1 ) Where , ? is the initial predicted tokens , and GS ( Y , ? ) is a subset of tokens selected via the glancing sampling strategy ( Figure 2 , described in detail in the next section ) .
+The glancing sampling strategy selects those words from the target sentence by comparing the initial prediction against the ground -truth tokens .
+It selects more tokens and feeds the embeddings of these tokens into the decoder input if the network 's initial prediction is less accurate .
+GS ( Y , ? ) is the remaining subset of tokens within the target Y but not selected .
+The training loss above is calculated against these remaining tokens .
+GLAT adopts similar encoder-decoder architecture as the Transformer with some modification ( Figure 1d ) .
+Its encoder f enc is the same multihead attention layers .
+Its decoder f dec include multiple layers of multi-head attention where each layer attends to the full sequence of both encoder representation and the previous layer of decoder representation .
+During the initial prediction , the input to the decoder H = {h 1 , h 2 , ... , h T } are copied from the encoder output using either uniform copy or soft copy ( Wei et al. , 2019 ) .
+The initial tokens ? are predicted using argmax decoding with f dec ( f enc ( X ; ? ) , H ; ? ) .
+To calculate the loss L GLM , we compare the initial prediction ?
+against the ground -truth to select tokens within the target sentence , i.e. GS ( Y , ? ) .
+We then replace those sampled indices of h's with corresponding target word embeddings , H = RP ( Emb yt ?
+GS ( Y , ? ) ( y t ) , H ) , where RP replaces the corresponding indices .
+Namely , if a token in the target is sampled , its word embedding replaces the corresponding h .
+Here the word embeddings are obtained from the softmax embedding matrix of the decoder .
+The updated H is then fed into the decoder f dec again to calculate the output token probability .
+Specifically , the output probabilities of remaining tokens p(y t | GS ( Y , ? ) , X ; ? ) are computed with f dec ( H , f enc ( X ; ? ) ; ?) .
+The Glancing Sampling Strategy
+One important component of GLM is to adaptively select the positions of tokens from the target sentence .
+Those selected tokens provide " correct " information from the ground - truth target , therefore it helps training the decoder to predict the rest nonselected tokens .
+Intuitively , our adaptive sampling strategy guides the model to first learn the generation of fragments and then gradually turn to the whole sentences .
+Our glancing sampling strategy selects many words at the start of the training , when the model is not yet well tuned .
+As the model gets better progressively , the sampling strategy will sample fewer words to enable the model to learn the parallel generation of the whole sentence .
+Note that the sampling strategy is crucial in the training of GLAT .
+As illustrated in Figure 2 , the glancing sampling could be divided into two steps : first deciding a sampling number S , and then randomly selecting S words from the reference .
+The sampling number S will be larger when the model is poorly trained and decreases along the training process .
+Note that we choose to randomly select the S words from the reference .
+The random reference word selection is simple and yields good performance empirically .
+Formally , given the input X , its predicted sentence ? and its reference Y , the goal of glancing sampling function GS ( Y , ? ) is to obtain a subset of words sampled from Y : ( Levenshtein , 1966 ) . GS ( Y , ? ) = Random ( Y , S ( Y , ? ) )
+( 2 Alternative glancing sampling strategy can be adopted as well .
+For example , one simple alternative strategy is to set the number of sampled tokens to be proportional to the target sentence length , i.e.
+S = ? * T .
+We will evaluate the effects of these variations in the experiment .
+Inference GLAT only modifies the training procedure .
+Its inference is fully parallel with only a single pass .
+For parallel generation , we need to decide the output lengths before decoding .
+A simple way to decide the output lengths is predicting length with representations from the encoder .
+In GLAT , the length prediction is implemented as in Ghazvininejad et al . ( 2019 ) .
+An additional [ LENGTH ] token is added to the source input , and the encoder output for the [ LENGTH ] token is used to predict the length .
+We also use two more complex methods to better decide the output lengths : noisy parallel decoding ( NPD ) and connectionist temporal classification ( CTC ) .
+For NPD ( Gu et al. , 2018 ) transformer to rank these sequences and identify the best overall output as the final output .
+For CTC ( Graves et al. , 2006 ) , following Libovick ?
+and Helcl ( 2018 ) , we first set the max output length to twice the source input length , and remove the blanks and repeated tokens after generation .
+Experiments
+In this section , we first introduce the settings of our experiments , then report the main results compared with several strong baselines .
+Ablation studies and further analysis are also included to verify the effects of different components used in GLAT .
+Experimental Settings Datasets
+We conduct experiments on three machine translation benchmarks : WMT14 EN - DE ( 4.5 M translation pairs ) , WMT16 EN - RO ( 610 k translation pairs ) , and IWSLT16 DE-EN ( 150 K translation pairs ) .
+These datasets are tokenized and segmented into subword units using BPE encodings ( Sennrich et al. , 2016 ) .
+We preprocess WMT14 EN - DE by following the data preprocessing in Vaswani et al . ( 2017 ) . For WMT16 EN - RO and IWSLT16 DE -EN , we use the processed data provided in Lee et al . ( 2018 ) . Knowledge Distillation
+Following previous work ( Gu et al. , 2018 ; Lee et al. , 2018 ; , we also use sequence - level knowledge distillation for all datasets .
+We employ the transformer with the base setting in Vaswani et al . ( 2017 ) as the teacher for knowledge distillation .
+Then , we train our GLAT on distilled data .
+Baselines and Setup
+We compare our method with the base Transformer and strong representative NAT baselines in Table 1 .
+For all our tasks , we obtain other NAT models ' performance by directly using the performance figures reported in their papers if they are available .
+We adopt the vanilla model which copies source input uniformly in Gu et al . ( 2018 ) as our base model ( NAT - base ) and replace the Uni-formCopy with attention mechanism using positions .
+Note that the output length does not equal the length of reference in models using CTC .
+Therefore , for GLAT with CTC , we adopt longest common subsequence distance for compar-Performance ( BLEU ) ing Y and ? , and the glancing target is the target alignment that maximize the output probability arg max a?B ?1 ( Y ) P ( a|X ; ? ) .
+B ?1 is the mapping proposed in ( Graves et al. , 2006 ) , which expand the reference to the length of output by inserting blanks or repeating words .
+For WMT datasets , we follow the hyperparameters of the base Transformer in Vaswani et al . ( 2017 ) .
+And we choose a smaller setting for IWSLT16 , as IWSLT16 is a smaller dataset .
+For IWSLT16 , we use 5 layers for encoder and decoder , and set the model size d model to 256 .
+Using Nvidia V100 GPUs ,
+We train the model with batches of 64k/8 k tokens for WMT / IWSLT respectively .
+We set the dropout rate to 0.1 and use Adam optimizer ( Kingma and Ba , 2014 ) with ? = ( 0.9 , 0.999 ) .
+For WMT datasets , the learning rate warms up to 5e ? 4 in 4 k steps and gradually decays according to inverse square root schedule in Vaswani et al . ( 2017 ) .
+As for IWSLT16 DE - EN , we adopt linear annealing ( from 3e ? 4 to 1e ? 5 ) as in Lee et al . ( 2018 ) .
+For the hyper-parameter ? , we adopt linear annealing from 0.5 to 0.3 for WMT datasets and a fixed value of 0.5 for IWSLT16 .
+The final model is created by averaging the 5 best checkpoints chosen by validation BLEU scores .
+We report tokenized BLEU for all the datasets used in experiment .
+We measure the average latency per sentence on a single Nvidia 1080TI GPU .
+Main Results
+The main results on the benchmarks are presented in Table 1 . GLAT significantly improves the translation quality and outperforms strong baselines by a large margin .
+Our method introduces explicit word interdependency modeling for the decoder and gradually learns simultaneous generation of whole sequences , enabling the model to better capture the underlying data structure .
+Compared to models with iterative decoding , our method completely maintains the inference efficiency advantage of fully non-autoregressive models , since GLAT generate with a single pass .
+Compared with the baselines , we highlight our empirical advantages : ? GLAT is highly effective .
+Compared with the vanilla NAT - base models , GLAT obtains significant improvements ( about 5 BLEU ) on EN -DE / DE-EN .
+Additionally , GLAT also outperforms other fully non-autoregressive models with a substantial margin ( almost + 2 BLEU points on average ) .
+The results are even very close to those of the AT model , which shows great potential .
+?
+GLAT is simple and can be applied to other NAT models flexibly , as we only modify the training process by reference glancing while keeping inference unchanged .
+For comparison , NAT - DCRF utilizes CRF to generate sequentially ; NAT -IR and Mask - Predict models need multiple decoding iterations .
+?
+CTC and NPD use different approaches to determine the best output length , and they have their own advantages and disadvantages .
+CTC requires the output length to be longer than the exact target length .
+With longer output lengths , the training will consume more time and GPU memory .
+As for NPD , with a certain number of length reranking candidates , the inference speed will be slower than models using CTC .
+Note that NPD can use pretrained AT models or the non-autoregressive model itself to rerank multiple outputs .
+We also present a scatter plot in Figure 3 , displaying the trend of speed - up and BLEU with different NAT models .
+It is shown that the point of 1999 GLAT is located on the top-right of the competing methods .
+Obviously , GLAT outperforms our competitors in BLEU if speed - up is controlled , and in speed - up if BLEU is controlled .
+This indicates that GLAT outperforms previous NAT methods .
+Although iterative models like Mask - Predict achieves competitive BLEU scores , they only maintain minor speed advantages over AT .
+In contrast , fully non-autoregressive models remarkably improve the inference speed .
+Analysis Effect of Source Input Length
+To analyze the effect of source input length on the models ' performance , we split the source sentences into different intervals by length after BPE and compute the BLEU score for each interval .
+The histogram of results is presented in Figure 4 . NAT - base 's performance drops sharply for long sentences , while the gradual learning process enables GLAT to boost the performance by a large margin , especially for long sentences .
+We also find that GLAT outperforms autoregressive Transformer when the source input length is smaller than 20 .
+GLAT Reduces Repetition
+We also measure the percentage of repeated tokens on test set of WMT14 EN - DE and WMT14 DE-EN .
+Table 2 presents the token repetition ratio of sentences generated by NAT - base and GLAT .
+The results show that GLAT significantly reduces the occurrence of repetition , and the repetition ratio can be further reduced with NPD .
+We think an important cause of the improvement is better interdependency modeling .
+Since GLAT explicitly encourages word interdependency modeling to better capture the dependency between target tokens , wrong generation patterns , such as repetition , can be largely avoided .
+GLAT Achieves Strong Results without Multiple Iterations
+We conduct experiments of GLAT with more than one decoding iteration in inference .
+We adopt the inference algorithm in Mask - Predict for multiple -iteration decoding .
+The results are shown in Figure 5 .
+We find that GLAT can achieve decent performances with only one decoding iteration , while further iterations only obtain minor improvements of 0.2?0.3 BLEU .
+Ablation Study Effectiveness of the Adaptive Sampling Number
+To validate the effectiveness of the adaptive sampling strategy for the sampling number S( Y , ? ) , we also introduce two fixed approaches for comparison .
+The first one decides the sampling number with ? * T , where T is the length of Y , and ? is a constant ratio .
+The second one is relatively flexible , which sets a start ratio of ? s and an end ratio ?
+e , and linearly reduces the sampling number from ?
+s * T to ?
+e * T along the training process .
+As shown in Table 3 and Table 4 , our adaptive approach ( Adaptive in the table ) outperforms the baseline models with big margins .
+The results confirm our intuition that the sampling schedule affects the generation performance of our NAT model .
+The sampling strategy , which first offers relatively easy generation problems and then turns harder , benefits the final performance .
+Besides , even with the simplest constant ratio , GLAT still achieves remarkable results .
+When set ? = 0.2 , it even outperforms the baseline ? = 0.0 by 2.5 BLEU points .
+The experiments potentially support that it is beneficial to learn the generation of fragments at the start and gradually transfer to the whole sequence .
+The flexible decreasing ratio method works better than the constant one , and our proposed adaptive approaches achieve the best results .
+Influence of Reference Word Selection
+To analyze how the strategies of selecting reference words affect glancing sampling , we conduct experiments with different selection strategies .
+By default , we assume all the words in the reference are equally important and randomly choose reference words for glancing .
+Besides the random strategy , we devise four other selection methods considering the prediction of first decoding .
+For p ref and 1 ? p ref , the sampling probability of each reference word is proportional to the output probability for the reference word p ref and the probability 1 ? p ref , respectively .
+Similar to the word selection strategy for masking words during inference in Mask - Predict , we also add two strategies related to the prediction confidence : " most certain " and " most uncertain . "
+We choose the positions where predictions have higher confidence for " most certain " , and vise versa for " most uncertain . "
+The results for different selection methods are listed in Table 5 .
+In comparisons , the model with the selection
+And we find that the random strategy performs a little better than the two confidence - based strategies .
+We think this indicates that introducing more randomness in sampling enable GLAT to explore more interdependency among target words .
+We adopt the random strategy for its simplicity and good performance .
+Comparison of Different Distances for Glancing Sampling
+We conduct experiments with two distances for comparing the predictions of the first decoding and references , and the results are presented in Table 6 . Experimental results show that both distances can be used to improve the quality of one-iteration generation , and GLAT with Hamming distance is better than GLAT with Levenshtein distance .
+Especially when there is no target length reranking , GLAT with Hamming distance outperforms GLAT with Levenshtein distance by about 0.7 BLEU and 0.9 BLEU on WMT14 EN - DE and DE -EN respectively .
+We think Hamming distance is more strict than Levenshtein distance because only the same words on the corresponding positions are regarded as correct , which is more consistent with the training of GLAT .
+Advantages of GLAT over Mask - Predict
+To study the effects of sampling strategy and decoder inputs of GLAT , we conduct experiments for replacing these two modules in GLAT with the corresponding part in Mask - Predict , respectively .
+The results are presented in Table 7 . GLAT employs glancing sampling strategy instead of the uniform sampling strategy used in Mask - Predict , and replaces the [ MASK ] token inputs with source representations from the encoder .
+The results show that the glancing sampling strategy outperforms the uniform sampling strategy by 5?6 BLEU points , and feeding representations from the encoder as the decoder input could still improve the strong baseline by 0.2?0.3 BLEU points after adopting glancing sampling .
+To sum up , the adaptive glanc-ing sampling approach contributes the most to final improvement , and the use of representations from the encoder also helps a bit .
+Related Work Fully Non-Autoregressive Models
+A line of work introduces various forms of latent variables to the model 's burden of dealing with dependencies among output words ( Gu et 2018 ; Ma et al. , 2019 ; Bao et al. , 2019 ; Ran et al. , 2019 ; Bao et al. , 2021 ) .
+Another branch of work considers transferring the knowledge from autoregressive models to non-autoregressive models ( Wei et al. , 2019 ; Guo et al. , 2020a ; Sun and Yang , 2020 ) .
+Besides , there are also some work that apply different training objectives to train nonautoregressive models ( Libovick ?
+and Helcl , 2018 ; Shao et al. , 2020 ; Ghazvininejad et al. , 2020a ) , add regularization terms Guo et al. , 2019 ) .
+Non-Autoregressive Models with Structured Decoding
+To model the dependencies between words , Sun et al . ( 2019 ) introduces a CRF inference module in NAT and performs additional sequential decoding after the non-autoregressive computation in inference .
+Deng and Rush ( 2020 ) proposes cascaded CRF decoding .
+Since GLAT only performs single - pass non-autoregressive generation , our approach is orthogonal to the method proposed in Sun et al . ( 2019 ) .
+We can also combine our approach with the structured decoding methods .
+Non-Autoregressive Models with Iterative Refinement
+A series of work are devoted to semiautoregressive models that refine the outputs with multi-pass iterative decoding ( Lee et al. , 2018 ; Miao et al. , 2019 ; Gu et al. , 2019 ; Ghazvininejad et al. , 2019 Ghazvininejad et al. , , 2020b Kasai et al. , 2020 ; Li et al. , 2020 ) .
+Lee et al. ( 2018 ) proposed a method of iterative refinement based on denoising autoencoder .
+Gu et al. ( 2019 ) utilized insertion and deletion to refine the outputs in inference .
+Ghazvininejad et al. ( 2019 ) trained the model with the masked language model , and the model iteratively replaces masked tokens with new outputs .
+( Li et al. , 2020 ) first predict the left token and right token for each position , and decode the final token at the current position conditioned on the left- and - right tokens predicted before .
+Despite the relatively better accuracy , the multiple decoding iterations reduce the inference efficiency of non-autoregressive models .
+Scheduled Sampling
+To alleviate exposure bias in autoregressive models , previous work attempts to close the gap between training and inference by scheduled sampling ( Bengio et al. , 2015 ; Mihaylova and Martins , 2019 ) .
+Although scheduled sampling also modifies decoder inputs in training , there are mainly two differences between our work and scheduled sampling .
+Firstly , scheduled sampling mixes up the predicted sequence and the gold target sequence , and our method does not mix predicted sequences into decoder inputs .
+Besides , GLAT aims to learn word interdependency for single - pass parallel generation and scheduled sampling is designed for alleviating exposure bias .
+Conclusion
+In this paper , we propose Glancing Transformer with a glancing language model to improve the performance of single - pass parallel generation models .
+With the glancing language model , the model starts from learning the generation of sequence fragments and gradually moving to whole sequences .
+Experimental results show that our approach significantly improves the performance of non-autoregressive machine translation with single - pass parallel generation .
+As GLAT achieves competitive performance compared with autoregressive models , applying our approach to other generation tasks is a promising direction for future work .
+Figure 1 : 1 Figure 1 : Probabilistic models for machine translation methods .
+( b) Vanilla NAT uses conditional indepedent LM .
+( c ) Mask - Predict NAT uses MLM and requires multiple passes of decoding .
+( d ) Our proposed GLM leverages the decoder prediction to decide glancing sampling policy during training and only requires one pass of decoding during inference .

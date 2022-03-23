@@ -1,0 +1,255 @@
+title
+Unsupervised Question Answering by Cloze Translation
+abstract
+Obtaining training data for Question Answering ( QA ) is time - consuming and resourceintensive , and existing QA datasets are only available for limited domains and languages .
+In this work , we explore to what extent high quality training data is actually required for Extractive QA , and investigate the possibility of unsupervised Extractive QA .
+We approach this problem by first learning to generate context , question and answer triples in an unsupervised manner , which we then use to synthesize Extractive QA training data automatically .
+To generate such triples , we first sample random context paragraphs from a large corpus of documents and then random noun phrases or named entity mentions from these paragraphs as answers .
+Next we convert answers in context to " fill - in- the - blank " cloze questions and finally translate them into natural questions .
+We propose and compare various unsupervised ways to perform cloze-tonatural question translation , including training an unsupervised NMT model using nonaligned corpora of natural questions and cloze questions as well as a rule-based approach .
+We find that modern QA models can learn to answer human questions surprisingly well using only synthetic training data .
+We demonstrate that , without using the SQuAD training data at all , our approach achieves 56.4 F1 on SQuAD v1 ( 64.5 F1 when the answer is a Named entity mention ) , outperforming early supervised models .
+Introduction Extractive Question Answering ( EQA ) is the task of answering questions given a context document under the assumption that answers are spans of tokens within the given document .
+There has been substantial progress in this task in English .
+For SQuAD ( Rajpurkar et al. , 2016 ) , a common EQA benchmark dataset , current models beat human Figure 1 : A schematic of our approach .
+The right side ( dotted arrows ) represents traditional EQA .
+We introduce unsupervised data generation ( left side , solid arrows ) , which we use to train standard EQA models performance ;
+For SQuAD 2.0 ( Rajpurkar et al. , 2018 ) , ensembles based on BERT ( Devlin et al. , 2018 ) now match human performance .
+Even for the recently introduced Natural Questions corpus ( Kwiatkowski et al. , 2019 ) , human performance is already in reach .
+In all these cases , very large amounts of training data are available .
+But , for new domains ( or languages ) , collecting such training data is not trivial and can require significant resources .
+What if no training data was available at all ?
+In this work we address the above question by exploring the idea of unsupervised EQA , a setting in which no aligned question , context and answer data is available .
+We propose to tackle this by reduction to unsupervised question generation :
+If we had a method , without using QA supervision , to generate accurate questions given a context document , we could train a QA system using the generated questions .
+This approach allows us to directly leverage progress in QA , such as model architectures and pretraining routines .
+This framework is attractive in both its flexibility and extensibility .
+In addition , our method can also be used to generate additional training data in semi-supervised settings .
+Our proposed method , shown schematically in Figure 1 , generates EQA training data in three steps .
+1 ) We first sample a paragraph in a target domain - in our case , English Wikipedia .
+2 ) We sample from a set of candidate answers within that context , using pretrained components ( NER or noun chunkers ) to identify such candidates .
+These require supervision , but no aligned ( question , answer ) or ( question , context ) data .
+Given a candidate answer and context , we can extract " fillthe- blank " cloze questions
+3 ) Finally , we convert cloze questions into natural questions using an unsupervised cloze-to-natural question translator .
+The conversion of cloze questions into natural questions is the most challenging of these steps .
+While there exist sophisticated rule- based systems ( Heilman and Smith , 2010 ) to transform statements into questions ( for English ) , we find their performance to be empirically weak for QA ( see Section 3 ) .
+Moreover , for specific domains or other languages , a substantial engineering effort will be required to develop similar algorithms .
+Also , whilst supervised models exist for this task , they require the type of annotation unavailable in this setting ( Du et al. 2017 ; Du and Cardie 2018 ; Hosking and Riedel 2019 , inter alia ) .
+We overcome this issue by leveraging recent progress in unsupervised machine translation Lample and Conneau , 2019 ; Artetxe et al. , 2018 ) .
+In particular , we collect a large corpus of natural questions and an unaligned corpus of cloze questions , and train a seq2seq model to map between natural and cloze question domains using a combination of online back -translation and de-noising auto-encoding .
+In our experiments , we find that in conjunction with the use of modern QA model architectures , unsupervised QA can lead to performances surpassing early supervised approaches ( Rajpurkar et al. , 2016 ) .
+We show that forms of cloze " translation " that produce ( unnatural ) questions via word removal and flips of the cloze question lead to better performance than an informed rule- based translator .
+Moreover , the unsupervised seq2seq model outperforms both the noise and rule-based system .
+We also demonstrate that our method can be used in a few-shot learning setting , for example obtaining 59.3 F1 with 32 labelled examples , compared to 40.0 F1 without our method .
+To summarize , this paper makes the following contributions : i) The first approach for unsupervised QA , reducing the problem to unsupervised cloze translation , using methods from unsupervised machine translation ii ) Extensive experiments testing the impact of various cloze question translation algorithms and assumptions iii ) Experiments demonstrating the application of our method for few-shot learning in EQA .
+1 2 Unsupervised Extractive QA
+We consider extractive QA where we are given a question q and a context paragraph c and need to provide an answer a = ( b , e ) with beginning b and end e character indices in c. Figure 1 ( right - hand side ) shows a schematic representation of this task .
+We propose to address unsupervised QA in a two stage approach .
+We first develop a generative model p(q , a , c ) using no ( QA ) supervision , and then train a discriminative model p r ( a|q , c ) using p as training data generator .
+The generator p( q , a , c ) = p ( c ) p ( a | c ) p ( q|a , c ) will generate data in a " reverse direction " , first sampling a context via p ( c ) , then an answer within the context via p ( a | c ) and finally a question for the answer and context via p( q|a , c ) .
+In the following we present variants of these components .
+Context and Answer Generation Given a corpus of documents our context generator p( c ) uniformly samples a paragraph c of appropriate length from any document , and the answer generation step creates answer spans a for c via p ( a | c ) .
+This step incorporates prior beliefs about what constitutes good answers .
+We propose two simple variants for p( a | c ) : Noun Phrases
+We extract all noun phrases from paragraph c and sample uniformly from this set to generate a possible answer span .
+This requires a chunking algorithm for our language and domain .
+Named Entities
+We can further restrict the possible answer candidates and focus entirely on named entities .
+Here we extract all named entity mentions using an NER system and then sample uniformly from these .
+Whilst this reduces the variety of questions that can be answered , it proves to be empirically effective as discussed in Section 3.2 .
+Question Generation Arguably , the core challenge in QA is modelling the relation between question and answer .
+This is captured in the question generator p( q|a , c ) that produces questions from a given answer in context .
+We divide this step into two steps : cloze generation q = cloze ( a , c ) and translation , p( q| q ) .
+Cloze Generation Cloze questions are statements with the answer masked .
+In the first step of cloze generation , we reduce the scope of the context to roughly match the level of detail of actual questions in extractive QA .
+A natural option is the sentence around the answer .
+Using the context and answer from Figure 1 , this might leave us with the sentence " For many years the London Sevens was the last tournament of each season but the Paris Sevens became the last stop on the calendar in " .
+We can further reduce length by restricting to subclauses around the answer , based on access to an English syntactic parser , leaving us with " the Paris Sevens became the last stop on the calendar in " .
+Cloze Translation
+Once we have generated a cloze question q we translate it into a form closer to what we expect in real QA tasks .
+We explore four approaches here .
+Identity Mapping
+We consider that cloze questions themselves provide a signal to learn some form of QA behaviour .
+To test this hypothesis , we use the identity mapping as a baseline for cloze translation .
+To produce " questions " that use the same vocabulary as real QA tasks , we replace the mask token with a wh* word ( randomly chosen or with a simple heuristic described in Section 2.4 ) .
+Noisy Clozes
+One way to characterize the difference between cloze and natural questions is as a form of perturbation .
+To improve robustness to pertubations , we can inject noise into cloze questions .
+We implement this as follows .
+First we delete the mask token from cloze q , apply a simple noise function from , and prepend a wh* word ( randomly or with the heuristic in Section 2.4 ) and append a question mark .
+The noise function consists of word dropout , word order permutation and word masking .
+The motivation is that , at least for SQuAD , it may be sufficient to simply learn a function to identify a span surrounded by high n-gram overlap to the question , with a tolerance to word order perturbations .
+Rule - Based Turning an answer embedded in a sentence into a ( q , a ) pair can be understood as a syntactic transformation with wh-movement and a type-dependent choice of wh-word .
+For English , off - the-shelf software exists for this purpose .
+We use the popular statement - to-question generator from Heilman and Smith ( 2010 ) which uses a set of rules to generate many candidate questions , and a ranking system to select the best ones .
+Seq2Seq
+The above approaches either require substantial engineering and prior knowledge ( rulebased ) or are still far from generating naturallooking questions ( identity , noisy clozes ) .
+We propose to overcome both issues through unsupervised training of a seq2seq model that translates between cloze and natural questions .
+More details of this approach are in Section 2.4 .
+Question Answering Extractive Question
+Answering amounts to finding the best answer a given question q and context c.
+We have at least two ways to achieve this using our generative model :
+Training a separate QA system
+The generator is a source of training data for any QA architecture at our disposal .
+Whilst the data we generate is unlikely to match the quality of real QA data , we hope QA models will learn basic QA behaviours .
+Using Posterior
+Another way to extract the answer is to find a with the highest posterior p( a |c , q ) .
+Assuming uniform answer probabilities conditioned on context p ( a | c ) , this amounts to calculating arg max a p( q|a , c ) by testing how likely each possible candidate answer could have generated the question , a similar method to the supervised approach of Lewis and Fan ( 2019 ) .
+Unsupervised Cloze Translation
+To train a seq2seq model for cloze translation we borrow ideas from recent work in unsupervised Neural Machine Translation ( NMT ) .
+At the heart of most these approaches are nonparallel corpora of source and target language sentences .
+In such corpora , no source sentence has any translation in the target corpus and vice versa .
+Concretely , in our setting , we aim to learn a function which maps between the question ( target ) and cloze question ( source ) domains without requiring aligned corpora .
+For this , we need large corpora of cloze questions C and natural questions Q.
+Cloze Corpus
+We create the cloze corpus C by applying the procedure outlined in Section 2.2.2 .
+Specifically we consider Noun Phrase ( NP ) and Named Entity mention ( NE ) answer spans , and cloze question boundaries set either by the sentence or sub-clause that contains the answer .
+2
+We extract 5 M cloze questions from randomly sampled wikipedia paragraphs , and build a corpus C for each choice of answer span and cloze boundary technique .
+Where there is answer entity typing information ( i.e. NE labels ) , we use type-specific mask tokens to represent one of 5 high level answer types .
+See Appendix A.1 for further details .
+Question Corpus
+We mine questions from English pages from a recent dump of common crawl using simple selection criteria : 3
+We select sentences that start in one of a few common wh* words , ( " how much " , " how many " , " what " , " when " , " where " and " who " ) and end in a question mark .
+We reject questions that have repeated question marks or " ? ! " , or are longer than 20 tokens .
+This process yields over 100M english questions when deduplicated .
+Corpus Q is created by sampling 5 M questions such that there are equal numbers of questions starting in each wh* word .
+Following , we use C and Q to train translation models p s?t ( q|q ) and p t?s ( q |q ) which translate cloze questions into natural questions and vice-versa .
+This is achieved by a combination of in-domain training via denoising autoencoding and cross-domain training via online - backtranslation .
+This could also be viewed as a style transfer task , similar to Subramanian et al . ( 2018 ) .
+At inference time , ' natural ' questions are generated from cloze questions as arg max q p s?t ( q|q ) .
+4 Further experimental detail can be found in Appendix A.2 .
+Wh* heuristic
+In order to provide an appropriate wh* word for our " identity " and " noisy cloze " baseline question generators , we introduce a simple heuristic rule that maps each answer type to the most appropriate wh* word .
+For example , the " TEMPORAL " answer type is mapped to " when " .
+During experiments , we find that the unsupervised NMT translation functions sometimes generate inappropriate wh* words for the answer entity type , so we also experiment with applying the wh* heuristic to these question generators .
+For the NMT models , we apply the heuristic by prepending target questions with the answer type token mapped to their wh* words at training time .
+E.g. questions that start with " when " are prepended with the token " TEMPORAL " .
+Further details on the wh* heuristic are in Appendix A.3 .
+Experiments
+We want to explore what QA performance can be achieved without using aligned q , a data , and how this compares to supervised learning and other approaches which do not require training data .
+Furthermore , we seek to understand the impact of different design decisions upon QA performance of our system and to explore whether the approach is amenable to few -shot learning when only a few q,a pairs are available .
+Finally , we also wish to assess whether unsupervised NMT can be used as an effective method for question generation .
+Unsupervised QA Experiments
+For the synthetic dataset training method , we consider two QA models : finetuning BERT ( Devlin et al. , 2018 ) and BiDAF + Self Attention ( Clark and Gardner , 2017 ) .
+5
+For the posterior maximisation method , we extract cloze questions from both sentences and sub-clauses , and use the NMT models to estimate p( q|c , a ) .
+We evaluate using the standard Exact Match ( EM ) and F1 metrics .
+As we cannot assume access to a development dataset when training unsupervised models , the QA model training is halted when QA performance on a held - out set of synthetic QA data plateaus .
+We do , however , use the SQuAD development set to assess which model components are Sliding window ( Rajpurkar et al. , 2016 ) 13.0 20.0 Context-only ( Kaushik and Lipton , 2018 ) 10.9 14.8 Random ( Rajpurkar et al. , 2016 ) 1.3 4.3 Fully Supervised Models EM F1 BERT - Large ( Devlin et al. , 2018 ) 84.1 90.9 BiDAF +SA ( Clark and Gardner , 2017 ) 72.1 81.1 Log. Reg. + FE ( Rajpurkar et al. , 2016 ) 40.4 51.0 ( 2018 ) . ? indicates our re-implementation important ( Section 3.2 ) .
+To preserve the integrity of the SQuAD test set , we only submit our best performing system to the test server .
+We shall compare our results to some published baselines .
+Rajpurkar et al. ( 2016 ) use a supervised logistic regression model with feature engineering , and a sliding window approach that finds answers using word overlap with the question .
+Kaushik and Lipton ( 2018 ) train ( supervised ) models that disregard the input question and simply extract the most likely answer span from the context .
+To our knowledge , ours is the first work to deliberately target unsupervised QA on SQuAD .
+Dhingra et al. ( 2018 ) focus on semi-supervised QA , but do publish an unsupervised evaluation .
+To enable fair comparison , we re-implement their approach using their publicly available data , and train a variant with BERT - Large .
+6
+Their approach also uses cloze questions , but without translation , and heavily relies on the structure of wikipedia articles .
+Our best approach attains 54.7 F1 on the SQuAD test set ; an ensemble of 5 models ( different seeds ) achieves 56.4 F1 .
+Table 1 shows the result in context of published baselines and supervised results .
+Our approach significantly outperforms baseline systems and Dhingra et al . ( 2018 ) and surpasses early supervised methods .
+Ablation Studies and Analysis
+To understand the different contributions to the performance , we undertake an ablation study .
+All ablations are evaluated using the SQUAD development set .
+We ablate using BERT - Base and BiDAF + SA , and our best performing setup is then used to fine- tune a final BERT - Large model , which is the model in Table 1 .
+All experiments with BERT - Base were repeated with 3 seeds to account for some instability encountered in training ; we report mean results .
+Results are shown in Table 2 , and observations and aggregated trends are highlighted below .
+Posterior Maximisation vs .
+Training on generated data Comparing Posterior Maximisation with BERT - Base and BiDAF +SA columns in Table 2 shows that training QA models is more effective than maximising question likelihood .
+As shown later , this could partly be attributed to QA models being able to generalise answer spans , returning answers at test -time that are not always named entity mentions .
+BERT models also have the advantage of linguistic pretraining , further adding to generalisation ability .
+Effect of Answer Prior Named Entities ( NEs ) are a more effective answer prior than noun phrases ( NPs ) .
+Equivalent BERT - Base models trained with NEs improve on average by 8.9 F1 over NPs .
+Rajpurkar et al. ( 2016 ) estimate 52.4 % of answers in SQuAD are NEs , whereas ( assuming NEs are a subset of NPs ) , 84.2 % are NPs .
+However , we found that there are on average 14 NEs per context compared to 33 NPs , so using NEs in training may help reduce the search space of possible answer candidates a model must consider .
+Effect of Question Length and Overlap
+As shown in Figure 2 , using sub-clauses for generation leads to shorter questions and shorter common subsequences to the context , which more closely match the distribution of SQuAD questions .
+Reducing the length of cloze questions helps the translation components produce simpler , more precise questions .
+Using sub-clauses leads to , on average + 4.0 F1 across equivalent sentencelevel BERT - Base models .
+The " noisy cloze " generator produces shorter questions than the NMT model due to word dropout , and shorter common subsequences due to the word perturbation noise .
+Effect of Cloze Translation
+Noise acts as helpful regularization when comparing the " identity " cloze translation functions to " noisy cloze " , ( mean + 9.8 F1 across equivalent BERT - Base models ) .
+Unsupervised NMT question translation is also helpful , leading to a mean improvement of 1.8 F1 on BERT - Base for otherwise equivalent " noisy cloze " models .
+The improvement over noisy clozes is surprisingly modest , and is discussed in more detail in Section 5 .
+Effect of QA model BERT - Base is more effective than BiDAF +SA ( an architecture specifically designed for QA ) .
+BERT - Large ( not shown in Table 2 ) gives a further boost , improving our best configuration by 6.9 F1 . based ( RB ) system of Heilman and Smith ( 2010 ) do not perform favourably compared to our NMT approach .
+To test whether this is due to different answer types used , we a ) remove questions of their system that are not consistent with our ( NE ) answers , and b ) remove questions of our system that are not consistent with their answers .
+Table 3 shows that while answer types matter in that using our restrictions help their system , and using their restrictions hurts ours , they cannot fully explain the difference .
+The RB system therefore appears to be unable to generate the variety of questions and answers required for the task , and does not generate questions from a sufficient variety of contexts .
+Also , whilst on average , question lengths are shorter for the RB model than the NMT model , the distribution of longest common sequences are similar , as shown in Figure 2 , perhaps suggesting that the RB system copies a larger proportion of its input .
+Effect of
+Error Analysis
+We find that the QA model predicts answer spans that are not always detected as named entity mentions ( NEs ) by the NER tagger , despite being trained with solely NE answer spans .
+In fact , when we split SQuAD into questions where the correct answer is an automatically - tagged NE , our model 's performance improves to 64.5 F1 , but it still achieves 47.9 F1 on questions which do not have automatically - tagged NE answers ( not shown in our tables ) .
+We attribute this to the effect of BERT 's linguistic pretraining allowing it to generalise the semantic role played by NEs in a sentence rather than simply learning to mimic the NER system .
+An equivalent BiDAF +SA model scores 58.9 F1 when the answer is an NE but drops severely to 23.0 F1 when the answer is not an NE .
+Figure 3 shows the performance of our system for different kinds of question and answer type .
+The model performs best with " when " questions which tend to have fewer potential answers , but struggles with " what " questions , which have a broader range of answer semantic types , and hence more plausible answers per context .
+The model performs well on " TEMPORAL " answers , consistent with the good performance of " when " questions .
+UNMT - generated Question Analysis
+Whilst our main aim is to optimise for downstream QA performance , it is also instructive to examine the output of the unsupervised NMT cloze translation system .
+Unsupervised NMT has been used in monolingual settings ( Subramanian et al. , 2018 ) , but cloze-to-question generation presents new challenges - The cloze and question are asymmetric in terms of word length , and successful translation must preserve the answer , not just superficially transfer style .
+Figure 4 shows that without the wh* heuristic , the model learns to generate questions with broadly appropriate wh* words for the answer type , but can struggle , par-ticularly with Person / Org / Norp and Numeric answers .
+Table 4 shows representative examples from the NE unsupervised NMT model .
+The model generally copies large segments of the input .
+Also shown in Figure 2 , generated questions have , on average , a 9.1 token contiguous sub-sequence from the context , corresponding to 56.9 % of a generated question copied verbatim , compared to 4.7 tokens ( 46.1 % ) for SQuAD questions .
+This is unsurprising , as the backtranslation training objective is to maximise the reconstruction of inputs , encouraging conservative translation .
+The model exhibits some encouraging , nontrivial syntax manipulation and generation , particularly at the start of questions , such as example 7 in Table 4 , where word order is significantly modified and " sold " is replaced by " buy " .
+Occasionally , it hallucinates common patterns in the question corpus ( example 6 ) .
+The model can struggle with lists ( example 4 ) , and often prefers present tense and second person ( example 5 ) .
+Finally , semantic drift is an issue , with generated questions being relatively coherent but often having different answers to the inputted cloze questions ( example 2 ) .
+We can estimate the quality and grammaticality of generated questions by using the well - formed question dataset of Faruqui and Das ( 2018 ) .
+This dataset consists of search engine queries annotated with whether the query is a well - formed question or not .
+We train a classifier on this task , and then measure how many questions are classified as " well - formed " for our question generation methods .
+Full details are given in Appendix A.5 .
+We find that 68 % of questions generated by UNMT model are classified as well - formed , compared to 75.6 % for the rule- based system and 92.3 % for SQuAD questions .
+We also note that using language model pretraining improves the quality of questions generated by UNMT model , with 78.5 % classified as well - formed , surpassing the rule- based system ( see Appendix A.6 ) .
+Few - Shot Question Answering Finally , we consider a few-shot learning task with very limited numbers of labelled training examples .
+We follow the methodology of Dhingra et al . ( 2018 ) and Yang et al . ( 2017 ) , training on a small number of training examples and using a development set for early stopping .
+We use the splits made
+Where is it making the third football ground ?
+4 he speaks THING , English , and German Spanish
+What are we , English , and German ?
+5 Arriving in the colony early in TEMPORAL 1883
+When are you in the colony early ?
+6
+The average household size was NUMERIC 2.30
+How much does a Environmental Engineering Technician II in Suffolk , CA make ?
+available by Dhingra et al. ( 2018 ) , but switch the development and test splits , so that the test split has n-way annotated answers .
+We first pretrain a BERT - large QA model using our best configuration from Section 3 , then fine -tune with a small amount of SQuAD training data .
+We compare this to our re-implementation of Dhingra et al . ( 2018 ) , and training the QA model directly on the available data without unsupervised QA pretraining .
+Figure 5 shows performance for progressively larger amounts of training data .
+As with Dhingra et al . ( 2018 ) , our numbers are attained using a development set for early stopping that can be larger than the training set .
+Hence this is not a true reflection of performance in low data regimes , but does allow for comparative analysis between models .
+We find our approach performs best in very data poor regimes , and similarly to Dhingra et al . ( 2018 ) with modest amounts of data .
+We also note BERT - Large itself is remarkably efficient , reaching ?60 % F1 with only 1 % of the available data .
+Related Work Unsupervised Learning in NLP
+Most representation learning approaches use latent variables ( Hofmann , 1999 ; Blei et al. , 2003 ) , or language ( Collobert and Weston , 2008 ; Mikolov et al. , 2013 ; Pennington et al. , 2014 ; Radford et al. , 2018 ; Devlin et al. , 2018 ) .
+Most relevant to us is unsupervised NMT Artetxe et al. , 2018 ) and style transfer ( Subramanian et al. , 2018 ) .
+We build upon this work , but instead of using models directly , we use them for training data generation .
+Radford et al. ( 2019 ) report that very powerful language models can be used to answer questions from a conversational QA task , CoQA ( Reddy et al. , 2018 ) in an unsupervised manner .
+Their method differs significantly to ours , and may require " seeding " from QA dialogs to encourage the language model to generate answers .
+Semi-supervised QA Yang et al. ( 2017 ) train a QA model and also generate new questions for greater data efficiency , but require labelled data .
+Dhingra et al. ( 2018 ) simplify the approach and remove the supervised requirement for question generation , but do not target unsupervised QA or attempt to generate natural questions .
+They also make stronger assumptions about the text used for question generation and require Wikipedia summary paragraphs .
+Wang et al. ( 2018 ) consider semi-supervised cloze QA , use semi-supervision to improve semantic parsing on WebQuestions ( Berant et al. , 2013 ) , and Lei et al . ( 2016 ) leverage semi-supervision for question similarity modelling .
+Finally , injecting external knowledge into QA systems could be viewed as semi-supervision , and Weissenborn et al . ( 2017 ) and Mihaylov and Frank ( 2018 ) use Conceptnet ( Speer et al. , 2016 ) for QA tasks .
+Question Generation has been tackled with pipelines of templates and syntax rules ( Rus et al. , 2010 ) . Heilman and Smith ( 2010 ) augment this with a model to rank generated questions , and Yao et al . ( 2012 ) and Olney et al . ( 2012 ) investigate symbolic approaches .
+Recently there has been interest in question generation using supervised neural models , many trained to generate questions from c , a pairs in SQuAD ( Du et al. , 2017 ; Yuan et al. , 2017 ; Du and Cardie , 2018 ; Hosking and Riedel , 2019 )
+Discussion
+It is worth noting that to attain our best performance , we require the use of both an NER system , indirectly using labelled data from OntoNotes 5 , and a constituency parser for extracting subclauses , trained on the Penn Treebank ( Marcus et al. , 1994 ) .
+7 Moreover , a language -specific wh* heuristic was used for training the best performing NMT models .
+This limits the applicability and flexibility of our best-performing approach to domains and languages that already enjoy extensive linguistic resources ( named entity recognition and treebank datasets ) , as well as requiring some human engineering to define new heuristics .
+Nevertheless , our approach is unsupervised from the perspective of requiring no labelled ( question , answer ) or ( question , context ) pairs , which are usually the most challenging aspects of annotating large-scale QA training datasets .
+We note the " noisy cloze " system , consisting of very simple rules and noise , performs nearly as well as our more complex best-performing system , despite the lack of grammaticality and syntax associated with questions .
+The questions generated by the noisy cloze system also perform poorly on the " well-formedness " analysis mentioned in Sec-7 Ontonotes 5 : https://catalog.ldc.upenn.
+edu/LDC2013T19 tion 3.4 , with only 2.7 % classified as well -formed .
+This intriguing result suggests natural questions are perhaps less important for SQuAD and strong question - context word matching is enough to do well , reflecting work from Jia and Liang ( 2017 ) who demonstrate that even supervised models rely on word-matching .
+Additionally , questions generated by our approach require no multi-hop or multi-sentence reasoning , but can still be used to achieve non-trivial SQuAD performance .
+Indeed , Min et al. ( 2018 ) note 90 % of SQuAD questions only require a single sentence of context , and Sugawara et al . ( 2018 ) find 76 % of SQuAD has the answer in the sentence with highest token overlap to the question .
+Conclusion
+In this work , we explore whether it is possible to to learn extractive QA behaviour without the use of labelled QA data .
+We find that it is indeed possible , surpassing simple supervised systems , and strongly outperforming other approaches that do not use labelled data , achieving 56.4 % F1 on the popular SQuAD dataset , and 64.5 % F1 on the subset where the answer is a named entity mention .
+However , we note that whilst our results are encouraging on this relatively simple QA task , further work is required to handle more challenging QA elements and to reduce our reliance on linguistic resources and heuristics .
+The classifier appears to be sensitive to fluency and grammar , with the " identity " cloze translation models scoring much higher than their " noisy cloze " counterparts .

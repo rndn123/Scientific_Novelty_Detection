@@ -1,0 +1,187 @@
+title
+An empirical study on the effectiveness of images in Multimodal Neural Machine Translation
+abstract
+In state- of- the- art Neural Machine Translation ( NMT ) , an attention mechanism is used during decoding to enhance the translation .
+At every step , the decoder uses this mechanism to focus on different parts of the source sentence to gather the most useful information before outputting its target word .
+Recently , the effectiveness of the attention mechanism has also been explored for multimodal tasks , where it becomes possible to focus both on sentence parts and image regions that they describe .
+In this paper , we compare several attention mechanism on the multimodal translation task ( English , image ? German ) and evaluate the ability of the model to make use of images to improve translation .
+We surpass state - of- the - art scores on the Multi30 k data set , we nevertheless identify and report different misbehavior of the machine while translating .
+Introduction
+In machine translation , neural networks have attracted a lot of research attention .
+Recently , the attention - based encoder-decoder framework ( Sutskever et al. , 2014 ; has been largely adopted .
+In this approach , Recurrent Neural Networks ( RNNs ) map source sequences of words to target sequences .
+The attention mechanism is learned to focus on different parts of the input sentence while decoding .
+Attention mechanisms have shown to work with other modalities too , like images , where their are able to learn to attend the salient parts of an image , for instance when generating text captions ( Xu et al. , 2015 ) .
+For such applications , Convolutional Neural Networks ( CNNs ) such as Deep Residual ( He et al. , 2016 ) have shown to work best to represent images .
+Multimodal models of texts and images empower new applications such as visual question answering or multimodal caption translation .
+Also , the grounding of multiple modalities against each other may enable the model to have a better understanding of each modality individually , such as in natural language understanding applications .
+In the field of Machine Translation ( MT ) , the efficient integration of multimodal information still remains a challenging task .
+It requires combining diverse modality vector representations with each other .
+These vector representations , also called context vectors , are computed in order the capture the most relevant information in a modality to output the best translation of a sentence .
+To investigate the effectiveness of information obtained from images , a multimodal machine translation shared task has been addressed to the MT community 1 .
+The best results of NMT model were those of Huang et al . ( 2016 ) who used LSTM fed with global visual features or multiple regional visual features followed by rescoring .
+Recently , Calixto et al. ( 2017 ) proposed a doubly - attentive decoder that outperformed this baseline with less data and without rescoring .
+Our paper is structured as follows .
+In section 2 , we briefly describe our NMT model as well as the conditional GRU activation used in the decoder .
+We also explain how multi-modalities can be implemented within this framework .
+In the following sections ( 3 and 4 ) , we detail three attention mechanisms and explain how we tweak them to work as well as possible with images .
+Finally , we report and analyze our results in section 5 then conclude in section 6 .
+Neural Machine Translation
+In this section , we detail the neural machine translation architecture by , implemented as an attention - based encoder-decoder framework with recurrent neural networks ( ?2.1 ) .
+We follow by explaining the conditional GRU layer ( ?2.2 ) - the gating mechanism we chose for our RNN - and how the model can be ported to a multimodal version ( ?2.3 ) .
+Text - based NMT
+Given a source sentence X = ( x 1 , x 2 , . . . , x M ) , the neural network directly models the conditional probability p( Y | X ) of its translation Y = (y 1 , y 2 , . . . , y N ) .
+The network consists of one encoder and one decoder with one attention mechanism .
+The encoder computes a representation C for each source sentence and a decoder generates one target word at a time and by decomposing the following conditional probability : log p( Y | X ) = n t=1 log p(y t |y < t , C ) ( 1 )
+Each source word x i and target word y i are a column index of the embedding matrix E X and E Y .
+The encoder is a bi-directional RNN with Gated Recurrent Unit ( GRU ) layers ( Chung et al. , 2014 ; , where a forward RNN ? ? ? enc reads the input sequence as it is ordered ( from x 1 to x M ) and calculates a sequence of forward hidden states ( ? ? h 1 , ? ? h 2 , . . . , ? ? h M ) .
+A backward RNN ? ? ? enc reads the sequence in the reverse order ( from x M to x 1 ) , resulting in a sequence of backward hidden states ( ? ? h M , ? ? h M ?1 , . . . , ? ? h 1 ) .
+We obtain an annotation for each word x i by concatenating the forward and backward hidden state h t = [ ? ? h t ; ? ? h t ] .
+Each annotation h t contains the summaries of both the preceding words and the following words .
+The representation C for each source sentence is the sequence of annotations C = ( h 1 , h 2 , . . . , h M ) .
+The decoder is an RNN that uses a conditional GRU ( cGRU , more details in ?2.2 ) with an attention mechanism to generate a word y t at each time-step t.
+The cGRU uses it 's previous hidden state s t?1 , the whole sequence of source annotations C and the previously decoded symbol y t?1 in order to update it 's hidden state s t : s t = cGRU ( s t?1 , y t?1 , C ) ( 2 )
+In the process , the cGRU also computes a timedependent context vector c t .
+Both s t and c t are further used to decode the next symbol .
+We use a deep output layer ( Pascanu et al. , 2014 ) to compute a vocabulary - sized vector : o t = L o tanh ( L s s t + L c c t + L w E Y [ y t?1 ] ) ( 3 ) where L o , L s , L c , L w are model parameters .
+We can parameterize the probability of decoding each word y t as : p( y t |y t?1 , s t , c t ) = Softmax ( o t ) ( 4 )
+The initial state of the decoder s 0 at time - step t = 0 is initialized by the following equation : s 0 = f init ( h M ) ( 5 ) where f init is a feedforward network with one hidden layer .
+Conditional GRU
+The conditional GRU 2 consists of two stacked GRU activations called REC 1 and REC 2 and an attention mechanism f att in between ( called ATT in the footnote paper ) .
+At each time -step t , REC1 firstly computes a hidden state proposal s t based on the previous hidden state s t?1 and the previously emitted word y t?1 : z t = ?
+W z E Y [ y t?1 ] + U z s t?1 r t = ?
+W r E Y [ y t?1 ] + U r s t?1 s t = tanh W E Y [ y t?1 ] + r t ( U s t?1 ) s t = ( 1 ? z t ) s t + z t s t?1 ( 6 ) Then , the attention mechanism computes c t over the source sentence using the annotations sequence C and the intermediate hidden state proposal s t : c t = f att C , s t ( 7 ) Finally , the second recurrent cell REC 2 , computes the hidden state s t of the cGRU by looking at the intermediate representation s t and context vector c t : z t =?
+W z c t + U z s t r t =?
+W r c t + U r s t s t =tanh W c t + r t ( U s t ) s t = ( 1 ? z t ) s t + z t s t ( z t =?
+W z c t + W z i t + U z s t r t =?
+W r c t + W r i t + U r s t s t =tanh W c t + W i t + r t ( U s t ) s t = ( 1 ? z t ) s t + z t s t ( 10 )
+The probabilities for the next target word ( from equation 3 ) also takes into account the new context vector i t : L o tanh ( L s s t + L c c t + L i i t + L w E Y [ y t?1 ] ) ( 11 ) where L i is a new trainable parameter .
+In the field of multimodal NMT , the second modality is usually an image computed into feature maps with the help of a CNN .
+The annotations a 1 , a 2 , . . . , a L are spatial features ( i.e. each annotation represents features for a specific region in the image ) .
+We follow the same protocol for our experiments and describe it in section 5 .
+Attention - based Models
+We evaluate three models of the image attention mechanism f att of equation 7 .
+They have in common the fact that at each time step t of the decoding phase , all approaches first take as input the annotation sequence I to derive a time - dependent context vector that contain relevant information in the image to help predict the current target word y t .
+Even though these models differ in how the time - dependent context vector is derived , they share the same subsequent steps .
+For each mechanism , we propose two hand -picked illustrations showing where the attention is placed in an image .
+Soft attention Soft attention has firstly been used for syntactic constituency parsing by Vinyals et al . ( 2015 ) but has been widely used for translation tasks ever since .
+One should note that it slightly differs from where their attention takes as input the previous decoder hidden state instead of the current ( intermediate ) one as shown in equation 7 .
+This mechanism has also been successfully investigated for the task of image description generation ( Xu et al. , 2015 ) where a model generates an image 's description in natural language .
+It has been used in multimodal translation as well ( Calixto et al. , 2017 ) , for which it constitutes a state - of- the- art .
+The idea of the soft attentional model is to consider all the annotations when deriving the context vector i t .
+It consists of a single feedforward network used to compute an expected alignment e t between modality annotation a l and the target word to be emitted at the current time step t.
+The inputs are the modality annotations and the intermediate representation of REC1 s t : e t,l = v T tanh ( U a s t + W a a l ) ( 12 )
+The vector e t has length L and its l-th item contains a score of how much attention should be put on the l-th annotation in order to output the best word at time t.
+We compute normalized scores to create an attention mask ?
+t over annotations : ? t , i = exp( e t , i ) L j=1 exp( e t , j ) ( 13 ) i t = L i=1 ? t , i a i ( 14 ) Finally , the modality time - dependent context vector i t is computed as a weighted sum over the annotation vectors ( equation 14 ) .
+In the above expressions , v T , U a and W a are trained parameters .
+Hard Stochastic attention
+This model is a stochastic and sampling - based process where , at every timestep t , we are making a hard choice to attend only one annotation .
+This corresponds to one spatial location in the image .
+Hard attention has previously been used in the context of object recognition ( Mnih et al. , 2014 ; and later extended to image description generation ( Xu et al. , 2015 ) .
+In the context of multimodal NMT , we can follow Xu et al . ( 2015 ) because both our models involve the same process on images .
+The mechanism f att is now a function that returns a sampled intermediate latent variables ?
+t , i based upon a multinouilli distribution parameterized by ? : ? t ? Multinoulli ( { ? 1 , ... , L } ) ( 15 ) where ?
+t , i an indicator one- hot variable which is set to 1 if the i-th annotation ( out of L ) is the one used to compute the context vector i t : p( ? t , i = 1 | ? < t , I ) =? t , i ( 16 ) i t = L i=1 ? t , i a i ( 17 ) Context vector i t is now seen as the random variable of this distribution .
+We define the variational lower bound L ( ? ) on the marginal log evidence log p( y |I ) of observing the target sentence y given modality annotations I .
+In order to propagate a gradient through this process , the summation in equation 19 can then be approximated using Monte Carlo based sampling defined by equation 16 : ?L ?W ? 1 N N n=1 ? log p( y |?
+n , I ) ?W + log p( y |?
+n , I ) ? log p(? n | I ) ?W (
+Local Attention
+In this section , we propose a local attentional mechanism that chooses to focus only on a small subset of the image annotations .
+Local Attention has been used for text - based translation ( Luong et al. , 2015 ) and is inspired by the selective attention model of Gregor et al . ( 2015 ) for image generation .
+Their approach allows the model to select an image patch of varying location and zoom .
+Local attention uses instead the same " zoom " for all target positions and still achieved good performance .
+This model can be seen as a trade - off between the soft and hard attentional models .
+The model picks one patch in the annotation sequence ( one spatial location ) and selectively focuses on a small window of context around it .
+Even though an image ca n't be seen as a temporal sequence , we still hope that the model finds points of interest and selects the useful information around it .
+This approach has an advantage of being differentiable whereas the stochastic attention requires more complicated techniques such as variance reduction and reinforcement learning to train as shown in section 3.2 .
+The soft attention has the drawback to attend the whole image which can be difficult to learn , especially because the number of annotations L is usually large ( presumably to keep a significant spatial granularity ) .
+More formally , at every decoding step t , the model first generates an aligned position p t .
+Context vector i t is derived as a weighted sum over the annotations within the window [ p t ?
+N ; p t + N ] where N is a fixed model parameter chosen empirically 3 .
+These selected annotations correspond to a squared region in the attention maps around p t .
+The attention mask ?
+t is of size 2N + 1 .
+The model predicts p t as an aligned position in the annotation sequence ( referred as Predictive alignment ( local - m ) in the author 's paper ) according to the following equation : p t = S ? sigmoid ( v T tanh ( U a s t ) ) ( 22 ) where v T and U a are both trainable model parameters and S is the annotation sequence length | I | .
+Because of the sigmoid , p t ? [ 0 , S ] .
+We use equation 12 and 13 respectively to compute the expected alignment vector e t and the attention mask ?
+t .
+In addition , a Gaussian distribution centered around p t is placed on the alphas in order to favor 3 We pick N = | ai | / 4 = 49 annotations near p t : ?
+t , i = ? t, i exp ? ( i ? p t ) 2 2 ? 2 ( 23 ) where standard deviation ? = D 2 .
+We obtain context vector i t by following equation 14 .
+Image attention optimization
+Three optimizations can be added to the attention mechanism regarding the image modality .
+All lead to a better use of the image by the model and improved the translation scores overall .
+At every decoding step t , we compute a gating scalar ? t ? [ 0 , 1 ] according to the previous decoder state s t?1 : ? t = ?( W ? s t?1 + b ? ) ( 24 )
+It is then used to compute the time - dependent image context vector : i t = ?
+t L l=1 ? t,l a l ( 25 ) Xu et al . ( 2015 ) empirically found it to put more emphasis on the objects in the image descriptions generated with their model .
+We also double the output size of trainable parameters U a , W a and v T in equation 12 when it comes to compute the expected annotations over the image annotation sequence .
+More formally , given the image annotation sequence I = ( a 1 , a 2 , . . . , a L ) , a i ?
+R D , the three matrices are of size D ? 2D , D ? 2D and 2D ? 1 respectively .
+We noticed a better coverage of the objects in the image by the alpha weights .
+Lastly , we use a grounding attention inspired by Delbrouck and Dupont ( 2017 ) .
+The mechanism merge each spatial location a i in the annotation sequence I with the initial decoder state s 0 obtained in equation 5 with non-linearity : I =( f ( a 1 + s 0 ) , f ( a 2 + s 0 ) , . . . , f ( a L + s 0 ) ) ( 26 ) where f is tanh function .
+The new annotations go through a L2 normalization layer followed by two 1 ? 1 convolutional layers ( of size D ? 512 , 512 ? 1 respectively ) to obtain L ? 1 weights , one for each spatial location .
+We normalize the weights with a softmax to obtain a soft attention map ?.
+Each annotation a i is then weighted according to its corresponding ?
+i : I =(?
+1 a 1 , ? 2 a 2 , . . . , ? L a L ) ( 27 )
+This method can be seen as the removal of unnecessary information in the image annotations according to the source sentence .
+This attention is used on top of the others - before decoding - and is referred as " grounded image " in Table 1 .
+Experiments
+For this experiments on Multimodal Machine Translation , we used the Multi30 K dataset which is an extended version of the Flickr30K Entities .
+For each image , one of the English descriptions was selected and manually translated into German by a professional translator .
+As training and development data , 29,000 and 1,014 triples are used respectively .
+A test set of size 1000 is used for metrics evaluation .
+Training and model details
+All our models are build on top of the nematus framework ( Sennrich et al. , 2017 ) .
+The encoder is a bidirectional RNN with GRU , one 1024D single - layer forward and one 1024D single - layer backward RNN .
+Word embeddings for source and target language are of 620D and trained jointly with the model .
+Word embeddings and other non-recurrent matrices are initialized by sampling from a Gaussian N ( 0 , 0.01 2 ) , recurrent matrices are random orthogonal and bias vectors are all initialized to zero .
+To create the image annotations used by our decoder , we used a ResNet - 50 pre-trained on ImageNet and extracted the features of size 14 ? 14 ? 1024 at its res4f layer ( He et al. , 2016 ) .
+In our experiments , our decoder operates on the flattened 196 ? 1024 ( i.e L ? D ) .
+We also apply dropout with a probability of 0.5 on the embeddings , on the hidden states in the bidirectional RNN in the encoder as well as in the decoder .
+In the decoder , we also apply dropout on the text annotations h i , the image features a i , on both modality context vector and on all components of the deep output layer before the readout operation .
+We apply dropout using one same mask in all time steps ( Gal and Ghahramani , 2016 ) .
+We also normalize and tokenize English and German descriptions using the Moses tokenizer scripts ( Koehn et al. , 2007 ) .
+We use the byte pair encoding algorithm on the train set to convert space -separated tokens into subwords ( Sennrich et al. , 2016 ) , reducing our vocabulary size to 9226 and 14957 words for English and German respectively .
+All variants of our attention model were trained with ADADELTA ( Zeiler , 2012 ) , with minibatches of size 80 for our monomodal ( text-only ) NMT model and 40 for our multimodal NMT .
+We apply early stopping for model selection based on BLEU4 : training is halted if no improvement on the development set is observed for more than 20 epochs .
+We use the metrics BLEU4 ( Papineni et al. , 2002 ) , METEOR ( Denkowski and Lavie , 2014 ) and TER ( Snover et al. , 2006 ) to evaluate the quality of our models ' translations .
+Quantitative results
+We notice a nice overall progress over Calixto et al . ( 2017 ) are roughly the same across our models which is expected because all attention mechanisms share the same subsequent step at every time - step t , i.e. taking into account the attention weights of previous time -step t ?
+1 in order to compute the new intermediate hidden state proposal and therefore the new context vector i t .
+Again , the largest improvement is given by the hard stochastic attention mechanism ( + 0.4 METEOR ) : because it is modeled as a decision process according to the previous choices , this may reinforce the idea of recall .
+We also remark interesting improvements when using the grounded mechanism , especially for the soft attention .
+The soft attention may benefit more of the grounded image because of the wide range of spatial locations it looks at , especially compared to the stochastic attention .
+This motivates us to dig into more complex grounding techniques in order to give the machine a deeper understanding of the modalities .
+Note that even though our baseline NMT model is basically the same as Calixto et al . ( 2017 ) , our experiments results are slightly better .
+This is probably due to the different use of dropout and subwords .
+We also compared our results to Caglayan et al . ( 2016 ) because our multimodal models are nearly identical with the major ex-ception of the gating scalar ( cfr. section 4 ) .
+This motivated some of our qualitative analysis and hesitation towards the current architecture in the next section .
+Qualitative results
+For space- saving and ergonomic reasons , we only discuss about the hard stochastic and soft attention , the latter being a generalization of the local attention .
+As we can see in Figure 7 , the soft attention model is looking roughly at the same region of the image for every decoding step t. Because the words " hund " ( dog ) , " wald " ( forest ) or " weg " ( way ) in left image are objects , they benefit from a high gating scalar .
+As a matter of fact , the attention mechanism has learned to detect the objects within a scene ( at every time -step , whichever word we are decoding as shown in the right image ) and the gating scalar has learned to decide whether or not we have to look at the picture ( or more accurately whether or not we are translating an object ) .
+Without this scalar , the translation scores undergo a massive drop ( as seen in Caglayan et al . ( 2016 ) ) which means that the attention mechanisms do n't really understand the more complex relationships between objects , what is really happening in the scene .
+Surprisingly , the It is also worth to mention that we use a ResNet trained on 1.28 million images for a classification tasks .
+The features used by the attention mechanism are strongly object-oriented and the machine could miss important information for a multimodal translation task .
+We believe that the robust architecture of both encoders { ? ? ? enc , ? ? ? enc } combined with a GRU layer and word-embeddings took care of the right translation for relationships between objects and time - dependencies .
+Yet , we noticed a common misbehavior for all our multimodal models : if the attention loose track of the objects in the picture and " gets lost " , the model still takes it into account and somehow overrides the information brought by the text - based annotations .
+The translation is then totally mislead .
+We illustrate with an example : Source : A child claps while riding on a woman 's shoulders .
+GT : Ein Kind sitzt auf den Schultern einer Frau und klatscht .
+Mono : Ein Kind sitzt auf den Schultern einer Frau und schl ?
+ft . Soft : Ein Kind , das sich auf der Schultern eines Frau reitet , f?hrt auf den Schultern .
+Hard : Ein Kind in der Haltung , w?hrend er auf den Schultern einer Frau f?hrt .
+The monomodal translation has a sentence - level BLEU of 82.16 whilst the soft attention and hard stochastic attention scores are of 16.82 and 34.45 respectively .
+Figure 8 shows the attention maps for both mechanism .
+Nevertheless , one has to concede that the use of images indubitably helps the translation as shown in the score tabular .
+Conclusion and future work
+We have tried different attention mechanism and tweaks for the image modality .
+We showed improvements and encouraging results overall on the Flickr30 K Entities dataset .
+Even though we identified some flaws of the current attention mechanisms , we can conclude pretty safely that images are an helpful resource for the machine in a translation task .
+We are looking forward to try out richer and more suitable features for multimodal translation ( ie. dense captioning features ) .
+Another interesting approach would be to use visually grounded word embeddings to capture visual notions of semantic relatedness .
+Figure 1 : 1 Figure 1 : Die beiden Kinder spielen auf dem Spielplatz .

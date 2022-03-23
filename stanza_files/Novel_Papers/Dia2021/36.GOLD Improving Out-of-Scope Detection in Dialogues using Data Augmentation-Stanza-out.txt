@@ -1,0 +1,232 @@
+title
+GOLD GOLD GOLD GOLD GOLD : Improving Out-of-Scope Detection in Dialogues using Data Augmentation
+abstract
+Practical dialogue systems require robust methods of detecting out - of-scope ( OOS ) utterances to avoid conversational breakdowns and related failure modes .
+Directly training a model with labeled OOS examples yields reasonable performance , but obtaining such data is a resource-intensive process .
+To tackle this limited - data problem , previous methods focus on better modeling the distribution of in-scope ( INS ) examples .
+We introduce GOLD as an orthogonal technique that augments existing data to train better OOS detectors operating in low-data regimes .
+GOLD generates pseudo-labeled candidates using samples from an auxiliary dataset and keeps only the most beneficial candidates for training through a novel filtering mechanism .
+In experiments across three target benchmarks , the top GOLD model outperforms all existing methods on all key metrics , achieving relative gains of 52.4 % , 48.9 % and 50.3 % against median baseline performance .
+We also analyze the unique properties of OOS data to identify key factors for optimally applying our proposed method .
+1
+Introduction
+Detecting out - of-scope scenarios is an essential skill of dialogue systems deployed into the real world .
+While an ideal system would behave appropriately in all conversational settings , such perfection is not possible given that training data is finite , while user inputs are not ( Geiger et al. , 2019 ) .
+Out-of-distribution issues occur when the model encounters situations not covered during training , including novel user intents , domain shifts or custom entities ( Kamath et al. , 2020 ; Cavalin et al. , 2020 ) .
+Unique to conversations , dialogue breakdowns represent cases where the user cannot continue the interaction with the system , perhaps due to ambiguous requests or prior misunderstandings ( Martinovsky and Traum , 2003 ; Higashinaka et al. , 2016 ) .
+Such breakdowns might fall within the distribution of plausible utterances , yet still fail to make sense due to the given context .
+OOS detection aims to recognize both out -of- distribution problems and dialogue breakdowns .
+Prior methods tackling OOS detection in text have shown great promise , but typically assume access to a sufficient amount of labeled OOS data during training ( Larson et al. , 2019 ) , which is unrealistic in open-world settings ( Fei and Liu , 2016 ) .
+Alternative methods have also been explored which train a supporting model using in -scope data rather than directly training a core model to detect OOS instances ( Gangal et al. , 2020 ) .
+As a result , they suffer from a mismatch where the objective during training does not line up with the eventual inference task , likely leading to suboptimal performance .
+More recently , data augmentation techniques have been applied to in-scope ( INS ) data to improve out - of- domain robustness ( Ng et al. , 2020a ; Zheng et al. , 2020 ) .
+However , we hypothesize that since INS data comes from a different distribution as OOS data , augmentation on the former will not perform as well as augmentation on the latter .
+In this paper , we propose a method of Generating Out-of-scope Labels with Data augmentation ( GOLD ) to improve OOS detection in dialogue .
+To create new pseudo-labeled examples , we start with a small seed set of known OOS examples .
+Next , we find utterances that are similar to the known OOS examples within an auxiliary dataset .
+We then generate candidate labels by replacing text from the known OOS examples with the similar utterances uncovered in the previous step .
+Lastly , we run an election to filter down the candidates to only those which are most likely to be out-of-scope .
+Our method is complementary to other indirect prediction techniques and in fact takes advantage of progress by other methods .
+We demonstrate the effectiveness of GOLD across three task - oriented dialogue datasets , where our method achieves state - of - theart performance across all key metrics .
+We conduct extensive ablations and additional experiments to probe the robustness of our best performing model .
+Finally , we provide analysis and insights on augmenting OOS data for other dialogue systems .
+Related Work
+Direct Prediction
+A straightforward method of detecting out -ofscope scenarios is to train directly on OOS examples ( Fumera et al. , 2003 ) .
+These situations are encountered more broadly by the insertion of any out - of- distribution response or more specifically when a particular utterance does not make sense in the current context .
+Out-of-Distribution Recognition
+An utterance may be out - of- scope because it was not included in the distribution the dialogue model was trained on .
+Distribution shifts may occur due to unknown user intents , different domains or incoherent speech .
+We differ from such methods since they either operate on images ( Kim and Kim , 2018 ; Hendrycks et al. , 2019 ; Mohseni et al. , 2020 ) or assume access to an impractically large number of OOS examples in relation to INS examples ( Tan et al. , 2019 ; Kamath et al. , 2020 ; Larson et al. , 2019 ) Dialogue Breakdown
+In comparison to out -ofdistribution cases , dialogue breakdowns are unique to conversations because they depend on context ( Higashinaka et al. , 2016 ) .
+In other words , the utterances fall within the distribution of reasonable responses but are out - of- scope due to the state of the particular dialogue .
+Such breakdowns occur when the conversation can no longer proceed smoothly due to an ambiguous statement from the user or some misunderstanding made by the agent ( Ng et al. , 2020 b ) .
+GOLD also focuses on dialogue , but additionally operates under the setting of limited access to OOS data during training ( Hendriksen et al. , 2019 ) .
+Indirect Prediction
+An alternative set of methods for OOS detection assume access to a supporting model trained solely on in-scope data .
+There are roughly three ways in which a core detector model can take advantage of the pre-trained supporting model .
+Probability Threshold
+The first class of methods utilize the output probability of the supporting model to determine whether an input is outof-scope .
+More specifically , if the supporting model 's maximum output probability falls below some threshold ? , then it is deemed uncertain and the core detector model labels the input as OOS ( Hendrycks and Gimpel , 2017 ) .
+The confidence score of the supporting model can also be manipulated in a number of ways to help further separate the INS and OOS examples ( Liang et al. , 2018 ; .
+Other variations include setting thresholds on reconstruction loss ( Ryu et al. , 2017 ) or on likelihood ratios ( Ren et al. , 2019 ) . Outlier Distance
+Another class of methods define out - of-scope examples as outliers whose distance is far away from known in -scope examples ( Gu et al. , 2019 ; Mandelbaum and Weinshall , 2017 ) .
+Variants can tweak the embedding function or distance function used for determining the degree of separation .
+( Cavalin et al. , 2020 ; Oh et al. , 2018 ; Yilmaz and Toraman , 2020 ) .
+For example , Local Outlier Factor ( LOF ) defines an outlier as a point whose density is lower than that of its nearest neighbors ( Breunig et al. , 2000 ; Lin and Xu , 2019 ) .
+Bayesian Ensembles
+The final class of methods utilize the variance of supporting models to make decisions .
+When the variance of the predictions is high , then the input is supposedly difficult to recognize and thus out-of- distribution .
+Such ensembles can be formed explicitly through a collection of models ( Vyas et al. , 2018 ; Shu et al. , 2017 ; Lakshminarayanan et al. , 2017 ) or implicitly through multiple applications of dropout ( Gal and Ghahramani , 2016 ) .
+Data Augmentation
+Our method also pertains to the use of data augmentation to improve model performance under low resource settings .
+Augmentation in NLP Data augmentation for NLP has been studied extensively in the past ( Jia and Liang , 2016 ; Silfverberg et al. , 2017 ; F?rstenau and Lapata , 2009 ) .
+Common methods include those that alter the surface form text ( Wei and Zou , 2019 ) or perturb a latent embedding space ( Wang and Yang , 2015 ; Fadaee et al. , 2017 ; Liu et al. , 2020 ) , as well as those that perform paraphrasing ( Zhang et al. , 2019 ) .
+Alternatively , masked language models generate new examples by proposing context - aware replacements for the masked token ( Kobayashi , 2018 ; Wu et al. , 2019 ) . Data Augmentation for Dialogue Methods for augmenting data to train dialogue systems are most closely related to our work .
+Previous research has used data augmentation to improve natural language understanding ( NLU ) and intent detection in dialogue ( Niu and Bansal , 2019 ; Hou et al. , 2018 ) .
+Other methods augment the in-scope sample representations to support out - of-scope robustness ( Ryu et al. , 2018 ; Ng et al. , 2020a ; Lee and Shalyminov , 2019 ) .
+Recently , generative adversarial networks ( GANs ) have been used to create out-ofdomain examples that mimic known in -scope examples ( Zheng et al. , 2020 ; Marek et al. , 2021 ) .
+In contrast , we operate directly on OOS samples and consciously generate data far away from anything seen during pre-training , a decision which our later analysis reveals to be quite important .
+Background and Baselines
+In this section we formally describe the task of outof-scope detection and the different approaches to handling this issue .
+Problem Formulation Let D direct = {( x 1 , y 1 ) , ... , ( x n , y n ) } be a target dataset containing a mixture of in-scope and out - of-scope dialogues .
+The input context x i = {( S 1 , U 1 ) , ... , ( S t , U t ) } is a series of system and user utterances within t turns of a conversation .
+The desired output y i ? [ 0 , 1 ] is a binary label representing whether that context is out - of-scope .
+We define OOS to encompass both out - of- distribution utterances , such as out -of- domain intents or gibberish speech , as well as in-distribution utterances spoken in an ambiguous manner .
+A model given access to such a dataset is an OOS detector P ? ( y i |x i ) performing direct prediction .
+In contrast , the problem we tackle in this paper is indirect prediction , where only a limited or nonexistent number of OOS examples are available during training .
+Instead , the training data is sampled from in -scope dialogues D indirect ?
+P IN S , and the labels y j ?
+Y represent a set of known user intents .
+This data may be used to train an intent classifier which then acts as a supporting model to the core OOS detector during inference .
+Critically , the supporting model P ? ( y j |x i ) has never encountered out - of-scope utterances during training .
+Baselines
+Prior methods for approaching indirect prediction generally fall into three categories : probability threshold , outlier distance and Bayesian ensemble .
+In all cases , the supporting model trained on the intent classification task uses a pretrained BERT model as its base ( Devlin et al. , 2019 ) .
+Starting with Probability Threshold baselines , ( 1 ) MaxProb declares an example as OOS if the maximum value of the supporting model 's output probability distribution falls below some threshold ?
+( Hendrycks and Gimpel , 2017 ) . ( 2 ) ODIN enhances this by adding temperature scaling and small perturbations to the input which help to increase the gap between INS and OOS instances ( Liang et al. , 2018 ) . ( 3 ) Entropy considers an example to be OOS if the supporting model is uncertain , as determined by the entropy level rising above a threshold ?
+( Lewis and Gale , 1994 ) .
+Outlier model pre-trained on intent classification and measures separation by Euclidean distance .
+Based on the success in ( Podolskiy et al. , 2021 ) , the ( 5 ) Mahalanobis method embeds examples with a vanilla RoBERTa model and uses the Mahalanobis distance .
+Finally , inspired by BADGE for active learning ( Ash et al. , 2020 ) , the ( 6 ) Gradient method sets the embedding of each example as the gradient vector of the input tokens as computed by back - propagation .
+Bayesian Ensembles predict labels by the amount of variation formed by the estimates of an ensemble .
+More specifically , ( 7 ) Dropout implicitly creates a new model whenever it randomly drops a percentage of its nodes ( Gal and Ghahramani , 2016 ) .
+During inference , each input is passed through the supporting model k times to estimate the user intent .
+If the ensemble fails to reach a majority vote on the intent classification task , then the example is assigned as out- of-scope .
+GOLD
+To avoid a mismatch between training and inference , we are motivated to explore the direct prediction paradigm in a way the does not violate the OOS data restriction inherent to indirect prediction methods .
+Concretely , GOLD performs data augmentation on a small sample of labeled OOS examples to generate pseudo - OOS data .
+This weaklylabeled data is then combined with INS data for training a core OOS detector .
+We limit the number of OOS samples to be only 1 % of the size of inscope training examples .
+Note that indirect methods also typically have access to a modest number of OOS samples for tuning hyper-parameters , such as thresholds , so this adjustment is not an exclusive advantage of our method .
+In addition to a small seed set of OOS examples , we assume access to an external pool of utterances , which serve as the source of data augmentations , similar to Hendrycks et al . ( 2019 ) .
+We refer to this auxiliary data as the source dataset S , as opposed to the target dataset T used for evaluating our method .
+GOLD now proceeds in three basic steps .
+( See Algorithm 1 for full details . )
+Match Extraction
+Our first step is to find utterances in the source data that closely match the examples in the OOS seed data .
+We encode all source and seed data into a shared embedding space to allow for comparison .
+When the seed example is a multi-turn dialogue , we embed only the final user utterance .
+Then for each seed utterance , we extract d similar utterances from source S as measured by cosine distance , 2 where d is the desired number of matches .
+For example , as seen in Figure 1 , the seed text " Do you know if it will rain on Friday ? " extracts
+" Will it rain that day ? " as a match .
+We discuss different types of embedding mechanisms in section 5.3 .
+Candidate Generation
+Since dialogue contexts often contain multiple utterances , we want our augmented examples to also span multiple turns .
+Accordingly , our next step involves generating candidates by carefully crafting new conversations using the existing dialogue contexts in the seed data .
+Each new candidate is formed by swapping a random user utterance in the seed data with a match utterance from the source data .
+Notably , agent utterances in the seed data are left untouched during this process .
+Target Election Candidates are merely pseudo-labeled as OOS , so relying on such data as a training signal might be quite noisy .
+Accordingly , we apply a filtering mechanism to ensure that only the candidates most likely to be out - of-scope are " elected " to become target OOS data .
+Elections are held by running all the candidates through an ensemble of baseline detectors .
+Specifically , we choose the top detectors from each of the major indirect prediction categories which results in three voters .
+If the majority of voters agree that an example is out - of-scope , then we include that candidate in our target pool .
+As if majority ( votes ) then : SM Calendar Flow FLOW is also a taskoriented dataset with turn- level annotations ( Andreas et al. , 2020 ) .
+Originally built for semantic parsing , FLOW is structured as a novel dataflow object that takes the form of a computational graph .
+14 : A i ?
+A i ?
+For our purposes , we take advantage of the ' Fence ' related labels found in the dataset , which represent situations where a user is straying too far away from discussions within the scope of the system , and thus need to be " fenced - in " .
+We focus on utterances associated with a clear intent , once again dropping turns representing greetings and other pleasantries , which results in 71,551 examples spanning 44 total intents .
+The test set is hidden behind a leaderboard , so we divide the development set in half , resulting in an approximate 90/ 5/ 5 split for train , dev and test , respectively .
+Real Out-of-Domain Sentences From Taskoriented Dialog ROSTD is a dataset explicitly designed for out-of- distribution recognition ( Gangal et al. , 2020 ) .
+The authors constructed sentences to be OOS examples with respect to a separate dataset collected by Schuster et al . ( 2019 ) .
+The dialogues found in the original dataset then represent the INS examples .
+ROSTD contains 47,913 total utterances spanning 13 intent classes and comes with a pre-defined 70/10 / 20 split which we leave unaltered .
+The dataset is less conversational since each example consists of a single turn command , while its labels are higher precision since each OOS instance is human-curated .
+Evaluation Metrics
+Following prior work on out-of- distribution detection ( Hendrycks and Gimpel , 2017 ; Ren et al. , 2019 ) , we evaluate our method on three primary metrics .
+( 1 ) Area under the receiver operating characteristic curve ( AUROC ) measures the probability that a random OOS example will have a higher probability of being out - of-scope than a randomly selected INS example ( Davis and Goadrich , 2006 ) .
+This metric averages across all thresholds and is therefore threshold independent .
+( 2 ( Hendrycks et al. , 2019 ) .
+Thus , unlike the first two metrics , a lower FPR@N is better .
+We report FPR at values of N={0.90 , 0.95 } .
+Experiments on Model Variants
+In addition to testing against baseline methods , we also run experiments to study the impact of varying the auxiliary dataset and the extraction options .
+Source Datasets
+We consider a range of datasets as sources of augmentation , starting with known out - of-scope queries ( OSQ ) from the Clinc150 dataset ( Larson et al. , 2019 ) .
+Because our work falls under the dialogue setting , we also consider Taskmaster - 2 ( TM ) as a source of task - oriented utterances ( Byrne et al. , 2019 ) and PersonaChat ( PC ) for examples of informal chit-chat ( Zhang et al. , 2018 ) .
+Upon examining the validation data , we note that many examples of OOS are driven by users attempting to ask questions that the agent is not able to handle .
+Thus , we also include a dataset composed of questions extracted from Quora ( QQP ) ( Iyer et al. , ) .
+Finally , we consider mixing all four datasets together into a single collection ( MIX ) .
+Extraction Techniques
+To optimize the procedure of extracting matches from the source data , we try four different mechanisms for embedding utterances .
+( 1 ) We feed each OOS instance into a SentenceRoBERTa model pretrained for paraphrase retrieval to find similar utterances within the source data ( Reimers and Gurevych , 2019 ) .
+( 2 ) As a second option , we encode source data using a static BERT Transformer model ( Devlin et al. , 2019 ) .
+Then for each OOS example encoded in the same manner , we extract the nearest source utterances .
+( 3 ) We embed OOS and source data as a bag-of-words where each token is a 300 - dim GloVe embedding ( Pennington et al. , 2014 ) . ( 4 ) As a final variation , we embed all utterances with TF - IDF embeddings of 7000 dimensions .
+The spectrum of extraction techniques aim to progress from methods that capture strong semantic connections to the OOS seed data towards options with weaker relation to original seed data .
+Key Results
+We now present the results of our main experiments .
+As evidenced by Figure 3 , MIX performed as the best data source across all datasets , so we use it to report our main metrics within Table 2 .
+Also , given the strong performance of GloVe extraction technique across all datasets , we select this version for comparison purposes in the following analyses .
+Performance is even more impressive in lowering the false positive rate with improvements of 24.2 % and 29.8 % at recalls of 0.95 and 0.90 , respectively .
+Among the different baselines , we observe the Outlier Distance methods generally outperforming the others , with the Mahalanobis method doing the best .
+Among GOLD variations , there are mixed results as GloVe and TF - IDF both produce high overall accuracy .
+Notably , the Paraphrase method meant to extract matches most similar to the seed data performed the worst .
+for FPR@0.95 over the nearest baseline .
+We again notice that the Paraphrase variation does not perform quite as well among GOLD methods .
+STAR Results
+Left columns of
+FLOW Results
+Central columns of
+ROSTD Results
+As seen in Tables 2 and 3 , GOLD outperforms not only all baselines , but also prior work on ROSTD across all metrics .
+The GloVe method cements its standing at the top with gains of 1.7 % in AUROC , 13.8 % in AUPR and 97.9 % in FPR@0.95 against the top baselines .
+Given the consistently poor performance of Paraphrase yet again , we conclude that unlike traditional INS data augmentation , augmenting OOS data should not aim to find the most similar examples to seed data .
+We hypothesize that producing pseudo- labeled OOS data that are too similar to given known - OOS data causes the model to overfit since it is simply optimizing towards the same examples over and over again .
+Discussion and Analysis
+In this section , we conduct follow - up experiments to analyze the impact of our method 's components and identify best practices when applying data augmentation for OOS detection .
+Ablations
+How much does augmentation help ?
+Given the extra labels from the seed set , it is natural to ask whether the augmented data add any value .
+Furthermore , if the augmented data are useful , then we might want to know what an ideal number of additional datapoints would be .
+Figure 4 displays the AUROC of a model trained on varying the number of augmented datapoints , where " 0 " represents including only known OOS examples .
+We see a trend that accuracy improves for all target datasets as we add more pseudo-labeled examples , showing that augmentation helps .
+Improvement reaches a max around 24 matches per seed example , which suggests that the benefit of adding more datapoints has a limit .
+Accordingly , we use 24 matches for all results listed in Table 2 . 2 reveals the result of using random selection as an extraction technique .
+While Random is not always the worst , its poor performance across all metrics strongly suggests that augmented data should have at least some connection to the original seed set .
+Does the extraction
+Is filtering even necessary ?
+Since the source data distribution is obviously distinct from the target data distribution , perhaps it is possible to bypass elections and simply accept all candidates as OOS , similar to Outlier Exposure from Hendrycks et al . ( 2019 ) .
+As seen in row 4 of Table 4 , we observe that skipping elections leads to a drop in the AUROC of all the models on all datasets .
+The effect is most pronounced for STAR , where some of the QQP dialogues overlap with in -scope STAR domains .
+STAR Data FLOW Data ROSTD Data Methods AUROC AUPR FPR@.95 FPR@.90 AUROC AUPR FPR@.95 FPR@.90 AUROC AUPR FPR@.95 FPR@.90
+Applicability
+How well would a direct classifier perform ?
+Indirect prediction is often necessary in real- life because while in -scope data may be trivial to obtain , out - of- scope data is typically lacking .
+Accordingly , we artificially limited the amount of data available to mimic this setting .
+If such a limitation were to be lifted such that a sufficient amount of known OOS data were available , we could train a model to directly classify such examples .
+The first row in Table 2 shows the results of using all the available OOS data to perform direct prediction and represents an upper-bound on accuracy .
+This also shows there is still substantial room for improvement .
+When does GOLD help the most ?
+GOLD depends on a small seed set to perform data augmentation , so if this data is unavailable or extremely sparse , then the method will likely suffer .
+To test this limit , we train a model with half the size of the seed data and double the number of matches ( d = 24 ? 48 ) to counterbalance the effect .
+Despite having an equal amount of pseudo-labeled OOS examples , the model with a tiny seed set ( row 5 in Table 4 ) severely underperforms the original model ( row 1 ) .
+Separately , we note that dialogue breakdowns are more likely in conversations that contain multiple turns of context , like in STAR , as opposed dialogues consisting of single lines , as in ROSTD .
+Given the more prominent gains by our method in STAR , we conclude that GOLD achieves its gains partially from being able to recognize dialogue breakdowns .
+What attributes make a source dataset useful ?
+In studying Figure 3 , we find that the most consistent single source dataset is QQP , which we use as the default for Table 4 .
+Reading through some examples in QQP , the pattern we found was that many of the samples contained reasonable , but unanswerable questions that were beyond the skillset of the agent .
+One method for curating a useful source dataset then is to look for a corpus containing questions your dialogue model likely cannot answer .
+Furthermore , PersonaChat ( PC ) performed particularly well with STAR , a task - oriented dataset .
+We believe that since goal-oriented chatbots aim to solve specific tasks rather than engage in chit-chat , open-domain chat datasets serve as a good source of OOS examples .
+The themes above suggest that good source datasets are simply those sufficiently different from the target data .
+We wondered if there was such as a thing as going to ' far ' , and conversely if there was any harm in being quite ' close ' .
+Concretely , we expected a dataset containing medical questions would represent a substantially different dialogues compared to our target data ( Ben Abacha and Demner-Fushman , 2019 ) .
+Table 4 presents results when training with source data from a medical question - answering dataset ( MQA ) or from unlabeled samples ( US ) from the same target dataset .
+The results show a significant drop in performance , indicating that augmentations far away from the decision boundary might not add much value .
+Rather , pseudo-labels near the border of INS and OOS instances are the most helpful .
+( Further analysis in Appendix C ) How does one create good OOS examples ?
+As a final experiment , we replace only the last utterance with a match when generating candidates , rather than swapping any user utterance .
+We speculate this creates less diverse pseudo-examples , and therefore decreases the coverage of the OOS space .
+Indeed , row 6 in Table 4 reveals that worse candidates are generated when only the final utterance is allowed to be replaced .
+In conjunction with the insight from Section 6.3 that generated examples should be sufficiently different from given OOS examples , we believe that the key to producing good pseudo - OOS examples is to maximize the diversity of fake examples .
+OOS detection is less about finding out - of- scope cases , but rather an exercise in determining when something is not in-scope .
+This subtle distinction implies that the appropriate inductive biases should aim to move away from INS distribution , rather than close to OOS distribution .
+Conclusion
+This paper presents GOLD , a method for improving OOS detection when limited training examples are available by leveraging data augmentation .
+Rather than relying on a separate model to support the detection task , our proposed method directly trains a model to detect out - of-scope instances .
+Compared to other data augmentation methods , GOLD takes advantage of auxiliary data to expand the coverage of out - of-scope distribution examples rather than trying to extrapolate from in -scope examples .
+Moreover , our analysis reveals key techniques for further diversifying the training data to support robustness and prevent overfitting .
+We demonstrate the effectiveness of our technique across three dialogue datasets , where our top models outperform all baselines by a large margin .
+Future work could explore detecting more granular levels of errors , as well as more sophisticated methods of filtering candidates ( Welleck et al. , 2020 ) . Figure 1 : 1 Figure 1 : GOLD performs data augmentation by extracting utterances from a source dataset and merging those sentences with known OOS samples from the target dataset to generate pseudo-labeled OOS examples .

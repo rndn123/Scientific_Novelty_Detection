@@ -1,0 +1,124 @@
+title
+Simple Unsupervised Summarization by Contextual Matching
+abstract
+We propose an unsupervised method for sentence summarization using only language modeling .
+The approach employs two language models , one that is generic ( i.e. pretrained ) , and the other that is specific to the target domain .
+We show that by using a productof-experts criteria these are enough for maintaining continuous contextual matching while maintaining output fluency .
+Experiments on both abstractive and extractive sentence summarization data sets show promising results of our method without being exposed to any paired data .
+Introduction Automatic text summarization is the process of formulating a shorter output text than the original while capturing its core meaning .
+We study the problem of unsupervised sentence summarization with no paired examples .
+While datadriven approaches have achieved great success based on various powerful learning frameworks such as sequence - to-sequence models with attention ( Rush et al. , 2015 ; Chopra et al. , 2016 ; Nallapati et al. , 2016 ) , variational auto-encoders ( Miao and Blunsom , 2016 ) , and reinforcement learning ( Paulus et al. , 2017 ) , they usually require a large amount of parallel data for supervision to do well .
+In comparison , the unsupervised approach reduces the human effort for collecting and annotating large amount of paired training data .
+Recently researchers have begun to study the unsupervised sentence summarization tasks .
+These methods all use parameterized unsupervised learning methods to induce a latent variable model : for example Schumann ( 2018 ) uses a length controlled variational autoencoder , Fevry and Phang ( 2018 ) use a denoising autoencoder but only for extractive summarization , and Wang and Lee ( 2018 ) apply a reinforcement learning procedure combined with GANs , which takes a further step to the goal of Miao and Blunsom ( 2016 ) using language as latent representations for semisupervised learning .
+This work instead proposes a simple approach to this task that does not require any joint training .
+We utilize a generic pretrained language model to enforce contextual matching between sentence prefixes .
+We then use a smoothed problem specific target language model to guide the fluency of the generation process .
+We combine these two models in a product- of-experts objective .
+This approach does not require any task -specific training , yet experiments show results on par with or better than the best unsupervised systems while producing qualitatively fluent outputs .
+The key aspect of this technique is the use of a pretrained language model for unsupervised contextual matching , i.e. unsupervised paraphrasing .
+Model Description
+Intuitively , a sentence summary is a shorter sentence that covers the main point succinctly .
+It should satisfy the following two properties ( similar to Pitler ( 2010 ) ) : ( a ) Faithfulness : the sequence is close to the original sentence in terms of meaning ; ( b) Fluency : the sequence is grammatical and sensible to the domain .
+We propose to enforce the criteria using a product- of-experts model ( Hinton , 2002 ) , P( y|x ) ? p cm ( y| x ) p fm ( y|x ) ? , |y | ? | x | ( 1 ) where the left - hand side is the probability that a target sequence y is the summary of a source sequence x , p cm ( y|x ) measures the faithfulness in terms of contextual similarity from y to x , and p fm ( y|x ) measures the fluency of the token sequence y with respect to the target domain .
+We use ? as a hyper-parameter to balance the two expert models .
+We consider this distribution ( 1 ) being defined over all possible y whose tokens are restricted to a candidate list C determined by x .
+For extractive summarization , C is the set of word types in x .
+For abstractive summarization , C consists of relevant word types to x by taking K closest word types from a full vocabulary V for each source token measured by pretrained embeddings .
+Contextual Matching Model
+The first expert , p cm ( y| x ) , tracks how close y is to the original input x in terms of a contextual " trajectory " .
+We use a pretrained language model to define the left-contextual representations for both the source and target sequences .
+Define S(x 1 : m , y 1:n ) to be the contextual similarity between a source and target sequence of length m and n respectively under this model .
+We implement this as the cosine-similarity of a neural language model 's final states with inputs x 1:m and y 1:n .
+This approach relies heavily on the observed property that similar contextual sequences often correspond to paraphrases .
+If we can ensure close contextual matching , it will keep the output faithful to the original .
+We use this similarity function to specify a generative process over the token sequence y , p cm ( y| x ) = N n=1 q cm ( y n |y <n , x ) .
+The generative process aligns each target word to a source prefix .
+At the first step , n = 1 , we compute a greedy alignment score for each possible word w ?
+C , s w = max j?1 S( x 1 : j , w ) for all source prefixes up to length j .
+The probability q cm ( y 1 = w|x ) is computed as softmax ( s ) over all target words .
+We also store the aligned context z 1 = arg max j?1 S( x 1 : j , y 1 ) .
+For future words , we ensure that the alignment is strictly monotonic increasing , such that z n < z n+1 for all n.
+Monotonicity is a common assumption in summarization ( Yu et al. , 2016 a , b ; Raffel et al. , 2017 ) .
+For n > 1 we compute the alignment score s w = max j>z n?1 S( x 1 : j , [ y 1:n?1 , w ] ) to only look at prefixes longer than z n?1 , the last greedy alignment .
+Since the distribution conditions on y the past alignments are deterministic to compute ( and can be stored ) .
+The main computational cost is in extending the target language
+This process is terminated when a sampled token in y is aligned to the end of the source sequence x , and the strict monotonic increasing alignment constraint guarantees that the target sequence will not be longer than the source sequence .
+The generative process of the above model is illustrated in Fig. 1 .
+Domain Fluency Model
+The second expert , p fm ( y| x ) , accounts for the fluency of y with respect to the target domain .
+It directly is based on a domain specific language model .
+Its role is to adapt the output to read closer shorter sentences common to the summarization domain .
+Note that unlike the contextual matching model where y explicitly depends on x in its generative process , in the domain fluency language model , the dependency of y on x is implicit through the candidate set C that is determined by the specific source sequence x .
+The main technical challenge is that the probabilities of a pretrained language model are not well - calibrated with the contextual matching model within the candidate set C , and so the language model tends to dominate the objective because it has much higher variance ( more peaky ) in the output distribution than the contextual matching model .
+To manage this issue we apply kernel smoothing over the language model to adapt it from the full vocab V down to the candidate word list C .
+Our smoothing process focuses on the output embeddings from the pretrained language model .
+First we form the Voronoi partition ( Aurenham-mer , 1991 ) over all the embeddings using the candidate set C .
+That is , each word type w in the full vocabulary V is exactly assigned to one region represented by a word type w in the candidate set C , such that the distance from w to w is not greater than its distance to any other word types in C .
+As above , we use cosine similarity between corresponding word embeddings to define the regions .
+This results in a partition of the full vocabulary space into | C | distinct regions , called Voronoi cells .
+For each word type w ?
+C , we define N ( w ) to be the Voronoi cell formed around it .
+We then use cluster smoothing to define a new probability distribution : p fm ( y|x ) = N n=1 w ?N ( yn ) lm ( w |y <n ) where lm is the conditional probability distribution of the pretrained domain fluency language model .
+By our construction , p fm is a valid distribution over the candidate list C .
+The main benefit is that it redistributes probability mass lost to terms in V to the active words in C .
+We find this approach smoothing balances integration with p cm .
+Summary Generation
+To generate summaries we maximize the log probability ( 1 ) to approximate y * using beam search .
+We begin with a special start token .
+A sequence is moved out of beam if it has aligned to the end token appended to the source sequence .
+To discourage extremely short sequences , we apply length normalization to re-rank the finished hypotheses .
+We choose a simple length penalty as lp ( y ) = |y | + ? with ?
+a tuning parameter .
+Experimental Setup
+For the contextual matching model 's similarity function S , we adopt the forward language model of ELMo ( Peters et al. , 2018 ) to encode tokens to corresponding hidden states in the sequence , resulting in a three - layer representation each of dimension 512 .
+The bottom layer is a fixed character embedding layer , and the above two layers are LSTMs associated with the generic unsupervised language model trained on a large amount of text data .
+We explicitly manage the ELMo hidden states to allow our model to generate contextual embeddings sequentially for efficient beam search .
+1
+The fluency language model component lm is task specific , and pretrained on a corpus of summarizations .
+We use an LSTM model with 2 layers , both embedding size and hidden size set to 1024 .
+It is trained using dropout rate 0.5 and SGD combined with gradient clipping .
+We test our method on both abstractive and extractive sentence summarization tasks .
+For abstractive summarization , we use the English Gigaword data set pre-processed by Rush et al . ( 2015 ) .
+We train p fm using its 3.8 million headlines in the training set , and generate summaries for the input in test set .
+For extractive summarization , we use the Google data set from Filippova and Altun ( 2013 ) .
+We train p fm on 200K compressed sentences in the training set and test on the first 1000 pairs of evaluation set consistent with previous works .
+For generation , we set ? = 0.11 in ( 1 ) and beam size to 10 .
+Each source sentence is tokenized and lowercased , with periods deleted and a special end of sentence token appended .
+In abstractive summarization , we use K = 6 in the candidate list and use the fixed embeddings at the bottom layer of ELMo language model for similarity .
+Larger K has only small impact on performance but makes the generation more expensive .
+The hyper-parameter ? for length penalty ranges from - 0.1 to 0.1 for different tasks , mainly for desired output length as we find ROUGE scores are not sensitive to it .
+We use concatenation of all ELMo layers as default in p cm .
+Results and Analysis Quantitative Results .
+The automatic evaluation scores are presented in Table 1 and Table 2 .
+For abstractive sentence summarization , we report the ROUGE F1 scores compared with baselines and previous unsupervised methods .
+Our method outperforms commonly used prefix baselines for this task which take the first 75 characters or 8 words of the source as a summary .
+Our system achieves comparable results to Wang and Lee ( 2018 ) a system based on both GANs and reinforcement training .
+Note that the GAN - based system needs both source and target sentences for training ( they are unpaired ) , whereas our method only needs the target domain sentences for a simple language model .
+In seq-to-seq model of our own implementation , as well as the oracle scores of our method obtained by choosing the best summary among all finished hypothesis from beam search .
+The oracle scores are much higher , indicating that our unsupervised method does allow summaries of better quality , but with no supervision it is hard to pick them out with any unsupervised metric .
+For extractive sentence summarization , our method achieves good compression rate and significantly raises a previous unsupervised baseline on token level F1 score .
+Analysis . ( CS ) approach with softmax temperature ( TEMPx with x being the temperature ) commonly used for generation in LM - integrated models ( Chorowski and Jaitly , 2016 ) as well as no adjustment ( NA ) .
+Second , we vary the 3 - layer representation out of ELMo forward language model to do contextual matching ( bot / mid / top : bottom / middle / top layer only , avg : average of 3 layers , cat : concatenation of all layers ) .
+Results show the effectiveness of our cluster smoothing method for the vocabulary adaptive language model p fm , although temperature smoothing is an option for abstractive datasets .
+Additionally Contextual embeddings have a huge impact on performance .
+When using word embeddings ( bottom layer only from ELMo language model ) in our contextual matching model p cm , the summarization performance drops significantly to below simple baselines as demonstrated by score decrease .
+This is strong evidence that encoding independent tokens in a sequence with generic language model hidden states helps maintain the contextual flow .
+Experiments also show that even when only using p cm ( by setting ? = 0 ) , utilizing the ELMo language model states allows the generated sequence to follow the source x closely , whereas normal context - free word embeddings would fail to do so .
+Table 4 shows some examples of our unsupervised generation of summaries , compared with the human reference , an attention based seq-to-seq model we trained using all the Gigaword parallel data , and the GAN - based unsupervised system from Wang and Lee ( 2018 ) .
+Besides our default of using all ELMo layers , we also show generations by using the top and bottom ( context- independent ) 4 : Abstractive sentence summary examples on Gigaword test set .
+I is the input , G is the reference , s2s is a supervised attention based seq-to-seq model , GAN is the unsupervised system from Wang and Lee ( 2018 ) , and CM is our unsupervised model .
+The third example is a failure case we picked where the sentence is fluent and makes sense but misses the point as a summary .
+layer only .
+Our generation has fairly good qualities , and it can correct verb tenses and paraphrase automatically .
+Note that top representation actually finds more abstractive summaries ( such as in example 2 ) , and the bottom representation fails to focus on the proper context .
+The failed examples are mostly due to missing the main point , as in example 3 , or the summary needs to reorder tokens in the source sequence .
+Moreover , as a byproduct , our unsupervised method naturally generates hard alignments between summary and source sentences in the contextual matching process .
+We show some examples in Figure 2 sponding to the sentences in Table 4 .
+Conclusion
+We propose a novel methodology for unsupervised sentence summarization using contextual matching .
+Previous neural unsupervised works mostly adopt complex encoder-decoder frameworks .
+We achieve good generation qualities and competitive evaluation scores .
+We also demonstrate a new way of utilizing pre-trained generic language models for contextual matching in untrained generation .
+Future work could be comparing language models of different types and scales in this direction .
+Figure 1 : 1 Figure 1 : Generative process of the contextual matching model .

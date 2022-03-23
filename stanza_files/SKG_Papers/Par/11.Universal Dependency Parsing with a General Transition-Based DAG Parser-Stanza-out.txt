@@ -1,0 +1,164 @@
+title
+Universal Dependency Parsing with a General Transition - Based DAG Parser
+abstract
+This paper presents our experiments with applying TUPA to the CoNLL 2018 UD shared task .
+TUPA is a general neural transition - based DAG parser , which we use to present the first experiments on recovering enhanced dependencies as part of the general parsing task .
+TUPA was designed for parsing UCCA , a crosslinguistic semantic annotation scheme , exhibiting reentrancy , discontinuity and nonterminal nodes .
+By converting UD trees and graphs to a UCCA - like DAG format , we train TUPA almost without modification on the UD parsing task .
+The generic nature of our approach lends itself naturally to multitask learning .
+Our code is available at https://github.
+com/CoNLL -UD-2018/HUJI .
+Introduction
+In this paper , we present the HUJI submission to the CoNLL 2018 shared task on Universal Dependency parsing ( Zeman et al. , 2018 ) .
+We focus only on parsing , using the baseline system , UDPipe 1.2 ( Straka et al. , 2016 ; Straka and Strakov? , 2017 ) for tokenization , sentence splitting , part- of-speech tagging and morphological tagging .
+Our system is based on TUPA ( Hershcovich et al. , 2017 ( Hershcovich et al. , , 2018 , see ?3 ) , a transition - based UCCA parser .
+UCCA ( Universal Conceptual Cognitive Annotation ; Abend and Rappoport , 2013 ) is a cross-linguistic semantic annotation scheme , representing events , participants , attributes and relations in a directed acyclic graph ( DAG ) structure .
+UCCA allows reentrancy to support argument sharing , discontinuity ( corresponding to non-projectivity in dependency formalisms ) and non-terminal nodes ( as opposed to dependencies , which are bi-lexical ) .
+To parse Universal Dependencies ( Nivre et al. , 2016 ) using TUPA , we employ a bidirectional conversion protocol to represent UD trees and graphs in a UCCA - like unified DAG format ( ?2 ) .
+Enhanced dependencies .
+Our method treats enhanced dependencies 1 as part of the dependency graph , providing the first approach , to our knowledge , for supervised learning of enhanced UD parsing .
+Due to the scarcity of enhanced dependencies in UD treebanks , previous approaches ( Schuster and Manning , 2016 ; Reddy et al. , 2017 ) have attempted to recover them using languagespecific rules .
+Our approach attempts to learn them from data : while only a few UD treebanks contain any enhanced dependencies , similar structures are an integral part of UCCA and its annotated corpora ( realized as reentrancy by remote edges ; see ?2 ) , and TUPA supports them as a standard feature .
+As their annotation in UD is not yet widespread and standardized , enhanced dependencies are not included in the evaluation metrics for UD parsing , and so TUPA 's ability to parse them is not reflected in the official shared task scores .
+However , we believe these enhancements , representing case information , elided predicates , and shared arguments due to conjunction , control , raising and relative clauses , provide richer information to downstream semantic applications , making UD better suited for text understanding .
+We propose an evaluation metric specific to enhanced dependencies , enhanced LAS ( ?5.1 ) , and use it to evaluate our method .
+Unified DAG Format
+To apply TUPA to UD parsing , we convert UD trees and graphs into a unified DAG format ( Hershcovich et al. , 2018 ) .
+The format consists of a rooted DAG , where the tokens are the terminal nodes .
+2 Edges are labeled ( but not nodes ) , and are divided into primary and remote edges , where the primary edges form a tree ( all nodes have at most one primary parent , and the root has none ) .
+Remote edges ( denoted as dashed edges in Figure 1 ) enable reentrancy , and thus form a DAG together with primary edges .
+Figure 1 shows an example UCCA graph , and a UD graph ( containing two enhanced dependencies ) before and after conversion .
+Both annotate the same sentence from the English Web Treebank ( Silveira et al. , 2014 ) 3 . Conversion protocol .
+To convert UD into the unified DAG format , we add a pre-terminal for each token , and attach the pre-terminals according to the original dependency edges : traversing the tree from the root down , for each head token we create a non-terminal parent with the edge label head , and add the node 's dependents as children of the created non-terminal node ( see Figure 1 c ) .
+This creates a constituency - like structure , which is supported by TUPA 's transition set ( see ?3.1 ) .
+Although the enhanced dependency graph is not necessarily a supergraph of the basic dependency tree , the graph we convert to the unified DAG format is their union : any enhanced dependnecies that are distinct from the basic dependency of a node ( by having a different head or universal dependency relation ) are converted to remote edges in the unified DAG format .
+To convert graphs in the unified DAG format back into dependency graphs , we collapse all head edges , determining for each terminal what is the highest non-terminal headed by it , and then attaching the terminals to each other according to the edges among their headed non-terminals .
+Input format .
+Enhanced dependencies are encoded in the 9th column of the CoNLL -U format , by an additional head index , followed by a colon and dependency relation .
+Multiple enhanced dependencies for the same node are separated by pipes .
+Figure 2 demonstrates this format .
+Note that if the basic dependency is repeated in the enhanced graph ( 3:nsubj : pass in the example ) , we do not treat it as an enhanced dependency , so that the converted graph will only contain each edge once .
+In addition to the UD relations defined in the basic representations , enhanced dependencies may contain the relation ref , used for relative clauses .
+In addition , they may contain more specific relation subtypes , and optionally also case information .
+Language -specific extensions and case information .
+Dependencies may contain language - 1 We we PRON PRP Case=Nom|Number=Plur|Person=1 | PronType=Prs 3 nsubj:pass 3:nsubj:pass|5:nsubj:xsubj|7:nsubj:xsubj
+_ specific relation subtypes , encoded as a suffix separated from the universal relation by a colon .
+These extensions are ignored by the parsing evaluation metrics , so for example , the subtyped relation nsubj : pass ( Figure 1 b ) is considered the same as the universal relation nsubj for evaluation purposes .
+In the enhanced dependencies , these suffixes may also contain case information , which may be represented by the lemma of an adposition .
+For example , the " peace " ? " earth " dependency in Figure 4 is augmented as nmod :on in the enhanced graph ( not shown in the figure because it shares the universal relation with the basic dependency ) .
+In the conversion process , we strip any language -specific extensions from both basic and enhanced dependencies , leaving only the universal relations .
+Consequently , case information that might be encoded in the enhanced dependencies is lost , and we do not handle it in our current system .
+Ellipsis and null nodes .
+In addition to enhanced dependencies , the enhanced UD representation adds null nodes to represented elided predicates .
+These , too , are ignored in the standard evaluation .
+An example is shown in Figure 4 , where an elided " wish " is represented by the node E9.1 .
+The elided predicate 's dependents are attached to its argument " peace " in the basic representation , and the argument itself is attached as an orphan .
+In the enhanced representation , all arguments are attached to the null node as if the elided predicate was present .
+While UCCA supports empty nodes without surface realization in the form of implicit units , previous work on UCCA parsing has removed these from the graphs .
+We do the same for UD parsing , dropping null nodes and their associated dependencies upon conversion to the unified DAG format .
+We leave parsing elided predicates for future work .
+Propagation of conjuncts .
+Enhanced dependencies contain dependencies between conjoined predicates and their arguments , and between predicates and their conjoined arguments or modifiers .
+While these relations can often be inferred from the basic dependencies , in many cases they require semantic knowledge to parse correctly .
+For example , in Figure 3 , the enhanced dependencies represent the shared subject ( " he " ) among the conjoined predicates ( " went " and " finished " ) , and the conjoined modifiers ( " efficiently " and " promptly " ) for the second predicate ( " finished " ) .
+However , there are no enhanced dependencies between the first predicate and the second predicate 's modifiers ( e.g. " went " ? " efficiently " ) , as semantically only the subject is shared and not the modifiers .
+Relative clauses .
+Finally , enhanced graphs attach predicates of relative clauses directly to the antecedent modified by the relative clause , adding a ref dependency between the antecedent and the relative pronoun .
+An example is shown in Fig- ure 5a .
+While these graphs may contain cycles ( " robe " ? " made " in the example ) , they are removed upon conversion to the unified DAG format by the introduction of non-terminal nodes ( see Figure 5 b ) .
+General Transition - based DAG Parser
+We now turn to describing TUPA ( Hershcovich et al. , 2017 ( Hershcovich et al. , , 2018 , a general transition - based parser ( Nivre , 2003 ) .
+TUPA uses an extended set of transitions and features that supports reentrancies , discontinuities and non-terminal nodes .
+The parser state is composed of a buffer B of tokens
+He had a robe that was made back in the ' 60s . and nodes to be processed , a stack S of nodes currently being processed , and a graph G = ( V , E , ) of constructed nodes and edges , where V is the set of nodes , E is the set of edges , and : E ?
+L is the label function , L being the set of possible labels .
+Some states are marked as terminal , meaning that G is the final output .
+A classifier is used at each step to select the next transition based on features encoding the parser 's current state .
+During training , an oracle creates training instances for the classifier , based on gold -standard annotations .
+Transition Set Given a sequence of tokens w 1 , . . . , w n , we predict a rooted graph G whose terminals are the tokens .
+Parsing starts with the root node on the stack , and the input tokens in the buffer .
+The TUPA transition set , shown in Figure 6 , includes the standard SHIFT and REDUCE operations , NODE X for creating a new non-terminal node and an X-labeled edge , LEFT - EDGE X and RIGHT -EDGE X to create a new primary X-labeled edge , LEFT -REMOTE X and RIGHT -REMOTE X to create a new remote X-labeled edge , SWAP to handle discontinuous nodes , and FINISH to mark the state as terminal .
+The REMOTE X transitions are not required for parsing trees , but as we treat the problem as general DAG parsing due to the inclusion of enhanced dependencies , we include these transitions .
+Transition Classifier
+To predict the next transition at each step , TUPA uses a BiLSTM with feature embeddings as inputs , followed by an MLP and a softmax layer for classification .
+The model is illustrated in Figure 7 .
+Inference is performed greedily , and training is done with an oracle that yields the set of all optimal transitions at a given state ( those that lead to a state from which the gold graph is still reachable ) .
+Out of this set , the actual transition performed in training is the one with the highest score given by the classifier , which is trained to maximize the sum of log-likelihoods of all optimal transitions at each step .
+S x | B V E SHIFT S | x B V E ? S | x B V E REDUCE S B V E ? S | x B V E NODE X S | x y | B V ? {y } E ? {( y , x ) X } ?
+x = root S | y , x B V E LEFT -EDGE X S | y , x B V E ? {( x , y ) X } ? ? ? ? x ? w 1:n , y = root , y ; G x S | x , y B V E RIGHT-EDGE X S | x , y B V E ? {( x , y ) X } ?
+S | y , x B V E LEFT -REMOTE X S | y , x B V E ? {( x , y ) * X } ? S | x , y B V E RIGHT-REMOTE X S | x , y B V E ? {( x , y ) * X } ? S | x , y B V E SWAP S | y x | B V E ? i( x ) < i( y ) [ root ] ? V E FINISH ? ? V E + Figure 6 : The transition set of TUPA .
+We write the stack with its top to the right and the buffer with its head to the left . ( ? , ?) X denotes a primary X-labeled edge , and ( ? , ? ) * X a remote X-labeled edge . i( x ) is the swap index ( see ?3.3 ) .
+In addition to the specified conditions , the prospective child in an EDGE transition must not already have a primary parent .
+To the feature embeddings , we concatenate numeric features representing the node height , number of ( remote ) parents and children , and the ratio between the number of terminals to total number of nodes in the graph G. Table 1 lists all feature used for the classifier .
+Numeric features are taken as they are , whereas categorical features are mapped to real-valued embedding vectors .
+For each non-terminal node , we select a head terminal for feature extraction , by traversing down the graph according to a priority order on edge labels ( otherwise selecting the leftmost child ) .
+The priority order is : parataxis , conj , advcl , xcomp
+Constraints
+During training and parsing , we apply constraints on the parser state to limit the possible transitions to valid ones .
+A generic constraint implemented in TUPA is that stack nodes that have been swapped should not be swapped again ( Hershcovich et al. , 2018 ) .
+To implement this constraint , we define a swap index for each node , assigned when the node is created .
+At initialization , only the root node and terminals exist .
+We assign the root a swap index of 0 , and for each terminal , its position in the text ( starting at 1 ) .
+Whenever a node is created as a result ? : one- character prefix .
+$ : three - character suffix .
+x ? y refers to the existing edge from x to y.
+x is an indicator feature , taking the value of 1 if the edge exists or 0 otherwise , e refers to the edge label , and ai to the transition taken i + 1 steps ago .
+A refers to the action type ( e.g. SHIFT / RIGHT -EDGE / NODE ) , and e to the edge label created by the action .
+node ratio is the ratio between non-terminals and terminals ( Hershcovich et al. , 2017 ) . of a NODE transition , its swap index is the arithmetic mean of the swap indices of the stack top and buffer head .
+In addition , we enforce UD - specific constraints , resulting from the nature of the converted DAG format : every non-terminal node must have a single outgoing head edge : once it has one , it may not get another , and until it does , the node may not be reduced .
+Training details
+The model is implemented using DyNet v2.0.3 ( Neubig et al. , 2017 ) .
+6 Unless otherwise noted , we use the default values provided by the package .
+We use the same hyperparameters as used in previous experiments on UCCA parsing ( Hershcovich et al. , 2018 )
+Hyperparameters
+We use dropout ( Srivastava et al. , 2014 ) between MLP layers , and recurrent dropout ( Gal and Ghahramani , 2016 ) between BiLSTM layers , both with p = 0.4 .
+We also use word , lemma , coarseand fine - grained POS tag dropout with ? = 0.2 ( Kiperwasser and Goldberg , 2016 ) : in training , the embedding for a feature value w is replaced with a zero vector with a probability of ? # ( w ) + ? , where # ( w ) is the number of occurrences of w observed .
+In addition , we use node dropout ( Hershcovich et al. , 2018 ) : with a probability of 0.1 at each step , all features associated with a single node in the parser state are replaced with zero vectors .
+For optimization we use a minibatch size of 100 , decaying all weights by 10 ?5 at each update , and train with stochastic gradient descent for 50 epochs with a learning rate of 0.1 , followed by AMSGrad ( Sashank J. Reddi , 2018 ) for 250 epochs with ? = 0.001 , ? 1 = 0.9 and ? 2 = 0.999 .
+We found this training strategy better than using only one of the optimization methods , similar to findings by Keskar and Socher ( 2017 ) .
+We select the epoch with the best LAS - F1 on the development set .
+Other hyperparameter settings are listed in Table 2 .
+Small Treebanks
+For corpora with less than 100 training sentences , we use 750 epochs of AMSGrad instead of 250 .
+For corpora with no development set , we use 10 - fold cross-validation on the training set , each time splitting it to 80 % training , 10 % development and 10 % validation .
+We perform the normal training procedure on the training and development subsets , and then select the model from the fold with the best LAS - F1 on the corresponding validation set .
+Multilingual Model
+For the purpose of parsing languages with no training data , we use a delexicalized multilingual model , trained on the shuffled training sets from all corpora , with no word , lemma , fine - grained tag , prefix and suffix features .
+We train this model for two epochs using stochastic gradient descent with a learning rate of 0.1 ( we only trained this many epochs due to time constraints ) .
+Out-of-domain Evaluation
+For test treebanks without corresponding training data , but with training data in the same language , during testing we use the model trained on the largest training treebank in the same language .
+Results Official evaluation was done on the TIRA online platform ( Potthast et al. , 2014 ) .
+Our system ( named " HUJI " ) ranked 24th in the LAS - F1 ranking ( with an average of 53.69 over all test treebanks ) , 23rd by MLAS ( average of 44.6 ) and 21st by BLEX ( average of 48.05 ) .
+Since our system only performs dependency parsing and not other pipeline tasks , we henceforth focus on LAS - F1 ( Nivre and Fang , 2017 ) for evaluation .
+After the official evaluation period ended , we discovered several bugs in the conversion between the CoNLL -U format and the unified DAG format , which is used by TUPA for training and is output by it ( see ?2 ) .
+We did not re-train TUPA on the training treebanks after fixing these bugs , but we did re-evaluate the already trained models on all test treebanks , and used the fixed code for converting their output to CoNLL -U .
+This yielded an unofficial average test LAS - F1 of 58.48 , an improvement of 4.79 points over the official average score .
+In particular , for two test sets , ar_padt and gl_ctg , TUPA got a zero score in the official evaluation due to a bug with the treatment of multi-token words .
+These went up to 61.9 and 71.42 , respectively .
+We also evaluated the trained TUPA models on all available development treebanks after fixing the bugs .
+Table 3 presents the averaged scores on the shared task test sets , and Figure 8 the ( official and unofficial ) LAS - F1 scores obtained by TUPA on each of the test and development treebanks .
+Evaluation on Enhanced Dependencies
+Since the official evaluation ignores enhanced dependencies , we evaluate them separately using a modified version of the shared task evaluation script 7 .
+We calculate the enhanced LAS , identical to the standard LAS except that the set of dependencies in both gold and predicted graphs are the enhanced dependencies instead of the basic dependencies : ignoring null nodes and any enhanced dependency sharing a head with a basic one , we align the words in the gold graph and the system 's graph as in the standard LAS , and define P = # correct # system , R = # correct # gold , F 1 = 2 ?
+P ? R P + R .
+Table 4 lists the enhanced LAS precision , recall and F1 score on the test treebanks with any enhanced dependencies , as well as the percentage of enhanced dependencies in each test treebank , calculated as 100 ? # enhanced # enhanced +# words .
+Just as remote edges in UCCA parsing are more challenging than primary edges ( Hershcovich et al. , 2017 ) , parsing enhanced dependencies is a harder task than standard UD parsing , as the scores demonstrate .
+However , TUPA learns them successfully , getting as much as 56.55 enhanced LAS - F1 ( on the Polish LFG test set ) .
+Ablation Experiments
+The TUPA transition classifier for some of the languages uses named entity features calculated by spaCy .
+8 For German , Spanish , Portuguese , French , Italian , Dutch and Russian , the spaCy named entity recognizer was trained on Wikipedia ( Nothman et al. , 2013 ) .
+However , the English model was trained on OntoNotes 9 , which is in fact not among the additional resources allowed by the shared task organizers .
+To get a fair evaluation and to quantify the contribution of the NER features , we re-trained TUPA on the English EWT ( en_ewt ) training set with the same hyperparameters as in our submitted model , just without these features .
+As Table 5 shows , removing the NER features ( ? NER ) only slightly hurts the performance , by 0.28 LAS - F1 points on the test treebank , and 0.63 on the development treebank .
+As further ablation experiments , we tried removing POS features , pre-trained word embeddings , and remote edges ( the latter enabling TUPA to parse enhanced dependencies ) .
+Removing the POS features does hurt performance to a larger degree , by 2.87 LAS - F1 points on the test set , while removing the pre-trained word embeddings even slightly improves the performance .
+Removing remote edges and transitions from TUPA causes a very small decrease in LAS - F1 , and of course enhanced dependencies can then no longer be produced at all .
+8 https://spacy.io/api/annotation 9 https://catalog.ldc.upenn.edu/ LDC2013T19
+LAS - F1 Enhanced LAS -F1
+Conclusion
+We have presented the HUJI submission to the CoNLL 2018 shared task on parsing Universal Dependencies , based on TUPA , a general transitionbased DAG parser .
+Using a simple conversion protocol to convert UD into a unified DAG format , training TUPA as - is on the UD treebanks yields results close to the UDPipe baseline for most treebanks in the standard evaluation .
+While other systems ignore enhanced dependencies , TUPA learns to produce them too as part of the general dependency parsing process .
+We believe that with hyperparameter tuning and more careful handling of cross-lingual and cross-domain parsing , TUPA can be competitive on the standard metrics too .
+Furthermore , the generic nature of our parser , which supports many representation schemes , as well as domains and languages , will allow improving performance by multitask learning ( cf. Hershcovich et al. , 2018 ) , which we plan to explore in future work .
+UD graph after conversion to unified DAG format .

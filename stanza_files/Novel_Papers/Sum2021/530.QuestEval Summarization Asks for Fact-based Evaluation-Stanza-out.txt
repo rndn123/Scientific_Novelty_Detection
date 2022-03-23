@@ -1,0 +1,223 @@
+title
+QuestEval : Summarization Asks for Fact- based Evaluation
+abstract
+Summarization evaluation remains an open research problem : current metrics such as ROUGE are known to be limited and to correlate poorly with human judgments .
+To alleviate this issue , recent work has proposed evaluation metrics which rely on question answering models to assess whether a summary contains all the relevant information in its source document .
+Though promising , the proposed approaches have so far failed to correlate better than ROUGE with human judgments .
+In this paper , we extend previous approaches and propose a unified framework , named QU E S TEV A L .
+In contrast to established metrics such as ROUGE or BERTScore , QU E S TEV A L does not require any groundtruth reference .
+Nonetheless , QU E S TEV A L substantially improves the correlation with human judgments over four evaluation dimensions ( consistency , coherence , fluency , and relevance ) , as shown in extensive experiments .
+We make code and models available .
+1
+Introduction
+The reliability of automatic evaluation metrics is an important factor for progress in artificial intelligence tasks , enabling the comparison and improvement of the proposed systems .
+The design of reliable metrics for natural language generation ( NLG ) systems is very challenging , and still an open research problem : Novikova et al. ( 2017 ) and Peyrard ( 2019 ) showed that current metrics do not correlate well with human judgments , and argued for the development of new evaluation metrics .
+Among NLG tasks , summarization is one of the most difficult to evaluate automatically .
+For a given document , the number of possible correct outputs is much larger than for other tasks such as machine translation .
+Thus , when only a single reference summary is given - as is typically the case for 1 https://github.com/ThomasScialom/QuestEval large-scale summarization datasets , the correlation of standard automatic evaluation metrics with human judgments is low ( Louis and Nenkova , 2013 ) .
+Furthermore , since a summary must be shorter than the corresponding source document , information selection ( Li et al. , 2018 ) is critical so that the summary only contains the salient contents from its source document .
+For these reasons , n-gram based metrics , such as ROUGE ( Lin , 2004 ) , are known to poorly reflect human preference ( Louis and Nenkova , 2013 ; Novikova et al. , 2017 ; Paulus et al. , 2017 ; Bhandari et al. , 2020 ) .
+Finally , it is crucial for an effective summarization to generate texts that are factually consistent with their source documents .
+However , this aspect is not measured by n-grams based metrics .
+Notably , while recent stateof - the- art generative models ( Lewis et al. , 2019 ; Zhang et al. , 2019a ) produce fluent summaries , they frequently contain false or unsupported information ( Kry?ci?ski et al. , 2019 ) , a phenomenon also known as neural hallucination ( Rohrbach et al. , 2018 ; Zhao et al. , 2020 ) .
+To overcome these limitations , a new approach to evaluate summarization systems has recently emerged , based on question generation ( QG ) and answering ( QA ) ( Chen et al. , 2017 ; Scialom et al. , 2019 ; Eyal et al. , 2019 ) .
+These metrics measure to which extent a summary provides sufficient information to answer questions posed on its corresponding source document .
+They can be used to assess the factual consistency ( i.e. precision ) ( Durmus et al. , 2020 ; Wang et al. , 2020 ) or the relevance ( i.e. recall ) ( Scialom et al. , 2019 ) of the evaluated summary , with respect to its source document .
+Although these works have introduced an interesting and novel method to evaluate summarization , with encouraging preliminary results , none of those metrics is found to perform better than ROUGE ( Fabbri et al. , 2020 ) : automatic evaluation of summarization systems remains an open research problem ( Kryscinski et al. , 2019 ) . QuestEval + Recall W Q G Q A Questions ( Q x ) Scores Weighted scores ( eq.2 ) QuestEval scores Source Evaluated summary Precision Q G Q A Questions ( Q y ) Scores ( eq.1 ) Source Evaluated summary Figure 1 : Illustration of the QU E S TEV A L framework : the blue area corresponds to the precision-oriented framework proposed by Wang et al . ( 2020 ) .
+The orange area corresponds to the recall-oriented SummaQA ( Scialom et al. , 2019 ) .
+We extend it with a weighter component for an improved recall ( red area ) .
+The encompassing area corresponds to our proposed unified approach , QU E S TEV A L.
+Inspired by these works , and motivated to take up the challenge of summarization evaluation , we propose QU E S TEV A L , a new reference -less metric , which is found to improve the correlation with humans judgments .
+Our contributions are as follows : ?
+We show that , by unifying the precision and recall - based QA metrics , we obtain a more robust metric ; ?
+We propose a method to learn the saliency of the generated queries , allowing to integrate the notion of information selection ; ?
+We evaluate QU E S TEV A L on two corpora containing annotated summaries from CNN / Daily Mail and XSUM datasets .
+The proposed metric obtains state - of - the - art results in terms of correlation with humans judgments , over all the evaluated dimensions .
+Notably , QU E S TEV A L is effective at measuring factual consistency , a crucial yet challenging aspect for summarization .
+Related Work Summarization Metrics
+The most popular evaluation metric for summarization is ROUGE ( Lin , 2004 ) , which computes the recall of reference ngrams in the evaluated summary .
+Other n-grams based metrics have been proposed such as CIDEr ( Vedantam et al. , 2015 ) and METEOR ( Lavie and Agarwal , 2007 ) , but none of them correlates better with humans according to SummEval , a recent large study conducted by Fabbri et al . ( 2020 ) .
+Recent works have leveraged the success of pretrained language models .
+Zhang et al. ( 2019 b ) proposed BERTScore , which uses BERT ( Devlin et al. , 2018 ) to compute a similarity score between the reference and the evaluated text .
+However , its performance is similar to that of ROUGE ( Fabbri et al. , 2020 ) .
+Several works have explored using natural language inference ( NLI ) models to evaluate the factual consistency of summaries ( Kry?ci?ski et al. , 2019 ; Falke et al. , 2019 ; Maynez et al. , 2020 ) , finding mixed results in using NLI models rather than QA models .
+Content Weighting Information selection is crucial in summarization : a good summary should contain only relevant facts .
+However , very few methods have been proposed to tackle this aspect ; all the aforementioned metrics only reflect implicitly information selection , trough the gold-reference .
+Xu et al . ( 2020 ) proposed to explicitly model it via a function that weights the source document tokens .
+As opposed to our proposed weighting method , Xu et al . ( 2020 ) function requires the ground truth and thus is not suited to a reference -less scenario .
+QA - Based Metrics QA - based approaches for summary evaluation were proposed a decade ago by Clarke and Lapata ( 2010 ) for human evaluation .
+Chen et al. ( 2017 ) and Eyal et al . ( 2019 ) proposed to automate this approach by automatically generating questions from the reference summary .
+Scialom et al. ( 2019 ) extended these works by generating the questions from the source document , probing the output summary for information retrieved from the input text ( a recall- oriented approach ) .
+However , by weighing each question equally , their approach lacks a way to select questions that reflect the most important information of the input .
+Conversely , Wang et al. ( 2020 ) and Durmus et al . ( 2020 ) proposed to generate questions from the evaluated summary .
+These methods are precision oriented , since they measure the amount of information in the evaluated summary that are supported by the input text .
+We show in this paper that combining these recall and precision approaches leads to an improved metric .
+A Question - Answering based Framework
+This paper introduces the QU E S TEV A L framework for evaluating summarization systems , which accounts for both factual consistency and relevance of the generated text , without requiring any human reference .
+QU E S TEV A L consists of a QG component Q G and a QA component Q A , described in this section and depicted in Figure 1 .
+Question Answering Recently , there has been significant progress on factoid question answering , with models obtaining human-level performance on benchmarks such as SQuAD ( Rajpurkar et al. , 2016 ) .
+Leveraging on these advancements , our Q A component consists of a pretrained T5 model , which extracts answers from a source document given a question to answer .
+In the following , we refer to Q A ( r|T , q ) as the probability of the answer r to question q on a text T , and Q A ( T , q ) as the answer greedily generated from the model .
+When a summary is evaluated , there is no guarantee that it contains the answer .
+Therefore , it is crucial for the QA model to be able to predict when a question is unanswerable .
+Our Q A component thus includes the unanswerable token , that we denote , among its possible outputs .
+Question Generation
+For the QG component , we draw on recent work on neural answer-conditional question generation ( Zhou et al. , 2017 ) .
+The component also consists of a T5 model , finetuned to maximize the likelihood of human questions , given the corresponding answer and source document .
+At test time , given a source document or generated summary , we first select a set of answers from the text to condition the QG model on .
+Following Wang et al. ( 2020 ) , we consider all the named entities and nouns from the source document as answers .
+Then , for each selected answer , we generate a question via beam search .
+2
+We filter out every question for which the QA model predicts an incorrect answer .
+Based on this , we denote Q G ( T ) the set of question - answer pairs ( q , r ) for a text T such that Q A ( T , q ) = r.
+The QUESTEVAL metric
+In the following , D and S are two sequences of tokens with D denoting the source document and S the corresponding evaluated summary .
+Precision
+A summary is deemed inconsistent w.r.t. its source text if , given a question , the answer differs when conditioned on S or D .
+Therefore , we define the precision score for the evaluated summary as : P rec ( D , S ) = 1 | QG ( S ) | ( q,r ) ? Q G ( S ) F 1 ( QA ( D , q ) , r ) ( 1 )
+The F1 score is a standard metric for evaluating factoid question answering models , and measures the overlap between the predicted answer and the corresponding ground truth .
+It outputs 1 for an exact match between both answers and 0 if there is no common token .
+This definition of factual consistency corresponds to the frameworks proposed by Wang et al . ( 2020 ) and Durmus et al . ( 2020 ) .
+Recall
+While a summary should contain only factual information ( precision ) , it should also contain the most important information from its source text ( recall ) .
+Extending Scialom et al. ( 2019 ) by introducing a query weighter W , we define recall as : Rec ( D , S ) = q,r?Q G ( D ) W ( q , D ) ( 1 ? QA ( | S , q ) ) q,r?Q G ( D ) W ( q , D ) ( 2 ) where Q G ( D ) is the set of all question - answer pairs for the source text D , and W ( q , D ) is the weight of query q for text D. Answerability and F1 Factoid question answering models are commonly evaluated using F1 score , measuring the overlap between the predicted answer and the corresponding ground truth ( Rajpurkar et al. , 2016 ) .
+However , an answer could be correctly expressed in different ways , e.g. " ACL " and " Association for Computational Linguistics " .
+Unfortunately , the F1 score is 0 in this example .
+To sidestep this issue , Scialom et al . ( 2019 ) use the QA confidence of answerability , i.e. 1 ? Q A ( ) , rather than F1 score .
+Defining recall this way allows to measure answerability independently of the way the answer is expressed , but does not take into account possible model hallucinations , i.e. the summary could answer the question incorrectly .
+Conversely , when we assess factual consistency , it is not enough for a question from the summary to be answerable from the source document .
+The two answers to this question should also share the same meaning to be factually consistent .
+While using answerability allows for more true positives ( e.g. " ACL " in the example above ) , for precision it is crucial to detect true negatives .
+This motivates our use of the F1 score in this case , similar to Wang et al . ( 2020 ) . Query Weighting In Scialom et al. ( 2019 ) , all questions are considered equally important , i.e. the weight W ( q , D ) = 1 for every query q ? Q G ( D ) .
+However , since a summary necessarily has a constrained length , an effective summary should contain the most important information from the source .
+To account for this , we introduce a question weighter , which is trained to distinguish important questions from anecdotal ones .
+We leverage existing summarization datasets to create training data for the weighter : given a source document D , each question q ?
+Q G ( D ) is labeled as important if the corresponding human summary contains the answer , as computed by the QA component applied on the summary ( i.e. Q A ( S , q ) = ) .
+W ( q , D ) denotes the probability that q is important for D.
+Note that the question weighter only concerns recall , and therefore is not applied when computing precision .
+Unifying Precision and Recall
+The final QU E S TEV A L score accounts for both the precision and recall by computing their harmonic mean ( i.e. the F-Score ) : 2 P rec? Rec P rec+ Rec .
+The QU E S TEV A L score is thus directly comparable with existing evaluation metrics , such as ROUGE or BLEU , as it lies in the same numerical range .
+Experiments
+Summarization Datasets
+To evaluate QU E S TEV A L , we measure its correlation with human judgments on different datasets : 2020 ) , it is one of the largest human-annotated datasets for summarization .
+Derived from CNN / Daily Mail ( Nallapati et al. , 2016 ) , it consists of 12,800 summary level annotations .
+To ensure diversity , the summaries were generated from 16 different summarization models , including extractive and abstractive architectures .
+To assess quality , three experts annotated four dimensions : i ) Consistency : the proportion of facts in the summary corresponding to facts in the original text ; ii ) Coherence : how well -structured and well - organized is the summary ; iii )
+Fluency : how fluent the summary is to read ; and , iv ) Relevance : the ratio between important and excess information in the summary .
+3 QAGS-XSUM
+Wang et al. ( 2020 ) released a subset of 239 BART outputs fine-tuned on XSUM ( Narayan et al. , 2018 ) . 4
+Three annotators measured the consistency of each summary .
+SummEval Released by Fabbri et al . (
+Question Answering & Generation
+To train our Q G and Q A models , we used the SQuAD - v2 ( Rajpurkar et al. , 2018 ) factoid question answering dataset : it is composed of ( paragraph , question , answer ) triplets , and includes unanswerable questions .
+Note that QG can be seen as the dual task for QA : any QA dataset can be used for QG by switching the generation target from the answer to the question .
+Lastly , we found it helpful to train our QA model using additional synthetic unanswerable questions .
+This is done by considering a shuffled version of the dataset , where each question is randomly assigned to a paragraph from another triplet of the dataset .
+We consider these additional samples , with flipped contexts , as unanswerable .
+All experiments in this paper , except otherwise specified , use this additional data to improve identification of unanswerable queries .
+Baselines Metrics
+As baselines , we considered the following : N-gram based ROUGE ( Lin , 2004 ) is the most widely used evaluation in summarization .
+This metric measures the recall of reference n-grams in the evaluated summary .
+Conversely , BLEU ( Papineni et al. , 2002 ) computes the precision of summary n-grams in the references .
+METEOR ( Lavie and Agarwal , 2007 ) is a variant that uses stemming , synonyms and paraphrastic matches .
+LM based Leveraging recent progress in language modeling ( LM ) , Zhang et al . ( 2019 b ) proposed BERTScore : for each token of the summary , the maximum cosine similarity is computed over contextualized token embeddings of the reference summary , and the overall mean is reported .
+QA based SummaQA ( Scialom et al. , 2019 ) is a recall oriented metric , with questions generated from the source document .
+QAGS ( Wang et al. , 2020 ) is a precision oriented metric , with questions generated from the summary .
+Results In Tables 1 and 2 we report the results for QU E S TEV A L , along with several ablations .
+W = unif orm corresponds to setting all questions weights equal .
+Conversely , W = learned corresponds to the weights learned as detailed in ?4.2 .
+We report the recall and precision component separately .
+Finally , for W = learned , we also report the results given a QA and QG component trained on NewsQA ( Trischler et al. , 2016 ) , i.e. a different domain than SQuAD .
+In Table 1 , we observe that , amongst existing metrics , BERTScore achieves the best average Pearson correlation with human judgements ( 23.1 ) , slightly above ROUGE - 1 ( 22.2 ) and BLEU ( 22.2 ) .
+These correlations are obtained when providing no less than 11 gold references , and averaging results .
+Given a single reference , all these correlations are halved .
+Most of the large scale datasets provide only one reference per example in their test set ( e.g. CNN / Daily Mail and XSUM ) , a fact that highlights the importance of searching for more reference -efficient alternatives .
+With regards to sample efficiency , QA - based metrics do not require any references .
+We expect Relevance to be better measured by Recall oriented metrics , and less so for Consistency .
+This is con- firmed in the results , where SummaQA correlates better with Relevance than Consistency ( 26.2 vs 8.3 ) , and vice versa for QAGS ( 9.1 vs 20.4 ) .
+By unifying and extending the two , QU E S TEV A L allows to take both dimensions into account , improving the average correlation by 18 % ( 28.4 to 33.5 ) .
+The dimension benefiting the most from our question weighter is Relevance ( + 4 % , from 37.5 to 39.2 ) , indicating that our classifier learns which questions target important information .
+We discuss this aspect more in depth in ?5.5 .
+Finally , we do not observe significant differences when using a QA and QG specifically trained on NewsQA .
+Compared to the other metrics , the improvement is remarkable ( 33.5 vs 11.8 for BERTScore ) , allowing better evaluations of the systems while not even requiring references .
+Discussion Reference-less
+One of the main limitations for the current metrics is that they require gold references to compute similarity scores .
+However , many possible summaries are valid for one source document .
+We argue that the universe of correct outputs is much larger than in other generation tasks such as machine translation .
+This explains why the correlations with human judgments are largely reduced when they are computed with only one reference instead of 11 ( see Table 1 : BERTScore -f drops from 23.1 to 11.8 in average , and other metrics likewise ) .
+Unfortunately , assuming the availability important answered Relevance Table 3 : Pearson correlation coefficients between human judgments ( for Relevance ) and the percentage of important and / or answered questions , on SummEval data .
+of as many as 11 gold references is not realistic in most scenarios , due to the cost of obtaining reference summaries .
+To complement Table 1 , we report in Figure 2 the correlations for the best baselines as we progressively decrease the number of available gold references from 11 to 1 .
+For all four dimensions and all the baselines , we observe that less references result in decreased correlation and increased variance .
+However , QU E S TEV A L does not require any reference .
+Therefore , the improvement over the other metrics grows larger as the number of references used decreases .
+Furthermore , QU E S TEV A L enables the evaluation of systems even when no gold reference is available .
+Query Weighter
+There is no unique answer to the question " What makes a good summary ? " : it depends on the reader 's point of view , which makes summarization evaluation challenging .
+For instance , given a contract , the seller and the buyer could be interested in different information within the same document .
+To instantiate the weighter W , we learn a specific dataset policy : " what kind of questions are likely answered in the CNN / Daily Mail training summaries ? "
+This is a reasonable heuristic given that editors created the summaries following their specific policy .
+To demonstrate the effectiveness of the weighter , we proceed as follows .
+We first consider that a question q ?
+Q G ( D ) , generated on the source document , is important if the probability given by the query weighter is above a threshold , i.e. if W ( D , q ) > 0.5 .
+We then say that a question is answered if the probability of being unanswerable is below a threshold , i.e. Q A ( | S , q ) < 0.5 .
+Therefore , a question can belong to one of four folds , given the two above criteria ( important and / or answered ) .
+In Table 3 , we measure how the percentage of questions belonging to a specific fold correlates with the Relevance dimension for each gen- erated summary on SummEval .
+We observe that the percentage of questions that are important and answered correlates positively with Relevance , as opposed to the percentage of questions that are important but not answered .
+Finally , the percentage of questions that are answered but not important does not correlate with Relevance .
+This indicates that the proposed approach is able to learn what are the questions that should be asked or not .
+We emphasize that W is a flexible component of our framework : it can be adapted to specific domains and applications .
+For instance , one could design a specific W , to focus the evaluation on information about specific entities , such as people or events .
+An Explainable Metric
+One important feature of QU E S TEV A L is its explainability .
+It is straightforward to investigate 1 ) what are the important points not answered in the summary and 2 ) what are the inconsistencies between the source document and the summary .
+We illustrate this in Table 4 , with a source document , from which a question q is generated and answered .
+According to the weighter W , q is categorized as important .
+Three evaluated summaries are then shown .
+The first summary S correct is factually consistent with the source document : the predicted answer Q A ( S correct , q ) corresponds to the source document answer Buckingham Palace .
+The second summary S hallu is inconsistent with the source document : the predicted answer Q A ( S hallu , q ) does not correspond to Buckingham Palace .
+Finally , the third summary S incomplete does not answer the question , i.e. Q A ( S incomplete , q ) = , and is thus incomplete .
+Negative Sampling Effect In Tables 1 and 2 , we observe a decrease of performance when QU E S TEV A L uses a QA model trained without negative sampling ( see Section 5.2 ) , from 33.3 to 32.4 on SummEval and from 30.4 to 28.5 on QAGS - XSUM .
+In Figure 3 , we report the distribution of the log probabilities for the two QA models , trained with and without negative sampling .
+The QA model exposed to the negative sampling during training , learns to separate better the negative sampled questions ( for negative , i.e. red lines , the dashed line is more on the left than the solid line ) .
+Indeed , the unanswerable questions of SQuAD - v2 were written adversarially by crowd-workers , to look similar to answerable ones .
+However , in the context of QU E S TEV A L , unanswerable questions are not adversarial : it simply often happens that the summary does not contain the answer .
+Therefore , QU E S TEV A L deals in practice with unanswerable questions that look like those built with negative sampling , rather than adversarial ones .
+This may explain the improvement of a QU E S TEV A L with a QA model trained with negative sampling .
+Computational Complexity Following Wang et al. ( 2020 ) , we generate the questions with K = 20 beams during decoding and we keep all the different versions of the questions in the latter steps , which improves correlations .
+However , the downside of this is the inference time which increases linearly w.r.t the beam size .
+To be widely adopted , a metric should not only correlate with human judgment , but also be computationally efficient .
+In Figure 4 we show the variation of the average correlation with respect to the beam size .
+The improvement from K = 1 to K = 20 is small ( 34.4 to 35.6 ) , and the rank order for the different systems remains unchanged .
+Therefore , we believe that using QU E S TEV A L with K = 1 is a reasonable choice , allowing for fast computation while preserving satisfying correlation with human judgments .
+Conclusion
+We proposed QU E S TEV A L , a new reference-less framework to evaluate summarization models , which unifies previous QA - based approaches and extends them with question weighting , accounting all in one for factual consistency , relevance and information selection .
+Compared to existing metrics , we find that QU E S TEV A L correlates dramatically better with human judgments , while at the same time not requiring any reference .
+This allows for more accurate comparison between systems .
+Moreover , any progress in question answering and generation can directly be applied within our proposed framework , leading to additional improvements .
+We make the code available 5 with the hope that it will contribute to further progress in the field .
+We have started to adapt QU E S TEV A L to other Natural Language Generation tasks that suffer from the same evaluation limitations , e.g. Text Simplification , Image Captioning ( Lee et al. , 2021 ) , and Data To Text ( Rebuffel et al. , 2021 ) .
+In future work , we plan to extend QU E S TEV A L to multilingual scenarios such as Machine Translation and Multilingual Summarization .
+seq2seq models .
+We use the T5 - base model implemented in Hugging Face ( Wolf et al. , 2019 ) .
+We trained our models on a single Nvidia RTX 2080 Ti GPU with 11G RAM .
+For selecting entities as the answers candidates , we use spaCy 2 6 .
+For all the experiments , we used the default hyper-parameters .
+For all the variations of hyper-parameters and models , we tested QuestEval on QAGS - XSUM data , in order to keep SummEval unseen at test time .
+When we compute QuestEval precision or recall only , we observe a significant improvement over both QAGS and SummaQA .
+This improvement could be due to implementation differences : Scialom et al. ( 2019 ) use a rule based system to generate SummaQA 's questions , and QAGS filters the questions via various heuristics .
+Instead , we rely on a T5 - base neural generator and use only one simple heuristic .
+Both QAGS and SummaQA use BART / BERT for their models , while we use a smaller model , T5 - base , coupled with our negative sampling method .
+Each of these changes improve the results , their combination showed that they add up .
+Computational Complexity
+We believe it is important to develop effective methods before finding ways to speed them up .
+Despite being slower than ROUGE , QuestEval correlates much better with human judgments while not needing actual human annotators .
+The current running time with a single RTX 2080 is 2.53 sec per document on average on CNN / DM .
+Now that QuestEval effectiveness is confirmed , we plan to focus in future work on speeding up its implementation .
+Distilled models seems a promising direction .
+7 Moreover , a large space for improvement is possible with implementation tricks , e.g. caching the results , since always the same questions are generated .
+In particular , what takes most of the time is the generation of the questions on the source document : 1 ) it is an autoregressive process , and 2 ) the source document is longer than the summary , hence contains more questions .
+However , those questions are required to be generated only once and for all , since the source document remains un -
+Figure 2 : 2 Figure2 : Variation of the Pearson correlations between various metrics and humans , versus the number of references available .
+QU E S TEV A L is constant , since it is independent from the references .

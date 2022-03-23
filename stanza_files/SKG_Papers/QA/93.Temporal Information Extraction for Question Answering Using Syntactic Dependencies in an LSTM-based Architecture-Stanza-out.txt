@@ -1,0 +1,286 @@
+title
+Temporal Information Extraction for Question Answering Using Syntactic Dependencies in an LSTM - based Architecture
+abstract
+In this paper , we propose to use a set of simple , uniform in architecture LSTMbased models to recover different kinds of temporal relations from text .
+Using the shortest dependency path between entities as input , the same architecture is implemented to extract intra-sentence , crosssentence , and document creation time relations .
+A " double-checking " technique reverses entity pairs in classification , boosting the recall of positive cases and reducing misclassifications between opposite classes .
+An efficient pruning algorithm resolves conflicts globally .
+Evaluated on QA - TempEval ( SemEval2015 Task 5 ) , our proposed technique outperforms state- ofthe - art methods by a large margin .
+We also conduct intrinsic evaluation and post stateof - the - art results on Timebank - Dense .
+Introduction
+Recovering temporal information from text is essential to many text processing tasks that require deep language understanding , such as answering questions about the timeline of events or automatically producing text summaries .
+This work presents intermediate results of an effort to build a temporal reasoning framework with contemporary deep learning techniques .
+Until recently , there has been remarkably few attempts to evaluate temporal information extraction ( TemporalIE ) methods in context of downstream applications that require reasoning over the temporal representation .
+One recent effort to conduct such evaluation was SemEval2015 Task 5 , a.k.a. QA - TempEval ( Llorens et al. , 2015a ) , which used question answering ( QA ) as the target application .
+QA - TempEval evaluated systems producing TimeML ( Pustejovsky et al. , 2003 ) annotation based on how well their output could be used in QA .
+We believe that application - based evaluation of TemporalIE should eventually completely replace the intrinsic evaluation if we are to make progress , and therefore we evaluated our techniques mainly using QA - TempEval setup .
+Despite the recent advances produced by multilayer neural network architectures in a variety of areas , the research community is still struggling to make neural architectures work for linguistic tasks that require long-distance dependencies ( such as discourse parsing or coreference resolution ) .
+Our goal was to see if a relatively simple architecture with minimal capacity for retaining information was able to incorporate the information required to identify temporal relations in text .
+Specifically , we use several simple LSTMbased components to recover ordering relations between temporally relevant entities ( events and temporal expressions ) .
+These components are fairly uniform in their architecture , relying on dependency relations recovered with a very small number of mature , widely available processing tools , and require minimal engineering otherwise .
+To our knowledge , this is the first attempt to apply such simplified techniques to the TemporalIE task , and we demonstrate this streamlined architecture is able to outperform state - of - the - art results on a temporal QA task with a large margin .
+In order to demonstrate generalizability of our proposed architecture , we also evaluate it intrinsically using TimeBank - Dense 1 ( Chambers et al. , 2014 ) .
+TimeBank - Dense annotation aims to approximate a complete temporal relation graph by including all intra-sentential relations , all relations between adjacent sentences , and all relations with document creation time .
+Although our system was not optimized for such a paradigm , and this data is quite different in terms of both the annotation scheme and the evaluation method , we obtain state - of - the - art results on this corpus as well .
+Related Work A multitude of TemporalIE systems have been developed over the past decade both in response to the series of shared tasks organized by the community ( Verhagen et al. , , 2010 UzZaman et al. , 2012 ; Sun et al. , 2013 ; Bethard et al. , 2015 ; Llorens et al. , 2015 b ; and in standalone efforts ( Chambers et al. , 2014 ; Mirza , 2016 ) .
+The best methods used by TemporalIE systems to date tend to rely on highly engineered taskspecific models using traditional statistical learning , typically used in succession ( Sun et al. , 2013 ; Chambers et al. , 2014 ) .
+For example , in a recent QA - TempEval shared task , the participants routinely used a series of classifiers ( such as support vector machine ( SVM ) or hidden Markov chain SVM ) or hybrid methods combining hand crafted rules and SVM , as was used by the top system in that challenge ( Mirza and Minard , 2015 ) .
+While our method also relies on decomposing the temporal relation extraction task into subtasks , we use essentially the same simple LSTM - based architecture for different components , that consume a highly simplified representation of the input .
+Although there has not been much work applying deep learning techniques to TemporalIE , some relevant work has been done on a similar ( but typically more local ) task of relation extraction .
+Convolutional neural networks ( Zeng et al. , 2014 ) and recurrent neural networks both have been used for argument relation classification and similar tasks ( Zhang and Wang , 2015 ; Xu et al. , 2015 ; Vu et al. , 2016 ) .
+We take inspiration from some of this work , including specifically the approach proposed by Xu et al . ( 2015 ) which uses syntactic dependencies .
+Dataset
+We used QA - TempEval ( SemEval 2015 Task 5 ) 2 data and evaluation methods in our experiments .
+The training set contains 276 annotated TimeML files , mostly news articles from major agencies or Wikinews from late 1990s to early 2000s .
+This data contains annotations for events , temporal expressions ( referred to as TIMEXes ) , and temporal relations ( referred to as TLINKs ) .
+The test set contains unannotated files in three genres : 10 news articles composed in 2014 , 10 Wikipedia articles about world history , and 8 blogs entries from early 2000s .
+In QA - TempEval , evaluation is done via a QA toolkit which contains yes / no questions about temporal relations between two events or an event and a temporal expression .
+QA evaluation is not available for most of the training data except for 25 files , for which 79 questions are available .
+We used used this subset of the training data for validation .
+The test set contains unannotated files , so QA is the only way to measure the performance .
+The total of 294 questions is available for the test data , see Table 6 .
+We also use TimeBank - Dense dataset , which contains a subset of the documents in QA - TempEval .
+In TimeBank - Dense , all entity pairs in the same sentence or in consecutive sentences are labeled .
+If there is no information about the relation between two entities , it is labeled as " vague " .
+We follow the experimental setup in ( Chambers et al. , 2014 ) , which splits the corpus into training / validation / test sets of 22 , 5 , and 9 documents , respectively .
+TIMEX and Event Extraction
+The first task in our TemporalIE pipeline ( TEA ) is to identify time expressions ( TIMEXes ) and events in text .
+We utilized the HeidelTime package ( Str?tgen and Gertz , 2013 ) to identify TIMEXes .
+We trained a neural network model to identify event mentions .
+Contrary to common practice in TemporalIE , our models do not rely on event attributes , and thus we did not attempt to identify them .
+Feature Explanation is main verb whether the token is the main verb of a sentence is predicate whether the token is the predicate of a phrase is verb whether the token is a verb is noun whether the token is a noun
+We perform tokenization , part- of-speech tagging , and dependency parsing using NewsReader ( Agerri et al. , 2014 ) .
+Every token is represented with a set of features derived from preprocessing .
+Syntactic dependencies are not used for event extraction , but are used later in the pipeline for TLINK classification .
+The features used to identify events are listed in Table 1 .
+The event extraction model uses long short-term memory ( LSTM ) ( Hochreiter and Schmidhuber , 1997 ) , an RNN architecture well -suited for sequential data .
+The extraction model has two components , as shown on the right of Figure 2 .
+One component is an LSTM layer which takes word embeddings as input .
+The other component takes 4 token - level features as input .
+These components produce hidden representations which are concatenated , and fed into an output layer which performs binary classification .
+For each token , we use four tokens on each side to represent the surrounding context .
+The resulting sequence of nine word embeddings is then used as input to an LSTM layer .
+If a word is near the edge of a sentence , zero padding is applied .
+We only use the token - level features of the target token , and ignore those from the context words .
+The 4 features are all binary , as shown in Table 1 .
+Since the vast majority of event mentions in the training data are single words , we only mark single words as event mentions .
+TLINK Classification
+Our temporal relation ( TLINK ) classifier consists of four components : an LSTM - based model for intra-sentence entity relations , an LSTMbased model for cross-sentence relations , another LSTM - based model for relations with document creation time , and a rule- based component for TIMEX pairs .
+The four models perform TLINK classifications independently , and the combined results are fed into a pruning module to remove the conflicting TLINKs .
+The three LSTM - based components use the same streamlined architecture over token sequences recovered from shortest dependency paths between entity pairs .
+Intra-Sentence Model
+A TLINK extraction model should be able to learn the patterns that correspond to specific temporal relations , such as specific temporal prepositional phrases and clauses with temporal conjunctions .
+This suggests such models may benefit from encoding syntactic relations , rather than linear sequences of lexical items .
+We use the shortest path between entities in a dependency tree to capture the essential context .
+Using the NewsReader pipeline , we identify the shortest path , and use the word embeddings for all tokens in the path as input to a neural network .
+Similar to previous work in relation extraction ( Xu et al. , 2015 ) , we use two branches , where the left branch processes the path from the source entity to the least common ancestor ( LCA ) , and the right branch processes the path from the target entity to the LCA .
+However , our TLINK extraction model uses only word embeddings as input , not POS tags , grammatical relations themselves , or WordNet hypernyms .
+For example , for the sentence " Their marriage ended before the war " , given an event pair ( marriage , war ) , the left branch of the model will receive the sequence ( marriage , ended ) , while the right branch will receive ( war , before , ended ) .
+The LSTM layer processes the appropriate sequence of word embeddings in each branch .
+This is followed by a separate max pooling layer for each branch , so for each LSTM unit , the maximum value over the time steps is used , not the final step value .
+During the early stages of model design , we observed that this max pooling approach ( also used in Xu et al . ( 2015 ) ) resulted in a slight improvement in performance .
+Finally , the results from the max pooling layers of both branches are concatenated and fed to a hidden layer , followed by a softmax to yield a probability distribution over the classes .
+The model architecture is shown in Figure 2 ( left ) .
+We also augment the training data by flipping every pair , i.e. if ( e 1 , e 2 ) ? BEFORE , ( e 2 , e 1 ) ? AFTER is also included .
+Cross-Sentence Model TLINKs between the entities in consecutive sentences can often be identified without any external context or prior knowledge .
+For example , the order of events may be indicated by discourse connectives , or the events may follow natural order , potentially encoded in their word embeddings .
+To recover such relations , we use a model similar to the one used for intra-sentence relations , as described in Section 5.1 .
+Since there is no common root between entities in different sentences , we use the path between an entity and the sentence root to construct input data .
+A sentence root is often the main verb , or a conjunction .
+Relations to DCT
+The document creation time ( DCT ) naturally serves as the " current time " .
+In this section , we discuss how to identify temporal relations between an event and DCT .
+The assumption here is that an event mention and its local context can often suffice for DCT TLINKs .
+For example , English has inflected verbs for tense in finite clauses , and uses auxiliaries to express aspects .
+The model we use is again similar to the one in Section5.2 .
+Although one branch would suffice in this case , we use two branches in our implementation .
+One branch processes the path from a given entity to the sentence root , and the other branch processes the same path in reverse , from the root to the entity .
+Relations between TIMEXes
+Time expressions explicitly signify a time point or an interval of time .
+Without the TIMEX entities serving as " hubs " , many events would be isolated from each other .
+We use rule- based techniques to identify temporal relations between TIMEX pairs that have been identified and normalized by Hei-delTime .
+The relation between the DCT and other time expressions is just a special case of TIMEXto-TIMEX TLINK and is handled with rules as well .
+In the present implementation , we focus on the DATE class of TIMEX tags , which is prevalent in the newswire text .
+The TIME class tags which contain more information are converted to DATE .
+Every DATE value is mapped to a tuple of real values ( start , end ) .
+The " value " attribute of TIMEX tags follows the ISO - 8601 standard , so the mapping is straightforward .
+Table 2 provides some examples .
+We set the minimum time interval to be a day .
+Practically , such a treatment suffices for our data .
+After mapping DATE values to tuples of real numbers , we can define 5 relations between TIMEX entities T 1 = ( start 1 , end 1 ) and T 2 = ( start 2 , end 2 ) as follows :
+DATE value T 1 ? T 2 ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? BEFORE if end 1 < start 2 AFTER if start 1 > end 2 INCLUDES if start 1 < start 2 and end 1 > end 2 IS INCLUDED if start 1 > start 2 and end 1 < end 2 SIMULTANEOUS if start 1 = start 2 and end 1 = end 2 ( 1 ) The TLINKs from training data contain more types of relations than the five described in Equation 1 .
+However relations such as IBEFORE ( " immediately before " ) , IAFTER ( " immediately after " ) and IDENTITY are only used on event pairs , not TIMEX pairs .
+The QA system also does not target questions on TIMEX pairs .
+The purpose here is to use the TIMEX relations to link the otherwise isolated events .
+Double-checking
+A major difficulty we have is that the TLINKs for intra-sentence , cross-sentence , and DCT relations in the training data are not comprehensive .
+Often , the temporal relation between two entities is clear , but the training data provides no TLINK annotation .
+We downsampled the NO - LINK class in training in order to address both the class imbalance and the fact that TimeML -style annotation is de-facto sparse , with only a fraction of positive instances annotated .
+In addition to that , we introduce a technique to boost the recall of positive classes ( not NO - LINK ) and to reduce the misclassification between the opposite classes .
+Since entity pairs are always classified in both orders , if both orders produce a TLINK relation , rather than NO - LINK , we adopt the label with a higher probability score , as assigned by the softmax classifier .
+We call this technique " doublechecking " .
+It serves to reduce the errors that are fundamentally harmful ( e.g. BEFORE misclassified as AFTER , and vice versa ) .
+We also allow a positive class to have the " veto power " against NO - LINK class .
+For instance , if our model predicts ( e 1 , e 2 ) ? AFTER but NO - LINK reversely , we adopt the former .
+Table 3 shows the effects of double -checking and downsampling the NO - LINK cases on the intra-sentence model .
+Double-checking technique not only further boosts recall , but also reduces the misclassification between the opposite classes .
+Pruning TLINKs
+The four TLINK classification models in Section 5 deal with different kinds of TLINKs , so their output does not overlap .
+Nevertheless temporal relations are transitive in nature , so the deduced relations from given TLINKs can be in conflict .
+Most conflicts arise from two types of relations , namely BEFORE / AFTER and IN - CLUDES / IS INCLUDED .
+Naturally , we can convert TLINKs of opposite relations and put them all together .
+If we use a directed graph to represent the BEFORE relations between all entities , it should be acyclic .
+Sun ( 2014 ) proposed a strategy that " prefers the edges that can be inferred by other edges in the graph and remove the ones that are least so " .
+Another strategy is to use the results from separate classifiers or " sieves " to rank TLINKs according to their confidence ( Mani et al. , 2007 ; Chambers et al. , 2014 ) .
+High-ranking results overwrite low-ranking ones .
+We follow the same idea of purging the weak TLINKs .
+Given a directed graph , our approach is to remove the edges to break cycles , so that the sum of weights from the removed edges is minimal .
+This problem is actually an extension of the minimum feedback arc set problem and is NP - hard ( Karp , 1972 ) .
+We therefore adopt a heuristic - based approach , applied separately to the graphs induced by BEFORE / AFTER and IN - CLUDES / IS INCLUDED relations .
+3
+The softmax layer provides a probability score for each relation class , which represents the strength of a link .
+TLINKs between TIMEX pairs are generated by rules , so we assume them to be reliable and assign them a score of 1 .
+Although IN - CLUDES / IS INCLUDED edges can generate conflicts in a BEFORE / AFTER graph as well , we currently do not resolve such conflicts because they are relatively rare .
+We also do not use SIMULTA - NEOUS / IDENTITY relations to merge nodes , because we found that it leads to very unstable results .
+For a given relation ( e.g. , BEFORE ) , we incrementally build a directed graph with all edges representing that relation .
+We first initialize the graph with TIMEX - to-TIMEX relations .
+Event vertices are then added to this graph in a random order .
+For each event , we add all edges associated with it .
+If this creates a cycle , the edges are removed one by one until there is no cycle , keeping track of the sum of the scores associated with removed edges .
+We choose the order in which the edges are removed to minimize that value .
+4
+The algorithm is shown above .
+In practice , the vertices do not have a high de - gree for a given relation , so permuting the candidates N ? ( N ? 1 ) times ( i.e. , not fully ) , where N is the number of candidates , produces only a negligible slowdown .
+We also make sure to try the greedy approach , dropping the edges with the smallest weights first .
+X ? EVENTS ; V ? TIMEXes ; E ? TIMEX pairs ; Initialize G ?< V , E > ; for x ?
+X do V ? V + { x} ; C ? {( x , v ) ? ( v , x ) |v ? V } ; E ? E ? C ; G ?< V , E > ; if cycle exists ( G ' ) then for Ci ? ?( C ) do scorei = 0 ; while Ci = ? & cycle exists ( G ? Ci ) do c ? Ci.pop ( ) ; scorei + = weight ( c ) ; end end end G ? G ? Ci s.t. i = argmin( scorei ) ; end
+Model Settings
+In this section , we describe the model settings used in our experiments .
+All models requiring word embeddings use 300 - dimensional word2vec vectors trained on Google News corpus ( 3 billion running words ) .
+5 Our models are written in Keras on top of Theano .
+TIMEX and Event Annotation
+The LSTM layer of the event extraction model contains 128 LSTM units .
+The hidden layer on top of that has 30 neurons .
+The input layer corresponding to the 4 token features is connected with a hidden layer with 3 neurons .
+The combined hidden layer is then connected with a single-neuron output layer .
+We set a dropout rate 0.5 on input layer , and another drop out rate 0.5 on the hidden layer before output .
+As mentioned earlier , we do not attempt to tag event attributes .
+Since the vast majority of tokens are outside of event mention boundaries , we set higher weights for the positive class .
+In order to answer questions about temporal relations , it is not particularly harmful to introduce spurious events , but missing an event makes it impossible to answer any question related to it .
+Therefore we intentionally boost the recall while sacrificing precision .
+Table 4 shows the performance of our event extraction , as well as the performance of Heidel - Time TIMEX tagging .
+For events , partial overlap of mention boundaries is considered an error .
+We set a dropout rate 0.6 on input layer , and another drop out rate 0.5 on the hidden layer before output .
+Cross-Sentence Model
+The training and evaluation procedures are very similar to what we did for intra-sentence models , and the hyperparameters for the neural networks are the same .
+Now the vast majority of entity pairs have no TLINKs explicitly marked in training data .
+Unlike the intrasentence scenario , however , a NO - LINK label is truly adequate in most cases .
+We found that downsampling NO - LINK instances to match the number of all positive instances ( ratio=1 ) yields desirable results .
+Since positive instances are very sparse in both the training and validation data , the ratio should not be too low , so as not to risk overfitting .
+DCT Model
+We use the same hyperparameters for the DCT model as for the intra-sentence and cross-sentence models .
+Again , the training files do not sufficiently annotate TLINKs with DCT even if the relations are clear , so there are many false negatives .
+We downsample the NO - LINK instances so that they are 4 times the number of positive instances .
+Experiments
+In this section , we first describe the model selection experiments on QA - TempEval validation data , selectively highlighting results of interest .
+We then present the results obtained with the optimized model on the QA - TempEval task and on TimeBank - Dense .
+Model Selection Experiments
+As mentioned before , " gold " TLINKs are sparse , so we cannot merely rely on the F1 scores on validation data to do model selection .
+Instead , we used the QA toolkit .
+The toolkit contains 79 yesno questions about temporal relations between entities in the validation data .
+Originally , only 6 questions have " no " as the correct answer , and 1 question is listed as " unknown " .
+After investigating the questions and answers , however , we found some errors and typos 6 .
+After fixing the errors , there are 7 no-questions and 72 yes -questions in total .
+All evaluations are performed on the fixed data .
+The evaluation tool draws answers from the annotations only .
+If an entity ( event or TIMEX ) involved in a question is not annotated , or the TLINK cannot be found , the question will then be counted as not answered .
+There is no way for participants to give an answer directly , other than de -6 Question 24 from XIE19980821.0077.tml should be answered with " yes " , but the answer key contains a typo " is " .
+Question 34 from APW19980219.0476.tml has BE - FORE that should be replaced with AFTER .
+Question 29 from XIE19980821.0077.tml has " unknown " in the answer key , but after reading the article , we believe the correct answer is " no " .
+livering the annotations .
+The program generates Timegraphs to infer relations from the annotated TLINKs .
+As a result , relations without explicit TLINK labels can still be used if they can be inferred from the annotations .
+The QA toolkit uses the following evaluation measures : coverage = # answered # questions , precision = # correct # answered recall = # correct # questions , f1 = 2 ? precision ?
+recall precision + recall Table 5 shows the results produced by different models on the validation data .
+The results of the four systems above the first horizontal line are provided by the task organizer .
+Among them , the top two use annotations provided by human experts .
+As we can see , the precision is very high , both above 0.90 .
+Our models cannot reach that precision .
+In spite of the lower precision , automated systems can have much higher coverages i.e. answer a lot more questions .
+As a starting point , we evaluated the validation files in their original form , and the results are shown as " orig. validation data " of Table 5 .
+The precision was good , but with very low coverage .
+This supports our claim that the TLINKs provided by the training / validation files are not complete .
+We also tried using the event and TIMEX tags from the validation data , but performing TLINK classification with our system .
+As shown with " orig. tags TEA tlinks " in the table , now the coverage rises to 64 ( or 0.81 ) , and the overall F1 score reaches 0.52 .
+The TEA - initial system uses our own annotators .
+The performance is similar , with a slight improvement in precision .
+This result shows our event and TIMEX tags work well , and are not inferior to the ones provided by the training data .
+The double -checking technique boosts the coverage a lot , probably because we allow positive results to veto NO - LINKs .
+Combining doublechecking with the pruning technique yields the best results , with F1 score 0.58 , answering 42 out of 79 questions correctly .
+In order to validate the choice of the dependency path - based context , we also experimented with a conventional flat context window , using the same hyperparameters .
+Every entity is represented by a 11 - word window , with the entity mention in the middle .
+If two entities are near each other , their windows are cut short before reaching the other entity .
+Using the flat context instead of dependency paths yields a much weaker performance .
+This confirms our hypothesis that syntactic dependencies represent temporal relations better than word windows .
+However , it should be noted that we did not separately optimize the models for the flat context setting .
+The large performance drop we saw from switching to flat context did not warrant performing a separate parameter search .
+We also wanted to check whether a comprehensive annotation of TLINKs in the training data can improve model performance on the QA task .
+We therefore trained our model on TimeBank - Dense data and evaluated it with QA ( see the TEA - Dense line in Table 5 ) .
+Interestingly , the performance is nearly as good as our top model , although TimeBank - Dense only uses five major classes of relations .
+For one thing , it shows that our system may perform equally after being trained on sparsely labeled data and on densely labeled data , judged from the QA evaluation tool .
+If this is true , excessively annotated data may not be necessary in some tasks .
+QA - TempEval Experiments
+We use the QA toolkit provided by the QA - TempEval organizers to evaluate our system on the test data .
+The documents in test data are not annotated at all , so the event tags , TIMEX tags , and TLINKs are all created by our system .
+Table 6 shows the the statistics of test data .
+As we can see , the vast majority of the questions in the test set should be answered with yes .
+Generally speaking , it is much more difficult to validate a specific relation ( answer yes ) than to reject it ( answer no ) when we have as many as 12 types of relations in addition to the vague NO - LINK class .
+dist-means questions involving entities that are in the same sentence or in consecutive sentences .
+dist + means the entities are farther away .
+The QA - TempEval task organizers used two evaluation methods .
+The first method is exactly the same as the one we used on validation data .
+The second method used a so-called Time Expression Reasoner ( TREFL ) to add relations between TIMEXes , and evaluated the augmented results .
+The goal of such an extra run is to " analyze how a general time expression reasoner could improve results " .
+Our model already includes a component to handle TIMEX relations , so we will compare our results with other systems ' in both methods .
+News Genre ( 99 questions ) system prec rec f1 % answd # correct hlt- fbk-ev1- trel1 0.59 0.17 0 .
+The results are shown in Table 7 .
+We give the results for the hlt -fbk systems that were submitted by the top team .
+Among them , hlt -fbk- ev2 - trel2 was the overall winner of TempEval task in 2015 .
+ClearTK , CAEVO , TIPSEMB and TIPSem were some off - the-shelf systems provided by the task organizers for reference .
+These systems were not optimized for the task ( Llorens et al. , 2015 a ) .
+For news and Wikipedia genres , our system outperforms all other systems by a large margin .
+For blogs genre , however , the advantage of our system is unclear .
+Recall that our training set contains news articles only .
+While the trained model works well on Wikipedia dataset too , blog dataset is fundamentally different in the following ways : ( 1 ) each blog article is very short , ( 2 ) the style of writing in blogs is much more informal , with nonstandard spelling and punctuation , and ( 3 ) blogs are written in first person , and the content is usually personal stories and feelings .
+Interestingly , the comparison between different hlt -fbk submissions suggests that resolving event coreference ( implemented by hlt-fbk - ev2 - trel2 ) substantially improves system performance for the news and Wikipedia genres .
+However , although our system does not attempt to handle event coreference explicitly , it easily outperforms the hlt-fbk - ev2 - trel2 system in the genres where coreference seems to matter the most .
+Evaluation with TREFL
+The extra evaluation with TREFL has a post-processing step that adds TLINKs between TIMEX entities .
+Our model already employs such a strategy , so this postprocessing does not help .
+In fact , it drags down the scores a little .
+Table 8 summarizes the results over all genres before and after applying TREFL .
+For comparison , we include the top 2015 system , hlt-fbk - ev2 - trel2 .
+As we can see , TEA generally shows substantially higher scores .
+TimeBank - Dense Experiments
+We trained and evaluated the same system on TimeBank - Dense to see how it performs on a similar task with a different set of labels and another method of evaluation .
+In this experiment , we used the event and TIMEX tags from test data , as Mirza and Tonelli ( 2016 ) .
+Since all the NO- LINK ( vague ) relations are labeled , downsampling was not necessary .
+We did use double -checking in the final conflict resolution , but without giving positive cases the veto power over NO - LINK .
+Because NO - LINK relations dominate , especially for cross-sentence pairs , we set class weights to be inversely proportional to the class frequencies during training .
+We also reduced input batch size to counteract class imbalance .
+We ran two sets of experiments .
+One used the uniform configurations for all the neural network models , similar to our experiments with QA - TempEval .
+The other tuned the hyperparameters for each component model ( number of neurons , dropout rates , and early stop ) separately .
+CATENA is from Mirza and Tonelli ( 2016 )
+The results from TimeBank - Dense are shown in Talble 9 .
+Even though TimeBank - Dense has a very different methodology for both annotation and evaluation , our " out - of - the-box " model which uses uniform configurations across different components obtains F1 0.505 , compared to the best F1 of 0.511 in previous work .
+Our best result of 0.519 is obtained by tuning hyperparameters on intrasentence , cross-sentence , and DCT models independently .
+For the QA - TempEval task , we intentionally tagged a lot of events , and let the pruning algorithm resolve potential conflicts .
+In the TimeBank - Dense experiment , however , we only used the provided event tags , which are sparser than what we have in QA - TempEval .
+The system may have lost some leverage that way .
+Conclusion
+We have proposed a new method for extraction of temporal relations which takes a relatively simple LSTM - based architecture , using shortest dependency paths as input , and re-deploys it in a set of subtasks needed for extraction of temporal relations from text .
+We also introduce two techniques that leverage confidence scores produced by different system components to substantially improve the results of TLINK classification : ( 1 ) a " double-checking " technique which reverses pairs in classification , thus boosting the recall of positives and reducing misclassifications among opposite classes and ( 2 ) an efficient pruning algorithm to resolve TLINK conflicts .
+In a QA - based evaluation , our proposed method outperforms state- ofthe - art methods by a large margin .
+We also obtain state - of - the art results in an intrinsic evaluation on a very different TimeBank - Dense dataset , proving generalizability of the proposed model .
+Figure 1 : 1 Figure 1 : System overview for our temporal extraction annotator ( TEA ) system

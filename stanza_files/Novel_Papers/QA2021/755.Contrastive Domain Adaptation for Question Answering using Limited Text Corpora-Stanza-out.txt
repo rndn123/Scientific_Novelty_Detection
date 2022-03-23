@@ -1,0 +1,241 @@
+title
+Contrastive Domain Adaptation for Question Answering using Limited Text Corpora
+abstract
+Question generation has recently shown impressive results in customizing question answering ( QA ) systems to new domains .
+These approaches circumvent the need for manually annotated training data from the new domain and , instead , generate synthetic questionanswer pairs that are used for training .
+However , existing methods for question generation rely on large amounts of synthetically generated datasets and costly computational resources , which render these techniques widely inaccessible when the text corpora is of limited size .
+This is problematic as many niche domains rely on small text corpora , which naturally restricts the amount of synthetic data that can be generated .
+In this paper , we propose a novel framework for domain adaptation called contrastive domain adaptation for QA ( CAQA ) .
+Specifically , CAQA combines techniques from question generation and domaininvariant learning to answer out - of- domain questions in settings with limited text corpora .
+Here , we train a QA system on both source data and generated data from the target domain with a contrastive adaptation loss that is incorporated in the training objective .
+By combining techniques from question generation and domain-invariant learning , our model achieved considerable improvements compared to stateof - the - art baselines .
+Introduction Question answering ( QA ) systems generate answers to questions over text .
+Formally , such systems are nowadays trained end-to -end to predict answers conditional on an input question and a context paragraph ( e.g. , Seo et al. , 2016 ; Chen et al. , 2017a ; . Therein , every QA sample is a 3 - tuple consisting of a question , a context , and an answer .
+In this paper , we consider the subproblem of extractive QA , where the task is to extract answer spans from an unstructured context information for a given question as input .
+In extrac- tive QA , both question and context are represented by running text , while the answer is defined by a start position and an end position in the context .
+An existing challenge for extractive QA systems is the distributional change between training data ( source domain ) and test data ( target domain ) .
+If there is such a distribution change , the performance on test data is likely to be impaired .
+In practice , this issue occurs due to the fact that users , for instance , formulate text in highly diverse language or use QA for previously unseen domains ( Hazen et al. , 2019 ; Miller et al. , 2020 ) .
+As a result , out -ofdomain ( OOD ) samples occur that diverge from the training corpora of QA systems ( i.e. , which can be traced back to the invariance of the training data ) and , upon deployment , lead to a drastic drop in the accuracy of QA systems .
+One solution to the above-mentioned challenge of a domain shift is to generate synthetic data from the corpora of the target domain using models for question generations and then use the synthetic data during training ( e.g. , Lee et al. , 2020 ; Shakeri et al. , 2020 ) .
+For this purpose , generative models have been adopted to produce synthetic data as surrogates from target domain , so that the QA system can be trained with both data from the source domain and synthetic data , which helps to achieve better results on the out-of- domain data distribution ( Puri et al. , 2020 ; Lee et al. , 2020 ; Shakeri et al. , 2020 ) , see Figure 1 for an overview of such approach .
+Nevertheless , large quantities of synthetic data require intensive computational resources .
+Moreover , many niche domains rely upon limited text corpora .
+Their limited size puts barriers to the amount of synthetic data that can be generated and , as well shall see later , render the aforementioned approach for limited text corpora largely ineffective .
+In computer vision , some works draw upon another approach for domain adaptation , namely discrepancy reduction of representations ( Long et al. , 2013 ; Tzeng et al. , 2014 ; Long et al. , 2015
+Long et al. , , 2017 Kang et al. , 2019 ) .
+Here , an adaptation loss or adversarial training approaches are often designed to learn domain-invariant features , so that the model can transfer learnt knowledge from the source domain to the target domain .
+However , the aforementioned approach for domain adaptation was designed for computer vision tasks , and , to the best of our knowledge , has not yet been tailored for QA .
+In this paper , we develop a framework for answering out - of- domain questions in QA settings with limited text corpora .
+We refer to our proposed framework as contrastive domain adaptation for question answering ( CAQA ) .
+CAQA combines question generation and contrastive domain adaptation to learn domain-invariant features , so that it can capture both domains and thus transfer knowledge to the target distribution .
+This is in contrast to existing question generation where synthetic data is solely used for joint training with the source data but without explicitly accounting for domain shifts , thus explaining why CAQA improves the performance in answering out - of- domain questions .
+For this , we propose a novel contrastive adaptation loss that is tailored to QA .
+The contrastive adaptation loss uses maximum mean discrepancy ( MMD ) to measure the discrepancy in the representation between source and target features , which is reduced while it simultaneously separates answer tokens for answer extraction .
+1
+The main contributions of our work are : 1 . We propose a novel framework for domain adaptation in QA called CAQA .
+To the best of our knowledge , this is the first use of contrastive approaches for learning domain-invariant features in QA systems .
+2 . Our CAQA framework is particularly effective for limited text corpora .
+In such settings , we show that CAQA can transfer knowledge to target domain without additional training cost .
+3 . We demonstrate that CAQA can effectively answer out -of- domain questions .
+CAQA outperforms the current state - of - the - art baselines for domain adaptation by a significant margin .
+Related Work
+The performance of extractive question answering systems ( e.g. , Chen et al. , 2017 b ; Zhang et al. , 2020 ) is known to deteriorate when the training data ( source domain ) differs from the data used during testing ( target domain ) ( Talmor and Berant , 2019 ) .
+Approaches to adapt QA systems to a certain domain can be divided in ( 1 ) supervised approaches , where one has access to labeled data from the target domain ( i.e. , transfer learning ; , or ( 2 ) unsupervised approaches , where no labeled information is accessible .
+The latter is our focus .
+Unsupervised approaches are primarily based on question generation techniques where one generates synthetic training data for the target domain .
+Question generation ( QG ) : Question generation ( Rus et al. , 2010 ) is the task of generating synthetic QA pairs from raw text data .
+Several approaches have been developed to generate synthetic questions in QA .
+Du et al. ( 2017 ) propose an endto-end seq2seq encoder-decoder for the generation .
+Recently , question generation and answer generation are observed as dual tasks and combined in various ways .
+Tang et al. ( 2017 ) train both simultaneously ; Golub et al. ( 2017 ) split the process in two consecutive stages ; and Tang et al . ( 2018 ) use policy gradient to improve between - task learning .
+Question generation is a common technique for domain adaptation in QA .
+Here , the generated questions are used to fine- tune QA systems to the new target domain ( Dhingra et al. , 2018 ) .
+Oftentimes , only a subset of generated questions is selected to increase the quality of the generated data .
+Common approaches are based on curriculum learning ( Sachan and Xing , 2018 ) ; roundtrip consistency , where samples are selected when the predicted answers match the generated answer ; iterative refinement ( Li et al. , 2020 ) ; and conditional priors ( Lee et al. , 2020 ) .
+Unsupervised domain adaptation : A large body of work on unsupervised domain adaptation has been done in the area of computer vision , where the representation discrepancy between a labeled source dataset and an unlabeled target dataset is reduced ( e.g. , Tzeng et al. , 2014 ; Saito et al. , 2018 ; Long et al. , 2015 ) .
+Recent approaches are often based on adversarial learning , where one minimizes the distance between feature distributions in both both the source and target domain , while simultaneously minimizing the error in the labeled source domain ( e.g. , Long et al. , 2017 ; Tzeng et al. , 2017 ) .
+Moreover , adversarial training is also applied to train generalized QA systems across domains to improve performance on the data distribution of the target domain .
+Unlike adversarial approaches , contrastive methods ( i.e. , Hadsell et al. , 2006 ) utilize a special loss that reduces the discrepancy of samples from the same class ( ' pulled together ' ) and that increases the distances for samples from different classes ( ' pushed apart ' ) .
+This is achieved by using either pair-wise distance metrics ( Hadsell et al. , 2006 ) , or a triplet loss and clustering techniques ( Schroff et al. , 2015 ; Cheng et al. , 2016 ) .
+Recently , a contrastive adaptation network ( CAN ) has been shown to achieve state - of - the - art performance by using maximum mean discrepancy to build an objective function that maximizes inter-class distances and minimizes intra-class distances with the help of pseudo-labeling and iterative refinement ( Kang et al. , 2019 ) .
+Yet , it is hitherto unclear how this technique can be used to improve domain adaptation in QA .
+Objective : Upon deployment , we aim at maximizing the performance of the QA system when answering questions from the target domain D t , that is , minimizing the cross-entropy loss of the QA system f for X t from the target domain D t , i.e. , f * = arg min f | Xt | i=1 L ce ( f ( x ( i ) t , c , x ( i ) t , q ) , x ( i ) t , a ) .
+( 1 ) However , actual question - answer pairs from the target domain are unknown until deployment .
+Furthermore , we expect that the available contexts are limited in size , which we refer to as limited text corpora .
+For instance , our experiments later involve only 5 QA pairs per context and , overall , 10 k paragraphs as context .
+Overview :
+The proposed CAQA framework has three main components ( see Figure 2 ) : ( 1 ) a question generation model , ( 2 ) a QA model , and ( 3 ) a contrastive adaptation loss for domain adaptation , as described in the following .
+We refer to the question generation model via f gen and to the QA model via f .
+The question generation model f gen is used for generate synthetic QA data X t = f gen ( X t ) .
+This yields additional QA pairs consisting of x ( i ) t , q and x ( i ) t, a for x ( i ) t , c ?
+X t .
+Then , we use both source data X s and synthetic data X t to train the QA model via our proposed contrastive adaptation loss .
+The idea behind it is to help transfer knowledge to the target domain via discrepancy reduction and answer separation .
+Question Generation
+The question generation ( QG ) model QAGen - T5 is designed as follows .
+The QG model takes a context as input and then involves two steps : ( i ) it first generates a question x q based on context x c in the target domain , and then ( ii ) a corresponding answer x a conditioned on given x c and x q .
+Using a two -step generation of questions and answers to build synthetic data is consistent with earlier literature on QG ( e.g. , Lee et al. , 2020 ; Shakeri et al. , 2020 ) and thus facilitates larger capacity while facilitating comparability .
+The maximum number k of synthetic QA data is determined later .
+In our QG model , we utilize a text - to - text transfer transformer ( T5 ) encoder -decoder transformer ( Raffel et al. , 2019 ) .
+This transformer is able of performing multiple downstream tasks due to its the multi-task pretraining approach .
+This is beneficial in our case as we later use T5 transformers for conditional generation of two different outputs x q and x a , respectively .
+Specifically , we use two T5 transformers for generating end-to- end ( i ) the question and ( ii ) the answer .
+We later refer to the combined variant for QG as ' QAGen - T5 ' .
+Our QAGen -T5 is fed with the following input / output .
+The input to generate questions is only a context paragraph , and , therefore , we prepend the token generate question : in the beginning ( which is then followed by the context paragraph ) .
+For answer generation , input using both a question and a context is specified via tokens question : and context : .
+The output varies across ( i ) question and ( ii ) answer .
+For ( i ) , the output x q are questions divided by the [ SEP ] token ( e.g. , input : ' generate question : python is a programming language ...' output : ' when was python released ? ' ) .
+For ( ii ) , the output x a is an answer , for which we specify question and context information in the input by inserting tokens question : and context : ( e.g. , the input becomes ' question : when was python released ?
+context : python is a programming language ...' ) .
+The output is the decoded answer .
+QAGen - T5 is trained as follows .
+For ( i ) and ( ii ) , we separately minimize the negative log likelihood of output sequences via L qg ( X ) = | X | i=1 ? log p ?qg ( x ( i ) q | x ( i ) c ) , ( 2 ) L ag ( X ) = | X | i=1 ? log p ?ag ( x ( i ) a | x ( i ) c , x ( i ) q ) , ( 3 ) where x ( i ) q , x ( i ) a , and x ( i ) c refer to question , answer , and context in the i-th sample of X. Fine-tuning is done as follows .
+Both T5 models inside QAGen - T5 are fine-tuned on SQuAD separately .
+For selecting QA pairs , we draw upon LM - filtering ( Shakeri et al. , 2020 ) to select the best k QA pairs per context ( e.g. , k = 5 is selected later in our experiments ) .
+We compute the LM scores for the answer by multiplying the scores of each token over the output length .
+This ensures that only synthetic QA samples are generated where the combination of both question and answer has a high likelihood .
+QA Model Our QA model is set to BERT - QA . BERT - QA consists of two components : the BERT - encoder and an answer classifier .
+The BERTencoder extracts features from input tokens , while the answer classifier outputs two probability distributions for start and end positions to form answer spans based on the token features extracted by BERT - encoder .
+In our paper , the BERT - encoder is identical to the original BERT model and has an embedding component as well as transformer blocks .
+BERT - QA is trained using a cross-entropy loss L ce to predict correct answer spans , yet additionally using our contrastive adaptation loss as described in the following .
+Contrastive Adaptation Loss
+We now introduce our contrastive adaptation loss , which we use for training the QA model .
+The idea in our proposed contrastive adaptation loss is two -fold : ( i ) We decrease the discrepancy among answer tokens and among other tokens , respectively ( ' intra-class ' ) .
+This should thus encourage the model to learn domain-invariant features that are characteristic for both the source domain and the target domain .
+( ii ) We enlarge the answercontext and answer-question discrepancy in feature representations ( ' inter-class ' ) .
+Our approach is somewhat analogous yet different to contrastive domain adaptation in computer vision , where also the intra-class discrepancy is reduced , while the inter-class discrepancy is enlarged ( Kang et al. , 2019 ) .
+In computer vision , the labels are clearly defined ( e.g. , object class ) , such labels are not available in QA .
+A natural way would be to see each pair of start / end location of an answer span as a separate class .
+Yet the corresponding space would be extremely large and would not represent specific semantic information .
+Instead , we build upon a different notion of classes : we treat all answer tokens as one class and the combined set of question and context tokens as a separate class .
+When we then reduce intra-class discrepancy and enlarge inter-class discrepancy , knowledge is transferred from source to target domain .
+We focus on the discrepancy between answer and the other tokens since a trained QA model can well separate answer tokens in the source domain ; see Figure 3 .
+The plot shows a principle component analysis ( PCA ) visualizing the BERT - encoder output of a SQuAD example ( van Aken et al. , 2019 ) .
+Answer tokens are well separated from all other tokens in this case , nevertheless , the same QA model can fail to perform answer separation in an unseen domain ; see examples in Appendix D .
+Therefore , we apply contrastive adaptation on the token level and define classes by token types .
+Ideally , this reduces feature discrepancy between domains and , by separating answer tokens .
+Both should help improving the performance on out-of- domain data .
+Discrepancy :
+In our contrastive adaptation loss , we measure the discrepancy among token classes using maximum mean discrepancy ( MMD ) .
+MMD measures the distance between two data distributions based on the samples drawn from them ( Gretton et al. , 2012 ) .
+Empirically , we compute the distance D between tokens X and Y represented by their mean embeddings in reproducing kernel Hilbert space H , i.e. , D = sup f ?H 1 |X| | X | i=1 f ( x i ) ?
+1 | Y | |Y | i=1 f ( y i ) . ( 4 ) MMD can be simplified by choosing a unit ball in H , such that D( X , Y ) 2 = ? x ? ? y 2 H , where ?
+x and ?
+y represent the sample mean embeddings .
+Similar to ( Long et al. , 2015 ) , we adopt Gaussian kernel with multiple bandwidths to estimate distances two samples , i.e. , k( x i , x j ) = exp (?
+x i ?x j 2 ? ) .
+Contrastive adaptation loss :
+We define the contrastive adaptation loss of a mixed batch X with samples from both the source domain and the target domain as L con ( X ) = 1 | X | 2 | X | i=1 | X | j=1 k(?( x ( i ) a ) , ?( x ( j ) a ) ) + 1 | X| 2 | X | i=1 | X | j=1 k(?( x ( i ) cq ) , ?( x ( j ) cq ) ) ? 1 | X| 2 | X | i=1 | X | j=1 k(?( x ( i ) a ) , ?( x ( j ) cq ) ) , ( 5 ) where x a is the mean vector of answer tokens , while x cq is the mean vector of the context / question tokens .
+Further , ? is a feature extractor ( i.e. , the BERT - encoder ) .
+Equation ( 5 ) fulfills our objectives ( i ) and ( ii ) from above .
+The first two terms estimate the mean distance among all answers tokens and the other tokens , respectively ,
+This should thus fulfill objective ( i ) : to minimize the intra-class discrepancy .
+The last term maximizes the distance between answer and rest tokens ( i.e. , by taking the negative distance ) and enables an easier answer extraction .
+This should thus fulfill objective ( ii ) : to maximize the inter-class discrepancy .
+Overall objective :
+We now combine both the cross-entropy loss from BERT - QA and the above contrastive adaptation loss into a single optimization objective for the QA model : L qa ( X ) = L ce ( X ) + ?L con ( X ) , ( 6 ) where L ce is the cross-entropy loss for the training QA model to predict correct answer spans .
+Here , ? is hyperparameter that we choose empirically .
+In our experiments , we sample mixed minibatches and compute the overall loss to update the QA model .
+We encourage correct answer extraction by maximizing the representation distance between answer tokens and the other tokens .
+Additionally , we apply Gaussian noise at different scales ? on the token embeddings to learn a smooth and generalized feature space ( Cai et al. , 2019 ) .
+Experiment Setup
+Datasets
+In our experiments , we use SQuAD v1.1 as our source domain dataset ( Rajpurkar et al. , 2016 ) .
+For the target domain we adopt four other datasets from MRQA ( Fisch et al. , 2019 ) .
+This allows us to evaluate the performance in answering out -ofdomain questions .
+For target domain datasets , only context paragraphs are accessible for question generation .
+In this paper , we use TriviaQA ( Joshi et al. , 2017 ) , HotpotQA ( Yang et al. , 2018 ) , NaturalQuestions ( Kwiatkowski et al. , 2019 ) , and SearchQA ( Dunn et al. , 2017 ) .
+For more details , see Appendix A.1 .
+Baselines
+We draw upon the following state - of - the - art baselines for question generation : Info-HCVAE ( Lee et al. , 2020 ) , AQGen ( Shakeri et al. , 2020 ) , and QA - Gen ( Shakeri et al. , 2020 ) .
+These are used to generate synthetic QA data in order to train BERT - QA as the underlying QA model ( i.e. , the QA model is the same as in CAQA , the only difference is in how synthetic QA data is generated and how the QA model is trained ) .
+For more details , see Appendix A.2 .
+Additionally , we train BERT - QA on SQuAD and target datasets , respectively .
+This is to evaluate its base performance with zero knowledge of the target domain ( ' lower bound ' ) and supervised training performance ( ' upper bound ' ) on target datasets .
+We further report QAGen - T5 as an ablation study reflecting CAQA without the contrastive adaptation loss .
+Training and Evaluation Training :
+We perform experiments based on limited text corpora : we only allow 5 QA pairs per context and 10 k context paragraphs in total to be generated as the surrogate dataset .
+As such , no intensive computational resources are required for QA domain adaptation .
+First , we randomly select 10 k context paragraphs and generate QA pairs with all mentioned generative models as synthetic data ( abbreviated as ' 10 k Syn ' ) .
+Then , QA pairs are filtered using roundtrip consistency ( baseline models ) or LM -filtering ( QAGen - T5 ) , such that max .
+5 QA pairs are preserved for each context .
+The final training data is then given by the combination of the generated target QA pairs and the SQuAD training set ( ' S + 10 k Syn ' ) .
+Based on this , we train BERT - QA on it and evaluate the model on target dev sets .
+Evaluation :
+For evaluation , we adopt two metrics : exact match ( EM ) and F1 score ( F1 ) .
+We
+Model Training compute these metrics on target dev sets to evaluate the out-of- domain performance of the trained QA systems .
+For details , see Appendix A.3 .
+We make the following observations : ( 1 ) The na?ve baseline is consistently outperformed by our proposed CAQA framework .
+Compared to the SQuAD baseline , CAQA leads to a performance improvement in EM of at least 2.80 % and can go as high as 16.39 % , and an improvement in F1 of at least 0.48 % and up to 15.04 % .
+( 2 ) The na?ve baseline provides a challenge for several question generation baselines from the literature , which are often inferior in our setting with limited text corpora .
+Results
+Performance on Target Questions ( 3 )
+The best- performing approach is our CAQA framework for three out of four datasets .
+For one dataset ( HotpotQA ) , it is our QAGen - T5 variant without contrastive adaptation loss .
+However , the performance of CAQA is of similar magnitude and is clearly ranked second .
+( 4 ) By comparing CAQA and QAGen - T5 , we yield an ablation study quantifying the gain that should be attributed to using a contrastive adaptation loss .
+Here , we find distinctive performance improvements due to our contrastive adaptation loss for three out of four datasets .
+( 5 ) Compared to the question generation baselines , our CAQA framework is superior .
+Compared to AQGen , the average improvements in EM and F1 are 3.78 % and 3.41 % , respectively , and , compared QAGen , the average improvements are 4.06 % and 3.80 % , respectively .
+( 6 ) In the case of TriviaQA and HotpotQA , the performance of CAQA is close to that of supervised training results using 10 k paragraphs from the target datasets .
+We discuss reasons reasons for performance variations across datasets in Section 6 .
+Altogether , the results suggest that the proposed combination of QAGen -T5 and contrastive adaptation loss is effective in improving the performance for out - of- domain data .
+Sensitivity Analysis for Text Corpora Size
+We now perform a sensitivity analysis studying how the performance varies across different text corpora sizes , that is , the number of context paragraphs generated .
+For this , we randomly select 10k , . . . , 50 k context paragraphs for training and then report two variants : ( i ) the QG performance using QAGen - T5 with varying context numbers and ( ii ) our CAQA with 10 k context paragraphs .
+Here , results are reported for TriviaQA and NaturalQuestions 2 . For QAGen - T5 , we see a comparatively large improvement when increasing the size from 10 k to 20 k context paragraphs .
+A small performance improvement among QAGen -T5 can be obtained when choosing 50 k context paragraphs .
+In contrast to that , CAQA is superior , even when using only 10 k context paragraphs .
+Put simply , it does so much with much fewer samples and thus without additional costs due to extra computations .
+In sum , this demonstrates the effectiveness of CAQA for improving QA domain adaptation in settings with limited text corpora .
+Model
+Comparison : Training Baselines with Contrastive Adaptation Loss
+We perform a sensitivity analysis examining whether the baselines models ( Info - HCVAE , AQ - Gen , and QAGen ) can be improved when training them using our contrastive domain adaptation .
+For this , we repeat the above experiments with 10 k synthetic samples ( i.e. , S + 10 k Syn ) .
+The only difference is that we use our contrastive adaptation loss .
+The results are in Table 3 .
+Here , a positive value means that the use of a contrastive adaptation loss results in a performance gain ( since everything else is kept equal ) .
+Note that combining QAGen -T5 with our contrastive adaptation loss yields CAQA .
+Overall , we see that the performance of almost baselines can be improved due to our contrastive adaptation loss .
+Discussion
+We now discuss variations in the performance across models and datasets .
+For this , we also investigate synthetic data generated by CAQA manually ( see Appendix C ) .
+Why is the performance sometimes below the upper bound ( i.e. , supervised training ) ?
+We see two explanations for the performance gap between supervised training and CAQA ( as well as the other baselines ) .
+( i ) Despite domain adaptation , some of the generated synthetic data cannot perfectly match the characteristics of the target domain but still reveal differences .
+We found this behavior , e.g. , for NaturalQuestions .
+Here , the average length of the synthetic answers are all below 3 , as compared to 4.35 the training set of NaturalQuestions .
+This may lead to a performance gap at test time .
+( ii )
+The generated QA pairs are comparatively homogeneous and lack the diversity of the target domain .
+To examine this , we manually inspected synthetic samples from CAQA ( see Appendix C ) .
+We found that the generated QA pairs cannot fully capture the diversity that is otherwise common in question formulation .
+For example , almost all questions in the synthetic data start with ' What ' , ' When ' , and ' Who ' .
+In contrast , in NaturalQuestions , we find many questions that we perceived as more diverse or event more difficult .
+Examples are ' The court aquitted Moninder Singh Pandher of what crime ? ' and ' Why does queen elizabeth sign her name elizabeth r?'.
+Such behavior is particularly exacerbated for NaturalQuestions , which was intentionally designed to introduce more variety in question formulation , and , hence , our contrastive domain adaptation approach might implicitly learn some of the characteristics ( as compared to the state - of- the- art baselines ) .
+Why does the performance improvements vary across datasets ?
+The different improvements with contrastive adaptation can be further attributed to the target domain itself .
+When source and target datasets are similar , a model trained on the source dataset would naturally have better performance on the target dataset , but the improvements with contrastive adaptation can be limited due to the small domain variation .
+In TriviaQA and HotpotQA , the context paragraph originates - partially or completely - from Wikipedia and answer lengths are similar .
+In contrast , NaturalQuestions have differ-ent text styles and sources including raw HTML like ' < Table > ' , SearchQA context involves web articles and user contents , their average answer lengths are different , amounting to 1.89 and 4.43 respectively .
+Additionally , supervised training results using 10 k HotpotQA and TriviaQA yield moderate improvements ( 5.02 % , 5.73 % ) , compared to 10.12 % and 42.82 % in NaturalQuestions and SearchQA .
+This also suggests that the difference between the previous datasets and SQuAD is comparatively small .
+Similar trends can be found in Table 3 , where our contrastive adaptation on baseline models proves to be more effective in NaturalQuestions and SearchQA .
+Therefore , the discrepancy between source domain and target domain can be crucial for domain adaptation results according to our observations .
+How does our contrastive adaptation loss affect the discrepancy among answer tokens ?
+To further examine how the contrastive adaptation loss improves the discrepancy among answers , we draw upon methods in ( van Aken et al. , 2019 ) and visualize the representations of the answer tokens using PCA ( see Appendix D ) .
+Based on it , we empirically make the following observations .
+( i ) In correct predictions , answer tokens are separated very well from questions and context tokens .
+( ii )
+In incorrect predictions , the correct answer is either not separated from the other tokens , or wrong tokens are separated and predicted as answers .
+In the latter case , such behavior is termed as overconfidence in out -of- domain data ( cf. Kamath et al. , 2020 ) .
+In sum , contrastive adaptation helps in separating tokens that are likely to be answers , though sometimes incorrect tokens are identified as answers , thereby worsening the problem of overconfidence , which may explain the occasional decrease in performance .
+Conclusion
+This work contributes a novel framework for domain adaptation of QA systems in settings with limited text corpora .
+We develop CAQA in which we combine techniques from from question generation and domain-invariant learning to answer out - of- domain questions .
+Different from existing works in question answering , we achieve this by proposing a contrastive adaptation loss .
+Extensive experiments show that CAQA is superior to other state - of - the - art approaches by achieving a substantially better performance on out-of- domain data .

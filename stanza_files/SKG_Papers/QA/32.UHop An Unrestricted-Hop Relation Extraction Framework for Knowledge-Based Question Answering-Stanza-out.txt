@@ -1,0 +1,220 @@
+title
+UHop : An Unrestricted - Hop Relation Extraction Framework for Knowledge-Based Question Answering
+abstract
+In relation extraction for knowledge - based question answering , searching from one entity to another entity via a single relation is called " one hop " .
+In related work , an exhaustive search from all one - hop relations , two -hop relations , and so on to the max-hop relations in the knowledge graph is necessary but expensive .
+Therefore , the number of hops is generally restricted to two or three .
+In this paper , we propose UHop , an unrestricted - hop framework which relaxes this restriction by use of a transition - based search framework to replace the relation - chain - based search one .
+We conduct experiments on conventional 1 - and 2hop questions as well as lengthy questions , including datasets such as WebQSP , PathQuestion , and Grid World .
+Results show that the proposed framework enables the ability to halt , works well with state - of - the - art models , achieves competitive performance without exhaustive searches , and opens the performance gap for long relation paths .
+Introduction
+A knowledge graph ( KG ) is a powerful graph structure that encodes knowledge to save and organize it , and to provide users with direct access to this knowledge via various applications , one of which is question answering , or knowledgebased question answering ( KBQA ) .
+In the knowledge graph , beliefs are commonly represented by triples showing relations between two entities , such as LocatedIn ( NewOrleans , Louisiana ) , where the two entities are nodes and their relation is the edge connecting them in the knowledge graph .
+Given a natural language question , a KBQA system returns its answer if it is included in the knowledge graph ; the process of answering a question can be transformed into a traversal that starts from the question ( topic ) entity and searches for the appropriate path to the answer entity .
+In the literature ( Yu et al. , 2017 ; Yin et al. , 2016 ; Yih et al. , 2015 ) KBQA is decomposed into topic entity linking , which determines the starting entity corresponding to the question , and relation extraction , which finds the path to the answer node ( s ) .
+Theoretically , relation extraction finds paths of any length , that is , paths that contain any number of relation links , or hops ( between two nodes ) , as long as it reaches the answer node .
+In previous work , models consider all relation paths starting from the topic entity ( Yu et al. , 2017 ; Yin et al. , 2016 ; Yih et al. , 2015 ) ; we call these relation - chain - based methods .
+Two main difficulties for these methods are that processing through all relations in a KG is not practical as the combination of these relations is nearly infinite , and that the number of candidate paths grows exponentially with the path length and quickly becomes intractable for large knowledge graphs .
+As a result , current relation - chain - based methods set the maximum length of candidate paths to 1 , 2 or 3 .
+However , under this framework we cannot find answer entities for indirect or complicated questions .
+Most importantly , even given a larger maximum length , it is unrealistic to expect to know in advance the maximum number of hops for realworld applications .
+Thus even with exhaustive searches , if the answer entity is still too distant or lies outside of the search space , it is not reachable or answerable .
+In addition , setting a large maximum number of hops necessitates lengthy training instances , which is especially difficult .
+In this paper , we propose UHop , an unrestricted - hop relation extraction framework to relax restrictions on candidate path length .
+We decompose the task of relation extraction in the knowledge graph into two subtasks : knowing where to go , and knowing when to stop ( or to halt ) .
+That is , single - hop relation extraction and termination decision .
+Our contribution is three - fold : ( 1 ) No predefined maximum hop number is required in UHop , as it enables models within the framework to halt ; ( 2 ) UHop reduces the search space complexity from exponential to polynomial while maintaining comparable results ; ( 3 ) UHop facilitates the use of different models , including state - of - the - art models .
+Related Work State- of- the- art KBQA methods are in general based on either semantic parsing , or on embedding ( Zhou et al. , 2018 ) .
+Semantic parsing methods learn semantic parsers which parse natural language input queries into logical forms , and then use the logical forms to query the KG for answers ( Berant et al. , 2013 ; Yih et al. , 2015
+Yih et al. , , 2016
+Iyyer et al. , 2017 ; Peng et al. , 2017 ; Sorokin and Gurevych , 2018 ) .
+These systems are effective and provide deep interpretation of the question , but require expensive data annotation , or require training using reinforcement learning .
+Embedding - based methods first allocate candidates from the knowledge graph , represent these candidates as distributed embedding vectors , and choose or rank these vectors .
+Here the candidates can be either entities or relations .
+Some use embedding - based models to predict answers directly ( Dong et al. , 2015 ; Bast and Haussmann , 2015 ; Hao et al. , 2017 ; Zhou et al. , 2018 ; Lukovnikov et al. , 2017 ) , whereas others focus on extracting relation paths and require further procedures to select the answer entity ( Bordes et al. , 2015 ; Xu et al. , 2016 ; Yin et al. , 2016 ; Yu et al. , 2017 ; Zhang et al. , 2018a ; Yu et al. , 2018 ; Chen et al. , 2018a ; Shen et al. , 2018 ) .
+Our work follows the latter methods in focusing on predicting relation paths , but we seek to eliminate the need to assume in advance a maximum number of hops .
+For the solution , we turn to the field of multihop knowledge based reasoning .
+Early methods include the Path-Ranking Algorithm and its variants .
+( Lao et al. , 2011 ; Gardner et al. , 2014 Gardner et al. , , 2013 Toutanova et al. , 2015 )
+The drawback of these methods is that they use random walks independent of the type of input .
+DeepPath ( Xiong et al. , 2017 ) and MINERVA ( Das et al. , 2017 ) tackle this issue by framing the multi-hop reasoning problem as a Markov decision process , efficiently searching for paths using reinforcement learning ; others propose an algorithm for learn-ing logical rules , a variational auto-encoder view of the knowledge graph ( Chen et al. , 2018 b ; Zhang et al. , 2018 b ) , and reward shaping technique ( Lin et al. , 2018 ) for further improvement .
+The major difference between UHop and these methods is that they do not utilize annotated relations and hence require REINFORCE training ( Williams , 1992 ) for optimization .
+As some datasets are already annotated with relations and paths , direct learning using an intermediate reward is more reasonable .
+Hence UHop adopts a novel comparative termination decision module to control the search process of the relation path .
+The most related approach is the IRN model ( Zhou et al. , 2018 ) , composed of an input module , a memory - based reasoning module , and an answer module .
+At each hop , it predicts a relation path using the reasoning module , and also optimizes it using intermediate results .
+However , UHop has demonstrated the ability to process large-scale knowledge graphs in experiments conducted on Freebase ( Bordes et al. , 2015 ) .
+In contrast , IRN consumes memory linearly to the size of the knowledge graph , resulting in a limited workspace , e.g. , they use a subset of Freebase in their experiments .
+Also , IRN still uses a constraint for the number of maximum hops in the experiments , while UHop needs no such limit .
+Most importantly , as UHop is a framework which facilitates the use of different models , we can expect the performance of UHop to remain competitive with the state of the art over time .
+UHop Relation Extraction With UHop , we aim to handle unrestricted relation hops and to be compatible with existing relation extraction models .
+UHop breaks down unrestricted - hop relation extraction into two major subtasks : single -hop relation extraction and comparative termination decision .
+Algorithm 1 illustrates how we perform these two tasks in the UHop framework .
+Given a question Q and the topic entity e extracted by an existing entity linking method such as S-MART ( Yang and Chang , 2015 ) , we first query the knowledge graph for the candidate outbound relations R that are connected to e .
+For all relations R , we extract single - hop relations in order to choose one relation to transit to the next entity e .
+After transition ( e ? e ) , we decide whether to terminate , that is , we determine whether the process should proceed
+If the decision to terminate is false , we search the KB again for outbound relations of the new e , after which the search process starts again .
+Note that starting from the second iteration , candidate relations are concatenated with the previously selected relations to remember the history and consider them as a whole .
+We continue this loop until the process decides to terminate .
+The termination decision thus enables UHop to learn when to stop searching for relations to extract : it determines the number of hops needed to reach the correct target entity .
+Upon termination , UHop returns the extracted relation ( s ) .
+In the UHop framework , the model is trained to favor the correct relation over incorrect relations .
+That is , to select the correct outbound single - hop relations from current entity e , the model prefers the correct r over the other relations R ? r of e ; to terminate at the current entity e , the model favors the correct relation r linked to the current entity e over the outbound R relations from e .
+To continue the iteration , it proceeds likewise .
+In UHop , we successfully utilize this preference over relations to train the same model to perform both single - hop relation extraction and termination decision .
+Figure 1 shows the difference between previous work and our model in the scenario of multi-hop KBQA task with an simplified knowledge graph and the question " Who published the novel adapted into A Study in Pink ? " as example .
+Single Hop Relation Extraction Single-hop relation extraction can be modeled as pairwise classification of the set of candidate relations .
+Given a question Q , the candidate relation set R , and a pairwise classification model F , single - hop relation extraction is illustrated as r = arg max r?R F ( Q , r ) .
+( 1 ) Hinge loss , used for optimization , is defined as L RE = r?R?r max ( 0 , ?( s r ? s r ) + M ) | R ? r| , ( 2 ) where s r , s r are scores of the true relation and the candidate relations respectively .
+The margin , M , is an arbitrary value in the range ( 0 , 1 ] , where the goal of the loss function is to maximize the margin between the scores of the correct and the incorrect predictions .
+Note that this relation extraction process and those proposed in related work are compatible , which facilitates the installation of stateof - the - art models in the UHop framework .
+Comparative Termination Decision
+In the UHop framework , as we hope to easily replace the used model by state - of - the - art models , we make the termination decision using the same model for single - hop relation extraction so that no additional model is needed .
+Therefore , we propose a progressive method which treats the termination decision as a comparison .
+That is , the model stops when it cannot extract any relation better than that from its previous hop .
+What is different here is R , the relations to be compared against r , are the concatenation of extracted relation and all the relation starting from the new current entity e ; recall that we update e ?
+e before we step into termination decision .
+If the score s r is higher than all the compared relations , the searching process terminates ; otherwise , it continues .
+Given a question Q , an extracted relation r from the previous entity , the candidate relation set R from the new current entity e , and the same model F as in the single hop relation extraction , the procedure can be formulated as Loss is defined depending on the flag stop .
+If the process should continue , i.e. , stop is false , loss is defined as stop = True , F ( Q , r ) > F ( Q , r ) ?r ? R False , F ( Q , r ) < F ( Q , r ) ?r ? R ( 3 ) L T D = max ( 0 , ?( s r ? s r ) + margin ) , ( 4 ) where score s r is the score of the question paired with the gold relation r in the next hop and s r is the score of the question paired with the extracted relation r.
+In contrast , if the process should terminate , we optimize the model by L T D = r?R max ( 0 , ?( s r ? s r ) + M ) | R| . ( 5 ) The model thus learns to infer s r is greater than s r , resulting in the termination of relation extraction .
+Dynamic Question Representation
+While UHop inferences hop by hop , it is straightforward to enforce the focus at different aspects of the question .
+For this purpose , we update the question representation for each hop by defining a dynamic question representation generation function G. Given the previously selected relation path P and the original question Q , G generates the new question representation as Q = G ( Q , P ) .
+Our assumption is that since the current relation has been selected , its related information in the question loses importance when extracting the next relation .
+Inspired by both supervised attention ( Mi et al. , 2016 ; Liu et al. , 2016 ; Kamigaito et al. , 2017 ) , which is lacking in our datasets , and the coverage loss design for summarization ( See et al. , 2017 ) , we de-focus the selected relation by manipulating weights in the question representation .
+We propose two ways of updating the question representation , taking into account the existence of the attention layer in the model 's architecture .
+For attentive models , we directly utilize the attention weight as part of our dynamic question representation generation function by G ( Q , P ) = W ( Q ? attention ( Q , P ) ) + B. ( 6 ) For non-attentive models , we apply a linear transformation function as G on the concatenation of the previously selected relation and the question representation to yield the new representation : G ( Q , P ) = W [ Q : P ] + B , ( 7 ) where W and B are weight matrices to be optimized during training .
+Jointly Trained Subtasks
+In training , we jointly optimize the two subtasks of UHop .
+For each question and its candidates , the loss function is defined as L = H i ( L ( i ) RE + L ( i ) T D ) , ( 8 ) where H is the number of hops in the gold relation path ; L ( i ) RE and L ( i ) T D are the loss of the two subtasks at the i-th hop respectively .
+Experiments
+In this section , we illustrate the performance UHop achieves while reducing the search space , and its relation inference power for multi-hop questions .
+Performances of the state of the art models are listed as the upper-bound .
+Datasets
+For our benchmarking evaluation materials , we selected WebQSP ( WQ ) ( Yih et al. , 2016 ) , as it is used in most related work .
+WebQSP is the annotated version of WebQuestions ( Berant et al. , 2013 ) , which contains questions that require a 1 or 2 - hop relation path to arrive at the answer entity .
+More specifically , about 40 % of the questions require a 2 - hop relation to reach the answer .
+This dataset is based on the Freebase knowledge graph ( Bordes et al. , 2015 ) .
+For questions with multiple answers , we use each answer to construct a question - answer pair .
+Every question is annotated with its inferential relation chain ( i.e. , a relation ) , topic entity , and answer entity .
+The statistics for these two datasets are shown in Table 1 .
+As WQ contains only questions with 1 - and 2 - hop answers that are still short , we also conduct experiments for path length related analysis on the PathQuestion dataset ( Zhou et al. , 2018 ) , which includes questions requiring 3hop answers .
+To the best of our knowledge , this is the only available general - KB dataset containing 3 - hop questions .
+PathQuestion provides two datasets : PathQuestion ( PQ ) and PathQuestion - Large ( PQL ) .
+These both contain 2hop ( PQ2 / PQL2 ) and 3 - hop ( PQ3 / PQL3 ) questions respectively , and both use a subset of Freebase as their knowledge graph .
+Note that for both PQ and PQL , questions are generated using templates , paraphrasing , and synonyms .
+PQL is more challenging than PQ because it utilizes a larger subset of Freebase , and provides fewer training instances .
+The above datasets serve to show that the UHop framework yields performance competitive with state - of - the - art KBRE models .
+Further , we seek to demonstrate that UHop reduces the search space when required reasoning paths are even longer , i.e. , longer than 3 hops , and that UHop works for different kinds of relations .
+For this we use Grid World , a synthetic dataset with questions requiring lengthy - up to 10 hops - relation paths to answer .
+We select it to demonstrate that UHop works for long as well as task -specific relations .
+In Grid World , the input is the starting node , a sequence of navigation instructions , and a 16 - by - 16 fully connected grid .
+The model must follow the instructions to arrive at the destination node .
+Specifically , the task is to navigate to an answer cell ( answer entity ) starting from a random cell ( topic entity ) given a sequence of instructions ( questions ) .
+The KB consists of triples such as ( ( 4 , 1 ) , South , ( 5 , 1 ) ) , which indicates that the entity ( 5 , 1 ) is south of the entity ( 4 , 1 ) ; questions are sequences of directions such as ( North , NorthEast , South ) .
+Samples in Grid World are classified into 4 buckets -[ 2- 4 ] , [ 4 - 6 ] , [ 6 ] [ 7 ] [ 8 ] , and [ 8 - 10 ] - according to their reasoning path length .
+Unlike relations included in general knowledge bases like Freebase , relations in Grid World are the relative directions of two nodes .
+MetaQA ( Zhang et al. , 2018 b ) and sequence QA are two other multi-hop knowledge - based question - answering datasets which we do not use for experiments in this paper .
+MetaQA is a multihop dataset for end-to- end KBQA based on a movie knowledge graph with 43 k entities .
+However , it is too simple for discussions as it contains only 6 relations and on average the number of the outbound relations for each node is 3 .
+The Complex Sequential QA dataset ( Saha et al. , 2018 ) improves on overly simplistic KBQA datasets .
+Nevertheless , instead of questions requiring multi-hop relation paths , it provides a sequence of questions , each of which requires a single -hop relation to answer , resulting a different setting .
+Hence these two datasets are beyond the scope of this paper .
+Benchmark : WQ Experiments
+Baseline and Settings
+We used two state of the art models , HR - BiLSTM ( Yu et al. , 2017 ) and ABWIM ( Zhang et al. , 2018a ) , as the models for use within the UHop framework .
+Another state of the art model , MVM ( Yu et al. , 2018 ) , is not selected here as it requires additional information : the tail entity type .
+In MVM , to consider each n-th - hop relation , the model searches all related ( n + 1 ) - th-hop relations to collect enough information ; thus further queries are necessary in MVM .
+This property of MVM causes the UHop to degrade to a relationchain based model , which we are trying to avoid .
+We report the results of these two models working within and independent of the UHop framework to evaluate whether relaxing the constraint on the number of hops has any impact on their performance .
+For comparison , we select BiCNN as baselines and list their results .
+As there is no predefined validation set in WQ , we randomly select 10 % of the training data as the validation set .
+The best parameters for different models and datasets were set empirically .
+In all cases we used 300 - dimensional pretrained GloVe ( Pennington et al. , 2014 ) word embeddings and RMSprop optimization .
+In ABWIM , following the setting of ( Zhang et al. , 2018a ) , we respectively chose 1 , 3 , 5 as kernel sizes and 150 as the number of filters for its three CNN layers .
+We tune the following hyperparameters with grid search : ( 1 ) the hidden size for all LSTM ( [ 100 , 150 , 256 ] ) ; ( 2 ) dropout rate ( [ 0 , 0.2 , 0.4 ] ) ; ( 3 ) margin for Hinge loss ( [ 0.1 , 0.3 , 0.5 , 0.7 , 1.0 ] ) ; ( 4 ) learning rate ( [ 0.01 , 0.001 , 0.0001 ] ) .
+Method Accuracy BiCNN ( Yih et al. , 2015 ) 77.74 HR -BiLSTM ( Yu et al. , 2017 ) 82.53 ABWIM ( Zhang et al. , 2018a ) 83.26 1 HR-BiLSTM with UHop 82.60 ABWIM with UHop 82.27
+Results and Discussion
+The experimental results are shown in Table 2 .
+As expected , the performance of models within the UHop framework is comparable to those independent of it , with the additional advantage of the unrestricted number of relation hops and a greatly reduced search space .
+Table 3 lists the average number of candidates the experimental models consider for each question when working within and independent of UHop .
+For a dataset based on a KB with an average of n relations connected to each entity , the approximate search space without UHop is n( n ? 1 ) ( L?1 ) , where L is the predefined maximum hop number ; with UHop the approximate search space is reduced to n( L + 1 ) .
+The specific number depends on the actual number of outbound relations connected to the entities .
+Table 3 shows that UHop reduces the search space by 30 % for WQ , which translates to lower processing time , less memory consumption , and sometimes slightly improved performance .
+PQ2 and PQ3 , and then PQL2 and PQL3 , to create the mixed datasets PQ + and PQL + to evaluate if the model terminates correctly instead of always stopping on the majority of the training data length .
+Again we adopt HR - BiLSTM and ABWIM in this experiment .
+In addition , the IRN model 2 proposed together with the PQ / PQL dataset was selected as one of the baselines for comparison .
+For this dataset containing questions of long relation paths , we also applied the dynamic question representations ( DQ ) in UHop .
+Results and Discussion Results 3 are shown in Table 4 . Both HR -BiLSTM and ABWIM either within or independent of UHop outperform IRN and perform nearly perfectly in all datasets , which confirms that UHop is competitive even with longer relation paths .
+However , as shown in Table 5 , the search space reduction for PQ and PQL is not obvious .
+We find that the knowledge graph used in PQ / PQL ( a subset of Freebase ) is much smaller and less complicated than the original Freebase used in WQ , i.e. , the outbound degree of nodes is relatively small .
+Nevertheless , UHop still performs comparably with previous work .
+This indicates that it also works well in small and simple KBs .
+As all PQ / PQL questions are multi-hop questions , we used dynamic question representations to better reflect transitions in the relation extraction process .
+Table 4 shows that updating the question representation dynamically ( + DQ ) in each iteration benefits relation extraction in most cases .
+In the Grid World experiments , we used MIN -ERVA ( Das et al. , 2017 ) and Neural LP as baselines .
+As understanding questions is not an issue here , we randomly initialized the word embeddings and optimized them during the training process .
+We set the learning rate to 0.001 , the hidden size to 256 , the embedding size to 300 , and optimized the model using the RM - Sprop ( Hinton et al. , 2014 ) Algorithm .
+In this experiment , the search space has gone too large to afford for HR - BiLSTM and ABWIM without the assistance of UHop .
+Results and Discussion
+The results in Figure 2 show that together with the relation extraction model , UHop perfectly solves this problem .
+In the first place , compared to Neural LP and MINERVA , UHop benefits from the more powerful natural language understanding models - HR BiLSTM and ABWIM -equipped with sophisticated LSTM models , whereas Neural LP and MINERVA only use multi-layer neural networks as the policy network .
+This demonstrates UHop 's merit of facilitating the use of novel models .
+In the second place , Figure 2 shows that error propagation leading to poor performance for longpath questions in Neural LP and MINERVA is mitigated by the relation inference power of UHop : it performs well for all four buckets of questions .
+Also , as Grid World includes paths of up to 10 hops , conducting experiments purely by relationchain based models themselves like HR - BiLSTM or ABWIM independent of UHop is not feasible : the number of candidate relations in the exhaustive search space grows exponentially .
+In Grid World , there are 8 directions ( relations ) , and models are allowed to go back and forth .
+Hence given the path length k , the approximate search space for the models working independently is 8 k , while for models working within UHop is 8 ? k.
+We observe that without UHop , the required search space would preclude experiments even on the set containing the shortest paths ) , much less the longer ones .
+5 Further Discussion
+Dataset Characteristics
+In this section we further compare the experimental multi-hop KBQA datasets WQ , PQ , and Grid World .
+Grid World contains questions that require the longest reasoning paths .
+However , they are synthetic , the relations are simply direction tokens , and the questions are just sequences of direction instructions .
+Therefore in this paper , it is only used to test the model 's ability of making long sequential decisions instead of understanding questions .
+From experiments we have seen that delicate models like HR - BiLSTM and ABWIM cannot work on it without UHop , and other models such as Neural LP and MINERVA perform worse as they are rewarded only by question .
+On the other hand , in WQ , questions are written in natural language and can be answered by 1hop or 2 - hop reasoning .
+However , for real-world questions , 2 - hop reasoning is still overly simplistic .
+For example , although WQ questions such as " What is the name of Justin Bieber 's brother ? " are challenging for models , humans can easily answer these with a simple Internet search .
+Noting this problem , the authors of IRN ( Zhou et al. , 2018 ) propose PQ and PQL , for which questions require at least 2 - hop at most 3 - hop relation paths .
+However , PQ / PQL also has its limitations .
+First , the KB used in PQ / PQL is smaller than that in WQ , and its relations are repetitive and show little variety .
+Figure 3 illustrates the relation distributions .
+Second , PQ / PQL questions are generated by extracting relation paths and filling templates , which can lead to questions with obvious , learnable patterns .
+This can be observed by comparing results in Tables 2 and 4 .
+However , repeated relations could also help the model to learn better dynamic question representations with respect to these relations .
+Table 4 shows that updating question representations dynamically ( DQ ) does improve PQ / PQL performance .
+Trained on 3 - hop , Tested on 2 - hop
+To evaluate if the model halts in the search process , we conducted an experiment using PQL3 as the training / validation set and PQL2 as the testing set .
+The results are shown in Table 6 .
+Within the UHop framework , both models outperform their original version by more than 7 % .
+However , with zero 2 - hop samples , it still overfits on the 3hop length in training data , resulting in accuracies lower than 50 % .
+Error Analysis
+The interpretability of UHop , i.e. , the possibility to analyze each hop , facilitates the analysis of error distributions .
+We list the percentage of questions for which UHop fails to extract the correct relations by the number of hops for different datasets .
+The results of HR BiLSTM and AB - WIM within the UHop framework are reported in Table 7 .
+Our observations are offered below .
+First , whether for 1 - hop or 2 - hop WQ questions , both models suffer in relation extraction in the first hop , whereas there are fewer errors in the second hop and for the termination decision .
+Second , for the PQ / PQL datasets , as with the WQ dataset , incorrect relation extraction is the major error , and surprisingly there were no errors for termination decision except for a few on PQL3 with ABWIM .
+After comparing the 2 - hop testing data from PQ2 / PQL2 and PQ + / PQL + , we also observe that long questions help the learning of short questions .
+The model predicts better on 2 - hop data when trained on both 2 - hop and 3 - hop data than when trained on 2 - hop data only .
+Here the improvement in relation extraction in the first hop is the main contributor to this improved performance .
+In contrast , the performance on 3 - hop data suffers when trained on 2 - hop data .
+Third , dynamic question representations ( noted by * ) significantly benefit the relation extraction ( RE ) for the first hop .
+As UHop utilizes the same model for relation selection and termination decision , relieving the attention to the previous relation in the later selection process in the training phase decreases the ambiguity in the earlier selection process in the testing phase .
+Finally , in the experiments trained on 3 - hop and tested on 2 - hop , the model does not terminate correctly on more than 40 % of the PQL2 data even though the relation extraction for 1 - hop and 2hop are both correct .
+We conclude that having no samples of the predicted length for training still hurts performance .
+In addition , there are also a few early terminations after the first relation extraction .
+Due to the different generation processes with different templates for the 2 - hop and 3 - hop questions in PQL , learning from one may not apply to the other .
+Conclusion
+In this paper , we propose the UHop framework to allow an unrestricted number of hops in knowledge - based relation extraction and to reduce the search space .
+Results show that running the same model in the UHop framework achieves comparable results in a reduced search space .
+Moreover , experiments show UHop works well for lengthy relation extraction and can be applied to small , simple KBs with task -specific relations .
+UHop even facilitates the use of most stateof - the - art models , and its transition - based design naturally supports the dynamic question representation for better performance .
+These results attest its strong power for knowledge - based relation extraction .
+The current framework uses a greedy search for each single hop .
+We expect in the future that incorporating a beam search may further improve performance .
+Algorithm 1 :r 1 Unrestricted - hop relation extraction .
+e denotes the extracted topic entity , ' : ' is the concatenation operation , and the termination decision returns
+True if the framework decides to stop . 1 Given KB , Q , e 2 stop ?
+False ; 3 P ? NULL ; 4 R ? outbound relations of e ; 5 while stop = False do 6 through another iteration to extract the next relation in the relation path .

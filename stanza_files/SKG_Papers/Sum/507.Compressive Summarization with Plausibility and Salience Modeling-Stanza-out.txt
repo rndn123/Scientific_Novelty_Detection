@@ -1,0 +1,251 @@
+title
+Compressive Summarization with Plausibility and Salience Modeling
+abstract
+Compressive summarization systems typically rely on a crafted set of syntactic rules to determine what spans of possible summary sentences can be deleted , then learn a model of what to actually delete by optimizing for content selection ( ROUGE ) .
+In this work , we propose to relax the rigid syntactic constraints on candidate spans and instead leave compression decisions to two data-driven criteria : plausibility and salience .
+Deleting a span is plausible if removing it maintains the grammaticality and factuality of a sentence , and spans are salient if they contain important information from the summary .
+Each of these is judged by a pre-trained Transformer model , and only deletions that are both plausible and not salient can be applied .
+When integrated into a simple extraction - compression pipeline , our method achieves strong in- domain results on benchmark summarization datasets , and human evaluation shows that the plausibility model generally selects for grammatical and factual deletions .
+Furthermore , the flexibility of our approach allows it to generalize cross-domain : our system fine - tuned on only 500 samples from a new domain can match or exceed an in-domain extractive model trained on much more data .
+1
+Introduction Compressive summarization systems offer an appealing tradeoff between the robustness of extractive models and the flexibility of abstractive models .
+Compression has historically been useful in heuristic -driven systems Marcu , 2000 , 2002 ; Wang et al. , 2013 ) or in systems with only certain components being learned ( Martins and Smith , 2009 ; Woodsend and Lapata , 2012 ; Qian and Liu , 2013 ) .
+End-to- end learning - based compressive methods are not straightforward to train : 1 Code and datasets available at https://github.
+com / shreydesai /cups exact derivations of which compressions should be applied are not available , and deriving oracles based on ROUGE ( Berg- Kirkpatrick et al. , 2011 ; Durrett et al. , 2016 ; Xu and Durrett , 2019 ; Mendes et al. , 2019 ) optimizes only for content selection , not grammaticality or factuality of the summary .
+As a result , past approaches require significant engineering , such as creating a highly specific list of syntactic compression rules to identify permissible deletions ( Berg- Kirkpatrick et al. , 2011 ; Li et al. , 2014 ; Wang et al. , 2013 ; Xu and Durrett , 2019 ) .
+Such manually specified , hand - curated rules are fundamentally inflexible and hard to generalize to new domains .
+In this work , we build a summarization system that compresses text in a more data-driven way .
+First , we create a small set of high-recall constituency - based compression rules that cover the space of legal deletions .
+Critically , these rules are merely used to propose candidate spans , and the ultimate deletion decisions are controlled by two data-driven models capturing different facets of the compression process .
+Specifically , we model plausibility and salience of span deletions .
+Plausibility is a domain-independent requirement that deletions maintain grammaticality and factuality , and salience is a domain-dependent notion that deletions should maximize content selection ( from the standpoint of ROUGE ) .
+In order to learn plausibility , we leverage a pre-existing sentence compression dataset ( Filippova and Altun , 2013 ) ; our model learned from this data transfers well to the summarization settings we consider .
+Using these two models , we build a pipelined compressive system as follows : ( 1 ) an off-the-shelf extractive model highlights important sentences ; ( 2 ) for each sentence , high- recall compression rules yield span candidates ; ( 3 ) two pre-trained Transformer models ( Clark et al. , 2020 ) judge the plausibility and salience of spans , respectively , and only spans which are both plausible and not salient are deleted .
+We evaluate our approach on several summarization benchmarks .
+On CNN ( Hermann et al. , 2015 ) , WikiHow ( Koupaee and Wang , 2018 ) , XSum ( Narayan et al. , 2018 ) , and Reddit ( Kim et al. , 2019 ) , our compressive system consistently outperforms strong extractive methods by roughly 2 ROUGE -1 , and on CNN / Daily Mail ( Hermann et al. , 2015 ) , we achieve state - of- the- art ROUGE - 1 by using our compression on top of MatchSum ( Zhong et al. , 2020 ) extraction .
+We also perform additional analysis of each compression component : human evaluation shows plausibility generally yields grammatical and factual deletions , while salience is required to weigh the content relevance of plausible spans according to patterns learned during training .
+Furthermore , we conduct out - of- domain experiments to examine the cross-domain generalizability of our approach .
+Because plausibility is a more domain- independent notion , we can hold our plausibility model constant and adapt the extraction and salience models to a new setting with a small number of examples .
+Our experiments consist of three transfer tasks , which mimic real-world domain shifts ( e.g. , newswire ? social media ) .
+By finetuning salience with only 500 in- domain samples , we demonstrate our compressive system can match or exceed the ROUGE of an in- domain extractive model trained on tens of thousands of documentsummary pairs .
+Plausible and Salient Compression
+Our principal goal is to create a compressive summarization system that makes linguistically informed deletions in a way that generalizes crossdomain , without relying on heavily - engineered rules .
+In this section , we discuss our framework in detail and elaborate on the notions of plausibility and salience , two learnable objectives that underlie our span-based compression .
+Plausibility
+Plausible compressions are those that , when applied , result in grammatical and factual sentences ; that is , sentences that are syntactically permissible , linguistically acceptable to native speakers ( Chomsky , 1956 ; Sch?tze , 1996 ) , and factually correct from the perspective of the original sentence .
+Satisfying these three criteria is challenging : acceptability is inherently subjective and measuring factuality in text generation is a major open problem ( Kry?ci?ski et al. , 2020 ; Durmus et al. , 2020 ; Goyal and Durrett , 2020 ) .
+Figure 1 gives examples of plausible deletions : note that of dozens of California wineries would be grammatical to delete but significantly impacts factuality .
+We can learn this notion of plausibility in a datadriven way with appropriately labeled corpora .
+In particular , Filippova and Altun ( 2013 ) construct a corpus from news headlines which can suit our purposes : these headlines preserve the important facts of the corresponding article sentence while omitting minor details , and they are written in an acceptable way .
+We can therefore leverage this type of supervision to learn a model that specifically identifies plausible deletions .
+Salience
+As we have described it , plausibility is a domainindependent notion that asks if a compression maintains grammaticality and factuality .
+However , depending on the summarization task , a compressive system may not want to apply all plausible compressions .
+In Figure 1 , for instance , deleting all plausible spans results in a loss of key information .
+In addition to plausibility , we use a domaindependent notion of salience , or whether a span should be included in summaries of the form we want to produce .
+Labeled oracles for this notion of content relevance ( Gillick and Favre , 2009 ; Berg- Kirkpatrick et al. , 2011 , inter alia ) can be derived from goldstandard summaries using ROUGE ( Lin , 2004 ) .
+We compare the ROUGE score of an extract with and without a particular span as a proxy for its importance , then learn a model to classify which spans improve ROUGE if deleted .
+By deleting spans which are both plausible and salient in Figure 1 , we obtain a compressed sentence that captures core summary content with 28 % fewer tokens , while still being fully grammatical and factual .
+Syntactic Compression Rules
+The base set of spans which we judge for plausibility and salience comes from a recall-oriented set of compression rules over a constituency grammar ; that is , they largely cover the space of valid deletions , but include invalid ones as well .
+Our rules allow for deletion of the following : ( 1 ) parentheticals ( PRN ) and fragments ( FRAG ) ; ( 2 ) adjectives ( JJ ) and adjectival phrases ( ADJP ) ; ( 3 ) adverbs ( RB ) and adverbial phrases ( ADVP ) ; ( 4 ) prepositional phrases ( PP ) ; ( 5 ) appositive noun phrases ( NP 1 -[ , - NP 2 - , ] ) ; ( 6 ) relative clauses ( SBAR ) ; and ( 7 ) conjoined noun phrases ( e.g. , NP 1 -[ CC - NP 2 ] ) , verb phrases ( e.g. , VP 1 -[ CC - VP 2 ] ) , and sentences ( e.g. , S 1 -[ CC - S 2 ] ) .
+Brackets specify the constituent span ( s ) to be deleted , e.g. , CC -NP 2 in NP 1 -[ CC - NP 2 ] .
+Much more refined rules would be needed to ensure grammaticality : for example , in She was [ at the tennis courts ] PP , deletion of the PP leads to an unacceptable sentence .
+However , this base set of spans is nevertheless a good set of building blocks , and reliance on syntax gives a useful inductive bias for generalization to other domains ( Swayamdipta et al. , 2018 ) .
+Summarization System
+We now describe our compressive summarization system that leverages our notions of plausibility and salience .
+For an input document , an off-theshelf extractive model first chooses relevant sentences , then for each extracted sentence , our two compression models decide which sub-sentential spans to delete .
+Although the plausibility and salience models have different objectives , they both output a posterior over constituent spans , and thus use the same base model architecture .
+We structure our model 's decisions in terms of separate sentence extraction and compression decisions .
+Let S 1 , . . . , S n denote random variables for sentence extraction where S i = 1 indicates that the ith sentence is selected to appear in the summary .
+Let C PL 11 , . . . , C PL nm , denote random variables for the plausibility model , where C PL ij = 1 indicates that the jth span of the ith sentence is plausible .
+An analogous set of C SAL ij is included for the salience model .
+These variables are modeled independently and fully specify a compressive summary ; we describe this process more explicitly in Section 4.4 .
+Preprocessing
+Our system takes as input a document D with sentences s 1 , ? ? ? , s n , where each sentence s i has words w i1 , ? ? ? , w im .
+We constrain n to be the maximum number of sentences that collectively have less than 512 wordpieces when tokenized .
+Each sentence has an associated constituency parse T i ( Kitaev and Klein , 2018 ) comprised of constituents c = ( t , i , j ) where t is the constituent 's part-ofspeech tag and ( i , j ) are the indices of the text span .
+Let R ( T i ) denote the set of spans proposed for deletion by our compression rules ( see Section 2.3 ) .
+Extraction
+Our extraction model is a re-implementation of the BERTSum model , which predicts a set of sentences to select as an extractive summary .
+The model encodes the document sentences s 1 , ? ? ? , s n using BERT ( Devlin et al. , 2019 ) , also preprending [ CLS ] and adding [ SEP ] as a delimiter between sentences .
+2
+We denote the token - level representations thus obtained as : [ h doc 11 , ? ? ? , h doc nm ] = Encoder ( [ s 1 , ? ? ? , s n ] )
+During fine-tuning , the [ CLS ] tokens are treated as sentence - level representations .
+We collect the [ CLS ] vectors over all sentences h doc i1 , dot each with a weight vector w ?
+R d , and use a sigmoid to obtain selection probabilities : P ( S i = 1|D ) = ?( h doc i1 w )
+Compression Depicted in Figure 2 , the compression model ( instantiated twice ; once for plausibility and once for salience ) is a sentence - level model that judges which constituent spans should be deleted .
+We encode a single sentence s i at a time , adding [ CLS ] and [ SEP ] as in the extraction model .
+We obtain token - level representations using a pre-trained Transformer encoder : 3 [ h sent i1 , ? ? ? , h sent im ] = Encoder ( [ s i ] )
+We create a span representation for each constituent c k ? C( T i ) .
+For the kth constituent , using its span indices ( i , j ) , we select its corresponding token representations [ h sent ii , ? ? ? , h sent ij ] k ? R ( j ?i ) ?d .
+We then use span attention ( Lee et al. , 2017 ) to reduce this span to a fixed - length vector h span k .
+Finally , we compute deletion probabilities using a weight vector w ?
+R d as follows : P ( C X k = 1 | s j ) = ?( h span k w ) , where C X k is either a plausibility or salience random variable .
+Postprocessing
+As alluded to in Section 2.3 , there are certain cases where the syntactic compression rules license deleting a chain of constituents rather than individual ones .
+A common example of this is in conjoined noun phrases ( NP 1 -[ CC - NP 2 ] ) where if the second noun phrase NP 2 is deleted , its preceding coordinating conjunction CC can also be deleted without affecting the grammaticality of the sentence .
+To avoid changing the compression model substantially , we relegate secondary deletions to a post-processing step , where if a primary constituent like NP 2 is deleted at test-time , its secondary constituents are also automatically deleted .
+Training and Inference
+The extraction and compression models in our summarization system are trained separately , but both used in a pipeline during inference .
+Because the summarization datasets we use do not come with labels for extraction and compression , we chiefly rely on structured oracles that provide supervision for our models .
+In this section , we describe our oracle design decisions , learning objectives , and inference procedures .
+4
+Extraction Supervision
+Following , we derive an oracle extractive summary using a greedy algorithm that selects up to k sentences in a document that maximize ROUGE ( Lin , 2004 ) with respect to the reference summary .
+5
+Compression Supervision
+Because plausibility and salience are two different views of compression , as introduced in Section 2.3 , we have different methods for deriving their supervision .
+However , their oracles share the same high- level structure , which procedurally operate as follows : an oracle takes in as input an uncompressed sentence x , compressed sentence or paragraph y , and a similarity function f .
+Using the list of available compression rules R( T x ) for x , if x without a constituent c k ?
+R ( T x ) results in f ( x\c k , y ) > f ( x , y ) , we assign c k a positive " delete " label , otherwise we assign it a negative " keep " label .
+Intuitively , this oracle measures whether the deletion of a constituent causes x to become closer to y .
+We set f to ROUGE ( Lin , 2004 ) , primarily for computational efficiency , although more complex similarity functions such as BERTScore ( Zhang et al. , 2020 b ) could be used without modifying our core approach .
+Below , we elaborate on the nature of x and y for plausibility and salience , respectively .
+Plausibility .
+We leverage labeled , parallel sentence compression data from news headlines to learn plausibility .
+Filippova and Altun ( 2013 ) create a dataset of 200,000 news headlines and the lead sentence of its corresponding article , where each headline x is a compressed extract of the lead sentence y.
+Critically , the headline is a subtree of the dependency relations induced by the lead sentence , ensuring that x and y will have very similar syntactic structure .
+Filippova and Altun ( 2013 ) further conduct a human evaluation of the headline and lead sentence pairs and conclude that , with 95 % confidence , annotators find the pairs " indistinguishable " in terms of readability and informativeness .
+This dataset therefore suits our purposes for plausibility as we have defined it .
+Salience .
+Though the sentence compression data described above offers a reasonable prior on spanlevel deletions , the salience of a particular deletion is a domain-dependent notion that should be learned from in - domain data .
+One way to approximate this is to consider whether the deletion of a span in a sentence x i of an extractive summary increases ROUGE with the reference summary y ( Xu and Durrett , 2019 ) , allowing us to estimate what types of spans are likely or unlikely to appear in a summary .
+We can therefore derive salience labels directly from labeled summarization data .
+Learning
+In aggregate , our system requires training three models : an extraction model ( ?
+E ) , a plausibility model ( ? P ) , and a salience model ( ? S ) .
+The extraction model optimizes log likelihood over each selection decision S j in document D i , defined as L EXT = ?
+n i=1 j?D i log P ( S ( i ) j = S ( i ) * j | D i ) where S ( i ) * j is the gold label for selecting the jth sentence in the ith document .
+The plausibility model optimizes log likelihood over the oracle decision C PL ( i ) * jk for each constituent c k ?
+R ( T j ) in sentence j , defined as L CMP = ? m j=1 c k ?R ( T j ) log P ( C PL ( i ) jk = C PL ( i ) * jk |s ( i ) j ) .
+The salience model operates analogously over the C SAL variables .
+Inference
+While our sentence selection and compression stages are modeled independently , structurally we need to combine these decisions to yield a coherent summary , recognizing that these models have not been optimized directly for ROUGE .
+Our pipeline consists of three steps : ( 1 ) For an input document D , we select the top-k sentences with the highest posterior selection probabilities : argmax k P ( S i = 1|D ; ? E ) . ( 2 ) Next , for each selected sentence j , we obtain plausible compressions Z P = {c k | P ( C PL jk = 1 | s j ; ? P ) > ? P , ?c k ? R ( T j ) } and salient compressions Z S = {c k | P ( C SAL jk = 1 | s j ; ? S ) > ? S , ?c k ? R ( T j ) } , where ?
+P and ?
+S are hyperparameters discovered with held - out samples .
+( 3 ) Finally , we only delete constituent spans licensed by both the plausibility and salience models , denoted as Z P ?
+Z S , for each sentence .
+The remaining tokens among all selected sentences form the compressive summary .
+6
+We do not perform joint inference over the plausibility and salience models because plausibility is a necessary precondition in span-based deletion , as defined in Section 2.1 .
+If , for example , a compression has a low plausibility score but high salience score , it will get deleted during joint inference , but this may negatively affect the well - formedness of the summary .
+As we demonstrate in Section 6.3 , the plausibility model enforces strong guardrails that prevent the salience model from deleting arbitrary spans that result in higher ROUGE but at the expense of syntactic or semantic errors .
+Experimental Setup
+We benchmark our system first with an automatic evaluation based on ROUGE-1/2/L F 1 ( Lin , 2004 ) .
+7 Our experiments use the following English datasets : CNN / DailyMail ( Hermann et al. , 2015 ) , CNN ( subset of CNN / DM ) , New York Times ( Sandhaus , 2008 ) , WikiHow ( Koupaee and Wang , 2018 ) , XSum ( Narayan et al. , 2018 ) , and Reddit ( Kim et al. , 2019 ) . 8
+We seek to answer three questions : ( 1 ) How does our compressive system stack up against our own extractive baseline and past extractive approaches ?
+( 2 ) Do our plausibility and salience modules successfully model their respective phenomena ?
+( 3 ) How can these pieces be used to improve crossdomain summarization ?
+6
+Our pipeline overall requires 3x more parameters than a standard Transformer - based extractive model ( e.g. , BERT - Sum ) .
+However , our compression module ( which accounts for 2/3 of these parameters ) can be applied on top of any offthe-shelf extractive model , so stronger extractive models with more parameters can be combined with our approach as well .
+7 Following previous work , we use pyrouge with the default command-line arguments : -c 95 -m -n 2 8 See Appendix
+A for dataset splits .
+Systems for Comparison .
+We refer to our full compressive system as CUPS 9 , which includes CUPS EXT and CUPS CMP , the extraction and compression components , respectively .
+CUPS EXT is a re-implementation of BERTSum and CUPS CMP is a module consisting of both the plausibility and salience models .
+The pre-trained encoders in the extraction and compression modules are set to ELECTRA BASE ( Clark et al. , 2020 ) , unless specified otherwise .
+Because our approach is fundamentally extractive ( albeit with compression ) , we chiefly compare against state - of - the - art extractive models : BERT - Sum , the canonical architecture for sentence - level extraction with pre-trained encoders , and MatchSum ( Zhong et al. , 2020 ) , a summary - level semantic matching model that uses BERTSum to prune irrelevant sentences .
+These models outperform recent compressive systems ( Xu and Durrett , 2019 ; Mendes et al. , 2019 ) ; updating the architectures of these models and extending 9 Compressive Summarization with Plausibility and Salience their oracle extraction procedures to the range of datasets we consider is not straightforward .
+To contextualize our results , we also compare against a state - of - the - art abstractive model , PEGA - SUS ( Zhang et al. , 2020a ) , a seq2seq Transformer pre-trained with " gap-sentences . "
+This comparison is not entirely apples-to- apples , as this pre-training objective uses very large text corpora ( up to 3.8TB ) in a summarization -specific fashion .
+We expect our approach to stack with further advances in pretraining .
+Extractive , abstractive , and compressive approaches are typed as ext , abs , and cmp , respectively , throughout the experiments .
+6 In-Domain Experiments
+Benchmark Results Table 1 ( CNN , WikiHow , XSum , Reddit ) and 2 ( CNN / DM ) show ROUGE results .
+From these tables , we make the following observations : Compression consistently improves ROUGE , even when coupled with a strong extractive model .
+Across the board , we see improvements in ROUGE when using CUPS .
+Our results particularly contrast with recent trends in compressive summarization where span-based compression ( in joint and pipelined forms ) decreases ROUGE over sentence extractive baselines ( Zhang et al. , 2018 ; Mendes et al. , 2019 ) .
+Gains are especially pronounced on datasets with more abstractive summaries , where applying compression roughly adds + 2 ROUGE - 1 ; however , we note there is a large gap between extractive and abstractive approaches on tasks like XSum due to the amount of paraphrasing in reference summaries ( Narayan et al. , 2018 ) .
+Nonetheless , our system outperforms strong extractive models on these datasets , and also yields opening statements in the murder trial of movie theater massacre suspect james holmes are scheduled for april 27 , more than a month ahead of schedule , a colorado court spokesman said .
+holmes , 27 , is charged as the sole gunman who stormed a crowded movie theater at a midnight showing of " the dark knight rises " in aurora , colorado , and opened fire , killing 12 people and wounding 58 more in july 2012 .
+holmes , a one-time neuroscience doctoral student , faces 166 counts , including murder and attempted murder charges .
+the accident happened in santa ynez california , near where crosby lives .
+crosby was driving at approximately 50 mph when he struck the jogger , according to california highway patrol spokesman don clotworthy .
+the jogger suffered multiple fractures , and was airlifted to a hospital in santa barbara , clotworthy said .
+update : jonathan hyla said in an phone interview monday that his interview with cate blanchett was mischaracterized when an edited version went viral around the web last week .
+" she was n't upset , " he told cnn .
+blanchett ended the interview laughing , hyla said , and " she was in on the joke . "
+Table 3 : CUPS - produced summaries on CNN , where strikethrough text implies the span is deleted as judged by the plausibility and salience models .
+The base sentences before applying compression are derived from CUPS EXT , the sentence extractive model .
+competitive results on CNN / DM .
+In addition , Table 3 includes representative summaries produced by our compressive system .
+The summaries are highly compressive : spans not contributing to the main event or story are deleted , while maintaining grammaticality and factuality .
+Our compression module can also improve over other off - the-shelf extractive models .
+The pipelined nature of our approach allows us to replace the current BERTSum extractor with any arbitrary , black - box model that retrieves important sentences .
+We apply our compression module on system outputs from Match - Sum ( Zhong et al. , 2020 ) , the current state - of - theart extractive model , and also see gains in this setting with no additional modification to the system .
+Plausibility Study Given that our system achieves high ROUGE , we now investigate whether its compressed sentences are grammatical and factual .
+The plausibility model is responsible for modeling these phenomena , as defined in Section 2.1 , thus we analyze its compression decisions in detail .
+Specifically , we run the plausibility model on 50 summaries from each of CNN and Reddit , and have annotators judge whether the predicted plausible compressions are grammatical and factual with respect to the original sentence .
+10
+By nature , this evaluates the precision of span-based deletions .
+Because the plausibility model uses candidate spans from the high-recall compression rules ( defined in Section 2.3 ) , we compare our plausibility model against the baseline consisting of simply the spans identified by these rules .
+The results 10 See Appendix D for further information on the annotation task and agreement scores .
+Table 4 : Human evaluation of grammaticality ( G ) and factuality ( F ) of summaries , comparing the precision of span deletions from our compression rules ( ?2.3 ) before and after applying the plausibility model ( ?2.1 ) .
+are shown in Table 4 .
+On both CNN and Reddit , the plausibility model 's deletions are highly grammatical , and we also see evidence that the plausibility model makes more semantically - informed deletions to maintain factuality , especially on CNN .
+Factuality performance is lower on Reddit , but incorporating the plausibility model on top of the compression rules results in a 6 % gain in precision .
+There is still , however , a large gap between factuality in this setting and factuality on CNN , which we suspect is because Reddit summaries are different in style and structure than CNN summaries : they largely consist of short event narratives ( Kim et al. , 2019 ) , and so annotators may disagree on the degree to which deleting spans such as subordinate clauses impact the meaning of the events described .
+Table 5 : Results on out -of- domain transfer tasks .
+Fine-tuning results are averaged across 5 runs , each with a random batch of 500 target domain samples .
+Variance among these runs is very low ; see Appendix H .
+Compression Analysis
+The experiments above demonstrate the plausibility model generally selects spans that , if deleted , preserve grammaticality and factuality .
+In this section , we dive deeper into how the plausibility and salience models work together in the final trained summary model , presenting evidence of typical compression patterns .
+We analyze ( 1 ) our default system CUPS , which deletes spans Z P ?Z S ; and ( 2 ) a variant CUPS - NOPL ( without plausibility but with salience ) , which only deletes spans Z S , to specifically understand what compressions the salience model makes without the plausibility model 's guardrails .
+Using 100 randomly sampled documents from CNN , we conduct a series of experiments detailed below .
+On average , per sentence , 16 % of candidate spans deleted by the salience model alone are not plausible .
+For each sentence , our system exposes a list of spans for deletion , denoted by Z P ?
+Z S and Z S for CUPS and CUPS - NOPL , respectively .
+Because Z S is identical across both variants , we can compute the plausibility model 's rejection rate ( 16 % ) , defined as | Z S ? Z C P |/|Z S |. Put another way , how many compressions does the plausibility model reject if partnered with the salience model ?
+On average , per sentence , the plausibility model rejects 16 % of spans approved by the salience model alone , so it does non-trivial filtering of the compressions .
+We observe a drop in the token - level compression ratio , from 26 % in CUPS to 24 % in CUPS - NOPL , which is partially a result of this .
+From a ROUGE - 1/2 standpoint , the slight reduction in compression yields a peculiar effect : on this subset of summaries , CUPS achieves 36.23/14.61 while CUPS -NOPL achieves 36.1/14.79 , demonstrating the plausibility model trades off some salient deletions ( - R1 ) for overall grammaticality ( + R2 ) ( Paulus et al. , 2018 ) .
+Using salience to discriminate between plausible spans increases ROUGE .
+With CUPS , we perform a line search on ? S ? [ 0 , 1 ) , which controls the confidence threshold for deleting nonsalient spans as described in Section 4.4 .
+11 Figure 3 shows ROUGE - 1 across multiple salience cutoffs .
+When ?
+S = 0 , all plausible spans are deleted ; in terms of ROUGE , this setting underperforms the extractive baseline , indicating we end up deleting spans that contain pertinent information .
+In contrast , at the peak when ?
+S = 0.6 , we delete non-salient spans with at least 60 % confidence , and obtain considerably better ROUGE .
+These results indicate that the spans selected by the plausibility model are fundamentally good , but the ability to weigh the content relevance of these spans is critical to end-task performance .
+Out-of-Domain Experiments
+Additionally , we examine the cross-domain generalizability of our compressive summarization system .
+We set up three source ?
+target transfer tasks guided by real-world settings : ( 1 ) NYT ? CNN ( one newswire outlet to another ) , ( 2 ) CNN ?
+Reddit ( newswire to social media , a low-resource domain ) , and ( 3 ) XSum ? WikiHow ( single to multiple sentence summaries with heavy paraphrasing ) .
+For each transfer task , we experiment with two types of settings : ( 1 ) zero-shot transfer , where our system with parameters [ ?
+E ; ? P ; ?
+S ] is directly evaluated on the target test set ; and ( 2 ) fine - tuned transfer , where [ ?
+E ; ? S ] are fine-tuned with 500 target samples , then the resulting system with parameters [ ?
+E ; ? P ; ? S ] is evaluated on the target test set .
+As defined in Section 2.1 , plausibility is a domainindependent notion , thus we do not fine- tune ?
+P . Table 5 shows the results .
+Our system maintains strong zero-shot out - of- domain performance despite distribution shifts : extraction outperforms the lead -k baseline , and compression adds roughly + 1 ROUGE -1 .
+This increase is largely due to compression improving ROUGE precision : extraction is adept at retrieving content - heavy sentences with high recall , and compression helps focus on salient content within those sentences .
+More importantly , we see that performance via fine-tuning on 500 samples matches or exceeds in - domain extraction ROUGE .
+On NYT ? CNN and CNN ?
+Reddit , our system outperforms in- domain extraction baselines ( trained on tens of thousands of examples ) , and on XSum ?
+WikiHow , it comes within 0.3 in - domain average ROUGE .
+These results suggest that our system could be applied widely by crowdsourcing a relatively small number of summaries in a new domain .
+Related Work Compressive Summarization .
+Our work follows in a line of systems that use auxiliary training data or objectives to learn sentence compression ( Martins and Smith , 2009 ; Woodsend and Lapata , 2012 ; Qian and Liu , 2013 ) .
+Unlike these past approaches , our compression system uses both a plausibility model optimized for grammaticality and a salience model optimized for ROUGE .
+Almeida and Martins ( 2013 ) leverage such modules and learn them jointly in a multi-task learning setup , but face an intractable inference problem in their model which needs sophisticated approximations .
+Our approach , by contrast , does not need such approximations or expensive inference machinery like ILP solvers ( Martins and Smith , 2009 ; Berg- Kirkpatrick et al. , 2011 ; Durrett et al. , 2016 ) .
+The highly decoupled nature of our pipelined compressive system is an advantage in terms of training simplicity : we use only simple MLE - based objectives for extraction and compression , as opposed to recent compressive methods that use joint training ( Xu and Durrett , 2019 ; Mendes et al. , 2019 ) or reinforcement learning ( Zhang et al. , 2018 ) .
+Moreover , we demonstrate our compression module can stack with state - of - the - art sentence extraction models , achieving additional gains in ROUGE .
+One significant line of prior work in compressive summarization relies on heavily engineered rules for syntactic compression ( Berg- Kirkpatrick et al. , 2011 ; Li et al. , 2014 ; Wang et al. , 2013 ; Xu and Durrett , 2019 ) .
+By relying on our data-driven objectives to ultimately perform compression , our approach can rely on a leaner , much more minimal set of constituency rules to extract candidate spans .
+Gehrmann et al. ( 2018 ) also extract subsentential spans in a " bottom - up " fashion , but their method does not incorporate grammaticality and only works best with an abstractive model ; thus , we do not compare to it in this work .
+Discourse - based Compression .
+Recent work also demonstrates elementary discourse units ( EDUs ) , spans of sub-sentential clauses , capture salient content more effectively than entire sentences ( Hirao et al. , 2013 ; Li et al. , 2016 ; Durrett et al. , 2016 ; Xu et al. , 2020 ) .
+Our approach is significantly more flexible because it does not rely on an a priori chunking of a sentence , but instead can delete variably sized spans based on what is contextually permissible .
+Furthermore , these approaches require RST discourse parsers and in some cases coreference systems ( Xu et al. , 2020 ) , which are less accurate than the constituency parsers we use .
+Conclusion
+In this work , we present a compressive summarization system that decomposes span-level compression into two learnable objectives , plausibility and salience , on top of a minimal set of rules derived from a constituency tree .
+Experiments across both in - domain and out -of- domain settings demonstrate our approach outperforms strong extractive baselines while creating well - formed summaries .
+( Sandhaus , 2008 ) , XSum ( Narayan et al. , 2018 ) , WikiHow ( Koupaee and Wang , 2018 ) , and Reddit ( Kim et al. , 2019 ) .
+For each dataset , the extraction model selects the top-k sentences to form the basis of the compressive summary .

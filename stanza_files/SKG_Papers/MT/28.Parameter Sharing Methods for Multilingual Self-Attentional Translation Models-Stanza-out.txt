@@ -1,0 +1,210 @@
+title
+Parameter Sharing Methods for Multilingual Self-Attentional Translation Models
+abstract
+In multilingual neural machine translation , it has been shown that sharing a single translation model between multiple languages can achieve competitive performance , sometimes even leading to performance gains over bilingually trained models .
+However , these improvements are not uniform ; often multilingual parameter sharing results in a decrease in accuracy due to translation models not being able to accommodate different languages in their limited parameter space .
+In this work , we examine parameter sharing techniques that strike a happy medium between full sharing and individual training , specifically focusing on the self-attentional Transformer model .
+We find that the full parameter sharing approach leads to increases in BLEU scores mainly when the target languages are from a similar language family .
+However , even in the case where target languages are from different families where full parameter sharing leads to a noticeable drop in BLEU scores , our proposed methods for partial sharing of parameters can lead to substantial improvements in translation accuracy .
+1
+Introduction Neural machine translation ( NMT ; ; ) is now the de-facto standard in MT research due to its relative simplicity of implementation , ability to perform end-to - end training , and high translation accuracy .
+Early approaches to NMT used recurrent neural networks ( RNNs ) , usually LSTMs ( Hochreiter and Schmidhuber , 1997 ) , in their encoder and decoder layers , with the addition of an attention mechanism Luong et al. , 2015 ) to focus more on specific encoded source words when deciding the next translation target output .
+Recently , 1 Data and code of this paper is available at : https://github.com/DevSinghSachan/multilingual_nmt
+Shared Encoder Decoder 2 Source Language : " En " Target Language 2 : " Nl "
+Decoder 1 Target Language 1 : " De " ( a ) Shared encoder , separate decoder ( Dong et al. , 2015 ) .
+Shared Encoder Source Language : " En " Target Language 2 : " Nl "
+Shared Decoder Target Language 1 : " De " ( b ) Shared encoder and decoder ( Johnson et al. , 2017 ) .
+Shared Encoder Decoder 2 Source Language : " En " Target Language 2 : " Nl " Target Language 1 : " De " Decoder 1
+Shareable Parameters ( c ) Proposed shared decoder with partial parameter sharing .
+Figure 1 : Examples of MTL frameworks for the translation of one source language ( for example " En " ) to two target languages ( for example " De " , " Nl " ) .
+The principle remains the same with more than two target languages .
+Best viewed in color .
+the NMT research community has been transitioning from RNNs to an alternative method for encoding sentences using self-attention ( Vaswani et al. , 2017 ) , represented by the so-called " Transformer " model , which both improves the speed of processing sentences on computational hardware such as GPUs due to its lack of recurrence , and achieves impressive results .
+In parallel to this transition to self-attentional models , there has also been an active interest in the multilingual training of NMT systems ( Firat et al. , 2016 ; Johnson et al. , 2017 ; Ha et al. , 2016 ) .
+In contrast to the standard bilingual models , multilingual models follow the multi-task training paradigm ( Caruana , 1997 ) where models are jointly trained on training data from several language pairs , with some degree of parameter sharing .
+The objective of this is two -fold : First , compared to individually training separate models for each language pair of interest , this maintains competitive translation accuracy while reducing the total number of models that need to be stored , a considerable advantage when deploying practical systems .
+Second , by utilizing data from multiple language pairs simultaneously , it becomes possible to improve the translation accuracy for each language pair .
+In multilingual translation , one - to - many translation - translation from a common source language ( for example English ) to multiple target languages ( for example German and Dutch ) - is considered particularly difficult .
+Previous multi-task learning ( MTL ) models for this task broadly consist of two approaches as shown in Figure 1 : ( a ) a model with a shared encoder and one decoder per target language ( Dong et al. ( 2015 ) , shown in Figure 1a ) .
+This approach has the advantage of being able to model each target separately but comes with the cost of slower training and increased memory requirements . ( b ) a single unified model consisting of a shared encoder and a shared decoder for all the language pairs ( Johnson et al . ( 2017 ) , shown in Figure 1 b ) .
+This simple approach is trivially implementable using a standard bilingual translation model and has the advantage of having a constant number of trainable parameters regardless of the number of languages , but has the caveat that the decoder 's ability to model multiple languages can be significantly reduced .
+In this paper , we propose a third alternative : ( c ) a model with a shared encoder and multiple decoders such that some decoder parameters are shared ( shown in Figure 1 c ) .
+This hybrid approach combines the advantages from both the approaches mentioned above .
+It carefully moderates the types of parameters that are shared between the multiple languages to provide the flexibility necessary to decode two different languages , but still shares as many parameters as possible to take advantage of information sharing across multiple languages .
+Specifically , we focus on the aforementioned selfattentional Transformer models , with the set of shareable parameters consisting of the various at-tention weights , linear layer weights , or embedding weights contained therein .
+The full sharing and no sharing of decoder parameters used in previous work are special cases ( refer to Section 2.2 for a detailed description ) .
+To empirically examine the utility of this approach , we examine the case of translation from a common source language to multiple target languages , where the target languages can be either related or unrelated .
+Our work reveals that while full parameter sharing works reasonably well when using target languages from the same family , partial parameter sharing is essential to achieve the best accuracy when translating into multiple distant languages .
+Method
+In this section , we will first briefly describe the key elements of the Transformer model followed by our proposed approach of parameter sharing .
+Transformer Architecture
+As is common in sequence-to-sequence ( seq2seq ) models for NMT , the self-attentional Transformer model ( Figure 2 ; Vaswani et al. ( 2017 ) ) consists of an embedding layer , multiple encoder-decoder layers , and an output generation layer .
+Each encoder layer consists of two sublayers in sequence : self-attentional and feed-forward networks .
+Each decoder layer consists of three sublayers : masked self-attention , encoder-decoder attention , and feedforward networks .
+The core building blocks in all these layers consist of different sets of weight matrices that compute affine transforms .
+First , an embedding layer obtains the source and target word vectors from the input words : W E ? R dm ?V , where d m is model size , and V is vocabulary size .
+After the embedding lookup step , word vectors are multiplied by a scaling factor of ? d m .
+To capture the relative position of a word in the input sequence , position encodings defined in terms of sinusoids of different frequencies are added to the scaled word vectors of the source and target .
+The encoder layer maps the input word vectors to continuous hidden state representations .
+As mentioned earlier , it consists of two sublayers .
+The first sublayer performs multi-head dot-product selfattention .
+In the single - head case , defining the input to the sublayer as x = ( x 1 , . . . , x T ) and the output as z = ( z 1 , . . . , z T ) , where x i , z i ?
+R dm , Enc- Dec Inter Attention k i v i q i a i Layer Norm Layer Norm ReLU Masked Self-Attention Layer Norm x i W 1 F W 1 K W 1 V k i W 1 Q v i q i a i W 2 K W 2 V W 2 Q W 2 F W L 1 W L 2
+Self-Attention Sublayer Encoder-Decoder Attention Sublayer
+Feed-Forward Network Sublayer K , W 1 V , W 1 Q , W 1 F ) , encoder-decoder attention ( W 2 K , W 2 V , W 2 Q , W 2 F ) , and feed-forward network ( W L 1 , W L 2 ) sublayers .
+Best viewed in color .
+the input is linearly transformed to obtain key ( k i ) , value ( v i ) , and query ( q i ) vectors k i = x i W K , v i = x i W V , q i = x i W Q .
+Next , similarity scores ( e ij ) between query and key vectors are computed by performing a scaled dot-product e ij = 1 ? d m q i k T j .
+Next , attention coefficients ( ? ij ) are computed by applying softmax function over these similarity values .
+? ij = exp e ij T l=1 exp e il Self-attention output ( z i ) is computed by the convex combination of attention weights with value vectors followed by a linear transformation z i = ( T j=1 ? ij v j ) W F .
+In the above equations , W K , W V , W Q , W F are learnable transformation matrices of shape R dm?dm .
+To extend to multi-head attention ( ) , one can split the key , value , and query vectors into vectors , perform the attention computation in parallel for each of the vectors followed by concatenating before the final linear transformation by W F .
+The second sublayer consists of a two -layer deep position - wise feed -forward network ( FFN ) with ReLU activation ( Glorot et al. , 2011 ) .
+The decoder layer consists of three sublayers .
+The first sublayer , similar to the encoder , performs masked self-attention where masks are used to prevent positions from attending to subsequent positions .
+The second sublayer performs encoderdecoder inter-attention where the input to the query vector comes from the decoder layer while the input to the key and value vectors comes from the encoder 's last layer .
+To denote parameters in these two sublayers , the transformation weights of the masked self-attention sublayer are referenced as FFN ( z i ) = max ( 0 , z i W L 1 + b 1 ) W L 2 + b 2 where W L 1 ? R dm?d h , W L 2 ? R d h ?dm , W 1 K , W 1 V , W 1 Q , W 1 F and encoder-decoder atten - tion sublayer as W 2 K , W 2 V , W 2 Q , W 2 F , which is also indicated in Figure 2 .
+The third sublayer consists of an FFN .
+To generate predictions for the next word , there is a linear layer on top of the decoder layer .
+The weight of this linear layer is shared with the weight of the embedding layer ( Inan et al. , 2016 ) .
+Residual connections ( He et al. , 2016 ) and layer normalization ( Ba et al. , 2016 ) are applied on each sublayer and to the output vector from the final encoder and decoder layers .
+Parameter Sharing Strategies
+In this paper , our objective is to investigate effective parameter sharing strategies for the Transformer model using MTL , mainly for one - to -many multilingual translation .
+Here , we will use the symbol ? to denote the set of shared parameters in our model .
+These parameter sharing strategies are described below : ?
+The base case consists of separate bilingual translation models for each language pair ? = ? . ?
+Use of a common embedding layer for all the bilingual models ? = { W E } .
+This will result in a significant reduction of the total parameters by sharing parameters across common words present in the source and target sentences ( Wu et al. , 2016 ) . ?
+Use of a common encoder for the source language and a separate decoder for each target language ? = { W E , ? ENC } .
+This has the advantage that the encoder will now see more source language training data ( Dong et al. , 2015 ) .
+Next , we also include the decoder parameters among the set of shared parameters .
+While doing so , we will assume that the embedding and the encoder parameters are always shared between the bilingual models .
+Because there can be exponentially many combinations considering all the different feasible sets of shared parameters between the multiple decoders , we only select a subset of these combinations based on our preliminary results .
+These selected weights are shared in all the layers of the decoder unless stated otherwise .
+A schematic diagram illustrating the various possible parameter matrices that can be shared in each sublayer of our MTL model is shown in Figure 3 . ?
+We share only the FFN sublayer parameters ? = W E , ? ENC , W L 1 , W L 2 . ?
+Sharing the weights of the self-attention sublayer ? = W E , ? ENC , W 1 K , W 1 Q , W 1 V , W 1 F . ?
+Sharing the weights of the encoder-decoder attention sublayer ? = W E , ? ENC , W 2 K , W 2 Q , W 2 V , W 2 F . ?
+We limit the attention parameters that are shared to only include either the key and query weights ? = W E , ? ENC , W 1 K , W 1 Q , W 2 K , W 2 Q or the key and value weights ? = W E , ? ENC , W 1 K , W 1 V , W 2 K , W 2 V .
+The motivation for doing so is so that the shared attention sublayer weights can model the common aspects of the target languages while the individual FFN sublayer weights can model the distinctive or unique aspects of each language .
+?
+We share all the parameters of the decoder to have a single unified model ?
+DEC .
+Fewer parameters in the decoder indicates limited modeling ability , and we expect this method to obtain good translation accuracy mainly when the target languages are related ( Johnson et al. , 2017 ) . ? = W E ,
+Experimental Setup
+In this section , first , we describe the datasets used in this work and the evaluation criteria .
+Then , we describe the training regimen followed in all our experiments .
+All of our models were implemented in PyTorch framework ( Paszke et al. , 2017 ) and were trained on a single GPU .
+Datasets and Evaluation Metric
+To perform multilingual translation experiments , we select six language pairs from the openly available TED talks dataset ( Qi et al. , 2018 ) whose statistics are mentioned in Table 1 .
+This dataset already contains predefined splits for training , development , and test sets .
+Among these languages , Romanian ( RO ) and French ( FR ) are Romance languages , German ( DE ) and Dutch ( NL ) are Germanic languages while Turkish ( TR ) and Japanese ( JA ) are unrelated languages that come from distant language families .
+For all language pairs , tokenization was carried out using the Moses tokenizer , 2 except for Japanese , where word segmentation was performed using the KyTea tokenizer ( Neubig et al. , 2011 ) .
+To select training examples , we filter sentences with a maximum length of 70 tokens .
+For evaluation , we report the model 's performance using the standard BLEU score metric ( Papineni et al. , 2002 ) .
+We use the mtevalv14.pl script from the Moses toolkit to compute the tokenized BLEU scores .
+Training Protocols
+In this work , we follow the same training process for all the experiments .
+We jointly encode the source and target language words with subword units by applying byte pair encoding ( Gage , 1994 ) with 32,000 merge operations ( Sennrich et al. , 2016 ) .
+These subword units restrict the vocabulary size and prevent the need for explicitly handling out - of- vocabulary symbols as the vocabulary can be used to represent any word .
+We use LeCun uniform initialization ( LeCun et al. , 1998 ) for all the trainable model parameters .
+Embedding layer weights are randomly initialized according to truncated Gaussian distribution W E ? N ( 0 , d m ?1/2 ) .
+In all the experiments , we use Transformer base model configuration ( Vaswani et al. , 2017 ) that consists of six encoder-decoder layers , d m = 512 , d h = 2 , 048 , and = 8 .
+For optimization , we use SGD with Adam optimizer ( Kingma and Ba , 2014 ) with ?
+1 = 0.9 , ? 2 = 0.997 , and = 1e ?9 . 3
+The learning rate ( lr ) schedule is varied at every optimization step ( step ) according to : lr = 2d ?0.5 m min step ?0.5 , step ? 16000 ?1.5
+Each mini-batch consists of approximately 3 , 000 source and 3 , 000 target tokens such that similar length sentences are bucketed together .
+We train the models until convergence and save the best checkpoint using development set performance .
+For model regularization , we use label smoothing ( = 0.1 ) ( Pereyra et al. , 2017 ) and apply dropout ( with p drop = 0.1 ) ( Srivastava et al. , 2014 ) to the word embeddings , attention coefficients , ReLU activation , and to the output of each sublayer before the residual connection .
+During decoding , we use beam search with beam width 5 and length normalization with ? = 1 ( Wu et al. , 2016 ) .
+Multilingual Training During the multilingual model 's training and inference , we include an additional token representing the desired target language at the start of each source sentence ( Johnson et al. , 2017 ) .
+The presence of this additional token will help the model learn the target language to translate to during decoding .
+For preprocessing , we apply byte pair en-coding over the combined dataset of all the language pairs .
+We perform model training using balanced mini-batches i.e. it contains roughly an equal number of sentences for every target language .
+While training , we compute weighted average cross-entropy loss where the weighting term is proportional to the total word count observed in each of the target language sentences .
+Results
+In this section , we will describe the results of our proposed parameter sharing techniques and later present the broader context by comparing them with bilingual translation models and previous benchmark methods .
+Parameter Sharing
+Here , we first analyze the results of one- to-many multilingual translation experiments when there are two target languages and both of them belong to the same language family .
+The first set of experiments are on Romance languages ( EN?RO + FR ) and the second set of experiments are on Germanic languages ( EN?DE + NL ) .
+We report the BLEU scores in Table 2a when different sets of parameters are shared in these experiments .
+We observe that sharing only the embedding layer weight between the multiple models leads to the lowest scores .
+Sharing the encoder weights results in significant improvement for EN?RO +FR but leads to a small decrease in EN?DE +NL scores .
+We then gradually include both the decoder 's weights to the set of shareable parameters .
+Specifically , we include the parameters of FFN , selfattention , encoder-decoder attention , both the attention sublayers , key , query , value weights from both the attention sublayers , and finally all the parameters of the decoder layer .
+From the results , we note that the sharing of the encoder-decoder attention weights leads to substantial gains .
+Finally , sharing the entirety of the parameters ( i.e. having one model ) leads to the best BLEU scores for EN?RO + FR and sharing only the key and query matrices from both the attention layers leads to the best BLEU scores for EN?DE+NL .
+One of the reasons for such large increase in BLEU is that encoder has access to more English language training data and for the decoder , as the target languages belong to the same family , they may contain common vocabulary , thus improving the generalization error for both the target languages .
+Next , we analyze the results of one- to-many translation experiments when both the target languages belong to distant language families and are unrelated .
+The first set of experiments are on Germanic , Turkic languages ( EN?DE + TR ) and the second set of experiments are on Germanic , Japonic languages ( EN ? DE + JA ) .
+We present the results in Table 2 b when different sets of parameters are shared .
+Here , we observe that the approach of sharing all the parameters leads to a noticeable drop in the BLEU scores for both the considered language pairs .
+Similar to the above discussion , sharing the key and query matrices results in a large increase in the BLEU scores .
+We hypothesize that in this partial parameter sharing strategy , the sharing of key and query attention weights effectively models the common linguistic properties while the separate FFN sublayer weights model the unique characteristics of each target language , thus overall leading to a large improvement in the BLEU scores .
+The results of other decoder parameter sharing approaches lie close to the key and query parameter sharing method .
+As the target languages are from different families , their vocabularies may have some overlap but will be significantly different from each other .
+In this scenario , a useful alternative is to consider a separate embedding layer for every source - target language pair while sharing all the encoder and decoder parameters .
+However , we did not experiment with this approach , as the inclusion of separate embedding layers will lead to a large increase in the model parameters and as a result model training will become more memory intensive .
+We leave the investigation of such parameter sharing strategy to future work .
+Overall Comparison In Table 3 , we show an overall performance comparison of no parameter sharing , full parameter sharing for both GNMT ( Wu et al. , 2016 ) and Transformer models , and the best approaches according to maximum BLEU score from our partial parameter sharing strategies .
+For training the GNMT models , we use its open-source implementation 4 ( Luong et al. , 2017 ) with four layers 5 and default parameter settings .
+First , we note that the BLEU scores of the Transformer model are always better than the GNMT model by a significant margin for both bilingual ( no sharing ) and multilingual , ? ENC , W 1 K , W 1 V , W 2 K , W 2 V 27.77 43.83 30.54 34.00 80 W E , ? ENC , W 1 K , W 1 Q , W 2 K , W 2 Q 27.58 43.84 30.70 34.05 80 W E , ? ENC , W 1 K , W 1 Q , W 1 V , W 1 F , W 2 K , W 2 Q , W 2 V , W E , ? ENC , W 1 K , W 1 Q , W 1 V , W 1 F 30.35 19.24 30.05 18.78 80 W E , ? ENC , W 2 K , W 2 Q , W 2 V , W 2 F 30.49 19.40 30.16 18.73 80 W E , ? ENC , W 1 K , W 1 V , W 2 K , W 2 V 30.66 19.34 30.36 18.92 80 W E , ? ENC , W 1 K , W 1 Q , W 2 K , W 2 Q 30.71 19.67 30.48 19.00 80 W E , ? ENC , W 1 K , W 1 Q , W 1 V , W 1 F , W 2 K , W 2 Q , W 2 V , W 2 F 30 . ( b) The target languages in this one - to -many translation task belong to distant language families .
+DE , TR , and JA are unrelated as they belong to Germanic , Turkic , and Japonic language families respectively .
+Table 2 : BLEU scores for various parameter sharing strategies when the target languages either belong to the same family ( { RO , FR} , { DE , NL} ) or to distant families ( DE , TR , JA ) .
+?
+ENC denotes that all the encoder parameters are shared between the models ; ?
+DEC denotes that all the decoder parameters are shared between the models .
+Table 3 : BLEU scores for different models for one- to -many translation task .
+NS : No Sharing corresponds to the bilingual models when the two language pairs are trained independently ; FS : Full Sharing means one model is used for the translation of all the language pairs ; PS : Partial Sharing means that the embedding , encoder , decoder 's key , and value weights are shared between the two models .
+Method ( full sharing ) translation tasks .
+This reflects that the Transformer model is well -suited for both multilingual and bilingual translation tasks compared with the GNMT model .
+We also surprisingly note that the GNMT fully shared model is able to consistently obtain higher BLEU scores compared with its bilingual version irrespective of which families the target languages belong to .
+However , for the one-to-many translation task when the target languages are from distant families , we observe that fully shared Transformer model leads to a substantial drop or small gains in the BLEU score compared with the bilingual models .
+Specifically , for the EN?DE +TR setting , BLEU drops by 0.6 for EN ?DE , while staying even for EN?TR .
+In contrast , our method of sharing embedding , encoder , decoder 's key , and query parameters leads to substantial increases in BLEU scores ( 1.4 ? for EN ?DE and 1.1 ? for EN?TR ) .
+Similarly , for EN?DE + JA , using the fully shared Transformer model , we observe small gains of 0.3 and 0.5 BLEU points for EN ?DE and EN ?
+JA respectively while our partial parameter sharing method again leads to significant improvements ( 1.5 ? for EN ?DE and 1.1 ? for EN?JA ) .
+This demonstrates the utility of our proposed partial parameter sharing method .
+We also note that fully shared Transformer models can be an effective strategy only when both the target languages are from the same family .
+For the task of EN?RO + FR , the fully shared model performs surprisingly well and yields significant improvements of 1.7 and 1.3 BLEU points compared with bilingual models for EN ?RO and EN ?
+FR respectively .
+A similar increase in performance can also be observed for the EN?DE +NL task , although for this task , our partial parameter sharing method ( encoder , embedding , decoder 's key , and query weights ) obtains even higher BLEU scores .
+( 1.4 ? for EN?DE and 1.6 ? EN?NL ) .
+Analysis
+Here , we analyze the generated translations of the partial sharing and full sharing approaches for EN ?
+DE when one- to - many multilingual model was trained on unrelated target language pairs EN?DE+TR .
+These translations were obtained using the test set of EN ?
+DE task .
+Here partial sharing refers to the specific approach of sharing the embedding , encoder , and decoder 's key and query parameters in the model .
+We show example translations in Table 4 where partial sharing method gets a high BLEU score ( shown in parentheses ) but the full sharing method does not .
+We see that sentences generated by partial sharing method are both semantically and grammatically correct while the full sharing method generates shorter sentences compared with reference translations .
+As highlighted in table cells , the partial sharing method is able to correctly translate a mention of relative time " half a year " and a coreference expression " mich " .
+In contrast , the fully shared model generates incorrect expressions of time mentions " eineinhalb Jahren " ( one and half years ) and different verb forms ( " schl ? gt " is generated vs " schlagen " in the reference ) .
+We also perform a comparison of the F-measure of the target words for EN ?
+DE , bucketed by frequency in the training set .
+As displayed in Figure 4 , this shows that the partial parameter sharing approach improves the translation accuracy for the entire vocabulary , but in particular for words that have low-frequency in the dataset .
+Related Work
+In this section , we will review the prior work related to MTL and multilingual translation .
+Multi-task learning Ando and Zhang ( 2005 ) obtained excellent results by adopting an MTL framework to jointly train linear models for NER , POS tagging , and language modeling tasks involving some degree of parameter sharing .
+Later , Collobert et al . ( 2011 ) MTL has also been widely applied to multilingual translation that will be discussed next .
+Multilingual Translation
+On the multilingual translation task , Dong et al . ( 2015 ) obtained significant performance gains by sharing the encoder parameters of the source language while having a separate decoder for each target language .
+Later , Firat et al. ( 2016 ) attempted the more challenging task of many - to - many translation by training a model that consisted of one shared encoder and decoder per language and a shared attention layer that was common to all languages .
+This approach obtained competitive BLEU scores on ten European language pairs while substantially reducing the total parameters .
+Recently , Johnson et al. ( 2017 ) proposed a unified model with full parameter sharing and obtained comparable or better performance compared with bilingual translation scores .
+During model training and decoding , target language was specified by an additional token at the beginning of the source sentence .
+Coming to low-resource language translation , Zoph et al . ( 2016 ) used a transfer learning approach of fine-tuning the model parameters learned on a high- resource language pair of French ?
+English and were able to significantly increase the translation performance on Turkish and Urdu languages .
+Recently , Gu et al. ( 2018 ) ad- dresses the many - to - one translation problem for extremely low-resource languages by using a transfer learning approach such that all language pairs share the lexical and sentence - level representations .
+By performing joint training of the model with high- resource languages , large gains in the BLEU scores were reported for low-resource languages .
+In this paper , we first experiment with the Transformer model for one - to - many multilingual translation on a variety of language pairs and demonstrate that the approach of Johnson et al . ( 2017 ) and Dong et al . ( 2015 ) is not optimal for all kinds of target -side languages .
+Motivated by this , we introduce various parameter sharing strategies that strike a happy medium between full sharing and partial sharing and show that it achieves the best translation accuracy .
+Conclusion
+In this work , we explore parameter sharing strategies for the task of multilingual machine translation using self-attentional MT models .
+Specifically , we examine the case when the target languages come from the same or distant language families .
+We show that the popular approach of full parameter sharing may perform well only when the target languages belong to the same family while a partial parameter sharing approach consisting of shared embedding , encoder , decoder 's key and query weights is generally applicable to all kinds of language pairs and achieves the best BLEU scores when the languages are from distant families .
+For future work , we plan to extend our parameter sharing approach in two directions .
+First , we aim to increase the number of target languages to more than two such that they contain a mix of both similar and distant languages and analyze the performance of our proposed parameter sharing strategies on them .
+Second , we aim to experiment with additional parameter sharing strategies such as sharing the weights of some specific layers ( e.g. the first or last layer ) as different layers can encode different morphological information ( Belinkov et al. , 2017 ) which can be helpful in better multilingual translation .
+Figure 2 : 2 Figure 2 : Block diagram illustrating the Transformer decoder 's shareable parameters ( in color ) that includes embedding layer weights ( W E ) , tied linear layer weights ( W T E ) , transformation weights as a part of self-attention ( W 1 K , W 1 V , W 1 Q , W 1 F ) , encoder-decoder attention ( W 2 K , W 2 V , W 2 Q , W2F ) , and feed-forward network ( W L 1 , W L 2 ) sublayers .
+Best viewed in color .

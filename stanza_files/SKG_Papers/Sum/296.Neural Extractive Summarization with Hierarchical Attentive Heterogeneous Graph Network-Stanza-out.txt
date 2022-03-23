@@ -1,0 +1,185 @@
+title
+Neural Extractive Summarization with Hierarchical Attentive Heterogeneous Graph Network
+abstract
+Sentence -level extractive text summarization is substantially a node classification task of network mining , adhering to the informative components and concise representations .
+There are lots of redundant phrases between extracted sentences , but it is difficult to model them exactly by the general supervised methods .
+Previous sentence encoders , especially BERT , specialize in modeling the relationship between source sentences .
+While , they have no ability to consider the overlaps of the target selected summary , and there are inherent dependencies among target labels of sentences .
+In this paper , we propose HAHSum ( as shorthand for Hierarchical Attentive Heterogeneous Graph for Text Summarization ) , which well models different levels of information , including words and sentences , and spotlights redundancy dependencies between sentences .
+Our approach iteratively refines the sentence representations with redundancy - aware graph and delivers the label dependencies by message passing .
+Experiments on large scale benchmark corpus ( CNN / DM , NYT , and NEWSROOM ) demonstrate that HAHSum yields ground - breaking performance and outperforms previous extractive summarizers .
+Introduction
+Single document extractive summarization aims to select subset sentences and assemble them as informative and concise summaries .
+Recent advances ( Nallapati et al. , 2017 ; Zhou et al. , 2018 ; Liu and Lapata , 2019 ; Zhong et al. , 2020 ) focus on balancing the salience and redundancy of sentences , i.e. selecting the sentences with high semantic similarity to the gold summary and resolving the redundancy between selected sentences .
+Taking Table Table 1 : Simplified News from Jackson County Prosecutor .
+Salience score is an approximate estimation derived from semantic and Label is converted from gold summary to ensure the concision and accuracy of the extracted summaries .
+1 for example , there are five sentences in a document , and each of them is assigned one salience score and one label indicating whether this sentence should be contained in the extracted summary .
+Although sent1 , sent3 , and sent4 are assigned high salience score , just sent3 and sent4 are selected as the summary sentences ( with label 1 ) because there are too much redundancy information between unselected sent1 and selected sent3 .
+That is to say , whether one sentence could be selected depends on its salience and the redundancy with other selected sentences .
+However , it is still difficult to model the dependency exactly .
+Most of the previous approaches utilize autoregressive architecture ( Narayan et al. , 2018 ; Mendes et al. , 2019 ; Liu and Lapata , 2019 ; Xu et al. , 2020 ) , which just models the unidirectional dependency between sentences , i.e. , the state of the current sentence is based on previously sentence labels .
+These models are trained to predict the current sentence label given the ground truth labels of the previous sentences , while feeding the predicted labels of the previous sentences as input in inference phase .
+As we all know , the autoregressive paradigm faces error propagation and exposure bias problems ( Ranzato et al. , 2015 ) .
+Besides , reinforcement learning is also introduced to consider the semantics of extracted summary ( Narayan et al. , 2018 ; Bae et al. , 2019 ) , which combines the maximum-likelihood cross-entropy loss with the rewards from policy gradient to directly optimize the evaluation metric for the summarization task .
+Recently , the popular solution is to build a summarization system with two -stage decoder .
+These models extract salient sentences and then rewrite ( Chen and Bansal , 2018 ; Bae et al. , 2019 ) , compress ( Lebanoff et al. , 2019 ; Xu and Durrett , 2019 ; Mendes et al. , 2019 ) , or match ( Zhong et al. , 2020 ) these sentences .
+Previous models generally use top-k strategy as an optimal strategy : for different documents , the number of selected sentences is constant which conflicts with the real world .
+For example , almost all previous approaches extract three sentences from the source articles ( top - 3 strategy ( Zhou et al. , 2018 ; Liu and Lapata , 2019 ; Zhang et al. , 2019 b ; Xu et al. , 2020 ) ) , although 40 % documents in CNN / DM contain more or less than 3 - sentences oracle summary .
+That 's because these approaches are difficult to measure the salience and redundancy simultaneously with error propagation .
+Notably , Mendes et al. ( 2019 ) introduces the length variable into the decoder and Zhong et al . ( 2020 ) can choose any number of sentences by match candidate summary in semantic space .
+In order to address above issues , we construct the source article as a hierarchical heterogeneous graph ( HHG ) and propose a Graph Attention Net ( Veli?kovi ?
+et al. , 2018 ) based model ( HAHSum ) to extract sentences by simultaneously balancing salience and redundancy .
+In HHG , both words and sentences are constructed as nodes , the relations between them are constructed as different types of edges .
+This hierarchical graph can be viewed as a two -level graph : word -level and sentencelevel .
+For word- level graph ( word-word ) , we design an Abstract Layer to learn the semantic representation of each word .
+Then , we transduce the word- level graph into the sentence - level one , by aggregating each word to its corresponding sentence node .
+For sentence - level graph ( sentencesentence ) , we design a Redundancy Layer , which firstly pre-labels each sentence and iteratively updates the label dependencies by propagating redundancy information .
+The redundancy layer restricts the scale of receptive field for redundancy information , and the information passing is guided by the ground - truth labels of sentences .
+After obtaining the redundancy - aware sentence representations , we use a classifier to label these sentence - level nodes with a threshold .
+In this way , the whole framework extracts summary sentences simultaneously instead of autoregressive paradigm , taking away the top-k strategy .
+The contributions of this paper are as below : 1 ) We propose a hierarchical attentive heterogeneous graph based model ( HAHSum ) to guide the redundancy information propagating between sentences and learn redundancy - aware sentence representation ; 2 ) Our architecture is able to extract flexible quantity of sentences with a threshold , instead of top -k strategy ; 3 ) We evaluate HAHSum on three popular benchmarks ( CNN / DM , NYT , NEWSROOM ) and experimental results show that HAHSum outperforms the existing state - of - the - art approaches .
+Our source code will be available on Github 1 .
+Related Work
+Extractive Summarization Neural networks have achieved great success in the task of text summarization .
+There are two main lines of research : abstractive and extractive .
+The abstractive paradigm ( Rush et al. , 2015 ; See et al. , 2017 ; Celikyilmaz et al. , 2018 ; focuses on generating a summary word- by - word after encoding the full document .
+The extractive approach ( Cheng and Lapata , 2016 ; Zhou et al. , 2018 ; Narayan et al. , 2018 ) directly selects sentences from the document to assemble into a summary .
+Recent research work on extractive summarization spans a large range of approaches .
+These work usually instantiate their encoder-decoder architecture by choosing RNN ( Nallapati et al. , 2017 ; Zhou et al. , 2018 ) , Transformer Zhong et al. , 2019 b ; Liu and Lapata , 2019 ; Zhang et al. , 2019 b ) or Hierarchical GNN as encoder , autoregressive ( Jadhav and Rajan , 2018 ; Liu and Lapata , 2019 ) or nonautoregressive ( Narayan et al. , 2018 ; Arumae and Liu , 2018 ) decoders .
+The application of RL provides a means of summary - level scoring and brings improvement ( Narayan et al. , 2018 ; Bae et al. , 2019 ) .
+Graph Neural Network for NLP
+Recently , there is considerable amount of interest in applying GNN to NLP tasks and great success has been achieved .
+Fernandes et al. ( 2019 ) applied sequence GNN to model the sentences with named entity information .
+Yao et al. ( 2019 ) used twolayer GCN for text classification and introduced a well - designed adjacency matrix .
+GCN also played an important role in Chinese named entity ( Ding et al. , 2019 ) . proposed a new contextualized neural network for sequence learning by leveraging various types of non-local contextual information in the form of information passing over GNN .
+These studies are related to our work in the sense that we explore extractive text summarization by message passing through hierarchical heterogeneous architecture .
+Methodology
+Problem Definition Let S = {s 1 , s 2 , ... , s N } denotes the source document sequence which contains N sentences , where s i is the i-th sentence of document .
+Let T denotes the hand-crafted summary .
+Extractive summarization aims to produce summary S * = {s * 1 , s * 2 , ... , s * M } by selecting M sentences from S , where M ? N . Labels Y = {y 1 , y 2 , ... , y N } are derived from T , where y i ? { 0 , 1 } denotes whether sentence s i should be included in the extracted summary .
+Oracle summary is a subset of S , which achieves the highest ROUGE score calculated with T .
+Graph Construction
+In order to model the redundancy relation between sentences , we use a heterogeneous graph which contains multi-granularity levels of information to represent a document , as shown in Figure 1 .
+In this graph , there are three types of nodes : named entity , word , and sentence .
+To reduce semantic sparsity , we replace text spans of Named Entity by anonymized tokens ( e.g.
+[ Person A ] , [ Person B ] , [ Date A ] ) .
+Word node is the original textual item , representing word-level information .
+Different from DivGraphPointer ( Sun et al. , 2019 ) , which aggregates identical words into one node , we keep each word occurrence as one node to avoid the confusion of different contexts .
+Each Sentence node corresponds to one sentence and represents the global information of one sentence .
+We also define four types of edges to represent various structural information in HAHSum : 1 . We connect sequential named entities and words in one sentence using directed Next edges .
+2 . We connect one named entity node or word node to one sentence node with directed
+In edge if the named entity or word occurs in this sentence .
+3 . We connect two named entity nodes with undirected Same edge if they are the same named entity .
+4 . We connect two sentence nodes with undirected Similar edge if they have trigram overlapping .
+The topological structure of graph can be represented by adjacency matrix A , where the booltype element is indicating whether there is an edge between nodes .
+Because HAHsum contains multi-granularity levels of information , it can be divided into three subgraphs : the word-level , wordsentence , and sentence - level subgraph .
+So , we define three adjacency matrices :
+A word is used for the word- level graph , constructed by Entity node , Word node , Next edge and Same edge .
+A word ? sent is used for the word-sentence graph , constructed by three types of nodes and In edge .
+A sent is used for sentence - level graph , constructed by Sentence node and Similar edge .
+By propagating the information from word-level to sentence - level graph , we can obtain the sentence representation and model the redundancy between sentences .
+Generally , the message passing over graphs can be achieved in two steps : aggregation and combination , and this process can be conducted multiple times ( referred as layers or hops in GNN literature ) ( Tu et al. , 2019 ) .
+Therefore , we iteratively update the sentence nodes representation with redundancy message passing which will be described in the following sections .
+Graph Attention Network
+To represent graph structure A and node content X in a unified framework , we develop a variant of Graph Attention Network ( GAT ) ( Veli?kovi ?
+et al. , 2018 ) . GAT is used to learn hidden representations of each node by aggregating the information from its neighbors , with the attention coefficients : e ij = LeakReLU ( a( W x i ||W x j ) ) ( 1 ) where W ?
+R d?d is a shared linear transformation weight matrix for this layer , || is the concatenation operation , and a ?
+R 2d is a shared attentional weight vector .
+To make the attention coefficients easily comparable across different nodes , we normalize them as follows : ? ij = softmax ( e ij ) = exp( e ij ) k?N i exp( e ik ) ( 2 ) where N i denotes the neighbors of node i according to adjacency matrix A .
+Then , the normalized attention coefficients are used to compute a linear combination of features .
+x i = ?( j?N i ? ij W x j ) + W x i ( 3 ) where W is used to distinguish the information between x i and its neighbors .
+Message Passing Shown in Figure 1 , HAHSum consists of ALBERT Encoder , Abstract Layer , Redundancy Layer , and Output Layer .
+We next introduce how the information propagates over these layers .
+ALBERT Encoder
+In order to learn the contextual representation of words , we use a pre-trained ALBERT ( Lan et al. , 2019 ) for summarization and the architecture is similar to BERTSUMEXT ( Liu and Lapata , 2019 ) .
+The output of ALBERT encoder contains word hidden states h word and sentence hidden states h sent .
+Specifically , ALBERT takes subword units as input , which means that one word may correspond to multiple hidden states .
+In order to accurately use these hidden states to represent each word , we apply an average pooling function to the outputs of ALBERT .
+Abstract Layer
+The abstract layer contains three GAT sublayers which are described in Section 3.3 : two for wordlevel graph and one for word-sentence transduction .
+The first two GAT sublayers are used to learn the hidden state of each word based on its two -order neighbors inspired by Kipf and Welling [ 2017 ] , W = GAT ( GAT ( h word , A word ) , A word ) ( 4 ) where A word denotes the adjacency matrix of the word - level subgraph , and W denotes the hidden state of the word nodes .
+The third GAT sublayer is to learn the initial representation of each sentence node , derived from the word hidden states : [ W , S abs ] = GAT ( [ W , h sent ] , A word?sent ) ( 5 ) where A word ?
+sent denotes the adjacency matrix of the word-sentence subgraphs , and S abs ( abs is for abstract ) is the initial representation of sentence nodes .
+Redundancy Layer
+The BERT encoder and abstract layer specialize in modeling salience with overall context representation of sentences , while it is powerless for redundancy information with dependencies among target labels .
+So , redundancy layer aims to model the redundancy , by iteratively updating the sentence representation with redundancy message passing , and this process is supervised by ground - truth labels .
+This layer only deals with sentence - level information S = {h 1 , h 2 , ... , h N } and iteratively updates it L times with classification scores : S l re = GAT ( GAT ( S l re , A sent ) , A sent ) P ( y i = 1 | S l re ) = ?( FFN ( LN ( hl i + MHAtt ( hl i ) ) ) ) ( 6 ) where S 0 re = S abs ( re is for redundancy ) and we get S L re at the end , W c , W r are weight parameters , FFN , LN , MHAtt are feed-foreard network , layer normalization and multi-head attention layer .
+We update hl i by reducing the redundancy information g l i , which is the weighted summation of neighbors information : g l i = 1 | N i | j?N i P ( y j = 1 | S l re ) * hl j h l+1 i = W l c * hl i ?
+hlT i W l r tanh ( g l i ) S l+1 re = ( h l+1 1 , h l+1 2 , ... , h l +1 | S | ) ( 7 ) where N i is redundancy receptive field for node i , according to A sent .
+Specifically , we employ a gating mechanism ( Gilmer et al. , 2017 ) for the information update , so that : 1 ) to avoid GNN smoothing problem ; 2 ) the original overall information from ALBERT is accessible for the ultimate classifier .
+hl i = W l c * hl i ?
+hlT i W l r tanh ( g l i ) p l g = ?( f l g ( [ hl i ; hl i ] ) ) h l+1 i = hl i p l g + hl i ( 1 ? p l g ) ( 8 ) where denotes element - wise multiplication .
+Objective Function Previous approaches for modeling the salience and redundancy is autoregressive , where observations from previous time -steps are used to predict the value at current time-step : P ( Y |S ) = | S| t=1 P ( y t |S , y 1 , y 2 , ... , y t?1 ) ( 9 )
+The autoregressive models have some disadvantages : 1 ) the error in inference will propagate subsequently , 2 ) label y t is generated just depend on previous sentences y <t rather than considering bidirectional dependency , and 3 ) it is difficult to decide how many sentences to extract .
+Our HAHSum predicts these labels simultaneously : P ( Y |S ) = | S| t=1 P ( y t |S , S abs , S re ) ( 10 ) where we extract flexible quantity of sentences with a threshold instead of top -k .
+For L classifiers in our model , we train them simultaneously with different proportions .
+For each training pair ( X , Y ) and the predicted ? , the loss function is formalized as follows : L = ? L l=0 L + l 2L | S | i=1 {y i log P ( ? i | S l re ) +
+( 1 ? y i ) log ( 1 ? P ( ? i | S l re ) ) } ( 11 ) 4 Experiments Setting
+Benchmark Datasets
+As shown in Table 2 , we employ three datasets widely - used with multiple sentences summary ( CNN / DM ( Hermann et al. , 2015 ) , NYT ( Sandhaus , 2008 ) , and NEWSROOM ( Grusky et al. , 2018 ) ) .
+These summaries vary with respect to the type of rewriting operations , e.g. , CNN / DM and NYT prefer to the abstractive approaches and Newsroom ( Ext ) is genuinely extractive .
+We employ the greedy method to obtain ground - truth sentence labels ( Nallapati et al. , 2017 ) .
+( Durrett et al. , 2016 ; Liu and Lapata , 2019 ) and several models are not evaluated on NYT officially ( See et al. , 2017 ; Mendes et al. , 2019 ) , so we re-train and evaluate them on NYT with the source code from Github .
+CNN / DailyMail
+Newsroom ( Ext ) :
+We employ the extractive part of Newsroom with same divisioin method ( Mendes et al. , 2019 ) for training / validation / test ( 331,778/36,332/36,122 ) .
+Input documents are truncted to 768 BPE tokens .
+Evaluation Metric & Parameter Settings Metric : ROUGE ( Lin , 2004 ) is the standard metric for evaluating the quality of summaries .
+We report the ROUGE -1 , ROUGE - 2 , and ROUGE -L of HAHSum by ROUGE -1.5.5.pl , which calculates the overlap lexical units of extracted sentences and ground- truth .
+2019 ) , we have tried to add dependency parse edges and they did n't show significant benefits , owing to the facts that 1 ) the dependency tree is substantially a permutation sequential structure , with little advancements for original information ; 2 ) the performance is influenced by the accuracy of the upstream annotators .
+We have tried the iteration steps of [ 1 , 2 , 3 , 5 ] for updating redundancy layer , and L = 3 is the best value in experiment result .
+Parameters :
+We employ pre-trained ' albertxxlarge - v2 ' 2 and reuse the implementation of PreSumm 3 .
+We train our model ( with about 400M parameters ) one day for 100,000 steps on 2 GPUs ( Nvidia Tesla V100 , 32G ) with gradient accumulation every two steps .
+We select the top - 3 checkpoints according to the evaluation loss on validation set and report the averaged results on the test set .
+Adam with ?
+1 = 0.9 , ? 2 = 0.999 is used as optimizer and learning rate schedule follows the strategies with warming - up on first 10,000 steps ( Vaswani et al. , 2017 ) .
+The final threshold in extraction is 0.65 for CNN / DM , 0.58 for NYT and 0.64 for Newsroom , with the highest ROUGE - 1 score individually .
+A higher threshold will be with more concise summary and the lower threshold will return more information .
+Baselines Extractive Methods :
+Oracle is the extracted summary according to the ground -truth labels .
+Lead is a base method for extractive text summarization that chooses first several sentences as a summary .
+SummaRuNNer takes content , salience , novelty , and position of each sentence into consideration when deciding if a sentence should be included in the extractive summary .
+PN - BERT tries to employ the unsupervised transferable knowledge .
+BERTSUMEXT applies pretrained BERT in text summarization and proposes a general framework for both extractive and abstractive models .
+MATCHSUM is a two -stage method for extract - then - match , and the first-stage is BERT - SUMEXT .
+Abstractive Methods : ABS is the normal architecture with RNN - based encoder and decoder .
+PGC augments the standard Seq2Seq attentional model with pointer and coverage mechanisms .
+TransformerABS employs
+Transformer in text summarization .
+MASS proposes masked Seq2Seq pre-training for encoder-decoder .
+UniLM presents unified pre-trained language model , that can be finetuned for summarization .
+BART , and Prophet - Net are pre-trained on large unlabeled data and perform excellent performance with Transformer architecture .
+PEGASUS proposes Transformerbased models with extracted gap-sentences for abstractive summarization .
+Specifically , these Transformer - based approaches are divided into Base and Large versions , according to the layers of Transformer .
+Analysis
+Rouge Scores
+The experiment results on three benchmark datasets are shown in Table 3 .
+There are ignored positions for Newsroom ( Ext ) , which is designed for extractive approaches , eliminating the demanding of abstractive ones .
+It is obvious that HAHSum almost outperforms all the baselines across most of the evaluation metrics .
+For CNN / DM , there is little gap between the performance of extractive and abstractive architectures , particularly demonstrating the popularity and generality of this dataset .
+While NYT prefers to abstractive methods , and NEWS - ROOM ( Ext ) is constructed by extracting sentences HAHSum outperforms all other extractive approaches for that :
+1 ) HAHSum achieves improvements to mitigate the redundancy bias by measuring salience and redundancy simultaneously , while this would not be possible with any framework in the autoregressive literature because salience and redundancy are treated as two different processes due to the dependency among target labels .
+2 ) The promising results of heterogeneous sequencegraph models outperform pure sequence models .
+Sequence encoders with a graph component can reason about long-distance relationships in weakly structured data such as text , which requires nontrivial understanding of the input , while attentive sequential architectures prefer to calculate the relevance merely .
+Models CNN / DM NYT Newsroom ( Ext ) R -1 R -2 R-L R-1 R -2 R-L R-1 R-2 R-L Abstractive ABS (
+Ablation Studies
+We propose several strategies to improve the performance by relieving the semantic sparsity and redundancy bias , including abstract layer ( AL ) , the iterative redundancy layer ( RL ) , and pre-trained AL - BERT .
+To investigate the influence of these factors , 4 . Significantly , AL is more important than RL , for the reason that there are lots of meaningless named entities .
+Besides , RL mechanism enlarges the advantage of extraction without top-k strategy , for there are more than 40 % documents in CNN / DM contains more or less than 3 - sentences oracle summary .
+As shown in Table 6 , HAHSum predicts sequence exactly with two sentences , same as the oracle summary .
+While BERTSUMEXT extracts top - 3 sentences strictly , in spite of the inaccurateness and redundancy .
+Human Evaluation for Summarization
+It is not enough only relying on the ROUGE evaluation for a summarization system , although the ROUGE correlates well with human judgments ( Owczarzak et al. , 2012 ) .
+To evaluate the performance of HAHSum more accurately , we design Following the previous work , the input article and ground truth summaries are also shown to the human participants in addition to the four model summaries ( SummaRuNNer , BERT - SUMEXT , MATCHSUM and HAHSum ) .
+From the results shown in Table 5 , we can see that HAH - Sum is better in relevance compared with others .
+Visualization
+We visualize the learned embedding of word and sentence nodes in a two -dimensional space by applying the t-SNE algorithm .
+We randomly select 500 continuous word nodes ( approximately 30 sentences in a document ) and 1000 sentence nodes from BERTSUMEXT and HAHSum separately .
+As shown in Figure 2 , for word nodes , the darkness determines it 's position in one document ; while for sentence nodes , red points are the sentences with label 1 , and green points are with label 0 .
+The result shows : 1 ) It is amazing that sentence - level summarization constrains word representations to be shared across whole sentence , and there are obviously word clusters in BERTSUMEXT ; 2 ) The word clusters are more distinct and meaningful in HAHSum equipped with abstract layer and GAT ; 3 ) Intuitively , the redundancy layer has particularly strong representation power and generalizability , for that oracle sentence nodes in HAHSum are easy to identify , without autoregressive formalism used for capturing sentence - level redundancy .
+Conclusion
+In this paper , we propose hierarchical attentive heterogeneous graph , aiming to advance text summarization by measuring salience and redundancy simultaneously .
+Our approach model redundancy information by iteratively update the sentence information with message passing in redundancy - aware graph .
+As a result , HAHSum produces more focused summaries with fewer superfluous and the performance improvements are more pronounced on more extractive datasets .
+Figure 1 : 1 Figure 1 : Overview of Hierarchical Attentive Heterogeneous Graph

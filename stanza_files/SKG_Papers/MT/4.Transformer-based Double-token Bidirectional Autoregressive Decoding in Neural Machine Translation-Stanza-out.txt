@@ -1,0 +1,212 @@
+title
+Transformer - based Double-token Bidirectional Autoregressive Decoding in Neural Machine Translation
+abstract
+This paper presents a simple method that extends a standard Transformer - based autoregressive decoder , to speed up decoding .
+The proposed method generates a token from the head and tail of a sentence ( two tokens in total ) in each step .
+By simultaneously generating multiple tokens that rarely depend on each other , the decoding speed is increased while the degradation in translation quality is minimized .
+In our experiments , the proposed method increased the translation speed by around 113 % - 155 % in comparison with a standard autoregressive decoder , while degrading the BLEU scores by no more than 1.03 .
+It was faster than an iterative nonautoregressive decoder in many conditions .
+Introduction
+Most neural machine translation systems are based on an encoder-decoder architecture .
+Although there are some frameworks , such as recurrent neural network - based translation ( Sutskever et al. , 2014 ; Bahdanau et al. , 2014 ) and Transformerbased translation ( Vaswani et al. , 2017 ) , they employ autoregressive decoding for high-quality translation .
+However , autoregressive decoding requires a decoding time that depends on sentence length because it generates a single token in each step .
+To solve this problem , non-autoregressive decoding , which generates all tokens in one step , has been proposed ( Gu et al. , 2017 ; Lee et al. , 2018 ; Ghazvininejad et al. , 2019 ) .
+However , the translation quality of non-autoregressive decoding has not yet matched the quality of autoregressive decoding .
+To improve the quality , some methods , such as Mask - Predict ( Ghazvininejad et al. , 2019 ) , apply non-autoregressive decoding iteratively .
+This is a trade- off between quality and speed because the decoding time depends on the number of iterations .
+This paper presents an autoregressive decoder that simultaneously generates two tokens in each step , as an intermediate solution between autoregressive and non-autoregressive decoding .
+The proposed method is based on the Transformer decoder and generates a token from the head and tail of a sentence ( two tokens in total ) in each step .
+Although this is a simple extension of standard autoregressive decoding , it has some notable features as follows : ?
+By simultaneously generating multiple tokens that rarely depend on each other , our method increases decoding speed while minimizing the degradation of translation quality .
+?
+Because it is an extension of standard autoregressive decoding , our proposed method inherits its merits .
+- All tokens can be learned in parallel in the training phase .
+- In contrast to non-autoregressive decoders , our method does not determine generation lengths in advance .
+In the following sections , we first briefly review autoregressive and non-autoregressive decoding .
+We then explain the proposed method and evaluate it , from the viewpoints of translation quality and speed .
+Related Work
+Transformer - based Autoregressive Decoding Autoregressive decoding infers a token y t of the current timestep t from the sequence of generated tokens y <t . ?t = argmax yt Pr(y t |y <t , x ) , ( 1 ) where x denotes the sequence of source tokens .
+When a test phase of translation , the argmax operation is replaced with a beam search , and the highest - probability hypothesis is selected from multiple candidates .
+Transformer - based decoding considers generated tokens as a context using the self-attention mechanism .
+Namely , Pr(y t ) = Y t = Out( h L t ) , ( 2 ) h ? t = TFLayer ? ( h ?1 ?t , h enc ) , ( 3 ) h 0 t = Emb(y t?1 , t ) , ( 4 ) h enc = Encoder ( x ) , ( 5 ) where Y t denotes the posterior probability distribution of the token y t .
+The Out , TFLayer , Emb , and Encoder functions denote the mapping from a hidden state h to the probability distribution , the function of a Transformer layer ( L is the number of layers ) , the function that computes the word and positional embeddings , and the encoder function , respectively .
+Decoding has a direction .
+Generation from the head of a sentence to the tail is called left-to- right ( L2R ) decoding , and generation in the opposite direction is called right- to- left ( R2L ) decoding .
+In L2R decoding , the decoder only refers to the left context .
+The decoding finishes when the end-ofsentence ( EOS ) token is generated .
+In Equation 3 , the system requires the previous states h ?1 <t , to compute the current state h ? t .
+However , the previous states have already been computed while predicting the previous tokens .
+Therefore , only the state h ?1 t needs to be computed if we preserve the previous states .
+We call this inner state preservation in this paper .
+When training , all tokens can be learned in parallel using a mask of the triangular matrix , which restricts the tokens for the self-attention mechanism ( Figure 1 ( a ) ) .
+Another strategy for speeding up autoregressive decoding is to substitute the self-attention mechanism with the other units .
+The Average Attention Network ( AAN ) ( Zhang et al. , 2018 ; Junczys - Dowmunt et al. , 2018 ) and Simpler Simple Recurrent Unit ( SSRU ) ( Kim et al. , 2019 ) are faster than the self-attention mechanism because they depend only on the last state .
+Similar to our method , which is described in this paper , Zhou et al . ( 2019 ) proposed a model that simultaneously decodes two tokens from the head and tail of a sentence .
+They modified the self-attention mechanism to mix two contexts that are output from the forward and backward mechanisms .
+Query ( t ) 1 2 3 4 5 6 7 8 Key Value ( t ) 1 ? ? ? ? ? ? ? ? 2 ? ? ? ? ? ? ? 3 ? ? ? ? ? ? 4 ? ? ? ? ? 5 ? ? ? ? 6 ? ? ? 7 ? ? 8 ? ( a ) Single-token Query ( Lt , Rt ) L1 R1 L2 R2 L3 R3 L4 R4 Key Value ( Lt , Rt ) L1 ? ? ? ? ? ? ? ? R1 ? ? ? ? ? ? ? ? L2 ? ? ? ? ? ? R2 ? ? ? ? ? ? L3 ? ? ? ? R3 ? ? ? ? L4 ? ? R4 ? ? ( b) Double-token
+Non-autoregressive Decoding Non-autoregressive decoding generates all tokens simultaneously , utilizing the parallelism of Transformer ( Gu et al. , 2017 ; Lee et al. , 2018 ; Ghazvininejad et al. , 2019 ) .
+For example , the Mask - Predict method ( Ghazvininejad et al. , 2019 ) recovers masked tokens ( [ mask ] ) using the left and right contexts , like BERT encoders ( Devlin et al. , 2019 ) .
+The initial tokens are all masks .
+Because of the parallel generation , the generation lengths must be determined in advance .
+The Mask - Predict method predicts these lengths from the encoder output .
+Although non-autoregressive decoding performs fast generation , the translation quality in one step is relatively low .
+We can improve the quality by iteratively applying the parallel decoding .
+However , iterative decoding causes the following problems .
+?
+The decoding speed reduces as the number of iterations increases .
+This is a trade- off between quality and speed .
+?
+Iterative non-autoregressive decoding must recompute all states because it refers to whole contexts in a sentence , in contrast to autoregressive decoding , which can utilize inner state preservation .
+Because of the above problems , high-quality and fast non-autoregressive decoding , which outperforms autoregressive decoding , has not yet been realized .
+3 Proposed Method
+Double-token Bidirectional Decoding
+The proposed method of decoding combines L2R and R2L autoregressive decoding .
+That is , it generates each token from the head and tail of a sentence .
+This approach aims to realize fast decoding while maintaining translation quality by simultaneously generating multiple tokens that are adjacent to the fixed tokens but rarely depend on each other ( that is , they are almost mutually independent ) .
+Concretely , Equation 3 is replaced by the following equation .
+( h ? Lt , h ?
+Rt ) = TFLayer ? ( h ?1 ? Lt , h ?1 ? Rt , h enc ) , ( 6 ) where h ?
+Lt and h ?
+Rt denote the left and right outputs from layer ? at timestep t , respectively .
+Similarly , h ?1 ? Lt and h ?1 ? Rt denote the left and right contexts output from layer ? ? 1 . The decoding starts from the initial tokens , y L0 = BOS and y R0 = EOS , and sequentially generates a pair of left and right tokens ( Figure 2 ) .
+Therefore , the decoder generates pairs of tokens from left to right , although each of the two tokens has a different meaning .
+The decoding stops when a pair contains the end-of-decoding ( EOD ) token ( Gu et al. , 2019 ) .
+At this time , the L2R and R2L tokens are separated from the sequence of pairs , and the final sentence is output after reordering them .
+During the decoding process , inner state preservation is also applied .
+In this method , sinusoidal positional embedding ( Vaswani et al. , 2017 ) is not suitable because the tokens in each pair are not contiguous in the actual order .
+We use a learned positional embedding , which refers to learned parameters similar to the word embedding .
+The difference from Zhou et al . ( 2019 ) 's method is that their method requires the model ( specifically , the self-attention mechanism ) to be modified .
+On the contrary , our method mainly realizes double - token decoding in the preprocessing and postprocessing phases and the modified beam search , except for the positional embedding .
+Therefore , another speedup method involving model modification , such as the AAN ( Zhang et al. , 2018 ) , can be applied to our method .
+Implementation Algorithm 1 Beam search with double-token bidirectional decoding Input : encoder output henc , beam width W , number of outputs K Output : K-best translation hypotheses H # Bt : beam of timestep t #
+Yt : probability distribution according to the beam # ( yLt , yRt ) : output token pair 1 : B0 ? {( yL0 = BOS , yR0 = EOS ) }
+2 : H ? ? 3 : t ? 1 4 : while | H| < K do 5 : Bt ? ? 6 : ( YLt , YRt ) ? DECODEBEAM ( Bt?1 , henc ) 7 : ( yLt , yRt )
+Algorithm 1 shows the beam search performed by our method .
+The number of iterations of lines 4 - 22 is half of that of standard autoregressive decoding , and the speed is increased .
+The DECODEBEAM function on line 6 sequentially computes Equations 4 , 6 , and 2 .
+The DOUBLETOPK function on line 7 obtains 3W pairs ( y Lt , y Rt ) from the probability distributions ( Y Lt , Y Rt ) .
+The FINALIZE function on line 10 completes a sentence from generated tokens .
+The EXPANDBEAM function generates beams at timestep t from the selected tokens and the previous beam .
+The DECODEBEAM and DOUBLE -TOPK functions are executed mainly on GPUs .
+The FINALIZE and EXPANDBEAM functions are executed mainly on CPUs , but partially on GPUs .
+Our method assumes that two generated tokens are almost independent of each other .
+This means that , on line 7 of Algorithm 1 , y Lt and y
+Rt can be selected independently .
+Using this assumption , the DOUBLETOPK function first selects 2W tokens for y Lt , and then selects 3W tokens for y Rt considering the left probabilities .
+The processing time is almost proportional to the beam width W . Notably , the DOUBLETOPK function obtains 3W candidates from the probability distributions .
+This is because at least W unfinished candidates , which do not contain EODs , must remain to continue the search .
+During training , the model is learned from data in which the order of tokens in target sentences is reconstructed as follows .
+1 . Divide the sequence of tokens into left and right halves , reverse the right half , and alternately fold the halves .
+2 . Supply one or two EOD tokens , to make the total number of tokens even .
+The self-attention mask for training is a triangular matrix in which the unit is a pair of tokens ( Figure 1 ( b ) ) .
+Experiments
+Experimental Settings Systems :
+We modified the fairseq translation system ( Ott et al. , 2019 ) 1 for the proposed method .
+For comparison , we considered the following three system types .
+? Single-token ( i.e. , standard ) autoregressive decoding .
+We used the original fairseq as the baseline .
+Both L2R and R2L directions were evaluated .
+?
+Double-token unidirectional decoding .
+This method generates two contiguous tokens in each step , to evaluate the effect of bidirectional decoding .
+?
+Mask - Predict ( Ghazvininejad et al. , 2019 ) , which is one of the non-autoregressive decoding methods .
+2
+In our experiments , we did 1 https://github.com/pytorch/fairseq 2 https://github.com/facebookresearch/
+Mask -Predict
+This code is based on the fairseq translation system .
+not apply knowledge distillation , to coordinate the setting with that of the other methods .
+3 Corpora : We used two corpora : the English - German ( en-de ) corpus of WMT - 14 ( 4.5 M sentences ) ( Bojar et al. , 2014 ) and the Japanese-English ( ja-en ) corpus of ASPEC ( 3 M sentences ) ( Nakazawa et al. , 2016 ) .
+To make the evaluation stable , we concatenated all test sets in the corpora , except for validation sets .
+That is , we used 19,666 sentences ( newstest2010 - 2016 ) for the WMT - 14 corpus and 3,596 sentences ( devtest and test ) for the ASPEC corpus , as the test sets .
+The newstest2009 set in WMT - 14 and the dev set in ASPEC were used as the validation sets .
+All corpora were segmented into subwords ( Sennrich et al. , 2016 ) .
+We used 37 K shared vocabulary in WMT - 14 and 16 K vocabularies for the source and target languages in ASPEC .
+Models and Hyperparameters :
+We used two model types : the Transformer base model ( six layers , eight heads , 512 model dimensions , and 2,048 FFN dimensions ) and the Transformer big model ( six layers , 16 heads , 1,024 model dimensions , and 4,096 FFN dimensions ) .
+Table 1 shows the details of the hyperparameters .
+All models were trained using almost the same settings , except for the learning rates and stopping criteria .
+In the test phase , we used a beam width of 10 for autoregressive decoding .
+For Mask - Predict , we used a beam width of 5 .
+4
+The mini-batch sizes were all 32 sentences .
+Evaluation Metrics :
+We used case-sensitive BLEU ( Papineni et al. , 2002 ) to evaluate translation quality .
+The MultEval tool was used for significance testing ( Clark et al. , 2011 ) .
+5
+For the evaluation of speed , we measured translation time ( which does not include loading and initialization ) five times , and computed the average number of tokens translated per second .
+An NVIDIA V100 GPU was used during the evaluation .
+Results
+The results are shown in Table 2 .
+The " Ratio " column of the table shows the speed ratio , compared with single - token L2R decoding .
+The BLEU scores of the proposed method ( double-token bidirectional ) were slightly lower than those of single -token decoding .
+However , the differences were between 0.08 and 1.03 in the cases of both WMT - 14 and ASPEC .
+When we compare bidirectional ( proposed ) and unidirectional ( L2 R and R2L ) double - token decoding , the BLEU scores of unidirectional decoding were lower than those of the proposed method .
+This phenomenon indicates that it is difficult to simultaneously generate two contiguous tokens because they depend on each other .
+Focusing on speed , the proposed method was faster than single -token decoding .
+Speedups of 13 % - 24 % for WMT - 14 and 49 % - 55 % for ASsmall because it decisively generates a translation for a predicted length .
+5 https://github.com/jhclark/multeval PEC were achieved .
+The speed of double -token unidirectional decoding was almost equal to that of the proposed method because they utilized the same algorithm and model structure .
+The speed of the Mask - Predict method differed dramatically depending on the number of iterations .
+In the case of four iterations , the speed of the proposed method was equal for the ASPEC corpus , but Mask - Predict was faster for the WMT - 14 corpus .
+Comparing the Transformer base and big models , the speed ratios of the big models were greater than those of the base models in the proposed method .
+This phenomenon will be discussed in Section 5.2 .
+Analysis
+N -gram Precision Rates
+A feature of our method is bidirectional decoding .
+To analyze this feature , we evaluated n-gram precision rates when the hypotheses were limited to a certain number of tokens from the head and tail .
+Table 3 shows the results for the WMT - 14 and ASPEC corpora , which were restricted to sentences over 30 tokens ( 8,251 sentences for WMT - 14 and 1,320 sentences for ASPEC ) .
+When we evaluated left tokens , there were no great differences between the unigram precision rates of the baseline ( single-token L2 R ) and the proposed method ( double-token bidirectional ) .
+However , evaluating right tokens , the unigram precision rates of the proposed method were 0.4% -1.6 % ( WMT - 14 ) and 1.1% -2.6 % ( ASPEC ) higher than those of the baseline .
+These results demonstrate the effect of bidirectional decoding .
+Despite these good results , the final BLEU score of the proposed method was less than that of the baseline .
+This is because the 4 - gram precision of the left tokens was worse then the baseline , whereas that of the right tokens was better .
+The proposed method changes the original token order and connects the L2R and R2L hypotheses at the center of the sentence ; these modifications have a detrimental effect on long n-grams , and will be the subject of future improvement .
+Translation Speed for Settings
+The speedup effect of the proposed method is influenced by the model and evaluation settings .
+In this section , we discuss the speedup effect from the viewpoints of model size , vocabulary size , and beam width .
+Model Size
+In the experiments in Section 4 , we evaluated translation speed using the Transformer base and big models .
+The absolute speed of the base models was greater than that of the big models , in all methods .
+From the perspective of the speed ratio , which compares the proposed method ( doubletoken bidirectional ) with the baseline ( singletoken L2 R ) , the speedup effect of the big model was greater than that of the base model .
+For example , the speed ratio of the big model was 124 % for the WMT - 14 corpus , whereas that of the base model was 113 % .
+This tendency was the same for the ASPEC corpus .
+We can conclude that the speedup effect of the proposed method is greater for larger models .
+Vocabulary Size
+Table 4 shows the translation speed of the base model as the vocabulary size was increased from 4 K to 64K .
+The number of tokens per sentence is also shown in the table because it changes if we change the vocabulary based on subwords .
+In addition to the translation speed decreasing , the speed ratio decreased as the vocabulary size increased .
+This means that the speedup effect of the proposed method was reduced as the vocabulary size increased .
+We expected the speed ratio to increase as the vocabulary size increased , because the model size increased .
+However , the opposite result was actually observed .
+One of the possible reasons is that the sentence length ( number of tokens ) increased when the vocabulary size was small , and therefore the effect of the double - token decoding increased .
+Beam Width Figure 3 shows the speed ratio for each value of beam width .
+A greater ratio means that the proposed method is more effective .
+As a result , the speed ratio was greater when the beam width was small , in this experiment .
+It is difficult to consistently explain the phenomena shown in this section because the processing times of the CPU and GPU are unknown even though the effectiveness must depend on them .
+However , we can summarize that the speedup effect of the proposed method is increased when we use 1 ) big models , 2 ) small vocabulary , and 3 ) small beam width .
+Conclusions
+This paper presented a bidirectional decoding method that simultaneously generates two tokens .
+The proposed method achieves fast decoding while minimizing quality degradation by generating tokens that rarely depend on each other .
+It is faster than both the standard autoregressive decoder and the Mask - Predict method in many conditions .
+Figure 1 : 1 Figure 1 : Examples of self-attention masks for training .
+Queries only refer to key -value pairs of the checked timesteps .
+Figure 3 : 3 Figure 3 : Variation of speed ratio with beam width .
+An example of double -token bidirectional decoding : " We will go to Tokyo . "
+A Step of We . will Tokyo go to EOD EOD Decoding Out TFLayer 1..L Emb BOS EOS We . will Tokyo go to Figure 2 :
+Table 1 : 1 Details of hyperparameters .
+Type Autoregressive Mask -Predict Model
+Base model : 6 layers , 8 heads , 512 model di- mensions , 2,048 FFN dimensions , dropout : 0.1
+Big model : 6 layers , 16 heads , 1,024 model di- mensions , 4,096 FFN dimensions , dropout : 0.3 , attention dropout : 0.1 , layernorm before Training warmup : 5 epochs , annealing : inverse square - root , weight decay : 0.0001 , clip norm : 5 , loss function : labeled smoothed cross-entropy ( ? = 0.1 ) , batch size : approx .
+500 sentences , op - timization : Adam ( ?1 = 0.9 , ?2 = 0.99 , ? = 10 ?6 ) , 10 best checkpoint averaging learning rate : 0.0004 , learning rate : 0.0001 , early stopping ( 10 300,000 updates epochs )
+Test batch size : 32 sentences sorted by the source length , length penalty : 1.0 , half - precision float - ing point computation beam width : 10 beam width : 5
+Table 2 : 2 Translation quality and speed of each method .
+The symbols ? and ? indicate the scores that are significantly different from single - token L2R and R2L , respectively ( p < 0.05 ) .
+1 - gram precision 4 - gram precision Tokens Single-token Double-token Single-token Double-token Left Right L2R bidir .
+L2 R bidir . ? ? 59.8 % 59.9 % ( +0.1 % ) 18.9 % 18.2 % ( -0.7 % ) 5 0 53.8 % 53.8 % ( ?0.0 % ) 16.8 % 16.2 % ( -0.6 % ) 10 0 49.1 % 49.0 % ( -0.1 % ) 15.1 % 14.5 % ( -0.6 % ) 15 0 45.1 % 45.0 % ( -0.1 % ) 13.7 % 13.2 % ( -0.5 % ) 0 5 62.9 % 64.5 % ( + 1.6 % ) 14.7 % 15.3 % ( +0.6 % ) 0 10 62.2 % 63.0 % ( +0.8 % ) 16.5 % 16.8 % ( +0.3 % ) 0 15 61.8 % 62.2 % ( +0.4 % ) 16.7 % 16.6 % ( -0.1 % ) ( a) WMT - 14 corpus 1 - gram precision 4 - gram precision Tokens Single-token Double-token Single-token Double-token Left Right L2R bidir .
+L2 R bidir . ? ? 65.8 % 66.2 % ( +0.4 % ) 18.5 % 17.8 % ( -0.7 % ) 5 0 59.2 % 59.4 % ( +0.2 % ) 16.2 % 15.6 % ( -0.6 % ) 10 0 53.7 % 53.9 % ( +0.2 % ) 14.5 % 13.9 % ( -0.6 % ) 15 0 49.3 % 49.5 % ( +0.2 % ) 13.1 % 12.5 % ( -0.6 % ) 0 5 73.5 % 76.1 % ( + 2.6 % ) 17.5 % 18.9 % ( + 1.4 % ) 0 10 72.4 % 74.6 % ( + 2.2 % ) 17.3 % 18.9 % ( + 1.6 % ) 0 15 71.5 % 72.6 % ( + 1.1 % ) 17.3 % 18.3 % ( + 1.0 % ) ( b) ASPEC corpus
+Table 3 : 3 Unigram and four-gram precision rates when the number of tokens was limited to n from the head and tail of the hypotheses ( Transformer base models , over 30 tokens ) .
+Values in parentheses indicate differences between the single- token L2R and double -token bidirectional methods .
+We additionally applied knowledge distillation .
+As a result , the BLEU scores of all the methods , including Mask - Predict , were similarly improved . 4
+The beam width for the Mask - Predict method is usually

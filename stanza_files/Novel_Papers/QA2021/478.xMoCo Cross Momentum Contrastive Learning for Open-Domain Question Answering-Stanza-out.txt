@@ -1,0 +1,225 @@
+title
+xMoCo : Cross Momentum Contrastive Learning for Open-Domain Question Answering
+abstract
+Dense passage retrieval has been shown to be an effective approach for information retrieval tasks such as open domain question answering .
+Under this paradigm , a dual-encoder model is learned to encode questions and passages separately into vector representations , and all the passage vectors are then pre-computed and indexed , which can be efficiently retrieved by vector space search during inference time .
+In this paper , we propose a new contrastive learning method called cross momentum contrastive learning ( xMoCo ) , for learning a dualencoder model for query - passage matching .
+Our method efficiently maintains a large pool of negative samples like the original MoCo , and by jointly optimizing question - to - passage and passage - to-question matching , enables using separate encoders for questions and passages .
+We evaluate our method on various open domain QA datasets , and the experimental results show the effectiveness of the proposed approach .
+Introduction
+Retrieving relevant passages given certain query from a large collection of documents is a crucial component in many information retrieval systems such as web search and open domain question answering ( QA ) .
+Current QA systems often employ a two -stage pipeline : a retriever is firstly used to find relevant passages , and then a fine- grained reader tries to locate the answer in the retrieved passages .
+As recent advancement in machine reading comprehension ( MRC ) has demonstrated excellent results of finding answers given the correct passages ( Wang et al. , 2017 ) , the performance of open-domain QA systems now relies heavily on the relevance of the selected passages of the retriever .
+Traditionally the retrievers usually utilize sparse keywords matching such as TF -IDF or BM25 ( Robertson and Zaragoza , 2009 ) , which can be efficiently implemented with an inverted index .
+With the popularization of neural network in NLP , the dense passage retrieval approach has gained traction ( Karpukhin et al. , 2020 ) .
+In this approach , a dual-encoder model is learned to encode questions and passages into a dense , low-dimensional vector space , where the relevance between questions and passages can be calculated by the inner product of their respective vectors .
+As the vectors of all passages can be pre-computed and indexed , dense passage retrieval can also be done efficiently with vector space search methods during inference time ( Shrivastava and Li , 2014 ) .
+Dense retrieval models are usually trained with contrastive objectives between positive and negative question - passage pairs .
+As the positive pairs are often given by the training data , one challenge in contrastive learning is how to select negative examples to avoid mismatch between training and inference .
+During inference time , the model needs to find the correct passages from a very large set of pre-computed candidate vectors , but during training , both positive and negative examples need to be encoded from scratch , thus severely limiting the number of negative examples due to computational cost .
+One promising way to reduce the discrepancy is momentum constrastive learning ( MoCo ) proposed by He et al . ( 2020 ) .
+In this method , a pair of fast / slow encoders are used to encode questions and passages , respectively .
+The slow encoder is updated as a slow moving average of the fast encoder , which reduces the inconsistency of encoded passage vectors between subsequent training steps , enabling the encoded passages to be stored in a large queue and reused in later steps as negative examples .
+Unfortunately , directly applying MoCo in question - passage matching is problematic .
+Unlike the image matching tasks in original MoCo paper , the questions and passages are distinct from each other and not interchangeable .
+Furthermore , the passages are only encoded by the slow encoder , but the slow encoder is only updated with momentum from the fast encoder , not directly affected by the gradients .
+As the fast encoder only sees the questions , the training becomes insensitive to the passage representations and fails to learn properly .
+To solve this problem , we propose a new contrastive learning method called Cross Momentum Contrastive Learning ( xMoCo ) .
+xMoCo employs two sets of fast / slow encoders and jointly optimizes the question - passage and passage -question matching tasks .
+It can be applied to scenarios where the questions and passages require different encoders , while retaining the advantage of efficiently maintaining a large number of negative examples .
+We test our method on several open-domain QA tasks , and the experimental results show the effectiveness of the proposed approach .
+To summarize , the main contributions of this work are as follows : ?
+We proposes a new momentum contrastive learning method , Cross Momentum Contrast ( xMoCo ) , which can learn question - passage matching where questions and passages require different encoders .
+?
+We demonstrate the effectiveness of xMoCo in learning a dense passage retrieval model for various open domain question answering datasets .
+Related Work
+There are mainly two threads of research work related to this paper .
+Passage Retrieval for QA Retrieving relevance passages is usually the first step in the most QA pipelines .
+Traditional passage retriever utilizes the keyword - matching based methods such as TF -IDF and BM25 ( Chen et al. , 2017 ) .
+Keyword - based approach enjoys its simplicity , but often suffers from term mismatch between questions and passages .
+Such term mismatch problem can be reduced by either query expansion ( Carpineto and Romano , 2012 ) or appending generated questions to the passages ( Nogueira et al. , 2019 ) .
+Dense passage retrieval usually involves learning a dual-encoder to map both questions and passages into dense vectors , where their innerproduct denotes their relevance .
+The challenge in training a dense retriever often lies in how to select negative question - passage pairs .
+As a small number of randomly generated negative pairs are considered too easy to differentiate , previous work has mainly focused on how to generate " hard " negatives .
+Karpukhin et al . ( 2020 ) ( Chen et al. , 2020 ) .
+Different from the image counterpart , many NLP tasks has readily available positive pairs such question - passage pairs .
+Here the main benefit of momentum contrastive learning is to efficiently maintain a large set of negative samples , thus making the learning process more consistent with the inference .
+One example of applying momentum contrastive learning in NLP is Chi et al . ( 2020 ) .
+In their work , momentum contrastive learning is employed to optimize the InfoNCE lower bound between parallel sentence pairs from different languages .
+Different from the above works , the questions and passages in our work are not interchangeable and require different encoders , which renders the original MoCo not directly applicable .
+3 Background
+Task description
+In this paper , we deal with the task of retrieving relevant passages given certain natural language questions .
+Given a question q and a collection of N passages {q 1 , q 2 , . . . , q N } , a passage retriever aims to return a list of passages {q i 1 , q i 2 , . . . , q i M } ranked by their relevance to q .
+While the number of retrieved passages M is usually in the magnitude of hundreds or thousands , the number of total passages N is typically very large , possibly in millions or billions .
+Such practical concern places constraints in model choices of the passage retrievers .
+Dual-encoder framework for dense passage retrieval
+The de-facto " go - to " choice for dense passage retrieval is the dual-encoder approach .
+In this framework , a pair of encoders E q and E p , usually implemented as neural networks , are used to map the question q and the passage p into their lowdimensional vectors separately .
+The relevance or similarity score between q and p is calculated as the inner product of the two vectors : s( q , p ) = E q ( q ) ? E p ( p )
+The advantage of this approach is that the vectors of all passages can be pre-computed and stored .
+During inference , we only need to compute the vector for the question , and the maximum inner product search ( MIPS ) ( Shrivastava and Li , 2014 ) can be used to efficiently retrieve most relevant passages from a large collection of candidates .
+It is possible to train a more accurate matching model if the q and p are fused into one input sequence , or if a more sophisticated similarity model is used instead of the simple inner-product , but those changes would no longer permit efficient retrieval , thus can only be used in a later " re-ranking " stage .
+The training data D for passage retrieval consists of a collection of positive question - passage pairs {( p 1 , q 1 ) , ( p 2 , q 2 ) , . . . , ( p n , q n ) } , and an additional m passages { p n+1 , . . . , p n+m } without their corresponding questions .
+The encoders are trained to optimize the negative log-likelihood of all positive pairs : L( D , E q , E p ) = ?
+n i=1 log exp s( q i , p i ) n+m j=1 exp s( q i , p j )
+As the number of negative pairs ( n + m ? 1 ) is very large , it is infeasible to optimize the loss directly .
+Instead , only a subset of the negative samples will be selected to compute the denominator in the above equation .
+The selection of the negative samples is critical to the performance of trained model .
+Previous works such as Xiong et al . ( 2020 ) and Ding et al . ( 2020 ) mainly focus on selecting a few " hard " examples , which hve higher similarity scores with the question and thus contribute more to the sum in the denominator .
+In this work , we will explore how to use a large set of negative samples to better approximate the sum in the denominator .
+Method
+Momentum contrast for passage retrieval
+We briefly review momentum contrast and explain why directly applying momentum contrast for passage retrieval is problematic .
+Momentum contrast method employs a pair of encoders E q and E p .
+For each training step , the training pair of q i and p i is encoded as E q ( q i ) and E p ( p i ) respectively , which is identical to other training method .
+The key difference is that momentum contrast maintains a queue Q of passage vectors { E p ( p i? k ) } k encoded in previous training steps .
+The passage vectors in the queue serve as negative candidates for the current question q i .
+The process is computationally efficient since the vectors for negative samples are not re-computed , but it also brings the problem of staleness : the vectors in the queue are computed by the previous , not up - to - date models .
+To reduce the inconsistency , momentum contrast uses momentum update on the encoder E p , making E p a slow moving - average copy of the question encoder E q .
+The gradient from the loss function is only directly applied to the question encoder E q , not the passage encoder E p .
+After each training step , the newly encoded E p i is pushed into the queue and the oldest vector is discarded , keeping the queue size constant during training .
+Such formulation poses no problem for the original MoCo paper ( He et al. , 2020 ) , because their " questions " and " passages " are both images and are interchangeable .
+Unfortunately , in our passage retrieval problem , the questions and passages are distinct , and it is desirable to use different encoders E q and E p .
+Even in scenarios where the parameters of the two encoders can be shared , the passages are only encoded by the passage encoder E p , but the gradient from the loss is not applied on the passage encoder .
+It makes the training process insensitive to the input passages , thus unable to learn reasonable representations .
+xMoCo : Cross momentum contrast
+To solve the problems mentioned above , we propose a new momentum contrastive learning method , for passages .
+In addition , two separate queues Q q and Q p store previous encoded vectors for questions and passages , respectively .
+In one training step , given a positive pair q and p , the question encoders map q into E f ast q ( q ) and E slow q ( q ) , while the passage encoders map p into E f ast p ( p ) and E slow p ( p ) .
+The two vectors encoded by slow encoders are then pushed into their respective queues Q q and Q p .
+We jointly optimize the question - to - passage and passage - toquestion tasks by pitting q against all vectors in Q q and p against all vectors in Q p : L qp = ? log exp ( E f ast q ( q ) ? E slow p ( p ) ) p ?
+Qp exp E f ast q ( q ) ?
+E slow p ( p ) L pq = ? log exp ( E f ast p ( p ) ? E slow q ( q ) ) q ?
+Qq exp E f ast p ( p ) ?
+E slow q ( q ) L = ?L qp + ( 1 ? ?) L pq where ? is a weight parameter and simply set to 0.5 in all experiments in this paper .
+Like the original MoCo , the gradient update from the loss is only applied to the fast encoders E f ast q and E f ast p , while the slow encoders E slow q and E slow p are updated with momentum from the fast encoders : E slow p ?
+?E f ast p + ( 1 ? ?) E slow p E slow q ?
+?E f ast q + ( 1 ? ?) E slow q where ?
+controls the update speed of the slow encoders and is typically set to a small positive value .
+When training is finished , both slow encoders are discarded , and only the fast encoders are used in inference .
+Hence , the number of parameters for xMoCo is comparable to other dual-encoder methods when employing similar-sized encoders .
+In this framework , the two fast encoders E f ast q and E f ast p are not tightly coupled in the gradient update , but instead influence other through the slow encoders .
+E f ast p updates E slow p through momentum updates , which in turn influences E f ast q by gradient updates from optimizing the loss L qp .
+E f ast q can also influence E f ast p through similar path .
+See Fig. 1 for illustration .
+Adaption for Batch Training Batch training is the standard training protocol for deep learning models due to efficiency and performance reasons .
+For xMoCo , we also expect our model to be trained in batches .
+Under the batch training setting , a batch of positive examples are processed together in one training step .
+The only adaption we need here is to push all vectors computed by slow encoders in one batch into the queues together .
+It effectively mimics the behavior of the " in- batch negative " strategy employed by previous works such as Karpukhin et al . ( 2020 ) , where the passages in one batch will serve as negatives examples for their questions .
+Encoders
+We use pre-trained uncased BERT - base ) models as our encoders following Karpukhin et al . ( 2020 ) .
+The question and passage encoders utilize two sets of different parameters but are initialized from the same BERT - base model .
+For both question and passage , we use the vectors of the sequence start tokens in the last layer as their representations .
+Better pre-trained models such as Liu et al . ( 2019 ) can lead to better retrieval performance , but we choose the uncased BERT - base model for easier comparison with previous work .
+Incorporating hard negative examples Previous work has shown selecting hard examples can be helpful for training passage retrieval models .
+Our method can easily incorporate hard negative examples by simply adding an additional loss under the multitask framework : L hard = ? log exp ( E f ast q ( q ) ?
+E f ast p ( p ) ) p ?P ? { p} exp E f ast q ( q ) ?
+E f ast p ( p ) where P is a set of hard negative examples .
+The loss only involves the two fast encoders , not the slow encoders .
+We only add hard negatives for the question - to - passage matching tasks , not the passage - to-question matching tasks .
+In addition , we also encode these negative passages using the slow passage encoder E slow p and enqueue them to serve as negative passages in calculating loss L qp .
+In this work , we only implement a simple method of generating hard examples following Karpukhin et al . ( 2020 ) : for each positive pair , we add one hard negative example by randomly sampling from top retrieval results using a BM25 retriever .
+More elaborate methods of finding hard examples such as Xiong et al . ( 2020 ) and Ding et al . ( 2020 ) can also be included , but we leave it to future work .
+Removing false negative examples
+False negative examples are passages that can match the given question but are falsely labeled as negative examples .
+In xMoCo formulation , false negatives can arise if a previous encoded passage p in the queue can answer current question q.
+It can happen if the some questions share the same passage as answer , or if the same question - passage pair is sampled another time when its previous encoded vector is still in the queue because the queue size can be quite large .
+This is especially important for datasets with small number of positive pairs .
+To fix the problem , we keep track of the passage ids in the queue and mask out those passages identical to the current passage when calculating the loss .
+Labeling issues can also be the source of false negative examples as pointed out in Ding et al . ( 2020 ) .
+In their work , an additional model with fused input is trained to reduce the false negatives .
+We plan to incorporate such model - based approach in the future .
+Experiment
+Wikipedia Data as Passage Retrieval Candidates
+As many question answering datasets only provide positive pairs of questions and passages , we need to create a large collection of passages for passage retrieval tasks .
+Following , we extract the passage candidate set from the English Wikipedia dump from Dec. 20 , 2018 .
+Following the pre-processing steps in Karpukhin et al . ( 2020 ) , we first extract clean texts using pre-processing code from DrQA ( Chen et al. , 2017 ) , and then split each article into non-overlapping chunks of 100 tokens as the passages for our retrieval task .
+After pre-processing , we get 20,914,125 passages in total .
+Question Answering Datasets
+We use the five QA datasets from Karpukhin et al . ( 2020 ) and follow their training / dev/test splits .
+Here is a brief description of the datasets .
+Natural Questions ( NQ ) ( Kwiatkowski et al. , 2019 ) is a question answer dataset where the questions were real Google search queries and answers were text spans of Wikipedia articles manually selected by annotators .
+TriviaQA ( Joshi et al. , 2017 ) is a set of trivia questions with their answers .
+We use the unfiltered version of TriviaQA .
+WebQuestions ( WQ ) ( Berant et al. , 2013 ) is a collection of questions from Google Suggest API with answers from Freebase .
+CuratedTREC ( TREC ) ( Baudi ? and ?ediv? , 2015 ) composes of questions from both TREC QA tracks and Web sources .
+SQuAD v1.1 ( Rajpurkar et al. , 2016 ) is original used as a benchmark for reading comprehension .
+We follow the same procedure in Karpukhin et al . ( 2020 ) to create positive passages for all datasets .
+For TriviaQA , WQ and TREC , we use the highestranked passage from BM25 which contains the answer as positive passage , because these three datasets do not provide answer passages .
+We discard questions if answer cannot be found at the top 100 BM25 retrieval results .
+For NQ and SQuAD , we replace the gold passage with the matching passage in our passage candidate set and discard unmatched questions due to differences in processing .
+Table 1 shows the number of questions in the original training / dev/ test sets and the number of questions in training sets after discarding unmatched questions .
+Note that our numbers are slightly different from Karpukhin et al . ( 2020 ) due to small differences in the candidate set or the filtering process .
+Settings Following Karpukhin et al. ( 2020 ) , we test our model on two settings : a " single " setting where each dataset is trained separately , and a " multi " setting where the training data is combined from NQ , TriviaQA , WQ and TREC ( excluding SQuAD ) .
+We compare our model against two baselines .
+The first baseline is the classic BM25 baseline .
+The second baseline is the Deep Passage Retrieval ( DPR ) model from Karpukhin et al . ( 2020 ) .
+We also implement the setting where the candidates are re-ranked using a linear combination of BM25 and the model similarity score from either DPR or our xMoCo model .
+The evaluation metric for passage retrieval is top -K retrieval accuracy .
+Here the top -K accuracy means the percentage of questions which have at least one passage containing the answer in the top K retrieved passages .
+In our experiments , we evaluate the results on both Top - 20 and Top - 100 retrieval accuracy .
+Implementation details
+For training , we used batch size of 128 for our models .
+For the two small datasets TREC and WQ , we trained the model for 100 epochs ; for other datasets , we trained the model for 40 epochs .
+We used the dev set results to select the final checkpoint for testing .
+The dropout is 0.1 for all encoders .
+The queue size of negative examples in our model is 16 , 384 .
+The momentum co-efficient ? in the momentum update is set to 0.001 .
+We used Adam optimizer with a learning rate of 3e ? 5 , linear scheduling with 5 % warm - up .
+We did n't do hyperparameter search .
+We follow their specification in Karpukhin et al . ( 2020 ) when re-implementing DPR baselines .
+Training was done on 16 32GB Nvidia GPUs , and took less than 12 hours to train each model .
+For inference , we use FAISS ( Johnson et al. , 2017 ) for indexing and retrieving passage vectors .
+For BM25 , we use Lucene implementation with b = 0.4 ( length normalization ) and k 1 = 0.9 ( term frequency scaling ) following Karpukhin et al . ( 2020 ) .
+Main Results
+We compare our xMoCo model with both BM25 and DPR baselines over the five QA datasets .
+As shown in Table 2 , our model out-performs both BM25 and DPR baselins in most settings when evaluating on top - 20 and top - 100 accuracy , except SQuAD where xMoCo does slightly worse than BM25 .
+The lower performance on SQuAD than BM25 is consistent with previous observation in Karpukhin et al . ( 2020 ) .
+All the baseline numbers are our re-implementations and are comparable but slightly different from the numbers reported in Karpukhin et al . ( 2020 ) due to the difference in the pre-processing and random variations in training .
+The results empirically demonstrate that using a large number of negative samples in xMoCo indeed leads to a better retrieval model .
+The improvement of top - 20 accuracy is larger than that of top - 100 accuracy , since top - 100 accuracy is already reasonably high for the DPR baselines .
+Linearly adding BM25 and model scores does not bring consistent improvement , as xMoCo 's performance is significantly better than BM25 except for SQuAD dataset .
+Furthermore , combining training data only brings improvement on smaller datasets and hurts results on larger datasets due to domain differences .
+Ablation Study
+We perform all ablation experiments on NQ dataset except for the end-to - end QA result evaluation .
+Size of the queue of negative samples
+One main assumption of xMoCo is that using a larger size of negative samples will lead to a better model for passage retrieval .
+Here we empirically study the assumption by varying the size of the queues of negative samples .
+The queue size cannot be reduced to zero because we need at least one negative sample to compute the contrastive loss .
+Instead , we use the two times the batch size as the minimal queue size , when the strategy essentially reverses to " in - batch negatives " used in previous works .
+As shown in Fig. 2 , the model performance increases as the queue size increases initially , but tapers off past 16 k .
+This is different from previous work Chi et al . ( 2020 ) , where they observe performance gains with queue size up to 130k .
+One possible explanation is that the number of training pairs is relatively small , thus limiting the effectiveness of the larger queue sizes .
+As for computational efficiency , the size of the queue has little impact on both training speed and memory cost , because both are dominated by the computation of the encoders .
+tions " and " passages " are drastically different .
+End-to- end QA results
+For some open domain QA tasks , after the relevant passages are fetched by the retriever , a " reader " is then applied to the retrieval results to extract finegrained answer spans .
+While improving retrieval accuracy is an important goal , it is interesting to see how the improvement would translate into the end-to - end QA results .
+Following Karpukhin et al. ( 2020 ) , we implement a simple BERT based reader to predict the answer spans .
+Give a question Q and N retrieved passages { P 1 , . . . , P N } , the reader first concatenates the question Q to each passage P i and predicts the probability of span ( P s i , P e i as the answer as : p( i , s , e|Q , P 1 , . . . , P N ) = p r ( i|Q , P 1 , . . . , P N ) ? p start ( s|Q , P i ) ? p end ( e|Q , P i ) where p r is the probability of selecting the ith passage , and p start , p end are the probabilities of the sth and eth tokens being the answer start and end position respectively .
+p start and p end is computed by the standard formula in the original BERT paper , and the p r is computed by applying softmax over a linear transformation over the vectors of the start tokens of all passages .
+We follow the training strategy of Karpukhin et al . ( 2020 ) , and sample one positive passages and 23 negative passages from the top - 100 retrieval results during training .
+Please refer to their paper for the details .
+The results are shown in Table 4 .
+While the results from xMoCo are generally better in most cases , the improvements are marginal compared to the results of DPR models .
+The reason might be that the improvement of xMoCo over DPR on top - 100 accuracy is not very large , and it might require better reader to find out the answer spans .
+Discussion
+How to select / create negative examples is an essential aspect of passage retrieval model training .
+xMoCo improves passage retrieval model by efficiently maintaining a large set of negative examples , while previous works mainly focus on finding a few hard examples .
+It is desirable to design a method to take the best from both worlds .
+As described in Section 4.5 , we can combine the two approaches under a simple multitask framework .
+But this multitask framework also has its drawbacks .
+Firstly , it loses the computational efficiency of xMoCo , especially if the method of generating the hard examples is expensive .
+Secondly , the large set of negative examples in xMoCo and the set of hard examples are two separate sets , while ideally , we want to maintain a large set of hard negative examples .
+To this end , one possible direction is to employ curriculum learning ( Bengio et al. , 2009 ) .
+Assuming the corresponding passages for similar questions can serve as hard examples for each other , we can schedule the order of training examples so that similar questions are trained in adjacent steps , resulting more hard examples to be kept in the queue .
+We plan to explore this possibility in future work .
+Conclusion
+In this paper , we propose cross momentum contrastive learning ( xMoCo ) , for passage retrieval task in open domain QA .
+xMoCo jointly optimizes question - to - passage and passage - to-question matching , enabling using separate encoders for questions and passages , while efficiently maintains a large pool of negative samples like the original MoCo .
+We verify the effectiveness of the proposed method on various open domain QA datasets .
+For future work , we plan to investigate how to better integrate hard negative examples into xMoCo .
+Figure 2 : 2 Figure 2 : The effect of queue size of xMoCo .
+The results are top - 20 accuracy on NaturalQuestions dataset .

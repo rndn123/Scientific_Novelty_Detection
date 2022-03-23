@@ -1,0 +1,223 @@
+title
+Connecting the Dots : A Knowledgeable Path Generator for Commonsense Question Answering
+abstract
+Commonsense question answering ( QA ) requires background knowledge which is not explicitly stated in a given context .
+Prior works use commonsense knowledge graphs ( KGs ) to obtain this knowledge for reasoning .
+However , relying entirely on these KGs may not suffice , considering their limited coverage and the contextual dependence of their knowledge .
+In this paper , we augment a general commonsense QA framework with a knowledgeable path generator .
+By extrapolating over existing paths in a KG with a state - of - the - art language model , our generator learns to connect a pair of entities in text with a dynamic , and potentially novel , multi-hop relational path .
+Such paths can provide structured evidence for solving commonsense questions without finetuning the path generator .
+Experiments on two datasets show the superiority of our method over previous works which fully rely on knowledge from KGs ( with up to 6 % improvement in accuracy ) , across various amounts of training data .
+Further evaluation suggests that the generated paths are typically interpretable , novel , and relevant to the task .
+Introduction Solving commonsense QA tasks requires filling gaps with external knowledge .
+For instance , given the multiple -choice question in Figure 1 , a system needs to know that fungus grows in moist environments , such as caves , and that a cave is a type of geological feature .
+Such commonsense knowledge is obvious for humans but most existing QA systems do not have it or cannot reason with it .
+Although recent advances in pre-trained language models ( LMs ) have resulted in impressive performance on commonsense-related benchmarks ( Zellers et al. , 2018 ; 1 The code is available at https://github.com/ wangpf3 /Commonsense-Path-Generator .
+Huang et al. , 2019 ) , it is unclear whether this is due to commonsense reasoning or to capturing spurious correlations in the data ( Niven and Kao , 2019 ) .
+Pre-trained LMs may answer a question correctly for wrong reasons , making them highly uninterpretable .
+Alternatively , a set of systems retrieve external knowledge either from large text corpora or knowledge graphs ( KGs ) .
+A corpus , however , might not be an ideal source of commonsense knowledge , as such knowledge is seldom stated explicitly in text ( Storks et al. , 2019 ) .
+In contrast , commonsense KGs , like ConceptNet ( Speer et al. , 2017 ) and ATOMIC , provide structured evidence about the relevant entities , thus enabling effective reasoning and higher interpretability .
+Existing systems retrieve knowledge from a KG in the form of : triplets ( Mihaylov and Frank , 2018 ) , multihop paths ( Lin et al. , 2019 ; Bauer et al. , 2018 ) , or subgraphs .
+Despite the aforementioned benefits , exploiting these KGs poses the following challenges .
+Firstly , as KGs are known to suffer from sparsity ( Li et al. , 2016 ) , they might not contain the knowledge needed to fill the gaps between the question and the answer .
+For example , a missing link ( cave , IsA , geological feature ) in Figure 1 might prevent the QA system from choosing the correct answer .
+Recent work on commonsense KG completion ( Li et al. , 2016 ; is limited to predicting the tail of a statement with known head and relation , or a single - hop relation between entities .
+Secondly , due to the large size and heterogeneity of modern KGs , contextualization - i.e. , identifying a set of KG facts which are relevant or needed to answer a question - is also difficult .
+Simply retrieving all paths could introduce noisy information and potentially harm reasoning .
+To address this gap between LMs and KGs , we propose a knowledgeable path generator ( PG ) that generalizes over the facts stored in a KG , rather than only retrieving them .
+We call our method neural KG due to its neural generalization over structured KGs , and , in contrast , we use the term static KG for methods which rely exclusively on existing facts in a KG .
+Our PG connects a pair of question and answer entities with a ( novel ) multi-hop path , which may not exist in the KG , allowing for missing facts like ( cave , IsA , geological feature ) in Figure 1 to be considered during inference .
+To learn such a generator , we : ( 1 ) sample a set of random walk instances from a static commonsense KG based on rules and constraints for informativeness and relevance ( ?3.1 ) ; ( 2 ) fine - tune a pretrained language model - GPT - 2 ( Radford et al. , 2019 ) on the sampled paths ( ?3.2 ) .
+By doing so , we transfer the rich knowledge encoded in GPT - 2 to our PG .
+This is expected to both enhance the generalization ability of the PG and combat the sparsity of KGs .
+Also , by generating high-quality missing links between the question and answer entities , we contextualize the task with relevant commonsense knowledge .
+To understand the impact of our multihop PG on downstream commonsense QA tasks , we integrate the PG in an augmented version of a general QA framework ( ?3.3 ) .
+We run experiments on two benchmark datasets CommonsenseQA ( Talmor et al. , 2018 ) and Open-BookQA .
+The results show that out method performs better than previous systems augmented with static KGs by up to 6 % in accuracy , which also reveals its potential as a plug-in module for various datasets and as a vital complement to existing KG structures .
+In the low-resource setting , the accuracy gain over the baselines grows as the training data decreases , indicating a larger inductive bias of our generator .
+We also assess the quality and interpretability of our paths through both automatic and human evaluation .
+To summarize , our key contributions are : 1 . We propose a method to generate task - relevant knowledge paths that may not exist in the original KG , thus addressing the contextualization and sparsity challenges of KGs .
+2 . We design and implement a framework with three variants of our PG , to understand the role of local and global graph information .
+Extensive experiments on two benchmark datasets demonstrate the effectiveness of our method compared to previous methods , as well as its robustness to limited training data .
+Preliminaries
+Our multiple -choice commonsense QA setup follows prior work ( Talmor et al. , 2018 ; Bisk et al. , 2020 ) : given a question q , a system selects exactly one of the choices a as an answer .
+To experiment with contextualized background knowledge , we adopt a general framework ( Figure 2 ) consisting of a context module , a knowledge module and a reasoning module .
+The context module encodes both the question q and a choice a as unstructured evidence , while the knowledge module encodes external facts as structured evidence .
+Both the unstructured and the structured evidence are fed to the reasoning module , which produces a score for a question - choice pair .
+The choice with a highest score would be the predicted answer .
+Next , we introduce each module in detail .
+Context Module
+We concatenate a question q and one of its choices a with a special token , and feed the sequence into a contextual encoder .
+This encoder generates an embedding c , which serves as an unstructured evidence to our system .
+As commonly done for textual input , we consider a bidirectional pre-trained language model ( Devlin et al. , 2018 ; as a contextual encoder .
+Knowledge Module Given a commonsense KG G = ( E , R ) , where E is the entity set and R is the relation set , we seek a set of relevant knowledge facts for a question - choice pair {q , a} , which would serve as structured evidence to support reasoning .
+We employ an entity recognition system to extract relevant entity mentions in the question ( denoted by E q = {e q } ) and one of the choices ( E a = {e a } ) .
+We connect each pair of question - choice entities with a multi-hop path , which can be done either by retrieving existing paths for now ( as in previous methods ) or by generating paths ( see ?3.3 ) .
+Formally , a path is p( e q , e a ) = {e q , r 0 , e 1 , r 1 , ... , r T ?1 , e a } where T is the number of hops .
+Note that when T = 1 , the path is a single triplet .
+The set of paths is denoted by P = { p ( e q , e a ) | e q ?
+E q , e a ?
+E a }.
+Naturally , we employ a Relational Network ( RN ) ( Santoro et al. , 2017 ) to aggregate the retrieved paths into a static knowledge embedding k , which serves as structured evidence .
+In essence , a RN is a composite function over the set P : k = f ? ( { g ? ( p ) |p ? P} ) , ( 1 ) where f ? could be any aggregation function and g ? could be any neural network which projects a discrete path p into a fixed - size continuous embedding p .
+We expect that not all paths contribute equally to choosing the right answer .
+Therefore , we construct the function f ? as an attention network : k = p?P ? p p. ( 2 ) We compute the attention weight ?
+p by using the context embedding c as a query : ? p = exp ( ? p ) ? p ? exp ( ? p ? ) , ( 3 ) where the context embedding c guides ( as an attention query ) the encoding of the structured evidence : ?p = c ? tanh ( W att ? p + b att ) .
+( 4 ) Here , the attention network is parameterized by ( W att , b att ) and tanh ( ? ) is a nonlinear activation function .
+Regarding the function g ? , we employ its original formulation : g ? ( p ) = MLP [ e q ; ( r 0 ? ... ? r T?1 ) ; e a ] , ( 5 ) where [ ; ] is vector concatenation and ? stands for element -wise multiplication .
+The components ( entities and relations ) of a path are represented by their feature vectors .
+Reasoning Module
+This module leverages the unstructured evidence ( the context embedding c ) and the structured one ( the knowledge embedding k ) , to compute the plausibility of a question - choice pair .
+We concatenate c with k and feed them to the final classification layer , which is a linear transformation that scores a question - choice pair {q , a} : f ( q , a ) = W cls ? [ c ; k ] + b cls , ( 6 )
+The linear classification layer is parameterized by ( W cls , b cls ) .
+We get the final probability over all choices by normalizing with softmax .
+Knowledgeable Path Generator Extracting the structured evidence by retrieving paths ( or subgraphs ) from a static KG , as in prior work Lin et al. , 2019 ; , faces two key challenges : sparsity and contextualization ( ?1 ) .
+We thus propose a knowledgeable path generator ( PG ) , which learns to connect a question - choice entity pair ( e q , e a ) with a multi-hop path .
+The generated paths are used as structured evidence in the knowledge module .
+Next , we detail the construction of training data ( ?3.1 ) , the learning of our path generator over this data ( ?3.2 ) , and the integration of the generator into the reasoning module ( ?3.3 ) .
+Figure 3 presents an overview of our adapted knowledge module .
+Knowledge Path Sampling
+We sample paths from a commonsense KG using random walks , in order to provide training data for our PG .
+Such paths are expected to contain useful knowledge for commonsense QA tasks .
+Given a KG G = ( E , R ) , each sampled path p = {e 0 , r 0 , e 1 , r 1 , ... , r T ?1 , e T } is a random walk on the graph , where e t ?
+E and r t ?
+R . The number of hops , T , is a hyperparameter in our method .
+To improve the quality of the paths , we adopt two heuristic strategies .
+For relevance , we define a subset of relation types that are useful for answering commonsense questions , e.g. , AtLocation and IsA , and filter out the remaining ones , e.g. , RelatedTo , prior to sampling ( see Appendix B for the discarded relations ) .
+For informativeness , we require all relation types in a path to be distinct .
+We explore two sampling strategies in order to select the starting node of the random walks : Local Sampling .
+The random walks start from the entities that appear in the questions and answer choices of the training set of a benchmark .
+This strategy is expected to favor generation of paths that are tailored to the task .
+Global Sampling .
+We conduct random walks starting from each entity in E .
+This may divert our PG away from biasing on the local structure of the KG and enhance its generalizability to unseen data .
+To include entities that are connected only with inverse triplets in a path , we add a reverse relation r ?1 for each relation r.
+We also sample paths with a mixed number of hops T , so our generator can learn to connect entities using paths of variable length , when needed .
+The full path sampling procedure is described by Algorithm 1 in the Appendix .
+Generating Paths to Connect Entities
+We employ GPT - 2 ( Radford et al. , 2019 ) as the backbone of our path generator .
+GPT - 2 is a pretrained language model that encodes rich unstructured knowledge from large text corpora .
+We foresee two benefits of combining a pre-trained model such as GPT - 2 and a static KG : ( 1 ) the language model would be able to generate commonsense knowledge paths , by being enriched with relevant structured knowledge ; ( 2 ) the unstructured knowledge encoded in the language model would help to alleviate the sparsity challenge of the static KGs .
+Unlike COMET ) which fine- tunes GPT ( an earlier version of GPT - 2 ) with independent triplets , we fine- tune GPT - 2 with consecutive triplets that form paths ( see Section 3.1 ) .
+To do so , we first use GPT - 2's Byte -Pair Encoding ( Sennrich et al. , 2016 ) to convert each symbolic path p to its textual form as a sequence {x 0 , y 0 , x 1 , y 1 , ... , y {predator , DistinctFrom , prey , IsA , animal } ?
+{ animal , [ SEP ] , predator , distinct , from , prey , is , a , animal} relation r t .
+The reverse relations are represented by adding a special prefix token " " .
+The resulting paths mimic natural language sentences to facilitate optimal usage of the knowledge encoded in the pre-trained language model .
+At inference time , in order to connect the question - choice entities , we also add the last entity phrase tokens x T together with a separate token [ SEP ] at the beginning of each path sequence , which produces the final transformation s p .
+This informs the generator about the last entity it should output when generating a path .
+Table 1 provides an example path transformation .
+The PG learns to maximize the probability of the observed paths given the entity pairs .
+We use negative conditional log likelihood as a loss function : L = ? |s p | t=|x 0 |+|x T |+1 log P ( s p t | s p <t ) , ( 7 ) where the conditional probability is defined as : P ( s p t | s p <t ) = softmax ( W vocab ? h t ) .
+( 8 ) Here h t denotes the final GPT - 2 representation for s p t .
+W vocab is the embedding matrix for the tokenbased vocabulary used by GPT - 2 , which generalizes well to unseen words .
+2 During the inference , the target entity ( e a ) , the [ SEP ] token , and the starting entity ( e q ) are fed to our generator ( the shaded part in Table 1 ) , and greedy decoding is used to generate a path connecting the two entities .
+Other constrained decoding strategies would be left as future work .
+Adapted Commonsense QA Framework
+To facilitate integration of the structured evidence from our path generator instead of a static KG , we adapt the knowledge module from ?2 slightly .
+We construct the path set P by generating a multi-hop path p( e q , e a ) for each pair of a question entity e q and a choice entity e a with our PG and greedy decoding .
+To represent each path with an embedding , we perform mean pooling of the hidden states from the last layer of GPT - 2 ( before the softmax layer in Eq. 8 ) as a new formulation for the function g ? : g ? ( p ) = MEAN ( {h 1 , h 2 ... , h |s p | } ) .
+( 9 ) Since GPT - 2 has been pre-trained on a large corpus , we believe such representation should be sufficient for preserving the information of the paths .
+Then , the knowledge embedding obtained with the function f ? of the RN ( Eq. 2 - 4 ) is concatenated with the original static knowledge embedding as our new definition of k .
+The whole pipeline is optimized by minimizing its cross-entropy loss .
+The set of learnable parameters excludes the parameters of our proposed PG , because we observed that fixing their values yields optimal performance .
+This points to another advantage of our PG : after being fine-tuned on the sampled random walks from a KG , the PG could be integrated within an existing QA system with no further training .
+Experiments
+Datasets
+We evaluate our method on two commonsense QA benchmarks : CommonsenseQA ( Talmor et al. , 2018 ) and OpenBookQA .
+As the test set of CommonsenseQA is not publicly available , the predictions for it can only be evaluated once every two weeks via the official leaderboard .
+Thus , we report our test score on the leaderboard , and perform more extensive comparisons on the data split used in Lin et al . ( 2019 ) .
+Besides questions and answers , OpenBookQA provides a collection of background facts in a textual form .
+We use the correspondence between these facts and their questions , prepared by Clark et al . ( 2019 ) , as an additional input to the context module for all methods , except RoBERTa - large ( see ?4.5 ) .
+KG and Path Data Preparation Entity Recognition
+We employ Concept- Net ( Speer et al. , 2017 ) , a popular commonsense KG .
+As stated in ?3.1 , we disregard triplets that belong to a predefined set of relations ( see Appendix ) .
+Similar to previous work ( Lin et al. , 2019 ) , we use lexical matching to ground the entities mentioned in the question and the answer choices to our KG .
+One exception is that each answer choice in CommonsenseQA is treated as a single entity , as these tend to correspond directly to concepts in ConceptNet .
+Path Sampling
+We sample a set of paths with varying lengths , ranging from 1 to 3 hops .
+Global sampling generates 2,825,692 paths , while local sampling results in 133,612 paths for Common-senseQA and 105,155 for OpenBookQA .
+We split them into training / dev/ test sets at a 90 ? 5 ? 5 ratio .
+Baselines
+As baselines , we consider a fine- tuned LM , static KG - augmented models , and a 1 - hop link predictor on the question and the answer entities .
+Fine-tuned LM .
+To examine the role of the external knowledge , we compare to a " Fine- tuned LM " ablation of our QA framework without the knowledge module ( ?2 ) .
+Static KG Models .
+We compare to three static KG variants of our QA framework that model the knowledge module with path / graph encoders : ( 1 ) a RN degenerate version of our system , which computes a knowledge embedding by an attention mechanism over the retrieved paths for each question - choice entity pair ; ( 2 ) Relational Graph Convolutional Networks ( RGCN ) ( Schlichtkrull et al. , 2018 ) which encode local graphs by using graph convolutional networks with relation -specific weight matrices ; ( 3 ) GconAttn ( Wang et al. , 2019 ) which models the alignment between entities via attention and pools over all entity embeddings .
+Link Prediction Model .
+This baseline predicts the relation between question and answer entities instead of creating or finding knowledge paths .
+Namely , we employ TransE ( Bordes et al. , 2013 ) to learn a representation for every entity and relation in ConceptNet , which is then leveraged to predict a 1 - hop relation for each pair of question and answer entities .
+The representations for each resulting triplet are used as 1 - hop path embeddings .
+The rest of this baseline is identical to our QA framework .
+Model Variations
+We experiment with three variants of our method which differ in terms of the knowledge embedding : ( 1 ) PG - Full : combination of our global PG and a static RN as detailed in ?3.3 ; ( 2 ) PG - Local : a local PG which is trained on both local and global paths ; ( 3 ) PG - Global : a global , data- independent PG which is trained on global paths only .
+We note that PG - Local and PG - Global do not include the static knowledge embedding .
+Results Main Results
+For all systems , we experiment with several encoders as a context module : BERTlarge ( Devlin et al. , 2018 ) and RoBERTa - large for CommonsenseQA , RoBERTa -large and AristoRoBERTa ( Clark et al. , 2019 ) for Open-BookQA .
+Tables 2 and 3 show the results for Com-monsenseQA and OpenBookQA , respectively .
+On both datasets , we observe consistent improvements brought by our method with different context encoders .
+Our full model which , combines both generated and static knowledge , achieves the best performance overall , suggesting these two knowledge sources are complementary .
+Typically , either our local or global variant yields second best results , demonstrating the effectiveness of the generated paths as structured evidence and their superiority over the static KG methods .
+The comparable performance of Link Prediction to the static KG methods indicates that even predicting 1 - hop knowledge paths helps to address the KG sparsity .
+Furthermore , we report comparable results to the other systems on the official test sets , accessible via the leaderboards ( Tables 4 and 5 ) .
+Notably , the two best-performing systems , UnifiedQA ( Khashabi et al. , 2020 ) and TTTTT ( Raffel et al. , 2019 ) , are based on the T5 language model ( Raffel et al. , 2019 ) , which requires excessive computational resources and is impractical in an academic setting .
+Excluding these , our full method achieves the best performance on both datasets .
+Less Labeled Data
+To compare the robustness of our model and the baselines to sparsity , we perform experiments with { 20 % , 40 % , 60 % , 80 % , 100 % } of the training data from both datasets .
+The results , displayed in Table 2 and Figure 4 , show that our method ( with RoBERTa ) performs better or equal to the baselines with any amount of training data .
+The performance gain brought by either our Global or Full model is higher when less data is used , which shows that introducing structured evidence as inductive bias helps in a low-resource setting .
+Ablation Study
+We study the contribution of different strategies for learning our generator based on the performance of our Global and Local variants in Tables 2 - 3 .
+We also include another variant by training our path generator from scratch , i.e. training a randomly - initialized model with the same architecture as GPT - 2 instead of finetuning a pre-trained one .
+This Scratch variant achieves 68.75 and 65.50 accuracy on the Com-monsenseQA and OpenBookQA test sets , respectively , with RoBERTa - large as the text encoder .
+Its performance thus resembles that of the static KG baselines while our Full method achieves 72.68 and 71.20 .
+This demonstrates that learning paths from scratch approximates what a static KG has already , whereas the unstructured knowledge stored in a pre-trained GPT - 2 helps to complement missing knowledge in a static KG .
+When coupled with a more powerful encoder like RoBERTa or Albert , our Global variant achieves comparable or better results than our Local variant , without fitting the paths to the task , and thus holds a promise to enhance generalization on a wider range of datasets .
+Study of Path Quality & Interpretability Automatic Evaluation
+We perform automatic evaluation of the validity and novelty of the gener - ated paths from our Global and Scratch PG variants .
+To automatically measure validity , we analyze ( 1 ) the proportion of paths which successfully connect the head and the tail entities ( Connection ) , ( 2 ) the proportion of entities / relations found in Con-ceptNet ( Valid Entity / Relation ) .
+We also leverage a commonsense knowledge base completion model , Bilinear AVG ( Li et al. , 2016 ) , which produces a score for a given triplet .
+This model reportedly achieves 92.5 % accuracy on commonsense knowledge completion and has been used in previous work .
+We average the scores of all the triplets in a path which are missing in ConceptNet as its Score .
+We compute novelty as the proportion of paths which contain at least one triplet missing in ConceptNet ( Novelty ) .
+The results are presented in Table 6 . Firstly , our two generator variants are able to connect a vast majority of the entity pairs with a valid path ( over 90 % Connection ) .
+For this purpose , our generators only use the relations in the relation set instead of other , out - of - KG phrases ( 100 % Valid Relation ) .
+In addition , the novel paths from the Global generator are of higher quality compared with the ones from the Scratch generator , given that any fact with a score over 0.5 is classified as positive by Bilinear AVG , which is later confirmed by our human evaluation as well .
+The Global generator also has a higher Novelty , indicating the necessity of transferring knowledge from a pretrained GPT - 2 to complement a static KG .
+Human Evaluation
+We also conduct human evaluation on two dimensions of the generated paths : ( 1 ) validity ( How valid are the paths ? ) ( 2 ) relevance ( How relevant are the paths to the question ? ) .
+We randomly sample 50 paths from our Global and Scratch generator for different question - choice entity pairs in the test datasets .
+For each path , we provide the corresponding question and answer choices as the context .
+We ask three annotators to score each path from 1 ( Not at all ) to 5 ( Very ) , resulting in a total of 150 scores for each dimension / generator / dataset .
+The averages of these scores are reported as H-Valid and H-Relevance in Table 6 .
+For both dimensions , our Global generator achieves higher scores , showing the ability of fine-tuning a pre-trained GPT - 2 as our generator to learn the path distribution which is of high quality and relevant to commonsense QA .
+Path Interpretability .
+In Table 7 , we compare example paths generated by our Global and Scratch variants to connect the question entities to the gold answer entities .
+In Q1 , our Global generator provides knowledge about the location of an entity with a 2 - hop path , which helps with answering such " Where " questions .
+Although the path from our Scratch generator also contains the AtLocation relation , its first generated hop ( IsA ) is less informative .
+In Q2 , our Global generator is able to connect complex ideas about harmony and making peace with a 2 - hop path , while the path from the Scratch variant contains incorrect information : peace is caused by committing perjury .
+In Q3 , the path from our Global generator is able to predict the relevant property of an entity and realizes that a 1 - hop relation suffices in this case .
+Our Scratch variant , however , predicts a less precise relation ( HasContext ) .
+These cases show the path generalization ability of the fine-tuned pre-trained GPT - 2 , owed to its unstructured knowledge .
+We refer readers to Table 12 in Appendix for more cases .
+Related Work Multi-hop Reasoning on KGs .
+Recent benchmarks for commonsense QA and related tasks like open domain QA ( Yang et al. , 2018 ) and reading comprehension ( Welbl et al. , 2018 ) , require systems to conduct multi-hop reasoning .
+Existing systems typically employ entity linking to recognize the relevant entities , ground them to a KG , and retrieve the paths from the local graph neighborhood around the entities .
+The retrieved paths are scored or ranked using graph - based metrics ( e , g. , PageRank , centrality ) ( Paul and Frank , 2019 ; Bauer et al. , 2018 ) , handcrafted rules or neural methods ( e.g. , attention mechanisms ) ( Kundu et al. , 2018 ; Lin et al. , 2019 ) .
+Rather than relying on a static KG , our PG is able to generate knowledge paths dynamically , even when these are absent in the KG .
+Dynamic Knowledge Path Generation .
+Several methods generate knowledge paths instead of extracting them from static KGs .
+Asai et al. ( 2019 ) learn reasoning paths by forming sequences of evidence documents , however , their approach relies on the inter-document hyperlinks to establish relations in the constructed KG .
+The extractor of Fu et al . ( 2019 ) retrieves missing facts in order to address the sparsity of KGs .
+Unlike our work , their setting is limited to knowledge graph completion , where both a query entity and a single query relation are given .
+The most similar existing work to ours is that by , which also leverages GPT - 2 to dynamically generate knowledge paths .
+We see two key differences between this method and ours : ( 1 ) they expand their paths gradually by predicting the next entity one at a time , while we generate the paths in an end-to - end manner ; ( 2 ) their method is restricted to a setting where the context could be treated as a single entity and the question - as a query relation , which is not a limitation to our method .
+Conclusion
+In this paper , we propose a generator of multi-hop knowledge paths , which provides structured evidence for answering commonsense questions .
+The generator , learned by fine-tuning GPT - 2 on random walks sampled from ConceptNet , produces a path between each pair of question and answer entities .
+All generated paths are aggregated into a knowledge embedding and fused with a context embedding given by a text encoder for classification .
+Our QA framework enhanced with this generator outperformes both pre-trained language models and prior KG - augmented methods on two commonsense QA benchmarks .
+The accuracy gain increases with less training data .
+Furthermore , automatic - and human- based evaluations of the generated paths yield high scores for their validity , novelty , and relevance .
+Future research should investigate how to optimally fuse the knowledge and the context embeddings .
+It should also address the ambiguity of the entity mentions in the questions , the answers , and the lexical nodes in ConceptNet .

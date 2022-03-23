@@ -1,0 +1,97 @@
+title
+Long Document Summarization in a Low Resource Setting using Pretrained Language Models
+abstract
+Abstractive summarization is the task of compressing a long document into a coherent short document while retaining salient information .
+Modern abstractive summarization methods are based on deep neural networks which often require large training datasets .
+Since collecting summarization datasets is an expensive and time - consuming task , practical industrial settings are usually low-resource .
+In this paper , we study a challenging low-resource setting of summarizing long legal briefs with an average source document length of 4268 words and only 120 available ( document , summary ) pairs .
+To account for data scarcity , we used a modern pretrained abstractive summarizer BART ( Lewis et al. , 2020 ) , which only achieves 17.9 ROUGE - L as it struggles with long documents .
+We thus attempt to compress these long documents by identifying salient sentences in the source which best ground the summary , using a novel algorithm based on GPT - 2 ( Radford et al. , 2019 ) language model perplexity scores , that operates within the low resource regime .
+On feeding the compressed documents to BART , we observe a 6.0 ROUGE -L improvement .
+Our method also beats several competitive salience detection baselines .
+Furthermore , the identified salient sentences tend to agree with an independent human labeling by domain experts .
+Introduction and Related Work Text summarization is the task of generating a smaller coherent version of a document preserv - * * Equal Contribution ing key information .
+Typical abstractive summarization algorithms use seq2seq models with attention ( Chopra et al. , 2016 ) , copy mechanisms ( Gu et al. , 2016 ) , content selection ( Cheng and Lapata , 2016 ) , pointer- generator methods ( See et al. , 2017 ) and reinforcement learning ( Wu and Hu , 2018 ) .
+These methods perform well in high resource summarization datasets with small documents such as CNN / DailyMail ( Nallapati et al. , 2016 ) , Gigaword ( Rush et al. , 2015 ) , etc .
+However , summarization over long documents with thousands of tokens is a more practically relevant problem .
+Existing solutions focus on leveraging document structure ( Cohan et al. , 2018 ) or do mixed model summarization involving compression or selection followed by abstractive summarization ( Liu et al. , 2018 ; Gehrmann et al. , 2018 ) .
+However , these methods require large amounts of training data .
+Low resource settings are common in real world applications as curating domain specific datasets especially over long documents and on a large scale , is both expensive and time consuming .
+A human summarizing a long document would first understand the text , then highlight the important information , and finally paraphrase it to generate a summary .
+Building on this intuition , we present a low-resource long document summarization algorithm ( Section 2 ) operating in 3 steps : 1 . Ground sentences of every training set summary into its source , identifying salient sentences 2 . Train a salience classifier on this data , and use it to compress the source document during test time
+To tackle data scarcity , we use pretrained language models in all three steps , which show strong generalization ( Devlin et al. , 2019 ) and are sample efficient ( Yogatama et al. , 2019 ) .
+Notably , our step ( 1 ) uses a novel method based on GPT - 2 perplexity ( Radford et al. , 2019 ) to ground sentences .
+Unlike prior work ( Parida and Motlicek , 2019 ; Magooda and Litman , 2020 ) tackling data scarcity in summarization , our method needs no synthetic data augmentation .
+Moreover , we study a significantly more resource constrained setting - a complex legal briefs dataset ( Section 2 ) with only 120 available ( document , summary ) pairs and an average of 4.3 K tokens per document ; Parida and Motlicek ( 2019 ) assume access to 90,000 pairs with a maximum of 0.4 K source document tokens , Magooda and Litman ( 2020 ) use 370 pairs with 0.2 K source document tokens .
+Despite this challenging setup , our method beats an abstractor-only approach by 6 ROUGE -L points , and also beats several competitive salience detection baselines ( Section 3 ) .
+Interestingly , identified salient sentences show agreement with an independent human labeling by domain experts , further validating the efficacy of our approach .
+Dataset and Approach
+To mimic the real world scenario of summarization over long domain-specific documents , we curate 120 document -summary pairs from publicly avail-able Amicus Briefs , 1 thus simulating the legal domain .
+The source contains detailed arguments that the court should consider for a case ; the target summarizes them .
+As shown in Table 1 , our dataset is significantly smaller than the popular CNN / Daily Mail benchmark ( Nallapati et al. , 2016 ) and has significantly longer documents and summaries .
+To tackle this low resource setting , we use the state - of - the - art abstractive summarizer BART ( Lewis et al. , 2020 ) , pretrained on a dataset from a related domain ( CNN / DM ) .
+Since BART was trained on short documents , it truncates documents longer than 1024 subwords .
+Hence , instead of feeding the whole source document as input to BART , we feed salient sentences extracted using a salience classifier .
+Our salience classification dataset is built using a novel method which grounds summary sentences to sentences in source with language model perplexity scores .
+Our approach ( Figure 1 ) resembles the extract - then - abstract paradigm popular in prior work ( Gehrmann et al. , 2018 ; Liu et al. , 2018 ; Subramanian et al. , 2019 ; Chen and Bansal , 2018 ) . Extraction Stage :
+To extract the most important content from the source document required to generate the summary , we pose content selection as a binary classification task , labeling every sentence in the source document as salient or non-salient .
+Sentences classified as salient are concatenated in the order of occurrence in the source document to generate a compressed " extractive summary " , which is then fed to the abstractive summarizer .
+Maintaining the order of sentences ensures the logical flow of information is not disrupted .
+In addition to identifying important information , the salience classifier is able to remove repetitive boilerplate text which is common in technical documents but often irrelevant to the actual content .
+Training Data for Salience Classification :
+Since we do not have sentence - level training data for the classifier , we construct it by grounding sentences of the ground truth summary to sentences in the source document .
+Consider a source document S consisting of m sentences s 1 :m and a target summary T consisting of n sentences t 1:n where m >> n. We compute the salience score for every source sentence s i ?
+S as 1 n n j=0 f ( s i , t j ) .
+Here f ( s , t ) is a measure of how much source sentence s grounds target sentence t.
+Following this , we sort the sentences in the source document based on salience score .
+The highest scoring 3n sentences are chosen as salient sentences and the lowest scoring 3n are chosen as non-salient sentences .
+3n is a tuned hyperparameter .
+Whenever m < 6n , we sort the sentences according to the salience score and assign salient to the top half and non-salient to the bottom half .
+We construct our dataset for salience classification by running this algorithm for every ( S , T ) pair in the training dataset .
+To ensure generalization with limited training data , we incorporate transfer learning and build our classifier by finetuning BERT - base ( Devlin et al. , 2019 ) using transformers ( Wolf et al. , 2019 ) .
+More details on training are provided in Appendix A.2 .
+Choice of f ( s , t ) :
+To measure how much a source sentence s grounds a target sentence t we measure the perplexity of t conditioned on s , using a pretrained language model GPT - 2 large ( Radford et al. , 2019 ) .
+More formally , we concatenate s and t as [ s ; t] and feed it as input to GPT - 2 large , calculating perplexity over the tokens of t.
+Here , a lower perplexity corresponds to a higher f ( s , t ) score .
+We find that this measure correlates with entail-ment and outperforms other choices of f ( s , t ) like n-gram overlap , sentence embedding similarity & entailment classifiers ( Section 3.3 ) .
+Abstraction Stage : Having compressed the source document using our extractor , we use a black - box pretrained abstractive summarizer trained on a related domain .
+In this work , we make use of the state - of - the - art model ( i.e. BART ) , which is based on pretrained language models .
+Pretraining on CNN / DM helps BART generalize to unseen but related domains like legal briefs .
+Details on our BART setup are provided in Appendix A.3 .
+Experiments
+Evaluating the extractor
+To evaluate our proposed extractor , we first check whether our salience classifier generalizes to a heldout test set .
+2 Indeed , it achieves a classification accuracy of 73.66 % , and qualitative analysis of the classifications confirm its ability to identify boilerplate sentences as non-salient .
+Our classifier compresses source documents by 61 % on average .
+Note that classifier score can be thresholded to obtain more or less compression depending on domain and end-task .
+Next , we evaluate the quality of extracted salient sentences by checking the extent to which they overlap in information with the gold test set summaries , by measuring ROUGE - 1/2 recall scores .
+As shown in Table 2 , our extractor outperforms a random selection of the same number of sentences and is comparable to the upper-bound recall performance achieved by feeding in the whole source document .
+Finally , to measure the extent to which our salience classifier matches human judgement , domain experts identified 8- 10 salient sentences in four test documents with more than 200 sentences each on request .
+Despite their scarcity , our salience classifier recovers 64.7 % marked sentences , confirming correlation with human judgments .
+Evaluating the entire pipeline
+We evaluate the entire pipeline by measuring the quality of abstractive summaries , obtained by feeding the extractive summary to BART .
+We study two abstractor settings : Table 4 : Results of our extract - then - abstract pipeline ( after finetuning BART ) by varying f ( s , t ) .
+Our choice of GPT - 2 perplexity performs better than 3 alternatives .
+As seen in Table 3 , we observe a 4.8 / 6 ROUGE - 1/L improvement when compared to the no extractor baseline ( NE ) , and 2.3 / 3.2 R- 1/ L improvement over the strongest extractor baseline ( per metric ) ; confirming the effectiveness of our method .
+In addition , finetuning the CNN / DM pretrained BART on 96 Amicus documents helps in domain adaption and boosts the ROUGE scores of both baselines and our method ( f.t. BART ) .
+Specifically , we observe a 2.1 / 0.5 R- 1/ L boost in performance and outperform the best baseline ( per metric ) by 2.0 / 1.0 R- 1/ L points .
+Our model 's improvements are statistically significant ( p- value < 0.06 ) except for when comparing our extractor + f.t BART with Bottom - up + f.t BART , the p-value is 0.16 due to the small test set .
+Refer Appendix A.3 for qualitative analysis of our proposed model 's generations .
+Validating the choice of f ( s , t ) In Section 2 we used GPT - 2 perplexity scores to measure the extent to which a source sentence grounds a target sentence .
+To motivate this choice , we measure its correlation with existing entailment datasets .
+We randomly sample 5000 sentences from each class of the MultiNLI dataset ( Williams et al. , 2018 ) and compute the perplexity of the hy-pothesis with the premise as context .
+As seen in Figure 2 , entailment pairs tend to have the lowest perplexity .
+This motivates our choice of f ( s , t ) , since hypothesis sentences are best grounded in premise sentences for entailment pairs .
+We hypothesize contradiction sentences have slightly lower perplexity than neutral due to more word overlap .
+To further validate the merit of GPT - 2 perplexity , we conduct ablations using alternatives for f ( s , t ) :
+1 . Entailment score from a RoBERTa based MNLI classifier ( Liu et al. , 2019 ) 2 . Cosine similarity of averaged embeddings from final layer of BERT ( Devlin et al. , 2019 ) 3 . BLEU scores ( Papineni et al. , 2002 )
+We present ROUGE scores using our whole extractthen - abstract pipeline with different choices of f ( s , t ) in Table 4 .
+We note that perplexity performs the best , 2.4 ROUGE - 1 better than the best alternative and also performs 3.41 ROUGE - 1 better than entailment .
+We hypothesize that RoBERTa overfits on the MNLI dataset that also has known biases ( Gururangan et al. , 2018 ) .
+The code can be found on Github here .
+4
+Conclusion
+We tackle an important real-world problem of summarizing long domain-specific documents with much less training data than previous works .
+We propose an extract - then - abstract pipeline which uses GPT - 2 perplexity and a BERT classifier to estimate sentence salience .
+This sufficiently compresses a document , allowing us to use a pretrained model ( BART ) to generate coherent & fluent summaries .

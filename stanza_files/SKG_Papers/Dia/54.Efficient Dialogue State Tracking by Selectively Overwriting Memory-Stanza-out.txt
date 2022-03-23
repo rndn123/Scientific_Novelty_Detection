@@ -1,0 +1,237 @@
+title
+Efficient Dialogue State Tracking by Selectively Overwriting Memory
+abstract
+Recent works in dialogue state tracking ( DST ) focus on an open vocabulary - based setting to resolve scalability and generalization issues of the predefined ontology - based approaches .
+However , they are inefficient in that they predict the dialogue state at every turn from scratch .
+Here , we consider dialogue state as an explicit fixed - sized memory and propose a selectively overwriting mechanism for more efficient DST .
+This mechanism consists of two steps : ( 1 ) predicting state operation on each of the memory slots , and ( 2 ) overwriting the memory with new values , of which only a few are generated according to the predicted state operations .
+Our method decomposes DST into two sub-tasks and guides the decoder to focus only on one of the tasks , thus reducing the burden of the decoder .
+This enhances the effectiveness of training and DST performance .
+Our SOM -DST ( Selectively Overwriting Memory for Dialogue State Tracking ) model achieves state - of- theart joint goal accuracy with 51.72 % in Mul-tiWOZ 2.0 and 53.01 % in MultiWOZ 2.1 in an open vocabulary - based DST setting .
+In addition , we analyze the accuracy gaps between the current and the ground truth - given situations and suggest that it is a promising direction to improve state operation prediction to boost the DST performance .
+1
+Introduction Building robust task - oriented dialogue systems has gained increasing popularity in both the research and industry communities ( Chen et al. , 2017 ) .
+Dialogue state tracking ( DST ) , one of the essential tasks in task - oriented dialogue systems ( Zhong et al. , 2018 ) , is keeping track of user goals or intentions throughout a dialogue in the form of a set of slot-value pairs , i.e. , dialogue state .
+Because the 1 The code is available at github.com/clovaai/som-dst.
+Figure 1 : An example of how SOM - DST performs dialogue state tracking at a specific dialogue turn ( in this case , fifth ) .
+The shaded part is the input to the model , and " Dialogue State at turn 5 " at the right- bottom part is the output of the model .
+Here , UPDATE operation needs to be performed on the 10th and 11th slot .
+DST at this turn is challenging since the model requires reasoning over the long- past conversation .
+However , SOM - DST can still robustly perform DST because the previous dialogue state is directly utilized like a memory .
+next dialogue system action is selected based on the current dialogue state , an accurate prediction of the dialogue state has significant importance .
+Traditional neural DST approaches assume that all candidate slot-value pairs are given in advance , i.e. , they perform predefined ontology - based DST Zhong et al. , 2018 ; Nouri and Hosseini-Asl , 2018 ; . Most previous works that take this approach perform DST by scoring all possible slot-value pairs in the ontology and selecting the value with the highest score as the predicted value of a slot .
+Such an approach has been widely applied to datasets like DSTC2 and WOZ2.0 , which have a relatively small ontology size .
+( Henderson et al. , 2014 ;
+Although this approach simplifies the task , it has inherent limitations : ( 1 ) it is often difficult to obtain the ontology in advance , especially in a real scenario ( Xu and Hu , 2018 ) , ( 2 ) predefined ontologybased DST cannot handle previously unseen slot values , and ( 3 ) the approach does not scale large since it has to go over all slot-value candidates at every turn to predict the current dialogue state .
+Indeed , recent DST datasets often have a large size of ontology ; e.g. , the total number of slot-value candidates in MultiWOZ 2.1 is 4510 , while the numbers are much smaller in DSTC2 and WOZ2.0 as 212 and 99 , respectively ( Budzianowski et al. , 2018 ) .
+To address these issues , recent methods employ an approach that either directly generates or extracts a value from the dialogue context for every slot , allowing open vocabulary - based DST ( Lei et al. , 2018 ; Ren et al. , 2019 ) .
+While this formulation is relatively more scalable and robust to handling unseen slot values , many of the previous works do not efficiently perform DST since they predict the dialogue state from scratch at every dialogue turn .
+In this work , we focus on an open vocabularybased setting and propose SOM - DST ( Selectively Overwriting Memory for Dialogue State Tracking ) .
+Regarding dialogue state as a memory that can be selectively overwritten ( Figure 1 ) , SOM - DST decomposes DST into two sub-tasks : ( 1 ) state operation prediction , which decides the types of the operations to be performed on each of the memory slots , and ( 2 ) slot value generation , which generates the values to be newly written on a subset of the memory slots ( Figure 2 ) .
+This decomposition allows our model to efficiently generate the values of only a minimal subset of the slots , while many of the previous works generate or extract the values of all slots at every dialogue turn .
+Moreover , this decomposition reduces the difficulty of DST in an open-vocabulary based setting by clearly separating the roles of the encoder and the decoder .
+Our encoder , i.e. , state operation predictor , can focus on selecting the slots to pass to the decoder so that the decoder , i.e. , slot value generator , can focus only on generating the values of those selected slots .
+To the best of our knowledge , our work is the first to propose such a selectively overwritable memorylike perspective and a discrete two -step approach on DST .
+Our proposed SOM - DST achieves state - of- theart joint goal accuracy in an open vocabulary - based DST setting on two of the most actively studied datasets : MultiWOZ 2.0 and MultiWOZ 2.1 .
+Error analysis ( Section 6.2 ) further reveals that improving state operation prediction can significantly boost the final DST accuracy .
+In summary , the contributions of our work built on top of a perspective that considers dialogue state tracking as selectively overwriting memory are as follows : ?
+Enabling efficient DST , generating the values of a minimal subset of the slots by utilizing the previous dialogue state at each turn .
+?
+Achieving state - of- the- art performance on MultiWOZ 2.0 and MultiWOZ 2.1 in an open vocabulary - based DST setting .
+?
+Highlighting the potential of improving the state operating prediction accuracy in our proposed framework .
+Previous Open Vocabulary - based DST
+Many works on recent task - oriented dialogue datasets with a large scale ontology , such as Mul-tiWOZ 2.0 and MultiWOZ 2.1 , solve DST in an open vocabulary - based setting Ren et al. , 2019 ; Le et al. , 2020a , b) . show the potential of applying the encoder-decoder framework ( Cho et al. , 2014a ) to open vocabulary - based DST .
+However , their method is not computationally efficient because it performs autoregressive generation of the values for all slots at every dialogue turn .
+Ren et al. ( 2019 ) tackle the drawback of the model of , that their model generates the values of all slots at every dialogue turn , by using a hierarchical decoder .
+In addition , they come up with a new notion dubbed Inference Time Complexity ( ITC ) to compare the efficiency of different DST models .
+ITC is calculated using the number of slots J and the number of corresponding slot values M . 2 Following their work , we also calculate ITC in Appendix B for comparison .
+Le et al. ( 2020 b ) introduce another work that tackles the efficiency issue .
+To maximize the computational efficiency , they use a non-autoregressive decoder to generate the slot values of the current dialogue state at once .
+They encode the slot type information together with the dialogue context and the delexicalized dialogue context .
+They do not use the previous turn dialogue state as the input .
+Le et al . ( 2020a ) process the dialogue context in both domain-level and slot-level .
+They make the final representation to generate the values using a late fusion approach .
+They show that there is a performance gain when the model is jointly trained with response generation .
+However , they still generate the values of every slot at each turn , like . formulate DST as a reading comprehension task and propose a model named DST Reader that extracts the values of the slots from the input .
+They introduce and show the importance of the concept of a slot carryover module , i.e. , a component that makes a binary decision whether to carry the value of a slot from the previous turn dialogue state over to the current turn dialogue state .
+The definition and use of discrete operations in our work is inspired by their work .
+Zhang et al. ( 2019 ) target the issue of illformatted strings that generative models suffer from .
+In order to avoid this issue , they take a hybrid approach .
+For the slots they categorize as picklistbased slots , they use a predefined ontology - based approach as in the work of ; for the slots they categorize as span-based slots , they use a span extraction - based method like DST - Reader .
+However , their hybrid model shows lower performance than when they use only the picklist- based approach .
+Although their solely picklist- based model achieves state - of- the - art joint accuracy in MultiWOZ 2.1 , it is done in a prede-fined ontology - based setting , and thus cannot avoid the scalability and generalization issues of predefined ontology - based DST .
+Selectively Overwriting Memory for Dialogue State Tracking Figure 2 illustrates the overview of SOM - DST .
+To describe the proposed SOM - DST , we formally define the problem setting in our work .
+Dialogue State
+We define the dialogue state at turn t , B t = {( S j , V j t ) | 1 ? j ?
+J} , as a fixed - sized memory whose keys are slots S j and values are the corresponding slot value V j t , where J is the total number of such slots .
+Following the convention of MultiWOZ 2.0 and MultiWOZ 2.1 , we use the term " slot " to refer to the concatenation of a domain name and a slot name .
+Special Value
+There are two special values NULL and DONTCARE .
+NULL means that no information is given about the slot up to the turn .
+For instance , the dialogue state before the beginning of any dialogue B 0 has only NULL as the value of all slots .
+DONTCARE means that the slot neither needs to be tracked nor considered important in the dialogue at that time .
+3 Operation
+At every turn t , an operation r j t ?
+O = { CARRYOVER , DELETE , DONTCARE , UPDATE } is chosen by the state operation predictor ( Section 3.1 ) and performed on each slot S j to set its current turn corresponding value V j t .
+When an operation is performed , it either keeps the slot value unchanged ( CARRYOVER ) or changes it to some value different from the previous one ( DELETE , DONTCARE , and UPDATE ) as the following .
+V j t = ? ? ? ? ? ? ? ? ? ? ?
+V j t?1 if r j t = CARRYOVER NULL if r j t = DELETE DONTCARE if r j t = DONTCARE v if r j t = UPDATE
+The operations that set the value of a slot to a special value ( DELETE to NULL and DONT - CARE to DONTCARE , respectively ) are chosen only when the previous slot value V j t?1 is not the corresponding special value .
+UPDATE operation requires the generation of a new value v / ? { V j t?1 , NULL , DONTCARE } by slot value generator ( Section 3.2 ) .
+State operation predictor performs state operation prediction as a classification task , and slot value generator performs slot value generation to find out the values of the slots on which UP - DATE should be performed .
+The two components of SOM - DST are jointly trained to predict the current turn dialogue state .
+State Operation Predictor Input Representation
+We denote the representation of the dialogue utterances at turn t as D t = A t ? ; ? U t ? [ SEP ] , where A t is the system response and U t is the user utterance .
+; is a special token used to mark the boundary between A t and U t , and [ SEP ] is a special token used to mark the end of a dialogue turn .
+We denote the representation of the dialogue state at turn t as B t = B 1 t ? . . . ?
+B J t , where B j t = [ SLOT ] j ?
+S j ? -?
+V j t is the rep- resentation of the j-th slot-value pair .
+is a special token used to mark the boundary between a slot and a value . [ SLOT ] j is a special token used to aggregate the information of the j-th slot-value pair into a single vector , like the use case of [ CLS ] token in BERT ( Devlin et al. , 2019 ) .
+In this work , we use the same special token [ SLOT ] for all [ SLOT ] j .
+Our state operation predictor employs a pretrained BERT encoder .
+The input tokens to the state operation predictor are the concatenation of the previous turn dialog utterances , the current turn dialog utter-ances , and the previous turn dialog state : 4 X t = [ CLS ] ? D t?1 ? D t ? B t?1 , where [ CLS ] is a special token added in front of every turn input .
+Using the previous dialogue state as the input serves as an explicit , compact , and informative representation of the dialogue history for the model .
+When the value of the j-th slot at time t ? 1 , i.e. , V j t?1 , is NULL , we use a special token [ NULL ] as the input .
+When the value is DONTCARE , we use the string " dont care " to take advantage of the semantics of the phrase " do n't care " that the pretrained BERT encoder would have already learned .
+The input to BERT is the sum of the embeddings of the input tokens X t , segment id embeddings , and position embeddings .
+For the segment id , we use 0 for the tokens that belong to D t?1 and 1 for the tokens that belong to D t or B t?1 .
+The position embeddings follow the standard choice of BERT .
+Encoder Output
+The output representation of the encoder is H t ? R | Xt |?d , and h [ CLS ] t , h [ SLOT ] j t ?
+R d are the outputs that correspond to [ CLS ] and [ SLOT ] j , respectively .
+h X t , the aggregated sequence representation of the entire input X t , is obtained by a feed-forward layer with a learnable parameter W pool ?
+R d?d as : h X t = tanh ( W pool h [ CLS ] t ) .
+State Operation Prediction State operation prediction is a four -way classification performed on top of the encoder output for each slot representation h [ SLOT ] j t : P j opr , t = softmax ( W opr h [ SLOT ] j t ) , where W opr ?
+R | O|?d is a learnable parameter and P j opr , t ? R | O | is the probability distribution over operations for the j-th slot at turn t.
+In our formulation , | O| = 4 , because O = { CARRYOVER , DELETE , DONTCARE , UPDATE } .
+Then , the operation is determined by r j t = argmax ( P j opr , t ) and the slot value generation is performed on only the slots whose operation is UPDATE .
+We define the set of the slot indices which require the value generation as U t = {j | r j t = UPDATE} , and its size as J t = | U t |.
+Slot Value Generator
+For each j-th slot such that j ?
+U t , the slot value generator generates a value .
+Our slot value generator differs from the generators of many of the previous works because it generates the values for only J t number of slots , not J .
+In most cases , J t J , so this setup enables an efficient computation where only a small number of slot values are newly generated .
+We use Gated Recurrent Unit ( GRU ) ( Cho et al. , 2014 b ) decoder like .
+GRU is initialized with g j,0 t = h X t and e j,0 t = h [ SLOT ] j t , and recurrently updates the hidden state g j , k t ?
+R d by taking a word embedding e j , k t as the input until [ EOS ] token is generated : g j , k t = GRU ( g j,k?1 t , e j , k t ) .
+The decoder hidden state is transformed to the probability distribution over the vocabulary at the k-th decoding step , where E ?
+R d vcb ?d is the word embedding matrix shared across the encoder and the decoder , such that d vcb is the vocabulary size .
+P j , k vcb , t = softmax ( E g j , k t ) ?
+R d vcb .
+As the work of , we use the softgated copy mechanism ( See et al. , 2017 ) to get the final output distribution P j , k val , t over the candidate value tokens : P j , k ctx , t = softmax ( H t g j , k t ) ?
+R | Xt| , P j , k val , t = ?P j, k vcb , t + ( 1 ? ?) P j, k ctx , t , such that ? is a scalar value computed as : ? = sigmoid ( W 1 [ g j , k t ; e j , k t ; c j , k t ] ) , where 3d ) is a learnable parameter and c j , k t = P j , k ctx , t H t ?
+R d is a context vector .
+W 1 ? R 1 ?(
+Objective Function During training , we jointly optimize both state operation predictor and slot value generator .
+State Operation Predictor
+In addition to the state operation classification , we use domain classification as an auxiliary task to force the model to learn the correlation of slot operations and domain transitions in between dialogue turns .
+Domain classification is done with a softmax layer on top of h X t : P dom , t = softmax ( W dom h X t ) , where W dom ?
+R d dom ?d is a learnable parameter and P dom , t ? R d dom is the probability distribution over domains at turn t. d dom is the number of domains defined in the dataset .
+The loss for each of state operation classification and domain classification is the average of the negative log-likelihood , as follows : L opr , t = ?
+1 J J j=1 ( Y j opr , t ) log P j opr , t , L dom , t = ?( Y dom , t ) log P dom , t , where Y dom , t ? R d dom is the one- hot vector for the ground truth domain and Y j opr , t ? R | O | is the one- hot vector for the ground truth operation for the j-th slot .
+Slot Value Generator
+The objective function to train slot value generator is also the average of the negative log-likelihood : L svg , t = ?
+1 | U t | j?
+Ut 1 K j t K j t k=1 ( Y j , k val , t ) log P j , k val , t , where K j t is the number of tokens of the ground truth value that needs to be generated for the j-th slot .
+Y j , k val , t ? R d vcb is the one- hot vector for the ground truth token that needs to be generated for the j-th slot at the k-th decoding step .
+Therefore , the final joint loss L joint , t to be minimized at dialogue turn t is the sum of the losses mentioned above : L joint , t = L opr , t + L dom , t + L svg , t . 4 Experimental Setup
+Datasets
+We use MultiWOZ 2.0 ( Budzianowski et al. , 2018 ) and MultiWOZ 2.1 ( Eric et al. , 2019 ) as the datasets in our experiments .
+These datasets are two of the largest publicly available multi-domain taskoriented dialogue datasets , including about 10,000 dialogues within seven domains .
+MultiWOZ 2.1 is a refined version of MultiWOZ 2.0 in which the annotation errors are corrected .
+5 Following , we use only five domains ( restaurant , train , hotel , taxi , attraction ) excluding hospital and police .
+6
+Therefore , the number of domains d dom is 5 and the number of slots J is 30 in our experiments .
+We use the script provided by to preprocess the datasets .
+7
+Training
+We employ the pretrained BERT - base-uncased model 8 for state operation predictor and one GRU ( Cho et al. , 2014 b ) for slot value generator .
+The hidden size of the decoder is the same as that of the encoder , d , which is 768 .
+The token embedding matrix of slot value generator is shared with that of state operation predictor .
+We use BertAdam as our optimizer ( Kingma and Ba , 2015 ) .
+We use greedy decoding for slot value generator .
+The encoder of state operation predictor makes use of a pretrained model , whereas the decoder of slot value generator needs to be trained from scratch .
+Therefore , we use different learning rate schemes for the encoder and the decoder .
+We set the peak learning rate and warmup proportion to 4e - 5 and 0.1 for the encoder and 1e - 4 and 0.1 for the decoder , respectively .
+We use a batch size of 32 and set the dropout ( Srivastava et al. , 2014 ) rate to 0.1 .
+We also utilize word dropout ( Bowman et al. , 2016 ) by randomly replacing the input tokens with the special [ UNK ] token with the probability of 0.1 .
+The max sequence length for all inputs is fixed to 256 .
+We train state operation predictor and slot value generator jointly for 30 epochs and choose the model that reports the best performance on the validation set .
+During training , we use the ground truth state operations and the ground truth previous turn dialogue state instead of the predicted ones .
+When the dialogue state is fed to the model , we randomly shuffle the slot order with a rate of 0.5 .
+This is to make state operation predictor exploit the semantics of the slot names and not rely on the position of the slot tokens or a specific slot order .
+During inference or when the slot order is not shuffled , the slots are sorted alphabetically .
+We use teacher forcing 50 % of the time to train the decoder .
+All experiments are performed on NAVER Smart Machine Learning ( NSML ) platform ( Sung et al. , 2017 ; Kim et al. , 2018 ) .
+All the reported results of SOM - DST are averages over ten runs .
+Baseline Models
+We compare the performance of SOM - DST with both predefined ontology - based models and open vocabulary - based models .
+FJST uses a bidirectional LSTM to encode the dialogue history and uses a feed-forward network to predict the value of each slot ( Eric et al. , 2019 ) .
+HJST is proposed together with FJST ; it encodes the dialogue history using an LSTM like FJST but uses a hierarchical network ( Eric et al. , 2019 ) . SUMBT exploits BERT - base as the encoder for the dialogue context and slot-value pairs .
+After encoding them , it scores every candidate slot-value pair in a non-parametric manner using a distance measure .
+HyST employs a hierarchical RNN encoder and takes a hybrid approach that incorporates both a predefined ontology - based setting and an open vocabulary - based setting .
+DST
+Reader formulates the problem of DST as an extractive QA task ; it uses BERT - base to make the contextual word embeddings and extracts the value of the slots from the input as a span .
+TRADE encodes the whole dialogue context with a bidirectional GRU and decodes the value for every slot using a copy-augmented GRU decoder .
+COMER uses BERT - large as a feature extractor and a hierarchical LSTM decoder to generate the current turn dialogue state itself as the target sequence ( Ren et al. , 2019 ) . NADST uses a Transformer - based nonautoregressive decoder to generate the current turn dialogue state ( Le et al. , 2020 b ) . ML - BST uses a Transformer - based architecture to encode the dialogue context with the domain and slot information and combines the outputs in a late fusion approach .
+Then , it generates the slot values and the system response jointly ( Le et al. , 2020a ) . DST - picklist is proposed together with DS - DST and uses a similar architecture , but it performs only predefined ontology - based DST considering all slots as picklist - based slots ( Zhang et al. , 2019 ) .
+DS -DST 5 Experimental Results
+Joint Goal Accuracy
+Table 1 shows the joint goal accuracy of SOM - DST and other models on the test set of MultiWOZ 2.0 and MultiWOZ 2.1 .
+Joint goal accuracy is an accuracy which checks whether all slot values predicted at a turn exactly match the ground truth values .
+As shown in the table , SOM - DST achieves state - of - the - art performance in an open vocabularybased setting .
+Interestingly , on the contrary to the previous works , our model achieves higher performance on MultiWOZ 2.1 than on MultiWOZ 2.0 .
+This is presumably because our model , which explicitly uses the dialogue state labels as input , benefits more from the error correction on the state annotations done in MultiWOZ 2.1 . 9
+Domain-Specific Accuracy
+Table 2 shows the domain-specific results of our model and the concurrent works which report such results ( Le et al. , 2020a , b) . Domain-specific accuracy is the accuracy measured on a subset of the predicted dialogue state , where the subset consists of the slots specific to a domain .
+While the performance is similar to or a little lower than that of other models in other domains , SOM - DST outperforms other models in taxi and train domains .
+This implies that the state - of - the - art joint goal accuracy of our model on the test set comes mainly from these two domains .
+A characteristic of the data from these domains is that they consist of challenging conversations ; the slots of these domains are filled with more diverse values than other domains , 10 and there are more than one domain changes , i.e. , the user changes the conversation topic during a dialogue more than once .
+For a specific example , among the dialogues where the domain switches more than once , the number of conversations that end in taxi domain is ten times more than in other cases .
+A more detailed statistics are given in Table 10 in Appendix A .
+Therefore , we assume our model performs relatively more robust DST in such challenging conversations .
+We conjecture that this strength attributes to the effective utilization of the previous turn dialogue state in its explicit form , like using a memory ; the model can explicitly keep even the information mentioned near the beginning of the conversation and directly copy the values from this memory whenever necessary .
+Figure 1 shows an example of a complicated conversation in MultiWOZ 2.1 , where our model accurately predicts the dialogue state .
+More sample outputs of SOM - DST are provided in Appendix C.
+Analysis
+Choice of State Operations
+Table 3 shows the joint goal accuracy where the four -way state operation prediction changes to twoway , three - way , or six -way .
+The joint goal accuracy drops when we use twoway state operation prediction , which is a binary classification of whether to ( 1 ) carry over the previous slot value to the current turn or ( 2 ) generate a new value , like .
+We assume the reason is that it is better to separately model operations DELETE , DONTCARE , and UPDATE that correspond to the latter class of the binary classification , since the values of DELETE and DONT - CARE tend to appear implicitly while the values for UPDATE are often explicitly expressed in the dialogue .
+We also investigate the performance when only three operations are used or two more state operations , YES and NO , are used .
+YES and NO represent the cases where yes or no should be filled as the slot value , respectively .
+The performance drops in all of the cases .
+Error Analysis
+Table 4 shows the joint goal accuracy of the combinations of the cases where the ground truth is used or not for each of the previous turn dialogue state , state operations at the current turn , and slot values for UPDATE at the current turn .
+From this result , we analyze which of state operation predictor and slot value generator is more responsible for the error in the joint goal prediction , under the cases where error propagation occurs or not .
+Among the absolute error of 46.99 % made under the situation that error propagation occurs , i.e. , the dialogue state predicted at the previous turn is fed to the model , it could be argued that 92.85 % comes from state operation predictor , 21.6 % comes from slot value generator , and 14.45 % comes from both of the components .
+This indicates that at least 78.4 % to 92.85 % of the error comes from state operation predictor , and at least 7.15 % to 21.6 % of the error comes from slot value generator .
+11 Among the absolute error of 19 % made under the error propagation - free situation , i.e. , ground truth previous turn dialogue state is fed to the model , it could be argued that 90.53 % comes from state operation predictor , 19.63 % comes from slot value generator , and 10.16 % comes from both of the components .
+This indicates that at least 80.37 % to 90.53 % of the error comes from state operation predictor , and at least 9.47 % to 19.63 % of the error comes from slot value generator .
+.
+Error propagation that comes from using the dialogue state predicted at the previous turn increases the error 2.47 ( = 100?53.01 100?81.00 ) times .
+Both with and without error propagation , a relatively large amount 5 , may have the potential to increase the overall DST performance by a large margin .
+Efficiency Analysis In Table 6 , we compare the number of slot values generated at a turn among various open vocabularybased DST models that use an autoregressive decoder .
+The maximum number of slots whose values are generated by our model at a turn , i.e. , the number of slots on which UPDATE should be performed , is 9 at maximum and only 1.14 on average in the test set of MultiWOZ 2.1 .
+On the other hand , TRADE and ML - BST generate the values of all the 30 slots at every turn of a dialogue .
+COMER generates only a subset of the slot values like our model , but it generates the val-ues of all the slots that have a non -NULL value at a turn , which is 18 at maximum and 5.72 on average .
+Table 7 shows the latency of SOM - DST and several other models .
+We measure the inference time for a dialogue turn of MultiWOZ 2.1 on Tesla V100 with a batch size of 1 .
+The models used for comparison are those with official public implementations .
+It is notable that the inference time of SOM - DST is about 12.5 times faster than TRADE , which consists of only two GRUs .
+Moreover , the latency of SOM - DST is compatible with that of NADST , which explicitly uses non-autoregressive decoding , while SOM - DST achieves much higher joint goal accuracy .
+This shows the efficiency of the proposed selectively overwriting mechanism of SOM - DST , which generates only the minimal slot values at a turn .
+In Appendix B , we also investigate Inference Time Complexity ( ITC ) proposed in the work of Ren et al . ( 2019 ) , which defines the efficiency of a DST model using J , the number of slots , and M , the number of values of a slot .
+Conclusion
+We propose SOM - DST , an open vocabulary - based dialogue state tracker that regards dialogue state as an explicit memory that can be selectively overwritten .
+SOM - DST decomposes dialogue state tracking into state operation prediction and slot value generation .
+This setup makes the generation process efficient because the values of only a minimal subset of the slots are generated at each dialogue turn .
+SOM - DST achieves state - of- the - art joint goal accuracy on both MultiWOZ 2.0 and MultiWOZ 2.1 datasets in an open vocabulary - based setting .
+SOM - DST effectively makes use of the explicit dialogue state and discrete operations to perform relatively robust DST even in complicated conversations .
+Further analysis shows that improving state operation prediction has the potential to increase the overall DST performance dramatically .
+From this result , we propose that tackling DST with our proposed problem definition is a promising future research direction .
+Inference Time Complexity ( ITC ) proposed by Ren et al . ( 2019 ) defines the efficiency of a DST model using J , the number of slots , and M , the number of values of a slot .
+Going a step further from their work , we report ITC of the models in the best case and the worst case for relatively more precise comparison .

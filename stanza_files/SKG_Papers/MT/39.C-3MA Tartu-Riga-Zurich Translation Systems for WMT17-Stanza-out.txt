@@ -1,0 +1,124 @@
+title
+C-3MA : Tartu-Riga -Zurich Translation Systems for WMT17
+abstract
+This paper describes the neural machine translation systems of the
+Introduction
+We describe the neural machine translation ( NMT ) systems developed by the joint team of the University of Latvia , University of Zurich and University of Tartu ( C- 3MA ) .
+Our systems are based on an attentional encoder-decoder ( Bahdanau et al. , 2015 ) , using BPE subword segmentation for openvocabulary translation with a fixed vocabulary ( Sennrich et al. , 2016 a ) .
+This paper is organized as follows :
+In Section 2 we describe our translation software and baseline setups .
+Section 3 describes our contributions for improving the baseline translations .
+Results of our experiments are summarized in Section 4 .
+Finally , we conclude in Section 5 .
+Baseline Systems
+Our baseline systems were trained with two NMT and one statistical machine translation ( SMT ) framework .
+For English ?
+German we only trained NMT systems , for which we used Nematus ( NT ) ( Sennrich et al. , 2017 ) .
+For English ?
+Latvian , apart from NT systems , we additionally trained NMT systems with Neural Monkey ( NM ) ( Helcl and Libovick ? , 2017 ) and SMT systems with LetsMT !
+( LMT ) ( Vasil ? jevs et al. , 2012 ) .
+In all of our NMT experiments we used a shared subword unit vocabulary ( Sennrich et al. , 2016 b ) of 35000 tokens .
+We clipped the gradient norm to 1.0 ( Pascanu et al. , 2013 ) and used a dropout of 0.2 .
+Our models were trained with Adadelta ( Zeiler , 2012 ) and after 7 days of training we performed early stopping .
+For training the NT models we used a maximum sentence length of 50 , word embeddings of size 512 , and hidden layers of size 1000 .
+For decoding with NT we used beam search with a beam size of 12 .
+For training the NM models we used a maximum sentence length of 70 , word embeddings and hidden layers of size 600 .
+For decoding with NM a greedy decoder was used .
+Unfortunately , at the time when we performed our experiments the beam search decoder for NM was still under development and we could not reliably use it .
+Experimental Settings
+Filtered Synthetic Training Data Increasing the training data with synthetic backtranslated corpora has proven to be useful in previous work ( Sennrich et al. , 2016 a consists of training the initial NMT systems on clean parallel data , then using them to translate monolingual data in the opposite direction and generate a supplementary parallel corpus with synthetic input and human-created output sentences .
+Nevertheless , more is not always better , as reported by Pinnis et al . ( 2017 ) , where they stated that using some amount of back - translated data gives an improvement , but using double the amount gives lower results , while still better than not using any at all .
+We used each of our NMT systems to backtranslate 4.5 million sentences of the monolingual news corpora in each translation direction .
+First we removed any translations that contained at least one < unk > symbol .
+We trained a language model ( LM ) using CharRNN 1 with 4 million sentences from the monolingual news corpora of the target languages , resulting in three character - level RNN language models - English , German and Latvian .
+We used these language models to get perplexity scores for all remaining translations .
+The translations were then ordered by perplexity and the best ( lowest ) scoring 50 % were used together with the sources as sources and references respectively for the additional filtered synthetic in-domain corpus .
+We chose scoring sentences with an LM instead of relying on neural network weights because 1 ) it is fast , reliable and ready to use without having to modify both NMT frameworks , and 2 ) it is an unbiased approach to score sentences when compared to having the system score its output by itself .
+To verify that the perplexity score resembles human judgments , we took a small subset of the development sets and asked manual evaluators to rate each translation from 1 to 5 .
+We sorted the translations by manual evaluation scores and automatically obtained perplexities , and calculated the overlap between the better halves of each .
+Results from this manual evaluation in Table 2 show that the LM perplexity score is good enough to separate the worst from the best translations , even though the correlation with human judgments is low .
+Some extreme examples of sentences translated from Latvian into English are listed in Table 1 .
+The first one is just gibberish , the second is English , but makes little sense , the third one demonstrates unusual constructions like annualised annuity .
+The last two examples have a good perplexity score because they seem like good English , but when looking at the source , it is clear that in the fourth example there are some parts that are not translated .
+As a result , the filtering approach brought an improvement of 1.1 - 4.9 BLEU ( Papineni et al. , 2002 ) on development sets and 1.5 - 2.8 BLEU on test sets when compared to using the full backtranslated news corpora .
+En?De De?En En?Lv Lv?En 55 % 56 % 58 % 56 % Table 2 : Human judgment matches with LM perplexity for filtering on 200 random sentences from the newsdev2017 dataset .
+Named Entity Forcing
+For our experiments with English ?
+German we enforced the translation of named entities ( NE ) using a dictionary which we built on the training data distributed for WMT 2017 .
+First , we performed named entity recognition ( NER ) using spaCy 2 for German and NLTK 3 for English .
+The reason for using different tools is that the spaCy output for English differed largely from the German one .
+NLTK performed much more similarly to the German spaCy output and , thus , it was easier to find NE translation pairs .
+We only considered NEs of type " person " , " organisation " and " geographic location " for our dictionary .
+Then we did word alignment using GIZA ++ ( Och and Ney , 2003 ) with the default grow-diagfinal - and alignment symmetrization method .
+We created an entry in our translation dictionary for every pair of aligned ( multi-word ) NEs .
+Per entry we only kept the three most frequent translation options .
+Since there was still a lot of noise in the resulting dictionary , we decided to filter it automatically by removing entries that : ? did not contain alphabetical characters e.g. filtering out " 2 /3 " aligned to " June " 2 Industrial - Strength Natural Language Processing in Python - https://spacy.io/ 3 Natural Language Toolkit - http://www.nltk.org/ ? started with a dash e.g. filtering out " - Munich " aligned to " Hamburg " ? were longer than 70 characters or five tokens e.g. filtering out " Parliament 's Committee on Economic and Monetary Affairs and Industrial Policy " aligned to " EU " ? differed from each other in length by more than 15 characters or two tokens e.g. filtering out " Georg " aligned to " Georg von Holtzbrinck "
+When translating we made use of the alignment information given by the attention mechanism when translating with our NMT systems .
+We identified all NEs in the source text using the same tools as for the training data .
+For every source NE expression we searched for the most likely aligned translations by our systems via the attention matrix .
+We only considered source-translation pairs for which the attention to each other was highest in both directions .
+Finally , for every such NE expression we checked whether there was a translation in our NE dictionary .
+If yes , we swapped the translation generated by our systems with the one in the dictionary .
+If not , we copied the NE expression from the source sentence to the target sentence .
+Since the attention is only given on the subword level , we needed to merge the subword units together before comparing the translations in the NE dictionary with the ones our systems produced .
+To avoid swapping too many correct translations , we defined some language -specific rules which , for example , took care of different cases in German .
+We initially tested our approach on the new-stest2016 data ( using our baseline system for the translation ) .
+For a qualitative perspective we looked at all of the NEs that were recognized in this text .
+We evaluated how many of them were changed by our algorithm and how many of these changes were positive , how many were negative and how many changed a wrong NE to another wrong NE .
+The results of this evaluation can be seen in Table 3 .
+For newstest2017 this approach gave a BLEU score improvement of 0.14 - 0.16 .
+Coverage Penalties Under-translation and over-translation problems are results of lacking coverage in modern NMT systems ( Tu et al. , 2016 ) .
+Attempts to address ( Wu et al. , 2016 ) is an example of a decoding time modification aimed at the under-translation problem .
+We designed coverage penalty variations that affect the over-translation issue as well .
+More specifically , the coverage penalty is a part of the scoring function s ( Y , X ) that we use to rank candidate translations in beam search : s( Y , X ) = log ( P ( Y | X ) ) + cp ( X ; Y ) Coverage penalty from ( Wu et al. , 2016 ) is defined as follows : cp ( X ; Y ) = ? * | X | i=1 log ( min ( | Y | j=1 p i , j , 1.0 ) ) ( 1 ) where | Y | is the index of the last target word generated on the current beam search step , | X | is the number of source words , and p i , j is the attention probability of the j-th target word y j on the i-th source word x i .
+This expression penalizes the hypothesis if the sum of target word attentions on source words is below 1 ( it is assumed that each target word is influenced by an attention probability mass equals to one ; considering per word fertility might be a better choice ) , so it aims at reducing the undertranslation problem .
+We extended equation 1 to penalize the hypothesis if the sum of target word attentions on source words not only below , but also above 1 ; we call it the coverage deviation penalty : cdp ( X ; Y ) = ? * | X | i=1 log ( abs ( 1 ? | Y | j=1 p i , j ) ) ( 2 )
+We also designed a perplexity penalty that implements the assumption that each target word should not be aligned with all source words by a little amount , but with some concrete parts of the source sentence .
+It penalizes the hypotheses where the target words have a high entropy of the attention distribution and called it the dispersion penalty : dp ( X ; Y ) = ? * ? | X | i=1 p i , |Y | * log( p i , |Y | ) ( 3 ) Table 4 shows BLEU results .
+The dispersion penalty with optimal weight improves BLEU considerably , with the change being statistically significant .
+We also tried combining different types of penalties , but got not improvements .
+Hybrid System Combination
+For translating between English ?
+Latvian we used all 3 systems in each direction and obtained the attention alignments from the NMT systems .
+For each direction we chose one main NMT system to provide the final translation for each sentence and , judging by the attention alignment distribution , tried to automatically identify unsuccessful translations .
+Two main types of unsuccessful translations that we noticed were when the majority of alignments are connected to only one token ( example in Figure 1 ) or when all tokens strongly align one - to-one , hinting that the source may not have been translated at all ( example in Figure 2 ) .
+In the case of an unsuccessful translation , the hybrid setup checks the attention alignment distribution from the second NMT system and outputs either the sentence of that or performs a final backoff to the SMT output .
+This approach gave a BLEU score improvement of 0.1 - 0.3 .
+Post-processing
+In post-processing of translation output we aimed to fix the most common mistakes that NMT systems tend to make .
+We used the output attention alignments from the NMT systems to replace any < unk > tokens with the source tokens that align to them with the highest weight .
+Any consecutive repeating n-grams were replaced with a single ngram .
+The same was applied to repeating n-grams that have a preposition between them , i.e. , victim of the victim .
+This approach gave a BLEU score improvement of 0.1 - 0 .
+Results
+The results of our English ?
+German systems are summarized in Table 5 and the results of our English ?
+Latvian systems - in Table 6 . As mentioned in the subsections of Section 3 - each implemented modification gives a little improvement in the automated evaluation .
+Some modifications gave either no improvement for one or both language pairs or lead to lower automated evaluation results .
+These were either used for only the language pair that did show improvements on the development data or not used at all in the final setup .
+System
+Shared Task Results
+Table 7 shows how our systems were ranked in the WMT17 shared news translation task against other submitted primary systems in the constraint track .
+Since the human evaluation was performed by showing evaluators only the reference translation and not the source , the human evaluation rankings are the same as BLEU , which also considers only the reference translation .
+One exception is the ranking for En?Lv , where an insufficient amount of evaluations were performed to cover all submitted systems , resulting in a tie for the 1st place across all but one submitted systems .
+Conclusions
+In this paper we described our submissions to the WMT17 News Translation shared task .
+Even though none of our systems were on the top of the list by automated evaluation , each of the implemented methods did give measurable improvements over our baseline systems .
+To complement the paper , we release open-source software 4 and configuration examples that we used for our systems .
+Figure 1 : 1 Figure 1 : Attention alignment visualization of a translation , in which the strongest alignments are connected with the final token .
+Reference translation : the coldest morning since June , brief local showers . , hypothesis translation : the House will also vote on a resolution on the situation in the EU .
+Figure 2 : 2 Figure 2 : Attention alignment visualization of a translation , in which the all alignments are strong and mainly connected to only one- to-one .
+Reference translation : Keplers izm?ra zvaig ?n ?u grie?an?s ?trumu Plej? des zvaigzn ?j? . , hypothesis translation : Kepler measures spin rates of stars in Pleiades cluster
+Table 1 : 1 Example sentences translated from Latvian into English that were filtered out from the backtranslated news data . ) .
+The method
+Table 4 : 4 En?Lv BLEU score improvements with respect to different penalty types and values of ?.
+Best score improvements are in bold
+Table 5 : 5 2 . Experiment results for translating between English ?
+German .
+Submitted systems are in bold .
+System En?De De?En Dataset Dev Test Dev Test Baseline NT 27.4 21.0 31.9 27.2 + filt. synth .
+30.7 22.5 36.8 28.8 + NE forcing 30.9 22.7 36.9 29.0
+Table 7 : 7 Automatic ( BLEU ) and human ranking of our submitted systems ( C- 3MA ) at the WMT17 shared news translation task , only considering primary constrained systems .
+Human rankings are shown by clusters according to Wilcoxon signedrank test at p-level p?0.05 , and standardized mean DA score ( Ave % ) .
+Multi-layer Recurrent Neural Networks ( LSTM , GRU , RNN ) for character - level language models in Torch https://github.com/karpathy/char-rnn
+Scripts for Tartu Neural MT systems for WMT 17https://github.com/M4t1ss/C-3MA

@@ -1,0 +1,235 @@
+title
+Accurate Word Alignment Induction from Neural Machine Translation
+abstract
+Despite its original goal to jointly learn to align and translate , prior researches suggest that Transformer captures poor word alignments through its attention mechanism .
+In this paper , we show that attention weights DO capture accurate word alignments and propose two novel word alignment induction methods SHIFT - ATT and SHIFT - AET .
+The main idea is to induce alignments at the step when the to -be-aligned target token is the decoder input rather than the decoder output as in previous work .
+SHIFT - ATT is an interpretation method that induces alignments from the attention weights of Transformer and does not require parameter update or architecture change .
+SHIFT - AET extracts alignments from an additional alignment module which is tightly integrated into Transformer and trained in isolation with supervision from symmetrized SHIFT - ATT alignments .
+Experiments on three publicly available datasets demonstrate that both methods perform better than their corresponding neural baselines and SHIFT - AET significantly outperforms GIZA ++ by 1.4- 4.8 AER points .
+1
+Introduction
+The task of word alignment is to find lexicon translation equivalents from parallel corpus ( Brown et al. , 1993 ) .
+It is one of the fundamental tasks in natural language processing ( NLP ) and is widely studied by the community ( Dyer et al. , 2013 ; Brown et al. , 1993 ; Liu and Sun , 2015 ) .
+Word alignments are useful in many scenarios , such as error analysis ( Ding et al. , 2017 ; Li et al. , 2019 ) , the introduction of coverage and fertility models ( Tu et al. , 2016 ) , inserting external constraints in interactive machine translation ( Hasler et al. , SHIFT - ATT induces alignments for target word y i at decoding step i + 1 when y i is the decoder input , while NAIVE - ATT at step i when y i is the decoder output .
+Chen et al. , 2020 ) and providing guidance for human translators in computer -aided translation ( Dagan et al. , 1993 ) .
+Word alignment is part of the pipeline in statistical machine translation ( Koehn et al. , 2003 , SMT ) , but is not necessarily needed for neural machine translation ( Bahdanau et al. , 2015 , NMT ) .
+The attention mechanism in NMT does not functionally play the role of word alignments between the source and the target , at least not in the same way as its analog in SMT .
+It is hard to interpret the attention activations and extract meaningful word alignments especially from Transformer ( Garg et al. , 2019 ) .
+As a result , the most widely used word alignment tools are still external statistical models such as FAST - ALIGN ( Dyer et al. , 2013 ) and GIZA ++ ( Brown et al. , 1993 ; Och and Ney , 2003 ) .
+Recently , there is a resurgence of interest in the community to study word alignments for the Transformer ( Ding et al. , 2019 ; Li et al. , 2019 ) .
+One simple solution is NAIVE - ATT , which induces word alignments from the attention weights between the encoder and decoder .
+The next target word is aligned with the source word that has the maximum attention weight , as shown in Fig.
+1 .
+However , such schedule only captures noisy word alignments ( Ding et al. , 2019 ; Garg et al. , 2019 ) .
+One of the major problems is that it induces alignment before observing the to -be-aligned target token ( Peter et al. , 2017 ; Ding et al. , 2019 ) .
+Suppose for the same source sentence , there are two alternative translations that diverge at decoding step i , generating y i and y i which respectively correspond to different source words .
+Presumably , the source word that is aligned to y i and y i should change correspondingly .
+However , this is not possible under the above method , because the alignment scores are computed before prediction of y i or y i .
+To alleviate this problem , some researchers modify the transformer architecture by adding alignment modules that predict the to -be-aligned target token ( Zenkel et al. , 2019 ( Zenkel et al. , , 2020 or modify the training loss by designing an alignment loss computed with full target sentence ( Garg et al. , 2019 ; Zenkel et al. , 2020 ) .
+Others argue that using only attention weights is insufficient for generating clean word alignment and propose to induce alignments with feature importance measures , such as leaveone - out measures ( Li et al. , 2019 ) and gradientbased measures ( Ding et al. , 2019 ) .
+However , all previous work induces alignment for target word y i at step i , when y i is the decoder output .
+In this work , we propose to induce alignment for target word y i at step i + 1 rather than at step i as in previous work .
+The motivation behind this is that the hidden states in step i + 1 are computed taking word y i as the input , thus they can incorporate the information of the to -be-aligned target token y i easily .
+Following this idea , we present SHIFT - ATT and SHIFT - AET , two simple yet effective methods for word alignment induction .
+Our contributions are threefold : ?
+We introduce SHIFT - ATT ( see Fig. 1 ) , a pure interpretation method to induce alignments from attention weights of vanilla Transformer .
+SHIFT - ATT is able to reduce the Alignment Error Rate ( AER ) by 7.0 - 10.2 points over NAIVE - ATT and 5.5 - 7.9 points over FAST - ALIGN on three publicly available datasets , demonstrating that if the correct decoding step and layer are chosen , attention weights in vanilla Transformer are sufficient for generating accurate word alignment interpretation .
+?
+We further propose SHIFT - AET , which extracts alignments from an additional alignment module .
+The module is tightly integrated into vanilla Transformer and trained with supervision from symmetrized SHIFT - ATT alignments .
+SHIFT - AET does not affect the translation accuracy and significantly outperforms GIZA ++ by 1.4- 4.8 AER points in our experiments . ?
+We compare our methods with NAIVE - ATT on dictionary - guided decoding ( Alkhouli et al. , 2018 ) , an alignment-related downstream task .
+Both methods consistently outperform NAIVE - ATT , demonstrating the effectiveness of our methods in such alignment - related NLP tasks .
+Background
+Neural Machine Translation Let x = {x 1 , ... , x | x| } and y = {y 1 , ... , y |y | } be source and target sentences .
+Neural machine translation models the target sentence given the source sentence as p( y|x ; ? ) : p( y|x ; ?) = |y |+1 t=1 p(y t |y 0:t?1 , x ; ? ) , ( 1 ) where y 0 = bos and y | y |+ 1 = eos represent the beginning and end of the target sentence respectively , and ? is a set of model parameters .
+In this paper , we use Transformer ( Vaswani et al. , 2017 ) to implement the NMT model .
+Transformer is an encoder-decoder model that only relies on attention .
+Each decoder layer attends to the encoder output with multi-head attention .
+We refer to the original paper ( Vaswani et al. , 2017 ) for more model details .
+Alignment by Attention
+The encoder output from the last encoder layer is denoted as h = {h 1 , ... , h | x| } , and the hidden states at decoder layer l as z = {z l 1 , ... , z l | y |+1 }. For decoder layer l , we define the head averaged encoderdecoder attention weights as W l ? R ( |y | +1 ) ? |x| , in which the element W l i , j measures the relevance between decoder hidden state z l i and encoder output h j .
+For simplicity , below we use the term " attention weights " to denote the head averaged encoderdecoder attention weights .
+Given a trained Transformer model , word alignments can be extracted from the attention weights .
+More specifically , we denote the alignment score matrix as S ? R |y |?|x | , in which the element S i , j is the alignment score of target word y i and source word x j .
+Then we compute S with : S i , j = W l i , j ( 1 ? i ? | y |,1 ? j ? | x | ) ( 2 ) and extract word alignments A with maximum a posterior strategy following Garg et al . ( 2019 ) : A ij = 1 if j = argmax j S i , j 0 otherwise , ( 3 ) where A ij = 1 indicates y i is aligned to x j .
+We call this approach NAIVE -ATT .
+Garg et al. ( 2019 ) show that attention weights from the penultimate layer , i.e. , l = L ? 1 , can induce the best alignments .
+Although simple to implement , this method fails to obtain satisfactory word alignments ( Ding et al. , 2019 ; Garg et al. , 2019 ) .
+First of all , instead of the relevance between y i and x j , W l i , j measures the relevance between decoder hidden state z l i and encoder output h j .
+Considering that the decoder input is y i?1 and the output is y i at step i , z l i may better represent y i?1 instead of y i , especially for bottom layers .
+Second , since W l i , j is computed before observing y i , it becomes difficult for it to induce the aligned source token for the target token y i , as discussed in Section 1 .
+As a result , it is necessary to develop novel methods for alignment induction .
+This method should be able to ( i ) take into account the relationship of z l i , y i and y i?1 , and ( ii ) adapt the alignment induction with the to -be-aligned target token .
+Method
+In this section , we propose two novel alignment induction methods SHIFT - ATT and SHIFT - AET .
+Both methods adapt the alignment induction with the to -be-aligned target token by computing alignment scores at the step when the target token is the decoder input .
+SHIFT - ATT : Alignment from Vanilla Transformer Alignment Induction NAIVE-ATT
+( Garg et al. , 2019 ) induces alignment for target token y i at step i when y i is the decoder output and defines the alignment score matrix with Eq. 2 .
+They find the best layer l to extract alignments by evaluating the AER of all layers on the test set .
+We instead propose to induce alignment for target token y i at step i + 1 when y i is the decoder input .
+We define the alignment score matrix S as : S i , j = W l i + 1 , j ( 1 ? i ? | y |,1 ? j ? | x | ) .
+( 4 ) This is because W l i + 1 , j measures the relevance between z l i+1 and h j , and we use z l i+1 and h j to represent y i and x j respectively .
+With the alignment score matrix S , we can extract word alignments A using Eq. 3 . We call this method SHIFT - ATT .
+Fig. 1 shows an alignment induction example to compare NAIVE - ATT and SHIFT - ATT .
+SHIFT - ATT uses z l i+1 to represent the to -bealigned target token y i while NAIVE - ATT uses z l i .
+We argue using z l i+1 is better .
+First , at bottom layers , we hypothesize that z l i+1 could better represent the decoder input y i than output y i +1 .
+Therefore we can use z l i+1 with small l to represent y i .
+Second , z l i+ 1 is computed after observing y i , indicating that SHIFT - ATT is able to adapt the alignment induction with the to -be-aligned target token .
+Our proposed method involves inducing alignments from source - to- target and target- to-source vanilla Transformer models .
+Following Zenkel et al. ( 2019 ) , we merge bidirectional alignments using the grow diagonal heuristic ( Koehn et al. , 2005 ) . Layer Selection Criterion
+To select the best layer l b to induce alignments , we propose a surrogate layer selection criterion without manually labelled word alignments .
+Experiments show that this criterion correlates well with the AER metric .
+Given parallel sentence pairs x , y , we train a source - to- target model ? x?y and a target- to- source model ? y?x .
+We assume that the word alignments extracted from these two models should agree with each other ( Cheng et al. , 2016 ) .
+Therefore , we evaluate the quality of the alignments by computing the AER score on the validation set with the source - to - target alignments as the hypothesis and the target - to -source alignments as the reference .
+For each model , we can obtain L word alignments from L different layers .
+In total , we obtain L ? L AER scores .
+We select the one with the lowest AER score , and its corresponding layers of the sourceto-target and target - to - source models are the layers we will use to extract alignments at test time : l b , x?y , l b, y?x = argmin i , j AER ( A i x?y , A j y?x ) .
+SHIFT - AET : Alignment from Alignment -Enhanced Transformer
+To further improve the alignment accuracy , we propose SHIFT - AET , a word alignment induction method that extracts alignments from Alignment - Enhanced Transformer ( AET ) .
+AET extends the Transformer architecture with a separate alignment module , which observes the hidden states of the underlying Transformer at each step and predicts the alignment scores for the current decoder input .
+Note that this module is a plug and play component and it neither makes any change to the underlying NMT model nor influences the translation quality .
+Fig. 2 illustrates the alignment module of AET at decoding step i .
+We add the alignment module only at layer l b , the best layer to extract alignments with SHIFT - ATT .
+The alignment module performs multi-head attention similar to the encoder-decoder attention sublayer .
+It takes the encoder outputs h = {h 1 , ... , h | x| } and the current decoder hidden state zl b i inside layer l b as input and outputs S i?1 , the alignment score corresponding to target word y i?1 : S i?1 = 1 N n softmax ( ( hG K n ) ( z l b i G Q n ) ? d k ) , ( 5 ) where G K n , G Q n ?
+R d model ?d k are the key and query projection matrices for the n-th head , N is the number of attention heads and d k = d model / N .
+Since we only care about the attention weights , the value-related parameters and computation are omitted in this module .
+To train the alignment module , we use the symmetrized SHIFT - ATT alignments extracted from vanilla Transformer models as labels .
+Specifically , while the underlying Transformer is pretrained and fixed ( Fig. 2 ) , we train the alignment module with the loss function following Garg et al . ( 2019 ) : L a = ? 1 |y | |y | i=1 | x| j=1 ?p i , j log S i , j ) , ( 6 ) where S = { S 1 ;.
+Once the alignment module is trained , we extract alignment scores S from it given a parallel sentence pair and induce alignments A using Eq. 3 .
+Experiments
+Settings Dataset
+We follow previous work ( Zenkel et al. , 2019 ( Zenkel et al. , , 2020 in data setup and conduct experiments on publicly available datasets for German-English ( de-en ) 3 , Romanian - English ( ro-en ) and French -English ( fr-en ) 4 . Since no validation set is provided , we follow Ding et al . ( 2019 ) to set the last 1,000 sentences of the training data before preprocessing as validation set .
+We learn a joint source and target Byte-Pair-Encoding ( Sennrich et al. , 2016 ) with 10 k merge operations .
+Table 1 shows the detailed data statistics .
+NMT Systems
+We implement the Transformer with fairseq - py 5 and use the transformer iwslt de en model configuration following Ding et al . ( 2019 ) .
+We train the models with a batch size of 36 K tokens and set the maximum updates as 50 K and 10 K for
+Method Inter .
+Fullc de-en fr-en ro-en de?en en?de bidir fr?en en?fr bidir ro?en en?ro bidir Statistical Methods FAST -ALIGN
+( Dyer et al. , 2013 Evaluation
+We evaluate the alignment quality of our methods with Alignment Error Rate ( Och and Ney , 2000 , AER ) .
+Since word alignments are useful for many downstream tasks as discussed in Section 1 , we also evaluate our methods on dictionaryguided decoding , a downstream task of alignment induction , with the metric BLEU ( Papineni et al. , 2002 ) .
+More details are in Section 4.3 .
+Baselines
+We compare our methods with two statistical baselines FAST - ALIGN and GIZA ++ and nine other baselines : ? NAIVE-ATT ( Garg et al. , 2019 ) : the approach we discuss in Section 2.2 , which induces alignments from the attention weights of the penultimate layer of the Transformer .
+? NAIVE-ATT -LA ( Garg et al. , 2019 ) : the NAIVE - ATT method without layer selection .
+It induces alignments from attention weights averaged across all layers .
+? SHIFT -ATT -LA : SHIFT - ATT method without layer selection .
+It induces alignments from attention weights averaged across all layers .
+?
+SMOOTHGRAD : the method that induces alignments from word saliency , which is computed by averaging the gradient - based saliency scores with multiple noisy sentence pairs as input .
+? SD-SMOOTHGRAD
+( Ding et al. , 2019 ) : an improved version of SMOOTHGRAD , which defines saliency on one- hot input vector instead of word embedding .
+? PD ( Li et al. , 2019 ) : the method that computes the alignment scores from Transformer by iteratively masking each source token and measuring the prediction difference .
+?
+ADDSGD ( Zenkel et al. , 2019 ) : the method that explicitly adds an extra attention layer on top of Transformer and directly optimizes its activations towards predicting the to -be-aligned target token .
+? MTL -FULLC ( Garg et al. , 2019 ) : the method that trains a single model in a multi-task learning framework to both predict the target sentence and the alignment .
+When predicting the alignment , the model observes full target sentence and uses symmetrized NAIVE - ATT alignments as labels .
+? MTL -FULLC -GZ ( Garg et al. , 2019 ) : the same method as MTL - FULLC except using symmetrized GIZA ++ alignments as labels .
+It is a statistical and neural method as it relies on GIZA ++ alignments .
+Among these nine baselines and our proposed methods , SMOOTHGRAD , SD-SMOOTHGRAD and PD induce alignments using feature importance measures , while the others from some form of attention weights .
+Note that the computation cost of methods with feature importance measures is much higher than those with attention weights .
+7
+Alignment Results
+Comparison with Baselines Table 2 compares our methods with all the baselines .
+First , SHIFT - ATT , a pure interpretation method for the vanilla Transformer , significantly outperforms FAST - ALIGN and all neural baselines , and performs comparable with GIZA ++.
+For example , it outperforms SD - SMOOTHGRAD , the state- ofthe - art method with feature importance measures to extract alignments from vanilla Transformer , by 8.7- 11.1 AER points across different language pairs .
+The success of SHIFT - ATT demonstrates that vanilla Transformer has captured alignment information in an implicit way , which could be revealed from the attention weights if the correct decoding step and layer are chosen to induce alignments .
+Second , the method SHIFT - AET achieves new state - of - the -art , significantly outperforming all baselines .
+It improves over GIZA ++ by 1.4- 4.8 AER across different language pairs , demonstrating that it is possible to build a neural aligner better than GIZA + + without using any alignments generated from statistical aligners to bootstrap training .
+We also find SHIFT - AET performs either marginally better ( de-en and ro-en ) or on- par ( fr-en ) when comparing with MTL - FULLC - GZ , a method that uses GIZA ++ alignments to bootstrap training .
+We evaluate the model sizes : the number of parameters in vanilla Transformer and AET are 36.8 M and 37.3 M respectively , and find that AET only introduces 1.4 % additional parameters to the vanilla Transformer .
+In summary , by supervising the alignment module with symmetrized SHIFT - ATT alignments , SHIFT - AET improves over SHIFT - ATT and GIZA ++ with negligible parameter increase and without influencing the translation quality .
+Comparison with Zenkel et al . ( 2020 )
+Concurrent with our work , Zenkel et al . ( 2020 ) propose a neural aligner that can outperform GIZA ++.
+Table 3 compares the performance of SHIFT - AET and the best method BAO - GUIDED ( Birdir .
+Att. Opt. + Guided ) in Zenkel et al . ( 2020 ) .
+We observe that SHIFT - AET performs better than BAO - GUIDED in terms of alignment accuracy .
+SHIFT - AET is also much simpler than BAO - GUIDED .
+The training of BAO - GUIDED includes three stages : ( i ) train vanilla Transformer in sourceto-target and target - to -source directions ; ( ii ) train the alignment layer and extract alignments on the training set with bidirectional attention optimization .
+This alignment extraction process is computational costly since bidirectional attention optimization fine- tunes the model parameters separately for each sentence pair in the training set ; ( iii ) re-train the alignment layer with the extracted alignments as the guidance .
+In contrast , SHIFT - AET can be trained much faster in two stages and does not involve bidirectional attention optimization .
+Similar with MTL -FULLC ( Garg et al. , 2019 ) , BAO - GUIDED adapts the alignment induction with the to -be-aligned target token by requiring full target sentence as the input .
+Therefore , BAO - GUIDED is not applicable in cases where alignments are incrementally computed during the decoding process , e.g. , dictionary - guided decoding ( Alkhouli et al. , 2018 ) .
+In contrast , SHIFT - AET performs quite well on such cases ( Section 4.3 ) .
+Therefore , considering the alignment performance , computation cost and applicable scope , we believe SHIFT - AET is more appropriate than BAO - GUIDED for the task of alignment induction .
+Performance on Distant Language Pair
+To further demonstrate the superiority of our methods on distant language pairs , we also evaluate our methods on Chinese-English ( zh-en ) .
+We use NIST corpora 8 as the training set and v1 - tstset released by TsinghuaAligner ( Liu and Sun , 2015 ) ( Koehn , 2004 ) set .
+The test set includes 450 parallel sentence pairs with manually labelled word alignments .
+9
+We use jieba 10 for Chinese text segmentation and follow the settings in Section 4.1 for data pre-processing and model training .
+The results are shown in Table 4 .
+It presents that both SHIFT - ATT and SHIFT - AET outperform NAIVE - ATT to a large margin .
+When comparing the symmetrized alignment performance with GIZA + + , SHIFT - AET performs better , while SHIFT - ATT is worse .
+The experimental results are roughly consistent with the observations on other language pairs , demonstrating the effectiveness of our methods even for distant language pairs .
+Downstream Task Results
+In addition to AER , we compare the performance of NAIVE - ATT , SHIFT - ATT and SHIFT - AET on dictionary - guided machine translation ( Song et al. , 2020 ) , which is an alignment - based downstream task .
+Given source and target constraint pairs from dictionary , the NMT model is encouraged to translate with provided constraints via word alignments ( Alkhouli et al. , 2018 ; Hasler et al. , 2018 ; Hokamp and Liu , 2017 ; Song et al. , 2020 ) .
+More specifically , at each decoding step , the last token of the candidate translation will be revised with target constraint if it is aligned to the corresponding source constraint according to the alignment induction method .
+To simulate the process of looking up dictionary , we follow Hasler et al . ( 2018 ) and extract the pre-specified constraints from the test set and its reference according to the golden word alignments .
+We exclude stop words , and sample up to 3 dictionary constraints per sentence tionary constraint includes up to 3 source tokens .
+Table 5 presents the performance with different alignment methods .
+Both SHIFT - ATT and SHIFT - AET outperform NAIVE -ATT .
+SHIFT - AET obtains the best translation quality , improving over NAIVE - ATT by 1.1 and 1.5 BLEU scores on de?en and en?de translations , respectively .
+The results suggest the effectiveness of our methods in application to alignment - related NLP tasks .
+Analysis Layer Selection Criterion
+To test whether the layer selection criterion can select the right layer to extract alignments , we first determine the best layer l b , x?y and l b , y ? x based on the layer selection criterion .
+Then we evaluate the AER scores of alignments induced from different layers on the test set , and check whether the layers with the lowest AER score are consistent with l b , x?y and l b , y ?x .
+The experiment results shown in Table 6 verify that the layer selection criterion is able to select the best layer to induce alignments .
+We also find that the best layer is always layer 3 under our setting , consistent across different language pairs .
+Relevance Measure Verification
+To investigate the relationship between z l i and y i?1 /y i , we design an experiment to probe whether z l i contain the identity information of y i?1 and y i , following Brunner et al . ( 2019 ) .
+Formally , for decoder hidden state z l i , the input token is identifiable if there exists a func- tion g such that y i?1 = g( z l i ) .
+We cannot prove the existence of g analytically .
+Instead , for each layer l we learn a projection function ?l to project from the hidden state space to the input token embedding space ?l i = ?l ( z l i ) and then search for the nearest neighbour y k within the same sentence .
+We say that z l i can identify y i?1 if k = i ?
+1 . Similarly , we follow the same process to identify the output token y i .
+We report the identifiability rate defined as the percentage of correctly identified tokens .
+Fig. 3 presents the results on the validation set of de?en translation .
+We try three projection functions : a naive baseline ? naive l ( z l i ) = z l i , a linear perceptron ?lin l and a non-linear multi-layer perceptron ? mlp l .
+We observe the following points : ( i ) With trainable projection functions ?lin l and ? mlp l , all layers can identify the input tokens , although more hidden states cannot be mapped back to their input tokens anymore in higher layers .
+( ii ) Overall it is easier to identify the input token than the output token .
+For example , when projecting with mlp , all layers can identify more than 98 % of the input tokens .
+However , for the output tokens , we can only identify 83.5 % even from the best layer .
+Since z l i even may not be able to identify y i , this observation partially verifies that it is better to represent y i using z l i+ 1 than z l i .
+( iii )
+At bottom layers , the input tokens remain identifiable and the output tokens are hard to identify , regardless of the projection function we use .
+This confirms our hypothesis that for small l , z l i is more relevant to y i?1 than y i .
+AER v.s. BLEU
+During training , vanilla Transformer gradually learns to align and translate .
+To analyze how the alignment behavior changes at different layers with checkpoints of different translation quality , we plot AER on the test set v.s. BLEU on the validation set for de ?en translation .
+We compare NAIVE -ATT and SHIFT - ATT , which align the decoder output token ( align output ) and decoder input token ( align input ) to the source tokens based on current decoder hidden state , respectively .
+The experiment results are shown in Fig. 4 .
+We observe that at the beginning of training , layers 3 and 4 learn to align the input token , while layers 5 and 6 the output token .
+However , with the increasing of BLEU score , layer 4 tends to change from aligning input token to aligning output token , and layer 1 and 2 begin to align input token .
+This suggests that vanilla Transformer gradually learns to align the input token from middle layers to bottom layers .
+We also see that at the end of training , layer 6 's ability to align output token decreases .
+We hypothesize that layer 5 already has the ability to attend to the source tokens which are aligned to the output token , therefore attention weights in layer 6 may capture other information needed for translation .
+Finally , for checkpoints with the highest BLEU score , layer 5 aligns the output token best and layer 3 aligns the input token best .
+Alignment Example In Fig. 5 , we present a symmetrized alignment example from de-en test set .
+Manual inspection of this example as well as others finds that our methods SHIFT - ATT and SHIFT - AET tend to extract more alignment pairs than GIZA + + , and extract better alignments especially for sentence beginning compared to NAIVE - ATT .
+Related Work Alignment induction from RNNSearch ( Bahdanau et al. , 2015 ) has been explored by a number of works .
+Bahdanau et al. ( 2015 ) are the first to show word alignment example using attention in RNNSearch .
+Ghader and Monz ( 2017 ) further demonstrate that the RNN - based NMT system achieves comparable alignment performance to that of GIZA ++.
+Alignment has also been used to improve NMT performance , especially in low resource settings , by supervising the attention mechanisms of RNNSearch Alkhouli and Ney , 2017 ) .
+There is also a number of other studies that induce word alignment from Transformer .
+Li et al . ( 2019 ) ; Ding et al. ( 2019 ) claim that attention may not capture word alignment in Transformer , and propose to induce word alignment with prediction difference ( Li et al. , 2019 ) or gradient - based measures ( Ding et al. , 2019 ) . Zenkel et al. ( 2019 ) modify the Transformer architecture for better align - ment induction by adding an extra alignment module that is restricted to attend solely on the encoder information to predict the next word .
+Garg et al. ( 2019 ) propose a multi-task learning framework to improve word alignment induction without decreasing translation quality , by supervising one attention head at the penultimate layer with GIZA ++ alignments .
+Although these methods are reported to improve over head average baseline , they ignore that better alignments can be induced by computing alignment scores at the decoding step when the to -be-aligned target token is the decoder input .
+Conclusion
+In this paper , we have presented two novel methods SHIFT - ATT and SHIFT - AET for word alignment induction .
+Both methods induce alignments at the step when the to -be-aligned target token is the decoder input rather than the decoder output as in previous work .
+Experiments on three public alignment datasets and a downstream task prove the effectiveness of these two methods .
+SHIFT - AET further extends
+Transformer with an addi-tional alignment module , which consistently outperforms prior neural aligners and GIZA + + , without influencing the translation quality .
+To the best of our knowledge , it reaches the new state - of - theart performance among all neural alignment induction methods .
+We leave it for future work to extend our study to more downstream tasks and systems .
+Figure 1 : 1 Figure 1 : An example to compare our method SHIFT - ATT and the baseline NAIVE - ATT .
+The left is an attention map from the third decoder layer of the vanilla Transformer and the right are the induced alignments .
+SHIFT - ATT induces alignments for target word y i at decoding step i + 1 when y i is the decoder input , while NAIVE - ATT at step i when y i is the decoder output .

@@ -1,0 +1,212 @@
+title
+DIALKI : Knowledge Identification in Conversational Systems through Dialogue-Document Contextualization
+abstract
+Identifying relevant knowledge to be used in conversational systems that are grounded in long documents is critical to effective response generation .
+We introduce a knowledge identification model that leverages the document structure to provide dialogue - contextualized passage encodings and better locate knowledge relevant to the conversation .
+An auxiliary loss captures the history of dialogue -document connections .
+We demonstrate the effectiveness of our model on two document - grounded conversational datasets and provide analyses showing generalization to unseen documents and long dialogue contexts .
+Introduction
+Many conversational agent scenarios require knowledge- grounded response generation , where knowledge is represented in written documents .
+Most prior work has explored architectures for knowledge grounding in an end-to - end framework , optimizing a loss function targeting response generation ( Ghazvininejad et al. , 2018 ; Zhou et al. , 2018 ; Yavuz et al. , 2019 ) .
+However , the knowledge needed at any one turn in the dialogue is typically localized in the document , and some studies have shown that directly optimizing for knowledge extraction helps resolve complex user queries ( Feng et al. , 2020 ) and increases user engagement in social chat ( Dinan et al. , 2019 ; Moghe et al. , 2018 ) .
+For long documents , explicit knowledge identification can also be useful for model interpretability and human- in- the - loop assistant scenarios .
+Following ( Feng et al. , 2020 ) , we define knowledge identification as the task of locating knowledge in a long document that is relevant to the current user query given the conversation context ( Figure 1 ) .
+Knowledge identification is similar to open question answering ( Chen et al. , 2017 ; Min * * Equal contribution [ Agent ] :
+Your application will be reviewed in Albany 's DMV .
+After that , it will be sent to your local DMV office and you 'll be scheduled for an inspection .
+Grounding document Dialogue Context Figure 1 : In a document-grounded conversation , knowledge identification targets to locate a knowledge string within a long document to assist the agent in addressing the current user query .
+et al. , 2019 ) , the task of answering a factoid question given a large grounding , except that it is not an interactive setting like dialogues .
+With the assumption of a long grounding document , our task differs from prior work in conversational question answering ( Choi et al. , 2018 ; Reddy et al. , 2019 ) , which focuses on answering a sequence of factoid questions about a short text snippet .
+Additionally , real user information needs can involve conversations with diverse forms of user queries and dialogue acts ( e.g. , asking for user preference , etc ) as shown in Figure 1 . Previous work in knowledge identification encode the grounding document as a single string ( Feng et al. , 2020 ) , or splitting it into isolated sentences ( Dinan et al. , 2019 ; Kim et al. , 2020 ; Zheng et al. , 2020 ) which potentially loses important discourse context .
+In this paper , we introduce DIALKI to address knowledge identification in conversational systems with long grounding documents .
+In contrast to previous work , DIALKI extends multi-passage reader models in open question answering ( Karpukhin et al. , 2020 ; Cheng et al. , 2020 ) to obtain dense encodings of different spans in multiple passages in the grounding document , and it contextualizes them with the dialogue history .
+Specifically , DI - ALKI extracts knowledge given a long document by dividing it into paragraphs or sections and individually contextualizes them with dialogue context .
+It then extracts knowledge by first selecting the most relevant passage to the dialogue context and then selecting the final knowledge string within the selected passage .
+Processing each passage rather than the full document greatly shortens the knowledge context , while preserving enough discourse context for reasoning .
+DIALKI also uses a multi-task objective to identify knowledge for the next turn , as well as used knowledge for previous turns that helps improve the learning of both dialogue and document representations by capturing interdependencies between the next agent utterance , previous utterances , and the grounding document .
+Our model significantly improves over baselines on two conversational datasets , particularly on previously unseen documents or topics .
+Analyses show good generalization to longer grounding documents and longer dialogue context , as well as improvements in response generation .
+Model robustness can be further improved with an f-divergence based posterior regularization .
+Our contributions are summarized as follows .
+First , we propose a knowledge identification model to address the problem of locating relevant information from long documents in a conversational context .
+Second , we introduce a multi-task learning framework that models the dialogue -document interactions via an auxiliary task of history knowledge prediction and a knowledge contextualization mechanism .
+Lastly , our model advances the state of the art in knowledge identification tasks for two conversational datasets , with more than 60 % and 20 % gains over previous work .
+1
+Related Work Conversational Question Answering .
+Existing conversational question answering tasks ( Choi et al. , 2018 ; Reddy et al. , 2019 ) are generally defined as the task of reading a short text passage and answering a series of interconnected questions in a conversation .
+ShARC ( Saeidi et al. , 2018 ) is a conversational machine reading dataset to address under-specified questions by requiring agents to ask follow - up questions grounded in a short text snippet that are answerable with " yes / no " answers .
+These datasets focus on restricted dialogue act types ( questions and answers ) and short grounding texts .
+In contrast , our work focuses on more natural conversations that have a wider range of dialogue act types and are grounded in longer documents .
+In principle , models developed for short contexts could be applied to longer documents , but most have been based on pretrained language models ( e.g. , BERT ( Devlin et al. , 2019 ) or RoBerTa ( Liu et al. , 2019 ) ) with an input that is the concatenation of a short document and dialogue context .
+Such language models usually have a limited maximum input length which constrains the implementation for long documents .
+Knowledge -Grounded Dialogues .
+Most previous work in knowledge grounded dialogues ( Ghazvininejad et al. , 2018 ; Zhou et al. , 2018 ; Zhao et al. , 2020 ; Lin et al. , 2020 ; Li et al. , 2019 ) generally focus on optimizing a loss function that targets response generation .
+Our work focuses on the knowledge identification task instead of response generation in a document- grounded dialogue .
+To the best of our knowledge , Wizard of Wikipedia ( WoW ) ( Dinan et al. , 2019 ) , HollE ( Moghe et al. , 2018 ) and Doc2Dial ( Feng et al. , 2020 ) are the only conversational datasets that include the task of knowledge identification in long documents .
+Both WoW and HollE focus on social chat conversations .
+WoW covers a much wider range of open-domain topics , while HollE is restricted to movie discussions .
+Doc2 Dial is a more recent goal-oriented conversational dataset in various social welfare domains .
+Knowledge Identification Models for Dialogues .
+Only a few works ( Dinan et al. , 2019 ; Lian et al. , 2019 ; Feng et al. , 2020 ; Kim et al. , 2020 ; Zheng et al. , 2020 ) build models for and evaluate on the knowledge identification task .
+Feng et al. ( 2020 ) encodes each long document as a single string without leveraging document structures , while Dinan et al . ( 2019 ) ; Lian et al . ( 2019 ) ; Kim et al . ( 2020 ) ; Zheng et al. ( 2020 ) separately encode sentences in documents , which may have strong contextual dependencies among each other .
+Our model leverages document structures and divides each document into multiple passages to process .
+Similar to our model , Kim et al . ( 2020 ) ; Zheng et al. ( 2020 ) incorporate previously used knowledge , but they use a single vector to sequentially track the state of the used knowledge .
+Instead , we apply a multi-task learning framework to model relations between grounding documents and history turns .
+Method Problem Definition Knowledge identification in a document-grounded dialogue is defined as follows .
+At inference , given the dialogue context consisting of a sequence of n previous utterances ( u 1 , u 2 , . . . , u n ) and a grounding document D , select a substring y in D that is relevant to the dialogue context and will be used in the next turn ( i.e. , utterance ) in a conversation .
+We denote u 1 as the last ( user ) turn and u n as the earliest turn in dialogue history to help our model explanation .
+Each document consists of a sequence of passages D = {p 1 , p 2 , . . . , p | D| } based on paragraphs or sections .
+Each passage p consists of a sequence of semantic units p = ( s 1 , s 2 , . . . , s l ) , where each semantic unit ( SU ) can be either a token or a span or a sentence depending on how the document is segmented .
+For simplicity , we use " span " as the semantic unit in this section to describe our model .
+Method overview
+In this section , we introduce DIALKI , a multi-task learning model for knowledge identification as illustrated in Figure 2 .
+We first introduce how we obtain dialogue utterance and knowledge span representations from BERT ( Devlin et al. , 2019 ) and a span-level knowledge contextualization mechanism ( Section 3.1 ) .
+These representations are then used for knowledge identification in our multi-task learning framework , which includes the main task of next-turn knowledge identification and an auxiliary task of history knowledge prediction applied during training only ( Section 3.2 ) .
+Finally , we describe our joint training objective and inference details ( Section 3.3 ) .
+Encoding Dialog Context and Knowledge
+Multi-Passage Encoding
+Here , we describe how we initially obtain dense vector representations of each passage in the grounding document as a set of span representations .
+Inspired by the recent open-domain question answering multi-passage reader models ( Karpukhin et al. , 2020 ; Cheng et al. , 2020 ) , we concatenate the dialogue context ( u 1 , u 2 , . . . , u n ) with u 1 to be the latest user turn , the document title t and each passage p , and use a pretrained language model like BERT ( Devlin et al. , 2019 ) to encode the concatenated sequence .
+More formally , the model input X for a passage p of length l becomes : X = [ cls ] [ usr ] u 1 [ agt ] u 2 ? ? ? [ usr ] u n [ sep ] t [ cls ] s 1 [ cls ] s 2 ? ? ? [ cls ] s l [ sep ] where ' [ usr ] ' and ' [ agt ] ' are special tokens indicating the start of a user or agent turn . ' [ cls ] ' indicates the start of the whole sequence or each knowledge span . ' [ sep ] ' are separator tokens .
+Then we encode X and gather a sequence of pooled output vectors H = G ( BERT ( X ) ) where G (. ) gathers vectors of all ' [ cls ] ' , ' [ usr ] ' and ' [ agt ] ' tokens .
+We decompose H as [ z , u 1 , . . . , u n , s 1 , . . . , s l ] where z , u i , s j are pooled representations of the whole input ( the first ' [ cls ] ' token in X ) , dialogue utterance u i and span s j respectively .
+Knowledge Contextualization
+We leverage the pooled global , utterance and span representations z , u i , s j obtained above for each passage p to further contextualize knowledge span representations .
+Inspired by how EntNet ( Henaff et al. , 2017 ) updates each entity representation based on an input sequence , for each span s j we calculate an updated span embedding s j contextualized with the sequence of previous user utterance representations as below .
+We use a gating function g which determines how much the span embedding should be updated based on u i and z.
+a i , j = W s s j + W z z + W u u i , i ?
+C u s j = ?
+i? Cu ?( a i , j ) g i , j + s j g i , j = ?
+u i z + u i s j , where W s , W z , W u ?
+R d?d are model parameters , and C u indexes the most recent user turns . ?(. ) is the vector normalization operation .
+? is the sigmoid function and ? can be any non-linear activation function .
+In our model , we use ReLU for ?.
+Similarly , we calculate s j with previous agent turns .
+Then new span embedding denotes as ?j = [ s j , s j , s j ] .
+In our experiments , we set C u to contain the most recent 2 user turns only , which leads to the best results .
+DIALKI with Multi-Task Learning
+Next-Turn Knowledge Identification
+The main task in DIALKI is next-turn knowledge identification consisting of two parts : passage prediction and knowledge span prediction ( upper right in Figure 2 ) .
+At inference , given a set of passages {p 1 , p 2 , . . . , p | D| } and the dialogue context ( u 1 , u 2 , . . . , u n ) , our multi-passage knowledge identification model targets to predict the most relevant passage p k based on the softmax probability in Eq. ( 1 ) , as well as the most relevant knowledge string y = ( s b . . . s e ) in p k to the next agent turn in the conversation , based on the begin and end span probabilities in Eq. ( 2 - 3 )
+We obtain the pooled global vector z , each utterance and span representation u i , ?j for each passage p described in Section 3.1 .
+We denote Z as the matrix containing the pooled global vectors for all passages and U i as utterance representations for u i in all passages .
+? denote the matrix with all span representations after knowledge contextualization .
+Training Objectives Eq. ( 1 - 3 ) show objective functions of knowledge passage L psg , begin L begin and end L end span predictions . q(. ) t denotes the t-th index of the vector resulting from the softmax function .
+The variables k , b and ? correspond to the gold passage , begin and end span indices .
+L psg = ? log q( W p Z ) k ( 1 ) L begin = ? log q( W b ? ) b ( 2 ) L end = ? log q( W e ? ) ? ( 3 ) where W p , W b , W e ? R d .
+Therefore , the combined next turn knowledge selection loss function becomes : L next = L psg + L begin + L end .
+History Knowledge Identification
+The auxiliary task during training is to predict previously used knowledge , with the intuition that used knowledge in documents by history turns would guide the search for the next knowledge to use .
+Training Objectives
+With the same representations used in next-turn knowledge identification , similar to Eq. ( 1 - 3 ) , we calculate both passageand span-level prediction losses for each history turn u i if the knowledge string for u i can be found in D .
+We calculate the passage prediction loss L h psg of previous turns as follows : L h psg = 1 U * u i ?U * ? log q W h p ?( W h U i ) k i where W h ?
+R d?d , W h p ?
+R d are model param - eters .
+U * is the set of history turns that can find their knowldge strings in the document D. k i is the gold passage index for turn u i . ? is a non-linear activation function , with ReLU used in our model .
+Similarly , we calculate the average losses of predicting the gold begin L h begin and end L h end knowledge spans of all history turns in U * in their gold passages .
+To do so , for each u i , we compute the dot product between a linearly transformed u i and each span embedding s j in p k i and apply a crossentropy loss for the begin or end span prediction .
+Therefore , the combined knowledge selection loss function of history turns becomes : L hist = L h psg + L h begin + L h end .
+Training and Inference Posterior Regularization During training , we incorporate a posterior regularization mechanism ( Cheng et al. , 2021 ) to enhance the model 's robustness to domain shift .
+Specifically , we add an additional adversarial training loss as below .
+Div is some f-divergence .
+2 Let x be the encoded X ( defined in Section 3.1.1 ) after the BERT word embedding layer , DIALKI outputs f psg ( x ) , f begin ( x ) and f end ( x ) as the next turn passage , begin and end knowledge span logits ( the results before the softmax function q(. ) in Eq. ( 1 - 3 ) ) respectively .
+L adv = max ?a f ?{ fpsg , f begin , f end } Div f ( x ) | | f ( x + )
+The above loss function essentially regularizes the g-based worst - case posterior difference between the clean and noisy input ( with norm of the added noise no larger than some scalar a ) using an inner loop to search for the most adversarial direction .
+Joint Training Objective
+Combining all the above components , our final model optimizes the joint objective L : L = L next + ?L hist + ?L adv ( 4 ) where ? and ? are tunable hyperparameters .
+Inference During inference , we perform nextturn knowledge prediction only .
+We first predict the passage with the highest probability and enumerate over all possible knowledge span sequences in the selected passage with a maximum length .
+Then we select the span sequence with the highest score to be the final knowledge string .
+The score of each span sequence is calculated as the sum of begin and end span probabilities .
+Experiment
+Datasets and Evaluation Metrics Datasets
+We use two datasets for our experiments : Doc2 Dial ( Feng et al. , 2020 ) and Wizard of Wikipedia ( WoW ) ( Dinan et al. , 2019 ) .
+Doc2 Dial contains about 4.8 k goal-oriented dialogues in 4 social- welfare domains , with an additional Covid -19 domain in the blind held - out test set .
+Each dialogue has an average of 14 turns , grounded on a long document with more than 1 k tokens on average .
+Each user or agent turn is grounded in a sequence of knowledge spans as annotated in the dataset .
+3 WoW contains over 20 k social chat conversations with an average of 9 turns on over 1 k open-domain topics .
+For each agent turn , the agent ( i.e. , wizard ) chose one or no grounding sentence from on average 7 Wikipedia passages provided by a pre-defined retriever based on the dialogue history for composing the response .
+Each passage contains 10 sentences .
+The original data has its dev/test set split to two subsets , which contain conversations about topics seen or unseen in training .
+WoW Passage segmentation is automated in the WoW pre-defined retriever and the dataset provides 7 passages on average for each agent turn in the dataset .
+Since agents are allowed to select no grounding sentence , we add an additional passage with only one single sentence " no passages used " following the original data processing script 5 . Knowledge SUs are sentences .
+We set the maximum knowledge length to be 1 sentence during inference .
+Passages may differ for each agent turn in the same conversation .
+Thus , during training , we only calculate history loss for previous agent turns whose ground truth knowledge can be found in next turn passages , which on average cover over 70 % of history agent turns .
+Evaluation Metrics Experimental Setup
+We initialize and finetune on BERT ( Devlin et al. , 2019 ) .
+We use the uncased base BERT in most of our experiments , and set 3e ?5 as the learning rates and 1000 as warmup steps .
+For each experiment , we search the weights in Eq. ( 4 ) on the dev set in the ranges of ? = { 0.5 , 1 , 2 } , ? = { 0.5 , 2.5 , 5 } .
+We do not observe much difference with different weight combinations , but the best result is achieved when ? = 5 for both datasets , and ? = 1 for Doc2 Dial and ? = 0.5 for WoW .
+Models are selected based on the best dev set EM score .
+The maximum length of dialogue context is 128 .
+The maximum lengths of model input are 512 and 384 for Doc2Dial and WoW respectively .
+In training , we provide multiple passages from the grounding document as the input , where only one of them is the gold passage .
+We find that learning benefits from having more negative passage examples , and the number used is constrained by memory consumption ( up to 10 for the models with posterior regularization and up to 20 otherwise ) .
+For inference , up to 20 passages from the target document are considered .
+For longer documents , the first 20 passages are used .
+Further details are in Appendix A .
+Compared Systems BERTQA - Token :
+The original baseline ( Feng et al. , 2020 ) and the best published model on Doc2 Dial .
+It uses BERTQA ( Devlin et al. , 2019 ) with each dialogue context as the question and sliding windows to process each document , and predicts the start and end tokens in the document .
+BERTQA - Span : Similar to BERTQA - Token , but predicts the start and end knowledge spans instead of tokens .
+Instead of using sliding windows , we increase the number of position embeddings to be 2048 , initialized with 512 position embeddings in BERT repeated 4 times , following ( Beltagy et al. , 2020 ) .
+We observe better results with this operation than when using sliding windows .
+Transformer MemNet :
+The original baseline ( Dinan et al. , 2019 ) of WoW , which uses a vanilla Transformer ( Vaswani et al. , 2017 ) to encode all knowledge sentences separately and a memory network for sentence selection .
+Another model version includes pre-training on Reddit conversations .
+SLKS : The state- of - the - art model ( Kim et al. , 2020 ) on WoW that encodes all knowledge sentences and dialogue turns separately with BERT ( or RNN ) .
+It uses two GRUs to update the states of dialog history and previously selected sentences .
+Quantitative Results
+Doc2 Dial
+Table 1 reports the results of different systems in the blind held - out test set with an unseen Covid -19 domain .
+All models are based on the BERT - base model except the last one that uses BERT - large .
+The full model of DIALKI achieves best results , demonstrating the effectiveness of combining all components of the system described in Section 3 .
+The significant improvement from DIALKI ( L next only ) over BERTQA - Token , which takes the full document as a single string , shows the benefit of our multi-passage framework .
+BERTlarge helps further improve the overall results .
+6 WoW Results on both test sets are presented in Table 2 , containing conversations on seen and unseen topics in training .
+DIALKI significantly outperforms all other systems , which encode knowledge sentences disjointly .
+This again confirms the 6 After ensemble with other large language models of RoBerTa and ELECTRA ( Liu et al. , 2019 ; Clark et al. , 2020 ) advantage of our multi-passage framework and the modeling of dialogue -document relations .
+Surprisingly , DIALKI achieves even higher results on the unseen test set while others observe performance drops .
+One potential reason is that blindly dividing passages into disjoint sentences to process may hurt the model 's reasoning ability and generalization .
+In addition , Transformer Mem-Net , DiffKS and SLKS decouple the encoding of dialogue history and grounding sentences , which prevents the model to effectively reason over their relations .
+With more investigation into the data , we found that two thirds of the grounding passages used in those conversations about unseen topics actually appear in the training set based on title matching .
+7 Moreover , all topics in the dataset are similar lifestyle topics collected from persona description sentences in ( Zhang et al. , 2018 ) .
+These observations support the possibility of better performance on the original unseen set .
+Impact of different components of DIALKI .
+Table 3 reports results of ablating different components of our system on the dev set of both datasets .
+Although Doc2 Dial does not provide separate seen and unseen sets as WoW does , we split the dev set into examples that have grounding documents seen or unseen in the training set .
+Note that " seen " and " unseen " refer to documents and topics for Doc2Dial and WoW respectively .
+We observe that DIALKI consistently beat baseline models that either process the full document as a single string or isolated sentences .
+Our framework leads a to smaller performance gap between seen and unseen examples .
+Adding the auxiliary history knowledge prediction loss ( L hist ) leads to further improvements on both datasets .
+Adding know-ctx helps enhance the performance on Doc2 Dial while does not appear to be effec- tive on WoW , as explored further below .
+Adding posterior regularization ( L adv ) is effective on both datasets while Doc2 Dial gets more advantage from it especially on the unseen subset .
+Combining all model components yields the best results .
+Analysis Impact on Response Generation
+We apply BART to decode agent responses given the concatenated dialogue context and grounding knowledge ( e.g. , document or predicted knowledge string ) as the input .
+BART is also used as the baseline for the agent response generation task on Doc2Dial ( Feng et al. , 2020 ) , 8 where the model is given the dialogue history concatenated with the full document to decode the next agent response .
+We conduct experiments on the same model architecture , with the knowledge input being the predicted knowledge string or passage .
+Without changing the model at all , using knowledge predicted by DIALKI leads to almost 3 points in the sacrebleu score ( Post , 2018 ) , as shown in Table 4 .
+Examples of generated responses are shown in Table 5 .
+Passage Identification Accuracy
+We map predicted knowledge strings back to the passages and calculate the passage - level accuracy .
+Table 6 shows that DIALKI outperforms baseline models in locating the passage containing the knowledge string .
+Notably , our models generalize well in passage prediction to unseen documents or dialogue topics .
+Similarity Between Global and History Turn Representations
+The dot product between z ( the encoding of the whole input sequence ) and each history utterance representation u i ( sigmoid normalized ) is used in the gating function g ( defined in Section 3.1.2 ) that gates the effect of each utterance u i in calculating span embeddings .
+Figure 3 shows such normalized dot product scores between z and the latest four history turn vectors .
+In Doc2 Dial , For WoW , the conversation style is different and the predicted knowledge is a single sentence instead of multiple spans , so prediction errors fall into different classes : ( 1 ) open-ended situations where the predicted knowledge is appropriate ( 48 % ) ; ( 2 ) unnatural for use in the next response ( 30 % ) ; ( 3 ) the predicted knowledge is more appropriate to use than the ground truth ( 12 % ) ; ( 4 ) irrelevant knowledge that does not answer the user 's questions ( 10 % ) .
+The high percentage of open-ended examples explains the relatively low evaluation scores of knowledge identification on WoW .
+Conclusion
+In summary , we introduce DIALKI to address knowledge identification in conversational systems with long grounding documents , taking advantage of document structure to contextualize document passages together with the dialogue history .
+DI -ALKI uses a multi-task objective that identifies knowledge for the next turn and used knowledge for previous turns , which captures interconnections between the dialogue and the document .
+Additional posterior regularization in learning further improves results .
+The model gives state of the art performance for this task on Doc2Dial and Wizard of Wikipedia , respectively .
+We show that improvements in knowledge selection transfer to response generation with a baseline generator .
+The current study is limited by the static nature of the available data .
+Further work is needed to assess performance in an interactive setting .
+It would also be of interest to consider scenarios where document information is irrelevant or users change their minds about what information they want .
+1616112 ) , NSF CAREER award , and Allen Distinguished Investigator Award .
+We also thank members of UW - NLP who provided feedback and insights to this work .
+We would also like to thank Hao Cheng for providing insights for improving model robustness and thank Michael Lee for early discussions .

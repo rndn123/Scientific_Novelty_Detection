@@ -1,0 +1,222 @@
+title
+Improving Multilingual Translation by Representation and Gradient Regularization
+abstract
+Multilingual Neural Machine Translation ( NMT ) enables one model to serve all translation directions , including ones that are unseen during training , i.e. zero-shot translation .
+Despite being theoretically attractive , current models often produce low quality translations - commonly failing to even produce outputs in the right target language .
+In this work , we observe that off-target translation is dominant even in strong multilingual systems , trained on massive multilingual corpora .
+To address this issue , we propose a joint approach to regularize NMT models at both representation - level and gradient-level .
+At the representation level , we leverage an auxiliary target language prediction task to regularize decoder outputs to retain information about the target language .
+At the gradient level , we leverage a small amount of direct data ( in thousands of sentence pairs ) to regularize model gradients .
+Our results demonstrate that our approach is highly effective in both reducing off-target translation occurrences and improving zero-shot translation performance by + 5.59 and + 10.38 BLEU on WMT and OPUS datasets respectively .
+Moreover , experiments show that our method also works well when the small amount of direct data is not available .
+1 * Work done while interning at Microsoft .
+Introduction With Neural Machine Translation becoming the state- of- the - art approach in bilingual machine translations ( Bahdanau et al. , 2015 ; Vaswani et al. , 2017 ) , Multilingual NMT systems have increasingly gained attention due to their deployment efficiency .
+One conceptually attractive advantage of Multilingual NMT ( Johnson et al. , 2017 ) is its capability to translate between multiple source and target languages with only one model , where many directions 2 are trained in a zero-shot manner .
+Despite its theoretical benefits , Multilingual NMT often suffers from target language interference ( Johnson et al. , 2017 ; Wang et al. , 2020 c ) .
+Specifically , Johnson et al. ( 2017 ) found that Multilingual NMT often improves performance compared to bilingual models in many - to- one setting ( translating other languages into English ) , yet often hurts performance in one- to- many setting ( translating English into other languages ) .
+Several other works ( Wang et al. , 2018 ; Arivazhagan et al. , 2019 ; Tang et al. , 2020 ) also confirm one - to -many translation to be more challenging than many - to-one .
+Another widely observed phenomenon is that the current multilingual system on zero-shot translations faces serious off-target translation issue ( Gu et al. , 2019 ; Zhang et al. , 2020 ) where the generated target text is not in the intended language .
+For example , Table 1 shows the percentage of off-target translations appearing between high- resource languages .
+These issues exemplify the internal failure of multilingual systems to model different target languages .
+This paper focuses on reducing offtarget translation , since it has the potential to improve the quality of zero-shot translation as well as general translation accuracy .
+Previous work on reducing the off-target issue often resorts to back - translation ( BT ) techniques ( Sennrich et al. , 2015 ) .
+Gu et al. ( 2019 ) employs a pretrained NMT model to generate BT parallel data for all O( N 2 ) English - free 3 directions and trains the multilingual systems on both real and synthetic data .
+Zhang et al. ( 2020 ) instead fine - tune the pretrained multilingual system on BT data that are randomly generated online for all zero-shot directions .
+However , leveraging BT data for zeroshot directions has some weaknesses : ?
+The need for BT data grows quadratically with the number of languages involved , requiring significant time and computing resources to generate the synthetic data .
+?
+Training the multilingual systems on noisy BT data would usually hurt the English-centric performance ( Zhang et al. , 2020 ) .
+In this work , we propose a joint representationlevel and gradient - level regularization to directly address multilingual system 's limitation of modeling different target languages .
+At representationlevel , we regulate the NMT decoder states by adding an auxiliary Target Language Prediction ( TLP ) loss , such that decoder outputs are retained with target language information .
+At gradient - level , we leverage a small amount of direct data ( in thousands of sentence pairs ) to project the model gradients for each target language ( TGP for Target - Gradient- Projection ) .
+We evaluate our methods on two large scale datasets , one concatenated from previous WMT competitions with 10 languages , and the OPUS - 100 from Zhang et al . ( 2020 ) with 95 languages .
+Our results demonstrate the effectiveness of our approaches in all language pairs , with an average + 5.59 and + 10.38 BLEU gain across zero-shot pairs , and 24.5 % ? 0.9 % and 65.8 % ? 4.7 % reduction to off-target rates on WMT - 10 and OPUS - 100 respectively .
+Moreover , we show the off-target translation not only appears in the zero-shot directions , but also exists in the Englishcentric pairs .
+Approach
+In this section , we will illustrate the baseline multilingual models and our proposed joint representation and gradient regularizations .
+Baseline Multilingual NMT Model Following Johnson et al. ( 2017 ) , we concatenate all bilingual parallel corpora together to form the training set of a multilingual system , with an artificial token appended to each source sequence to specify the target language .
+Specifically , given a source sentence x i = ( x i 1 , x i 2 , ... , x i |x i | ) in language i and the parallel target sentence y j = ( y j 1 , y j 2 , ... , y j |y j | ) in language j , the multilingual model is trained with the following cross-entropy loss : L NMT = ?
+|y j | t=1 log P ? ( y j t | x i , j , y j 1 ..( t? 1 ) ) , ( 1 ) where j is the artificial token specifying the desired target language , and P ? is parameterized using an encoder-decoder architecture based on a state - of- the - art Transformer backbone ( Vaswani et al. , 2017 ) .
+We then train the multilingual system on the concatenated parallel corpus of all available language pairs in both forward and backward directions , which is also referred to as a many - to - many multilingual system .
+To balance the training batches between high- resource and low-resource language pairs , we adopt a temperature - based sampling to up / down - sample bilingual data accordingly ( Arivazhagan et al. , 2019 ) .
+We set the temperature ? = 5 for all of our experiments .
+Representation - Level Regularization : Target Language Prediction ( TLP )
+As shown in Table 1 , the current multilingual baseline faces serious off-target translation issue across the zero-shot directions .
+With the multilingual decoder generating tokens in a wrong language , its decoder states for different target languages are also mixed and not well separated , in spite of the input token j .
+We thus introduce a representationlevel regularizaion by adding an auxiliary Target Language Prediction ( TLP ) task to the standard NMT training .
+Specifically , given the source sentence x = ( x 1 , x 2 , ... , x | x | ) and a desired target language j , the model generates a sequence of decoder states z = ( z 1 , z 2 , ... , z |?| ) 4 . As the system feeds z through a classifier and predicts tokens ( in Equation 1 ) , we feed z through a LangID model to classify the desired target language j .
+TLP is then optimized with the cross-entropy loss : L TLP = ? log M ? ( z , j ) , ( 2 ) L = ( 1 ? ? ) ? L NMT + ? ? L TLP . ( 3 ) Implementation
+We implement the LangID model as a 2 - layer Transformer encoder with input from the multilingual decoder states to classify the target language .
+We add to the decoder states a sinusoidal positional embedding for position information .
+We implement two common approaches to do classification : CLS_Token and Meanpooling .
+For CLS_Token , we employ a BERT - like ( Devlin et al. , 2018 ) CLS token and feed its topmost states to the classifier .
+For Meanpooling , we simply take the mean of all output states and feed it to the classifer .
+Their comparison is shown in Section 4.1 .
+Gradient -Level Regularization : Target - Gradient -Projection ( TGP )
+Although the TLP loss helps build more separable decoder states , it lacks reference signals to directly guide the system on how to model different target languages .
+Inspired by recent gradientalignment - based methods ( Wang et al. , 2020a ;
+Yu et al. , 2020 ; Wang et al. , 2020d
+Wang et al. , , 2021 , we propose Target - Gradient -Projection ( TGP ) to guide the model training with constructed oracle data , where we project the training gradient to not conflict with the oracle gradient .
+Creation of oracle data Similar to Wang et al . ( 2020a
+Wang et al. ( , 2021 , we build the oracle data from multilingual dev set , since the dev set is often available and is of a higher quality than the training set .
+More importantly , for some zero-shot pairs , we are able to include hundreds or thousands of parallel samples from the dev set .
+We construct the oracle data by concatenating all available dev sets and grouping them by the target language .
+For example , the oracle data for French would include every other language to French .
+The detailed construction of oracle data is specific to each dataset , and described in Section 3.4 .
+The dev set often serves to select the best checkpoint for training , thus we split the dev set as 80 % for oracle data and 20 % for checkpoint selection .
+Implementation Contrary to standard multilingual training , where a training batch consists of parallel data from different language pairs , we group the training data by the target language after the temperature - based sampling ( Section 2.1 ) .
+By doing so , we treat the multilingual system as a multi-task learner , and translations into different languages are regarded as different tasks .
+Similarly , we construct the oracle data individually for each target language , whose gradients would serve as guidance to the training gradients .
+For each step , we obtain the training gradients g i train for target language i , and the gradients of the corresponding oracle data g i oracle .
+Whenever we observe a conflict between g i train and g i oracle , which is defined as a negative cosine similarity , we project g i train into the normal plane of g i oracle to de-conflict ( Yu et al. , 2020 ) . g i train = g i train ?
+g i train ?
+g i oracle g i oracle 2 g i oracle .
+( 4 ) The detailed algorithm is illustrated in Algorithm 1 .
+We train the multilingual system with NMT loss or NMT + TLP joint loss for 40 k steps before starting the TGP training , since the gradients of oracle data are not stable when trained from scratch .
+We set the update frequency n = 200 for all our experiments .
+In our experiments , TGP is approximately 1.5x slower than the standard NMT training .
+3 Experimental Setup
+Datasets : WMT - 10 Following Wang et al. ( 2020 b ) , we collect parallel data from publicly available WMT campaigns 5 to form an English-centric multilingual WMT - 10 dataset , including English and 10 other languages : French ( Fr ) , Czech ( Cs ) , German ( De ) , Finnish ( Fi ) , Latvian ( Lv ) , Estonian ( Et ) , Romanian ( Ro ) , Hindi ( Hi ) , Turkish ( Tr ) and Gujarati ( Gu ) .
+The size of bilingual datasets range from 0.08 M to 10M , with five language pairs above 1M ( Fr , Cs , De , Fi , Lv ) and five language pairs below 1M ( Et , Ro , Hi , Tr , Gu ) .
+We use the same dev and test set as Wang et al . ( 2020 b ) .
+Since the WMT data does not include zero-shot dev or test set , we have created 1 k multi-way aligned dev and test sets for all involved languages based on the WMT2019 test set .
+For evaluation , we picked 6 language pairs ( 12 translation directions ) to examine zero-shot performance , including pairs of both high- resource languages ( Fr- De and De-Cs ) , pairs of high - and low-resource languages ( Ro - De and Et - Fr ) , and pairs of both low-resource languages ( Et - Ro and Gu -Tr ) .
+The detailed dataset statistics can be found in Section A.1 .
+Datasets : OPUS - 100
+To evaluate our approaches in the massive multilingual settings , we adopt the OPUS - 100 corpus from Zhang et al . ( 2020 ) 6 . OPUS - 100 is also an English-centric dataset consisting of parallel data between English and 100 other languages .
+We removed 5 languages ( An , Dz , Hy , Mn , Yo ) from OPUS , since they are not paired with a dev or test set .
+However , while constructing the oracle data from its multilingual dev set , we found that the dev and test sets of OPUS - 100 are noticeably noisy since they are directly sampled from web-crawled OPUS collections 7 .
+As shown in Table 2 , several dev sets have significant overlaps with their test sets .
+15.26 % of dev set samples appear in the test set on average across all language pairs .
+This is a significant flaw of the OPUS - 100 ( v1.0 ) that previous works have not noticed .
+To fix this , we rebuild the OPUS dataset as follows .
+Without significantly modifying the dataset , we add an additional step of de-duplicating both the training and dev sets against the test 8 , and moving data from training set to complement the dev set due to de-duplication .
+We additionally sampled 2 k zero-shot dev set using OPUS sampling scripts 9 to match the released 2 k zero-shot test set .
+The detailed dataset statistics can be found in section 10 .
+Training and Evaluation For both WMT - 10 and OPUS - 100 , we tokenize the dataset with the SentencePiece model ( Kudo and Richardson , 2018 ) and form a shared vocabulary of 64 k tokens .
+We employ the Transformer - Big setting ( Vaswani et al. , 2017 ) much earlier .
+For evaluation , we employ beam search decoding with a beam size of 5 and a length penalty of 1.0 .
+The BLEU score is measured by the de-tokenized case-sensitive SacreBLEU 12 ( Post , 2018 ) .
+In order to evaluate the off-target translations , we utilize off - the-shelf LangID model from Fast - Text ( Joulin et al. , 2016 ) to detect the languages of translation outputs .
+Construction of Oracle Data On WMT - 10 , we use our human labelled multi-way dev set together with the original English-centric WMT dev set to construct the oracle data .
+On OPUS - 100 , we similarly combine the zero-shot dev set with original OPUS dev set for oracle data .
+On OPUS , we further merge oracle data that consists of only English-centric dev sets , since it empirically obtains similar performance while exhibiting noticeable speedups .
+The statistics of the constructed oracle data is shown in Section A.3 .
+Results
+In this section , we will demonstrate the effectiveness of our approach on both WMT - 10 and OPUS - 100 datasets .
+The full results are documented separately in Tables 5 , 6 , and 7 for WMT - 10 , and Tables 8 and 9 for OPUS - 100 .
+TLP Results Hyper-parameter Tuning Table 3 shows the comparison between TLP implementations on the WMT - 10 dev set .
+We observe that the Meanpooling approach for TLP is both more stable and delivers slightly better performance .
+In all the following experiments , we use the Meanpooling approach for TLP , with ? = 0.3 on WMT - 10 and ? = 0.1 on OPUS - 100 .
+Performance From Tables 5 and 6 ( row 4 vs. row 2 ) , we can see that TLP outperforms baselines in most En-X and X - En directions and all English -free directions as shown in Table 7 ( row 4 vs. row 2 ) .
+On average , TLP gains + 0.4 BLEU on En-X , +0.28 BLEU on X - En and + 2.12 BLEU on English -free directions .
+TLP also significantly reduces the off-target rate from 24.5 % down to 6.0 % ( in Table 7 ) .
+Meanwhile on OPUS - 100 , TLP performs similarly in English-centric directions ( in Table 8 ) while yielding + 0.77 BLEU improvement on English - free directions , together with a 65.8 % ? 60.5 % drop in off-target occurrences ( in Table 9 ) .
+These results demonstrate that by adding an auxiliary TLP loss , multilingual models much better retain information about the target language , and moderately improved on English - free pairs .
+TGP Results Settings Similar to Yu et al . ( 2020 ) ; Wang et al. ( 2020d ) , the conflict detection and de-conflict projection of TGP training could be done with different granularities .
+We compare three options : ( 1 ) model- wise : flatten all parameters into one vector , and perform projection on the entire model ; ( 2 ) layer -wise : perform individually for each layer of encoder and decoder ; ( 3 ) matrix -wise : perform individually for each parameter matrix .
+From Table 4 , we found operating on the model- level gives denotes TGP training in a zero-shot manner for all evaluated English - free pairs .
+" Off - Tgts " column reports the average off-target rates from FastText LangID model , while the off-target rate on the references is 0.12 % .
+the best performance , and as a result all our TGP experiments are done on the model-level .
+We then perform TGP training for 10 k steps on the 40k - step pretrained model .
+Performance In Tables 5 , 6 and 7 ( row 5 vs. 2 ) , TGP gains significant improvements on all directions of WMT - 10 : averaging + 1.23 BLEU on En-X , + 1.38 BLEU on X - En and + 5.57 BLEU on Englishfree directions , while also reducing the off-target rates from 24.5 % down to only 0.9 % .
+Similar gains could also be found on OPUS - 100 ( in Tables 8 and 9 ) : + 3.65 BLEU on En-X , +1.32 BLEU on X - En and + 10.63 BLEU on English -free , and a whopping 65.8 % ? 4.8 % reduction to off-target occurrences .
+These results demonstrate the overwhelming effectiveness of TGP on all translation tasks as well as on reducing off-target cases .
+Table 8 : Average test BLEU for High / Medium / Low- resource language pairs on OPUS - 100 dataset .
+All denotes the average BLEU for all langugage pairs .
+denotes TGP training in a zero-shot manner for all evaluated English - free pairs .
+demonstrates the effectiveness of TGP training .
+Learning curves Finetuning on oracle data Suggested by Wang et al . ( 2021 ) , we explore another baseline usage of oracle data : direct finetuning .
+For finetuning , we concatenate all oracle data from different target languages together .
+With the same settings as TGP ( finetuning for 10 k steps on the 40k - step baseline ) , we also observe a noticeable improvement on English - free directions : an average of + 1.62 BLEU on WMT - 10 and + 8.17 BLEU on OPUS - 100 , with the most reduction on the off-target occurrences ( row 3 of Tables 7 and 9 ) .
+However in comparison to TGP , directly finetuning on oracle data lacks the step of separately modeling for different target languages and the crucial step of de-conflicting , thus it hurts the English-centric ( En-X and X -En ) directions while also lagging as much as - 3.95 BLEU on English - free pairs ( Table 7 , row 3 vs. 5 ) .
+TGP in a Zero-Shot Setting Although TGP and Finetuning obtain significant reductions on off-target cases , they both assume some amount of direct parallel data on Englishfree pairs , while in reality , such direct parallel data may not exist in extreme low-resource scenario .
+To simulate a zero-shot setting , we build a new oracle dataset that explicitly excludes parallel data of all evaluated English - free pairs .
+13
+In this setting , all evaluation pairs are trained in a strict zero-shot manner to test the system 's generalization ability .
+Performance In Tables 5 , 6 , 7 row 7 with , TGP in a zero-shot manner slightly lags behind TGP with full oracle data , while still gaining significant improvement compared to the baseline .
+On average , we observe a gain of + 0.93 BLEU on En-X , + 1.19 BLEU on X - En and + 4.8 on English - free compared to baseline ( row 7 vs. 2 ) , and a slight Table 9 : BLEU scores of English -free translations on OPUS - 100 .
+denotes TGP training in a zero-shot manner for all evaluated English - free pairs .
+As a reference , the average off-target rate reported by FastText LangID model is 4.85 % on the references .
+decrease of - 0.3 BLEU on En-X , -0.19 BLEU on X - En and - 0.77 BLEU on English - free compared to TGP with full oracle set ( row 7 vs. 5 ) .
+Meanwhile on OPUS - 100 ( in Tables 8,9 ) , we also observe a consistent gain against the baseline ( row 7 vs. 2 ) , but a noticeable - 4.64 BLEU drop on English - free pairs against TGP with full oracle data ( row 7 vs. 5 ) .
+The performance drop ( zero-shot vs. full data ) illustrates that thousands of parallel samples 14 could greatly help TGP on zero-shot translations , and we suspect the drop of only - 0.77 BLEU on WMT - 10 is due to the multi-way nature of our WMT oracle data .
+Meanwhile , TGP in a zero-shot setting is still shown to greatly improve translation performance and significantly reduces off-target occurrences ( 24.5 % ? 2.0 % on WMT and 65.8 % ? 31.1 % on OPUS ) .
+Joint TLP+TGP TLP models could be seamlessly adopted in TGP training , by replacing the original NMT loss with a joint NMT + TLP loss .
+Comparing the joint TLP +TGP approach to TGP -only ( row 6 vs. 5 in Tables 5 - 9 ) , we observe no significant differences in the full oracle data scenario ( changes within ? 0.3 BLEU ) .
+However in zero-shot setting , the joint TLP + TGP approach noticeably outperforms TGPonly by + 1.82 BLEU on average in English - free pairs ( Table 9 , row 8 vs. 7 ) .
+Given TLP alone is only able to gain + 0.77 BLEU ( row 4 vs. 2 ) , it hints TLP and TGP to have a synergy effect in the extremely low resource scenario .
+Discussions on Off-Target Translations
+In this section , we will discuss the off-target translation in the English-centric directions and its rela - 14 In our case , we obtain 1 k for WMT and 2 k for OPUS .
+tionship with token - level off-targets .
+Off -Targets on English -Centric Pairs Previous literature only studies the off-target translations in the zero-shot directions .
+However , we show in Tables 5 and 6 that off-target translation also occurs in the English-centric directions ( although to a smaller scale ) .
+Since we are using an imperfect LangID model , we quantify its error margin as the off-target rates reported on the references 15 .
+We could then observe that the baseline model is producing 0.25 % and 0.18 % more off-target translations than the references in En-X and X - En directions respectively , which are also reduced by our proposed TLP and TGP approaches .
+Token -Level Off-Targets
+Given a sentence- level LangID model , we are also curious about how it represents errors at the token level .
+We attempt to simply quantify the tokenlevel off-target rates by checking whether each token appears in the training data .
+Surprisingly , results in Table 10 show that all systems contain lower token - level off-targets than the references .
+We hypothesize that it is attributed to two main reasons : 1 ) training set also contains noisy off-target Sentence - Level Off -Target Rates ( % ) Token - Level VS .
+Sentence -Level Off-Target Rates Figure 3 : Relationship between the random token - level probability p and the reported sentence - level off-target rates .
+Token - level off-targets are introduced by replacing the in- target token to a random off-target token with a probability p. Analysis done on the WMT - 10 Englishfree references .
+tokens .
+2 ) there are domain / vocabulary mismatches between training and test set , especially for the English - free pairs .
+In order to test the robustness of the FastText LangID model as well as to relate our reported sentence - level scores to the token - level , we randomly introduced off-target tokens to the references and observed the sentence - level scores .
+Specifically , we replaced the in- target token to a random off-target one with a probability p.
+Figure 3 shows a near exponential curve between the sentence - level scores and probability p.
+We could also observe that the sentence - level LangID model is somewhat robust to token - level off-target noises , e.g. it reports around 4 % off-target rates given 20 % of the tokens are replaced with off-target ones .
+Related Work Multilingual NMT Multilingual NMT aims to train one model to serve all language pairs ( Ha et al. , 2016 ; Firat et al. , 2016 ; Johnson et al. , 2017 ) .
+Several subsequent works explored various parameter sharing strategies to mitigate the representation bottleneck ( Blackwood et al. , 2018 ; Platanios et al. , 2018 ; Sen et al. , 2019 ) .
+Meanwhile , there are also notorious cases of off-target translation especially in English - Free pairs .
+Previous works either resort to back -translation techniques to generate synthetic English - Free data ( Gu et al. , 2019 ; Zhang et al. , 2020 ) , or to model- level changes to the encoderdecoder alignments ( Arivazhagan et al. , 2019 ; Liu et al. , 2020 ) .
+In contrast , we propose a joint representation and gradient regularization approach to reduce off-target translations and significantly improve performance across all language pairs .
+Multi-Task Learning for NMT Multi-task learning ( MTL ) is a widely used technique to share model parameters and improve generalization ( Ruder , 2017 ) .
+For NMT , previous works have leveraged MTL to inject linguistic knowledge or leveraged monolingual data ( Eriguchi et al. , 2017 ; Niehues and Cho , 2017 ; Kiperwasser and Ballesteros , 2018 ; Wang et al. , 2020 b ) .
+Our work leverages an auxiliary TLP loss to help learn more separable model states for different target languages .
+Optimization Learning Previous works have studied the optimization challenges in multi-task training ( Hessel et al. , 2019 ; Schaul et al. , 2019 ) , where Yu et al . ( 2020 ) proposed to resolve gradient conflicts between different tasks .
+Meanwhile for NMT , Wang et al .
+( 2021 Wang et al . ( , 2020a proposed to mask out or assign different weights to training samples based on the gradient alignments with validation set .
+Yu et al . ( 2020 ) proposed to resolve the pair-wise gradient conflicts between translation directions .
+In contrast , we propose TGP to guide the training process by projecting training gradients according to the oracle gradients .
+Conclusions
+In this work , we aimed to reduce the off-target translations with our proposed joint representation ( TLP ) and gradient ( TGP ) regularization to guide the internal modeling of target languages .
+Our results showed both approaches to be highly effective at improving translation quality and to a large extent reduced the off-target occurrences .
+As a future direction , we will investigate off-target translations during decoding time ( Yang et al. , 2018 ( Yang et al. , , 2020 . Figure 1 : 1 Figure 1 : The training loss curve of TGP on WMT - 10 .
+Figure 2 : 2 Figure 2 : The test BLEU curves of TGP on WMT - 10 .
+Table 1 : 1 Off-target translation percentages on WMT and OPUS Testsets .
+WMT Fr- De De-Fr Cs- De De-Cs Baseline 51.60 % 39.80 % 13.10 % 20.50 % OPUS Fr- De De-Fr Fr-Ru Ru-Fr Baseline 95.15 % 93.70 % 68.85 % 91.20 %
+Table 2 : 2
+The top - 5 most overlapped dev and test set on OPUS - 100 , the overlapping rate is calculated as the percentage of dev set that appears in the test .
+The average overlapping rate between dev and test is 15. 26 % across all language pairs .
+Table 3 : 3 Comparing TLP approaches on WMT - 10 .
+BLEU is averaged across all English-centric directions .
+in all our experi -
+Table 4 : 4 Comparing TGP granularity on WMT - 10 .
+BLEU is averaged across all English-centric directions .
+Table 5 : 5 BLEU scores of English ? 10 languages translation on WMT - 10 .
+denotes TGP training in a zero-shot manner for all evaluated English - free pairs .
+" Off - Tgts " column reports the average off-target rates from FastText LangID model , while the off-target rate on the references is 0.81 % .
+X ? En TLP TGP Fr Cs De Fi Lv Et Ro Hi Tr Gu Avg Off - Tgts 1 Bilingual - - 36.2 28.5 40.2 19.2 17.5 19.7 29.8 14.1 15.1 9.3 22.96 0.30 % 2 Baseline - - 34.0 28.2 39.1 19.9 19.5 24.8 34.6 21.9 22.4 17.8 26.22 0.23 % 3 + Finetune - - 24.7 22.3 30.1 16.9 16.2 21.1 39.4 17.7 17.6 17.0 22.30 0.13 % 4 - 35.0 28.7 39.5 20.4 20.2 25.5 34.6 21.4 22.3 17.4 26.50 0.20 % 5 6 Ours ( Baseline + ___ ) - 34.5 29.1 40.0 20.8 20.1 26.3 39.5 23.4 22.8 19.5 27.60 34.2 29.4 39.5 21.3 20.3 26.0 40.4 24.1 23.0 19.8 27.80 0.20 % 0.19 % 7 - 33.9 28.7 38.8 21.0 20.0 26.4 39.5 24.0 22.6 19.2 27.41 0.15 % 8 34.4 28.8 39.6 21.3 20.5 26.8 40.6 24.2 22.9 20.8 27.99 0.20 %
+Table 6 : 6 BLEU scores of 10 languages ?
+English translation on WMT -10 .
+Table 7 : 7 Figures 1 and 2 illustrate the learning curves of TGP on WMT - 10 .
+Different from the baseline curves , TGP observes a slight increase in training loss , which shows TGP as a regularizer prevents the model from overfitting to the training set .
+Meanwhile , a steady increase on both English-centric and English - free test BLEU BLEU scores of English - free translations on WMT - 10 . denotes TGP training in a zero-shot manner for all evaluated English - free pairs .
+As a reference , the average off-target rate reported by FastText LangID model is 0.68 % on the references .
+En- Free TLP TGP Fr- De ? ? De- Cs ? ? Ro - De ? ? Et - Fr ? ? Et - Ro ? ? Gu- Tr ? ? BLEU Off - Tgt Avg Avg ( % ) 1 Pivoting - - 24.9 19.3 19.4 18.9 19.1 18.8 16.2 20.9 16.4 16.8 5.2 6.4 16.86 1.1 % 2 Baseline - - 18.5 12.8 15.8 13.6 17.5 16.0 10.3 13.7 12.5 14.4 0.9 1.9 12.33 24.5 % 3 + Finetune - - 17.9 15.1 14.6 13.1 18.7 14.6 12.3 16.4 12.6 17.0 8.1 7.0 13.95 0.7 % 4 - 21.4 15.7 17.8 15.8 18.1 17.0 14.1 17.3 14.0 15.5 3.0 3.8 14.45 6.0 % 5 6 Ours ( Baseline + _ ) - 25.4 19.4 20.0 18.7 22.7 19.6 16.5 22.4 17.0 20.2 6.2 6.7 17.90 0.9 % 25.2 19.7 19.7 18.9 23.0 19.8 16.1 21.4 16.7 20.8 6.4 7.3 17.92 0.9 % 7 - 24.5 18.5 18.8 18.2 21.8 18.2 16.6 20.9 16.1 19.5 5.6 6.9 17.13 2.0 % 8 24.2 18.3 20.0 18.3 22.3 19.5 15.9 21.5 16.1 20.1 5.6 7.1 17.41 2.1 % English -Centric TLP TGP English ? X X ? English High Med Low All High Med Low All 1 Zhang et al. ( 2020 ) ( 24L ) - - 30.29 32.58 31.90 31.36 23.69 25.61 22.24 23.96 2 Baseline - - 30.27 33.50 31.94 31.61 23.64 29.13 29.38 26.56 3 + Finetune - - 19.85 29.93 36.49 26.57 15.45 23.84 30.05 21.21 4 - 30.31 33.17 33.06 31.78 23.71 29.11 29.24 26.55 5 6 Ours ( Baseline + __ ) - 30.17 38.21 42.23 35.26 23.51 30.61 33.60 27.88 29.96 38.32 41.94 35.13 23.35 30.23 33.63 27.69 7 - 30.07 38.28 42.25 35.24 23.53 30.53 33.97 27.95 8 29.83 38.50 42.51 35.24 23.30 30.28 33.43 27.64
+Table 10 : 10
+Token - level off-target rates on WMT - 10 quantified by whether appearing in the training set .
+Most NMT dataset are English-centric , meaning that all training pairs include English either as source or target .
+We denote translation directions that do not involve English as English - free directions .
+z is of the same length as the system translation ?.
+http://www.statmt.org/wmt19/ translation-task.html
+https://opus.nlpl.eu/opus-100.php 7 https://opus.nlpl.eu/
+8
+We keep the OPUS - 100 test set as is to make a fair comparison against previous works , although there are also noticeable duplicates within the test set .
+9 https://github.com/EdinburghNLP/ opus-100-corpus 10
+Our rebuilt OPUS dataset is released at https : // github.com/yilinyang7/fairseq_multi_fix.11
+https://github.com/pytorch/fairseq
+We exclude the parallel data of 6 evaluation pairs from oracle data while keeping the others .
+More details in Section A.3 .
+We assume the WMT references are always in- target , since they are collected from human translators .

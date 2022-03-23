@@ -1,0 +1,264 @@
+title
+Language Modeling , Lexical Translation , Reordering : The Training Process of NMT through the Lens of Classical SMT
+abstract
+Differently from the traditional statistical MT that decomposes the translation task into distinct separately learned components , neural machine translation uses a single neural network to model the entire translation process .
+Despite neural machine translation being defacto standard , it is still not clear how NMT models acquire different competences over the course of training , and how this mirrors the different models in traditional SMT .
+In this work , we look at the competences related to three core SMT components and find that during training , NMT first focuses on learning targetside language modeling , then improves translation quality approaching word - by - word translation , and finally learns more complicated reordering patterns .
+We show that this behavior holds for several models and language pairs .
+Additionally , we explain how such an understanding of the training process can be useful in practice and , as an example , show how it can be used to improve vanilla nonautoregressive neural machine translation by guiding teacher model selection .
+Introduction
+In the last couple of decades , the two main machine translation paradigms have been statistical and neural MT.
+Statistical MT ( SMT ) decomposes the translation task into several components ( e.g. , lexical translation probabilities , alignment probabilities , target - side language model , etc. ) which are learned separately and then combined in a translation model .
+Differently , neural MT ( NMT ) models the entire translation process with a single neural network that is trained end-to-end .
+Although joint training of all the components is one of the obvious NMT strengths , this is also one of its challenging aspects .
+While SMT models different competences with distinct model components and , therefore , can easily validate and / or improve each of them , NMT acquires these competences within the same network over the course of training .
+Even though previous work shows how to improve some of the competences in NMT , e.g. , by using lexical translation probabilities , phrase memories , target - side LM , alignment information ( Arthur et al. , 2016 ; He et al. , 2016 ; Tang et al. , 2016 ; Wang et al. , 2017 ; Zhang et al. , 2017a ; Dahlmann et al. , 2017 ; G?l? ehre et al. , 2015 ; G?l? ehre et al. , 2017 ; He et al. , 2016 ; Sriram et al. , 2017 ; Dahlmann et al. , 2017 ; Stahlberg et al. , 2018 ; Mi et al. , 2016 b ; Alkhouli et al. , 2016 ; Alkhouli and Ney , 2017 ; Park and Tsvetkov , 2019 ; Song et al. , 2020a among others ) , it is still not clear how and when NMT acquires these competences during training .
+For example , are there any stages where NMT focuses on different aspects of translation , e.g. , fluency ( agreement on the target side ) or adequacy ( i.e. connection to the source ) , or does it improve everything at the same rate ?
+Does it learn word- by - word translation first and more complicated patterns later , or is there a different behavior ?
+This is especially interesting in light of a recent work analyzing how NMT balances the two different types of context : the source and prefix of the target sentence ( Voita et al. , 2021 ) .
+As it turns out , changes in NMT training are non-monotonic and form several distinct stages ( e.g. , stages changing direction from decreasing influence of source to increasing ) , which hints that the NMT training consists of stages with qualitatively different changes .
+In this paper , we try to understand what happens in these stages by analyzing translations generated at different training steps .
+Specifically , we focus on the aspects related to the three core SMT components : target - side language modeling , lexical translation , and reordering .
+We find that during training , NMT focuses on these aspects in the specified above order .
+Intuitively , it starts by hallucinating frequent n-grams and sentences in the target language , then comes close to word - by - word translation , and finally learns more complicated reordering patterns .
+We confirm these findings for several models , LSTM and Transformer , and different modeling paradigms , encoder-decoder and decoder-only , i.e. LM -style machine translation where a left-to- right language model is trained on the concatenation of source and target sentences .
+Finally , we show how such an understanding of the training process can be useful in practice .
+Namely , we note that during a large part of training , a model 's quality ( e.g. BLEU and token - level predictive accuracy ) changes little , but reordering becomes more complicated .
+This means that by using different training checkpoints , we can get highquality translations of varying complexity , which is useful in settings where data complexity matters .
+For example , guiding teacher model selection for distillation in non-autoregressive machine translation ( NAT ) can improve the quality of a vanilla NAT model by more than 1 BLEU .
+Our contributions are as follows : ? we show that during training , NMT undergoes the following three stages : ? target - side language modeling ; ? learning how to use source and approaching word- by - word translation ; ? refining translations , visible by increasingly complex reorderings , but almost invisible to standard metrics ( e.g. BLEU ) .
+?
+we confirm our finding for different models and modeling paradigms ; ? we explain how our analysis can be useful in practice and , as an example , show how it can improve a non-autoregressive NMT model .
+Training Stages : The Two Viewpoints
+In this section , we introduce two points of view on the NMT training process .
+The first one comes from previous work showing distinct stages in NMT training .
+These stages are formed by looking at a model 's internal workings and changes in the way it balances source and target information when forming a prediction .
+The second point of view is from this work : we take model translations at different training steps and look at some of their aspects mirroring , in a way , core SMT components .
+While these two points of view are complete opposites ( one sees only the model 's innermost workings , the other - only its output ) , only taken together they can fully describe the training process .
+We start from the first , abstract , stages , then show how these inner processes look on the outside and conclude with one of the immediate practical applications of our analysis ( Section 6 ) .
+The Abstract Viewpoint : Relative Token Contributions to NMT Predictions
+The ' abstract ' stages come from our previous work measuring how NMT balances the two different types of context : the source and prefix of the target sentence ( Voita et al. , 2021 ) .
+We adapt one of the attribution methods , Layerwise Relevance Propagation ( Bach et al. , 2015 ) , to the Transformer , and show how to evaluate the proportion of each token 's influence for a given prediction .
+Then these relative token influences are used to evaluate the total contribution of the source ( by summing up contributions of all source tokens ) or to see whether the token contributions are more or less focused ( by evaluating the entropy of these contributions ) .
+Among other things , Voita et al . ( 2021 ) look at how the total source contribution and the entropy of source contributions change during training .
+We repeated these experiments for WMT14 En-Ru and En-De .
+1 Figure 1 confirms previous observations : the training process is non-monotonic with several distinct stages , e.g. stages changing direction from decreasing influence of source to increasing .
+These results suggest that during training , NMT undergoes stages of qualitatively different changes .
+For example , a decreasing and then increasing influence of the source likely indicates that the model first learns to rely on the target prefix more ( i.e. to focus on target- side language modeling ) and only after that focuses on the connection to the source ( i.e. adequacy rather than fluency ) .
+While these hypotheses are reasonable , to confirm them we have to look not only at how model predictions are formed but also at the predictions themselves .
+The Practical Viewpoint : Model Translations
+In this viewpoint , we are interested in changes in model output , i.e. translations .
+We measure : ? target - side language modeling scores ; ? translation quality ; ? monotonicity of alignments .
+Note that these characteristics are related to three core components of the traditional SMT models : target - side language model , translation model , and reordering model .
+Although we are mainly interested in NMT models and , except for the language modeling scores , do not measure the quality of the corresponding SMT components directly , this relation to SMT is important .
+While machine translation is now mostly neural , it is still not clear how ( e.g. , in which order ) those competences which used to be modelled with distinct components are now learned jointly within a single neural network .
+3 Experimental Setting 3.1 Models , Data and Preprocessing Models .
+We consider three models : ?
+Transformer encoder-decoder ; ? LSTM encoder-decoder ; ? Transformer decoder ( LM -style NMT ) .
+For the first model , we follow the setup of the Transformer base ( Vaswani et al. , 2017 ) . LSTM encoderdecoder is a single- layer GNMT .
+The last model is the Transformer decoder trained as a left-to- right language model .
+In training , the model receives concatenated source and target sentences separated by a token - delimiter ; in inference , it receives only the source sentence and the delimiter and is asked to continue generation .
+Datasets .
+We use the WMT news translation shared task for English -German and English -Russian : for En-De , WMT 2014 with 5.8 m sentence pairs , for En- Ru - 2.5 m sentence pairs ( parallel training data excluding UN and Paracrawl ) .
+Since our observations are similar for both languages , in the main text we show figures for one of them and in the appendix - for the other .
+Preprocessing .
+The data is lowercased and encoded using BPE ( Sennrich et al. , 2016 ) .
+We use separate source and target vocabularies of about 32 k tokens for encoder- decoder models , and a joint vocabulary of about 50 k tokens for LM -style models .
+For each experiment , we randomly choose 2/3 of the dataset for training and use the remaining 1/3 as a held - out set for analysis ( see Section 3.3 ) .
+More details on hyperparameters , preprocessing , and training can be found in the appendix .
+Target - Side LM Scores
+For each of the models , we train 2 - , 3 - , 4 - and 5 gram KenLM ( Heafield , 2011 ) 2 language models on target sides of the corresponding training data ( segmented with BPE ) .
+We report KenLM scores for the translations of the development sets .
+Monotonicity of Alignments
+To measure how the relative ordering of words in the source and its translation changes during training , we use two different scores used in previous work ( Burlot and Yvon , 2018 ; Zhou et al. , 2020 ) .
+We evaluate the scores for two permutations of the source : the trivial monotonic alignment and the alignment inferred for the generated translation .
+Fuzzy Reordering Score ( Talbot et al. , 2011 ) counts the number of chunks of contiguously aligned words and , intuitively , it is based on the number of times a reader would need to jump in order to read one reordering in the order proposed by the other .
+The score is between 0 and 1 , where a larger score indicates more monotonic alignments .
+Kendall tau distance ( Kendall , 1938 ) is also called bubble -sort distance since it is equivalent to the number of swaps that the bubble sort algorithm would take to place one list in the same order as the other list .
+We evaluate the normalized distance : it is between 0 and 1 , where 0 indicates the monotonic alignment .
+The main difference between the scores is that the first one takes into account only the number of jumps , while the second also considers their distance .
+For a formal description of the scores and their differences , see the appendix .
+Our setting .
+For each of the considered model checkpoints , we obtain datasets where the sources come from the held - out 1/3 of the original dataset , and targets are their translations .
+For these datasets , we infer alignments using fast_align ( Dyer et al. , 2013 ) 3 .
+Transformer Training Stages
+In this section , we discuss the standard encoderdecoder Transformer .
+In the next section , we mention differences with several other models .
+We first analyze the results for each of the three competences and then characterize the stages based on these practical observations .
+In all figures , we show the abstract stages with vertical lines to link the results to the changes in token contributions .
+Target - Side Language Modeling Figure 2a shows changes in the language modeling scores .
+We see that most of the change happens in the very beginning : the scores go up and peak much higher than that of the references .
+This means that the model generates sentences with very frequent n-grams rather than diverse texts similar to references .
+Indeed , Figure 2a ( right ) shows that for a part of the training ( from 1 k to 2 k iterations ) , the scores for simpler models ( e.g. , 2 - gram ) are higher than for the more complicated ones ( e.g. , 5 - gram ) .
+This means that generated translations tend to consist of frequent words and bigrams , but larger subsequences are not necessarily fluent .
+To illustrate this , we show how translations of one of the sentences evolve at the beginning of training ( Figure 3 ) .
+As expected , first the translations evolve from repetitions of frequent tokens to frequent bigrams and trigrams , and finally to longer frequent phrases .
+To make this more clear , we also show the proportion of tokens of different frequency ranks in generated translations ( Figure 2 b ) .
+First ( iterations 0-500 ) , all generated tokens are from the top - 10 most frequent tokens , then only from the top - 50 , and only later less frequent tokens are starting to appear .
+From Figure 3 we see that this happens when the source comes into play : tokens related to the source become weaved into translations .
+Overall , this evolution from using short target - side contexts to longer ones and , subsequently , to using the source relates to works in computer vision discussing ' shortcut features ' ( Geirhos et al. , 2020 ) , as well as differences in the progression of extracting ' easy ' and ' difficult ' features during training ( Hermann and Lampinen , 2020 ) .
+Note also that model translations converge to higher LM scores than references ( Figure 2a ) .
+This is expected : compared to references , beam search translations are simpler in various aspects , e.g. they are simpler syntactically , contain fewer rare tokens and less reordering ( Burlot and Yvon , 2018 ; Ott et al. , 2018 ; Zhou et al. , 2020 ) , and lead to more confident token contributions inside the model ( Voita et al. , 2021 ) .
+For language models more generally , beam search texts are also less surprising than human ones ( Holtzman et al. , 2020 ) .
+To summarize , the beginning of training is mostly devoted to target - side language modeling : we see huge changes in the LM scores ( Figure 2a ) , and the model hallucinates frequent n-grams ( Figure 3 ) .
+This agrees with the abstract stages shown in Figure 1 : in the first stage , the total contribution of the source substantially decreases .
+This means that in the trade- off between information coming from the source and the target prefix , the model gives more and more priority to the prefix .
+Translation Quality Figure 4a shows the BLEU score on the development set during training .
+For a more finegrained analysis , we also plot token - level predictive accuracy separately for target token frequency groups ( Figure 4 b ) .
+We see that both the BLEU score and accuracy become large very fast , e.g. after the first 20 k iterations ( 25 % of the training process ) , the scores are already good .
+What is interesting , is that the accuracy for frequent tokens reaches the maximum value ( the score of the converged model ) very quickly .
+This agrees with our previous observations in Figures 3 and 2 b : at the beginning of training , the model generates frequent tokens more readily than the rare ones .
+Figure 4 b further confirms this : the accuracy for the rare tokens improves slower than for the rest of them .
+What is not clear , is what happens during the last half of the training ( iterations from 40 k to 80k ) : BLEU score improves only by 0.4 , accuracy does not seem to change noticeably even for rare tokens , the proportion of generated tokens of different frequency ranks converges even earlier ( Figure 2 b ) , and patterns in token contributions also do not change much ( Figure 1 ) .
+This is what we are about to find out in the next section .
+Monotonicity of Alignments
+While it is known that , compared to references , beam search translations have more monotonic alignments ( Burlot and Yvon , 2018 ; Zhou et al. , 2020 ) , it is not clear how monotonicity of alignments changes during model training .
+We show changes in the two reordering scores in Figure 5 . 4 We can say that during the second half of the training , the model is slowly refining translations , and , among the three competences we look at , the most visible changes are due to more complicated ( i.e. less monotonic ) reorderings .
+For example , as we already mentioned above , during this part of the training none of the scores we looked at so far changes much , whereas changes in both reordering scores are very substantial .
+The change in the fuzzy reordering score is only twice smaller than during the preceding stage .
+Moreover , the alignments keep changing and become less monotonic even after both BLEU and token - level accuracy ( i.e. the metric that matches the model 's training objective ) converged , i.e. iterations after 80 k ( Figure 5 ) .
+Overall , we interpret this refinement stage as the model slowly learning to reduce interference from the source text ( typical for human translation ( Volansky et al. , 2015 ) and exacerbated even more in NMT ( Toral , 2019 ) ) : it learns to apply complex reorderings to more closely follow typical word order in the target language .
+This means that while language modeling improves more prominently during the first training stage , there is a long tail of less frequent and more nuanced patterns that the model learns later .
+Another example of such nuanced changes in translation not detected with standard metrics is context - aware NMT .
+Previous work has criticized using BLEU as a stopping criterion , showing that even when a model has converged in terms of BLEU , it continues to improve in terms of agreement with context ( Voita et al. , 2019 b ) .
+To illustrate changes during this last stage , we show two examples in Figure 6 .
+On average , the translations at the beginning of the last stage tend to have the same word order as the corresponding source sentences : the alignments are highly monotonic .
+Formally , the similarity to the word- by - word translation is seen from the very low Kendall tau distance after 6k - 14 k training iterations ( Figure 5 b ) : this means that a very small number of permutations is needed to transform the trivial monotonic translation into the one produced by the model .
+Interestingly , at this point , some undertranslation errors can be explained via failures to perform a complex reordering .
+In the example in Figure 6 b , the phrase ' axis configuration ' cannot be translated into Russian preserving the same word order , which makes the model to omit the translation of ' configuration ' .
+Characterizing Training Stages
+To summarize , the NMT training process can be described as undergoing the following three stages : ? target - side language modeling ; ? learning how to use source and coming close to a word- by - word translation ; ? refining translations , visible by an increase in complexity of the reorderings and almost invisible by standard evaluation ( e.g. BLEU ) .
+While the borders of these practical stages are not as strictly defined as the abstract ones with the changes of monotonicity in contribution graphs ( Figure 1 ) , these two points of view on the training process mirror each other very well .
+From the abstract point of view with token contributions , the model first starts to form its predictions based more on the prefix and ignores the source , then source influence increases quickly , then very little is going on ( Figure 1 ) .
+From the practical point of view with model translations , the model first hallucinates frequent tokens , then phrases , then sentences ( mirrors source contributions going down ) , then quickly improves translation quality ( mirrors source contribution going up ) , then little is going on according to the standard scores , but alignments become noticeably less monotonic .
+As we see , both points of view show the same kinds of processes from different perspective : from the inside and the outside of the model .
+Other NMT Models
+In this section , we compare different architectures within the same encoder-decoder framework ( Transformer vs LSTM ) , and different frameworks with the Transformer architecture ( encoder- decoder vs decoder-only ) .
+Overall , we find that all models follow the behavior described in Section 4.4 ; here we discuss some of their differences .
+Transformer vs LSTM .
+As might be expected from the low BLEU scores ( Table 1 ) , LSTM translations are simpler than the Transformer ones .
+We see that they are less surprising according to the target - side language modeling scores ( Figure 7a and have more monotonic alignments ( Figure 7 b ) .
+Regarding the latter , it is not clear whether this is because of the lower model capacity or because LSTM has an inductive bias towards more monotonic alignments ; we leave this to future work .
+Encoder-decoder vs decoder-only .
+Table 1 shows that decoder-only ( LM -style ) NMT is not much worse than the standard encoder-decoder model , especially in the higher - resource setting ( e.g. , En -De ) .
+However , the decoder-only model has much simpler reordering patterns compared to the standard Transformer : its reordering scores are very close to the much weaker LSTM model ( Figure 7 b ) .
+One possible explanation is that the bidirectional nature of Transformer 's encoder facilitates learning more complicated reorderings .
+Practical Implications
+We showed that during a large part of the training , the translation quality ( e.g. , BLEU ) changes little , but the alignments become less monotonic .
+Intuitively , the translations become more complicated while their quality remains roughly the same .
+One way to directly apply our analysis is to consider tasks and settings where data properties such as regularity and / or simplicity are important .
+For example , in neural machine translation , higher monotonicity of artificial sources was hypothesized to be a facilitating factor for back - translation ( Burlot and Yvon , 2018 ) ; additionally , complexity of model vocabulary ( see Section 3 ) .
+In the appendix , we show scores for all three models .
+the distilled data is crucial for sequence - level distillation in non-autoregressive machine translation ( Zhou et al. , 2020 ) .
+Such examples are not limited to machine translation : in emergent languages , languages with higher ' regularity ' bring learning speed advantages for communicating neural agents ( Ren et al. , 2020 ) .
+In this section , we consider non-autoregressive NMT , and leave the rest to future work .
+Non-Autoregressive Machine Translation Non-autoregressive neural machine translation ( NAT ) ( Gu et al. , 2018 ) is different from the traditional NMT in the way it generates target sequences : instead of the standard approach where target tokens are predicted step-by-step by conditioning on the previous ones , NAT models predict the whole sequence simultaneously .
+This is possible only with an underlying assumption that the output tokens are independent from each other , which is unrealistic for natural language .
+Fortunately , while this independence assumption is unrealistic for real references , it might be more plausible for simpler sequences , e.g. artificially generated translations .
+That is why targets for NAT models are usually not references but beam search translations of the standard autoregressive NMT ( which , as we already mentioned above , are simpler than references in many aspects ) .
+This is called sequence - level knowledge distillation ( Kim and Rush , 2016 ) , and it is currently one of the de-facto standard parts of the NAT training pipelines ( Gu et al . ( 2018 ) ; Lee et al. ( 2018 ) ; Ghazvininejad et al. ( 2019 ) to name a few ) .
+Recently
+Zhou et al. ( 2020 ) showed that the quality of a NAT model strongly depends on the complexity of the distilled data , and changing this complexity can improve the model .
+Since distilled data consists of translations from a standard autoregressive teacher , our analysis gives a very simple way of modifying the complexity of this data .
+While usually a teacher is a fully converged model , we propose to use as teachers intermediate checkpoints during training .
+Since during a large part of training , NMT quality ( e.g. , BLEU ) changes little , but the alignments become less monotonic , earlier checkpoints can produce simpler and more monotonic translations .
+We hypothesize that these translations are more suitable as targets for NAT models , and we confirm this with the experiments .
+Setting Following previous work ( Zhou et al. , 2020 ) , we train the same NAT model on their preprocessed dataset 6 and vary only distilled targets .
+Model .
+The model is the re-implemented by Zhou et al . ( 2020 ) version of the vanilla NAT by Gu et al . ( 2018 ) .
+For more details , see appendix .
+Dataset .
+The dataset is WMT14 English - German ( En - De ) with newstest2013 as the validation set and newstest2014 as the test set , and BPE vocabulary of 37,000 .
+We use the preprocessed dataset and the vocabularies released by Zhou et al . ( 2020 ) .
+Distilled targets .
+The teacher is the standard Transformer - base from fairseq .
+For the baseline distilled dataset , we use the fully converged model ( in this case , the model after 200k updates ) .
+For other datasets , we use earlier checkpoints .
+Evaluation .
+We average the last 10 checkpoints .
+Experiments
+Figure 8 c shows the BLEU scores for NAT models trained with distilled data obtained from different teacher 's checkpoints ; the baseline is the fully converged model ( 200 k iterations ) .
+We see that by taking an earlier checkpoint , after 40 k iterations , we improve NAT quality by 1.1 BLEU .
+For this checkpoint , the teacher 's BLEU score is not much lower than that of the final model ( Figure 8a ) , but the reorderings are much simpler ( a higher fuzzy reordering score in Figure 8 b ) .
+To vary the complexity of the distilled data , Zhou et al . ( 2020 ) proposed to apply either Born-Again networks ( BANs ) ( Furlanello et al. , 2018 ) or mixture - of-experts ( MoE ) ( Shen et al. , 2019 ) .
+Unfortunately , MoE is rather complicated and requires careful hyperparameter tuning ( Shen et al. , 2019 ) , and BANs are time - and resource -consuming .
+They involve training the AT model till convergence and then translating the training data to get a distilled dataset ; this happens in several iterations ( e.g. , 5 - 7 ) using for training the latest generated dataset .
+Compared to these methods , our approach is extremely simple and does not require a lot of computational resources ( e.g. , instead of fully training the AT 6 We used the code and the data from https : / / github.com/pytorch/fairseq/tree/master / examples/ nonautoregressive_translation .
+teacher several times as in BANs , our approach requires only to partially train one AT teacher ) .
+Note that in this work , we provide these experiments mainly to illustrate how our analysis can be useful in the settings where data complexity matters and , therefore , limit ourselves to only using different teacher checkpoints .
+Future work , however , can investigate possible combinations with other approaches .
+For example , to further improve quality , our method can be combined with the Born-Again networks while still requiring fewer resources due to only partial training of the teachers .
+Additional Related Work
+Other work connecting neural and traditional approaches include modeling modifications , such as modeling coverage and / or fertility ( Tu et al. , 2016 ; Mi et al. , 2016a ; Cohn et al. , 2016 ; Feng et al. , 2016 ) and several other modifications ( Zhang et al. , 2017 b ; Stahlberg et al. , 2017 ; Huang et al. , 2018 ) , analysis of the relation between attention and word alignments ( Ghader and Monz , 2017 ) , and word alignment induction from NMT models ( Li et al. , 2019 ; Garg et al. , 2019 ; Song et al. , 2020 b ; Zenkel et al. , 2020 ; Chen et al. , 2020 ) .
+Previous analysis of NMT learning dynamics include analyzing how the trainable parameters affect an NMT model ( Zhu et al. , 2020 ) and looking at the speed of learning specific discourse phenomena in context - aware NMT ( Voita et al. , 2019 b , a ) .
+Conclusions
+We analyze how NMT acquires different competencies during training and look at the competencies related to three core SMT components .
+We find that NMT first focuses on learning target - side language modeling , then improves translation quality approaching word - by - word translation , and finally learns more complicated reordering patterns .
+We show that such an understanding of the training process can be useful in settings where data complexity matters and illustrate this for non-autoregressive MT ; other tasks can be considered in future work .
+Additionally , our results can contribute to the discussion of ( i ) ' easy ' and ' difficult ' task - relevant features , including ' shortcut features ' , and ( ii ) the limitations of the BLEU score .
+Fuzzy Reordering Score aligns each word in ?
+1 to an instance of itself in ?
+2 taking the first unmatched instance of the word if there is more than one .
+If C is the number of chunks of contiguously aligned words and M is the number of words in the source sentence , then the fuzzy reordering score is computed as F RS ( ?
+1 , ? 2 ) = 1 ? C ? 1 M ? 1 . ( 1 ) This metric assigns a score between 0 and 1 , where 1 indicates that the two reorderings are identical .
+Intuitively , C is the number of times a reader would need to jump in order to read the reordering ?
+1 in the order proposed by ?
+2 . A larger fuzzy reordering score indicates more monotonic alignments .
+Kendall tau distance counts the number of pairwise disagreements between two ranking lists .
+The larger the distance , the more dissimilar the two lists are .
+Kendall tau distance is also called bubble -sort distance since it is equivalent to the number of swaps that the bubble sort algorithm would take to place one list in the same order as the other list .
+We evaluate the normalized distance , i.e. for a list of length n it is normalized by n ( n ? 1 )
+2 .
+The normalized score is between 0 and 1 , where 0 indicates that the two reorderings are identical .
+Differences between the scores .
+While the first score counts only the number of chunks of contiguously aligned words , the second one takes into account only how distant the changes are .
+For example , let us consider two reorderings : ( 2 , 1 , 4 , 3 , 6 , 5 ) and ( 4 , 5 , 6 , 1 , 2 , 3 ) .
+While for the fuzzy reordering score the least monotonic reordering is the first ( more jumps for a reader ) , for the Kendall tau score - the second ( requires more permutations to reorder ) .
+As we will see in Section 4.3 , results for the two scores are similar .
+Our setting .
+We take sentences of at least 2 words for the fuzzy reordering score and at least 10 tokens for the Kendall tau distance .
+by Gu et al . ( 2018 ) .
+Namely , instead of modeling fertility as described in the original paper , Zhou et al . ( 2020 ) monotonically copy the encoder embeddings to the input of the decoder .
+We used the code released by Zhou et al . ( 2020 ) .
+8 Training .
+For all experiments , we follow the setting by Zhou et al . ( 2020 ) .
+Note that in their work , training NAT models required 32 GPUs .
+In our setting , we ensured the same batch size by accumulating gradients for several batches ( in fairseq , this is done using the - update-freq option ) .
+C Transformer Training Stages
+D Other Models NAT Inference .
+Following previous work , for this vanilla NAT model we use a straightforward decoding algorithm which simply picks the argmax at every position .
+Figure 1 : 1 Figure 1 : Contribution of source and entropy of source contributions .
+En - Ru. Vertical lines separate the stages .
+Figure 2 : 2 Figure 2 : ( a) KenLM scores ( horizontal dashed lines are the scores for the references ) ; ( b ) proportion of tokens of different frequency ranks in model translations .
+En - Ru .
+Figure 3 : 3 Figure 3 : Translations at different steps during training .
+En - De .
+Figure 4 : ( a) BLEU score ; ( b ) token - level accuracy ( the proportion of cases where the correct next token is the most probable choice ) .
+WMT En-Ru .
+Figure 5 : 5 Figure 5 : ( a ) fuzzy reordering score ( for references : 0.6 ) , ( b) Kendall tau distance ( for references : 0.06 ) ; WMT En- Ru .
+The arrows point in the direction of less monotonic alignments ( more complicated reorderings ) .
+Figure 6 : 6 Figure 6 : Translations at different training steps .
+Same-colored chunks are approximately aligned to each other .
+Figure 7 : ( a ) target - side LM scores ( 5 - gram ) , ( b ) fuzzy reordering score ( for references : 0.5 ) ; WMT En- De .
+Figure 8 : 8 Figure 8 : ( a) BLEU score of the AT Transformer - base ( teacher for distillation ) ; ( b ) fuzzy reordering score for the distilled training data obtained from checkpoints of the AT teacher ; ( c ) BLEU scores for the vanilla NAT model trained on different distilled data .
+Figure 9 9 Figure 9 shows the abstract stages for En-De , Figures 10 - 13 provide the results from Section 4 for the other language pair ( En - De ) .
+Figure 14 14 Figure14 is a version of the Figure7 afrom the main text , but with the scores for all three mod -
+Figure 9 : 9 Figure 9 : Left : contribution of source , right : entropy of source contributions .
+En- De. Vertical lines separate the stages .
+Figure 10 : 10 Figure 10 : KenLM scores .
+Left : 5 - gram model , all training stages ; right : different models , the first stage .
+Horizontal lines show the scores for the references .
+En - De .
+Figure 11 : 11 Figure 11 : Proportion of tokens of different frequency ranks in model translations .
+En - De .
+Figure 12 : ( a) BLEU score ; ( b ) token - level accuracy ( the proportion of cases where the correct next token is the most probable choice ) .
+WMT En-De .
+Figure 14 : 14 Figure 14 : Target - side LM scores ( 5 - gram ) ; En-De .
+Table 1 : 1 BLEU scores : newstest2014 for En-Ru and newstest2017 for En-De. model En-Ru En-De Transformer ( enc-dec ) 35.93 28.18 LSTM ( enc-dec ) 30.14 24.03 Transformer -LM ( dec ) 34.16 26.76 5 )
+Using the released code : https://github.com/ lena-voita/ the-story-of-heads .
+https://github.com/kpu/kenlm 3 https://github.com/clab/fast_align
+Note that we evaluate the scores starting not from the very beginning of training but after at least 6 k updates .
+This is because evaluating monotonicity of alignments makes sense only when translations are reasonable .
+Note that in Figure7a , only the scores of the encoderdecoder models can be compared because of differences in
+This can be reached by using several of GPUs or by accumulating the gradients for several batches and then making an update .
+https://github.com/pytorch/fairseq/ tree/master/examples/ nonautoregressive_ translation

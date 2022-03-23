@@ -1,0 +1,207 @@
+title
+Learning Knowledge Bases with Parameters for Task-Oriented Dialogue Systems
+abstract
+Task - oriented dialogue systems are either modularized with separate dialogue state tracking ( DST ) and management steps or end-to - end trainable .
+In either case , the knowledge base ( KB ) plays an essential role in fulfilling user requests .
+Modularized systems rely on DST to interact with the KB , which is expensive in terms of annotation and inference time .
+Endto - end systems use the KB directly as input , but they cannot scale when the KB is larger than a few hundred entries .
+In this paper , we propose a method to embed the KB , of any size , directly into the model parameters .
+The resulting model does not require any DST or template responses , nor the KB as input , and it can dynamically update its KB via finetuning .
+We evaluate our solution in five taskoriented dialogue datasets with small , medium , and large KB size .
+Our experiments show that end-to - end models can effectively embed knowledge bases in their parameters and achieve competitive performance in all evaluated datasets 1 .
+Introduction
+Task-oriented dialogue systems are designed to help users achieve predefined goals , such as booking restaurants or movie recommendations via natural language interactions .
+These systems are deeply connected with external Knowledge Bases ( KBs ) since the system responses are guided by the output from the KB and the dialogue history .
+The current state- of- the-arts ( Lei et al. , 2018 ; Zhang et al. , 2019a ; Mehri et al. , 2019 ; Peng et al. , 2020a ; Hosseini - Asl et al. , 2020 ) are end-to - end pipelined systems that rely on Dialogue State Tracking ( DST ) and Speech Act ( S- ACT ) annotations .
+Aside from the annotation cost , which is knowingly high ( Budzianowski et al. , 1 Code available in https://github.com/ HLTCHKUST / ke-dialogue 2018 ) , these pipelined systems must predict a valid DST for querying the KB , execute the query , generate a response template , and finally fulfill it with the retrieved information .
+The resulting systems are usually overly complicated , and they require multiple steps , including a direct interaction with the KB .
+On the other end of the spectrum , there are endto-end trainable models that use both the KB and the dialogue history as input , and they directly generate system responses .
+Most of the implementations use either the Gold KB as input ( Eric et al. , 2017a ; Madotto et al. , 2018 ; Qin et al. , , 2020 Banerjee and Khapra , 2019 ; Neelakantan et al. , 2019 ) or an intermediate API call to retrieve part of the KB ( API + KB ) ( Bordes and Weston , 2017 ; Eric and Manning , 2017 ; Madotto et al. , 2018 ; Reddy et al. , 2019 ; Wu et al. , 2019 b ) .
+These systems re-quire at least the DST annotation for generating the API calls or to select the gold KB .
+Moreover , even with the most advanced transformer architecture ( Kitaev et al. , 2020 ; Lample et al. , 2019 ; , end-to - end models struggle when the input becomes too large ( Neelakantan et al. , 2019 ) .
+For example , in MWOZ , there are 22 K entities just for one of the domains .
+Interested readers can refer to Appendix C for an overview of different task - oriented methodologies .
+On the other hand , Petroni et al . ( 2019 ) discovered a simple yet effective way to query factual knowledge from BERT ( Devlin et al. , 2019 ) .
+Later on , Roberts et al. ( 2020 ) fine - tuned a pre-trained language model , T5 ( Raffel et al. , 2019 ) , on just question - answers pairs , without letting the model access any external context or knowledge .
+These results suggest that the actual knowledge is stored in the model parameters .
+However , in task - oriented dialogue systems , KB entities do not appear in news articles or Wikipedia , e.g. , hotel addresses or postcodes , and thus the aforementioned methods cannot be straightforwardly applied , especially when the KB dynamically changes ( e.g. , weather information ) .
+In this paper , we propose a method to store the KB directly into the model parameters using a novel Knowledge Embedded ( KE ) approach .
+The resulting model does not use any DST or template responses , nor a KB as input at the inference time , and it can be used in dynamically changing KBs via fine-tuning .
+The KE approach consists of a newly defined user goal query that generates equivalents KE dialogues from the KB ( i.e. , table or graph ) using minimal annotation effort .
+Figure 1 shows a high level overview of our approach .
+To verify the effectiveness of our proposed methodology , we extensively experiment , using both automatic and human metrics , in five task - oriented datasets with small , medium , and large KBs .
+Our experiments show that end-to - end models can effectively embed knowledge bases in their parameters and achieve competitive performance in all five datasets .
+Methodology
+In this section , we formalize the Knowledge Embedded ( KE ) strategy and the learning algorithm .
+In Section 2.1 , we provide several preliminary definitions used thought out the paper .
+In Section 2.2 , we extend the user goal definition from Schatzmann et al . ( 2007 ) to cover a broad concept that we define as user goal query .
+Then , in Section 2.3 , we describe two functions , KE-DELEX and KE - RELEX , used for generating TEMPLATEs and KE dialogues , respectively .
+Finally , in Section 2.4 , we describe the Causal Language Model Transformer ( Vaswani et al. , 2017 ) used for modeling the dialogue responses .
+Preliminary Definition
+We define a dataset as a set of dialogues D = { D 1 , D 2 , . . . , D n }.
+A dialogue D is a collection of one or more alternating turns between two speakers , such as D = { U 1 , S 1 , . . . , U t , S t } , where each U and S are sequences of words .
+Then , we define a table - formatted KB as a set of tuples K = {( v a 1 1 , . . . v a k 1 ) , . . . , ( v a 1 p , . . . v a k p ) } , where a 1 , . . . a k ?
+A are the column names of the table , v a j i ?
+V a j is the value of tuple i for the column name a j , and V a j is a set of possible values for the column name a j available in the ontology .
+Following the notation in Moon et al . ( 2019 ) , we define a graph-formatted KB as G = N KG ?
+R KG , where N KG and R KG are the nodes and the relation set , respectively .
+Then , we define N r ( n ) as a set of directly connected neighbours of n ?
+N KG by a relation r ? R KG .
+Similarly , we define N Rh ( n ) to be a set of nodes connected to n via h-hops with a set of relations R .
+User Goal Query
+In task - oriented dialogue systems , the user goal ( Schatzmann et al. , 2007 ) for a given dialogue D is defined as G = ( C , R ) , where C is a set of constraints that specify the required information , and R denotes the actual pieces of information of the user desire , ( e.g. , the name , address , phone number , etc. ) .
+The constraint C is usually expressed by specific values for the attribute , e.g. , { loc=center , price=cheap} , since there is a one- to -one connection between the user goal and the dialogue .
+In this paper , we hypothesize that by changing the values of the attributes in C ( e.g. , loc=north ) we can generate an equivalent dialogue covering different knowledge .
+We leverage the expressive power of query languages to describe all the equivalent values that match a particular dialogue , and we name this User Goal Query .
+We use the SQL syntax ( Chamberlin and Boyce , 1974 ) for the table - formatted KB and CYPHER syntax ( Webber , 2012 ) for the graphformatted KB .
+Following ( Schatzmann et al. , 2007 ) we define a set of constraints C , and requirements R for dialogues with a table - formatted KB , as follows : C = { OP ( a , v ) | a ?
+A , v ? V a } , ( 1 ) R = { a|a ?
+A} ? { a|a ? C} , ( 2 ) where OP is the database operation expressable in an SQL query ( e.g. , == , MIN , MAX , SUM , AVG , etc. ) .
+The user goal query is then written directly as SELECT R FROM K WHERE C.
+2 Similarly , we extend the user goal query definition for datasets with graph - KBs ( e.g. , OpenDi-alKG ( Moon et al. , 2019 ) ) .
+Let us define the C and R for dialogues with a graph-formatted KB as : C = { r|r ? R KG } , ( 3 ) R = { n |?n ? N KG , n ? N rh ( n ) , r ? C} , ( 4 ) where h is the number of hops .
+The corresponding user goal query is written directly using CYPHER as MATCH C RETURN R , where the node in R and C are specified with placeholders ( Table A3 in Appendix A ) .
+Indeed , a CYPHER query is specified by a graph pattern made of relations in R KG .
+The query results are nodes connected by the specified pattern .
+In Appendix A.1 , we briefly explain the CYPHER query syntax in more details .
+Knowledge Embedded ( KE ) Given a dialogue D and the user goal query , we define two functions : KE-DELEX and KE-RELEX .
+The KE-DELEX is used to generate the dialogue TEMPLATEs , which is a version of D where the set of entities related to the user goal query is replaced by their corresponding attribute placeholder .
+We denote with B the dictionary that contains the 2 Notice that we include the attribute specified in C into R by overloading the definition of ? bidirectional mapping between the entities and the corresponding attribute placeholder .
+Then , the KE-RELEX uses the results from the user goal query to assign new equivalent values to the placeholder in B. Practically , every TEMPLATE generates as many dialogues as the cardinality of the tuples , or the paths , returned by the user goal query .
+We denote with D N the newly generated dialogues and we refer to it as KE dialogues .
+For example in Table 1 , we show a TEMPLATE and user goal query in the SQL syntax , with its resulting output tuples .
+The dialogue in the example is generated by KE-RELEX using the first tuple , e.g. , [ Type ] is converted into " gas station " , [ poi ] into " Valero " , and so on .
+In the current version of the algorithms , the functions KE-DELEX and KE-RELEX are implemented using string matching .
+However , they can be implemented using statistical methods ; for example , Moon et al . ( 2019 ) proposed a model to generate the graph path given a dialogue .
+Causal Language Modeling
+In this paper , we model the dialogue responses using a Transformer ( Vaswani et al. , 2017 ) - based Language Model ( LM ) by using the dialogue history as the prefix in D and by autoregressively generating the responses word - byword S t ( Wolf et al. , 2019a ; Zhang et al. , 2019 b ) .
+Let us define the words in S t as a set {s 1 , . . . , s n } , then we factorize the language model distribution using the chain rule of probability ( Bengio et al. , 2003 ) as : p ?
+( S t | D t ) = n i p ? ( s i |s < i , D t ) , ( 5 ) where ? are the model parameters and rameters in ? are trained to minimize the negative log-likelihood over a dataset of dialogues D. Formally , we define the L as following : D t = { U 1 , S 1 , . . . , L( D ) = ?
+| D | k n i log p(s k i |s k < i , D k t ) , ( 6 ) where n is a maximum response length .
+Hence , to embed the KB into ? , we include the KE dialogues D N in the training set , and we train a Transformerbased Language Model with Equation 6 .
+Experiments
+In all experiments , if not specifically mentioned , we use the pre-trained GPT2 ( small ) as Causal Language Model ( Wolf et al. , 2019 b ) .
+When the dataset has a sufficiently small KB ( i.e. , less than 1024 tokens ) , we also fine- tune GPT2 using the KB as input .
+In Appendix D , we report details about hyperparameters and the implementation details .
+In Appendix E , we report the data splitting for each dataset .
+Datasets
+We use five publicly available multi-turn taskoriented dialog datasets to evaluate our methodology : bAbI-dialogue ( bAbI - 5 ) ( Bordes and Weston , 2017 ) , Cambridge Restaurant 626 ( CamRest ) ( Wen et al. , 2016 ) , In - Car Assistant ( SMD ) ( Eric et al. , 2017a ) , MultiWoZ single ( MWOZ ) , and OpenDialKG ( Moon et al. , 2019 ) .
+In all datasets , we use the provided split for train / valid / test , except for OpenDialKG where the split was not provided .
+Dataset statistics are reported in Table 2 , including the sequence length of different settings and the number of TEMPLATEs used for the KE - dialogues .
+In all datasets , we use plain text as the input / output sequences instead of their delexicalized version .
+This makes the task more challenging , but at the same time more practical because the model produces real entities rather than predefined placeholders , and we do not require additional relexicalization step at the inference time .
+Evaluation Metrics
+In bAbI , since it is a synthetic dataset , we use the response and dialogue accuracy ( Bordes and Weston , 2017 ) .
+In CamRest , SMD , MWoZ , and Open-DialKG , we use both the BLEU score ( Papineni et al. , 2002 ) and entity F1 - score ( Eric et al. , 2017a ) .
+In both CamRest and MWOZ , the existing scorer for the Inform and Success rate requires template responses and the predicted DST .
+Since neither of the two is available for end-to - end models , we implement a plain text scorer for the Inform and Success rate , and we release it , together with our code , for future research .
+Finally , in OpenDialKG we use the 2 - hop neighbors of the entity appearing in the user turn as the gold- reference for the F1 - score , which are defined as N r2 ( n ) ?n ? E( U t ) , ?r ? R , where E( U t ) are the list of entity nodes appearing in U t .
+Additionally , we conduct a human evaluation to measure the Humanness and Correctness of the generated responses .
+The correctness is computed by counting the ratio of correct entities provided in the generated responses .
+For the humanness , we use a 4 - point Likert Scale , where 1 indicates a nonhuman-like response , and 4 indicates a very humanlike response .
+All the reported human evaluation results are statistically significant with a p-value < 0.05 .
+Appendix
+B provides more details of the human evaluation .
+Results
+In this section , we describe baselines , training settings , and KE-DELEX function in each dataset .
+Ta- ble 2 summarizes the number of TEMPLATEs and KE dialogues generated in each dataset .
+All generated TEMPLATEs are extracted from the training dialogues provided in each dataset .
+More detailed results for all datasets can be found in Appendix F. bAbI -dialog is a synthetic dataset with five subtasks for end-to - end task - oriented models ( Bordes and Weston , 2017 ) .
+Task 1 to 4 is about API calls , refining API calls , recommending options , and providing additional information , respectively .
+Task 5 is the union of tasks 1 - 4 .
+Two test - set are provided , one with API combinations appearing in the training set and one with Out-of-Vocabulary APIs .
+In this paper , we evaluate using task 5 only , in both test sets , by removing all API calls and KB information from the dialogues .
+This dataset provides the user goal query directly , and since it is synthetic , the KE-DELEX function is implemented using a string matching .
+Moreover , we train a GPT2 from scratch using a word-level tokenizer with the bAbI vocabulary .
+Table 3 compares the performance of GPT2 , with and without KE , to existing models that use both API and KB as input .
+As expected , training GPT2 just on the training dialogues , which covers only 50 % of the KB , does not perform well .
+Instead , by using the KE dialogues in training , GPT2 consistently generates the correct response in both test sets .
+CAMREST is a human-to-human collected dataset for restaurant booking ( Wen et al. , 2016 ) .
+This dataset provides the user goal query , and the KE-DELEX function is implemented using a string matching .
+We extracted 161 valid TEMPLATEs for a total number of 32,361 KE dialogues .
+Table 4 compares the performance of GPT2 , with and without KE , and other models on both automatic and human evaluation .
+MLMN ( Reddy et al. , 2019 ) and BoSsNet KBRet uses directly the gold KB .
+To the best of our knowledge , no models used the entire KB as input , thus we train GPT2 using intermediate API and KB .
+In general , this setting ( GPT2 + KB ) does not perform as well as similar baselines .
+This because the KB format is very different from the plain text used for the pre-training .
+Instead , GPT2 + KE is able to achieve better performance than the current state - of - the- art , 1 % improvement , with a much shorter input sequence ( 156 vs 393 ) .
+From the human evaluation , we notice a significant improvement in favor of GPT2 models , expecially GPT2 + KE , in both humanness and correctness .
+SMD is a human-to-human collected dataset ( Eric et al. , 2017a ) with three domains : Navigation , Weather , and Calendar .
+In this dataset , no user goal query is provided ; thus , we manually annotate 100 dialogues per domain from the training set , resulting in as many TEMPLATES .
+Moreover , to simplify the KE-DELEX function , we also tag the entities in the conversation .
+Differently from other datasets , the KB dynamically changes in each dialogue and thus requires a KB update operation .
+To cope with this setting , we propose a fine-tuning approach as follows : given a dialogue KB from the test set , 1 ) we use the TEMPLATEs and the corresponding user goal queries to generate the KE dialogues based on the KB , 2 ) we fine - tune the GPT2 model with the generated dialogues , and 3 ) we use the model to generate the response for the considered dialogue sample from the test set .
+Based on the KB size , for each test sample , we generate , on average , 469/162/6,629 KE dialogues for Navigate / Calendar / Weather , respectively .
+with existing baselines .
+Firstly , we notice that GPT2 , even without KB , performs better than the existing baselines ( Madotto et al. , 2018 ; Haihong et al. , 2019 ; , suggesting a significant overlapping between the training and test set KBs .
+As aforementioned , GPT2 with the KB as input does not perform as well as other baselines with a similar setting , except for the Weather domain , where it actually achieves SOTA performance .
+GPT2 fine-tuned with the KE dialogues performs almost as well as DFF ( Qin et al. , 2020 ) in terms of F1 - score , but from the human judgments , GPT2 - based models perform significantly better both in terms of humanness and correctness .
+MultiWOZ dataset consists of five domains : Train , Attraction , Hotel , Restaurant , and Taxi .
+Following Qin et al. ( 2020 ) , we select only the dialogues with a single domain , which is more challenging since less data is available , and we leave the multiple domains per dialogue to future work .
+This dataset provides both the user goal query and the span annotation for the entities .
+The KE-DELEX function is implemented using the entity span annotation , although advanced string matching could also work .
+We extracted
+63/116/289/59 TEMPLATEs and 3,826/2,495/21,970/30,149 KE dialogues for Attraction / Hotel / Restaurant / Train , respectively .
+The Taxi domain does not have a KB , since all of its dialogues are booking related .
+In Table 6 we compare GPT2 trained with KE dialogues with the current state - of - the - art for pipelined models ( DAMD ) ( Zhang et al. , 2019a ) and end-to - end models ( DFF ) ( Qin et al. , 2020 ) .
+We re-train DAMD on single domain dialogues , and we use the script provided by the authors to relexicalize the generated templates .
+We are aware of newly - released models ( Hosseini - Asl et al. , 2020 ; Peng et al. , 2020a ) ; however , no code was available at submission time for running the results on single domain .
+In DFF , we used the provided model to generate the system responses for the human evaluation , but we could not use our scorer to automatically evaluate the Inform , Success , and F1 since no dialogue
+Id was present in their pre-processed data .
+3 Moreover , the authors provided the results in three domains ( Attraction , Hotel , Restaurants ) for multiple baselines by using the Gold - KB as input .
+From our experiments , two points can be highlighted : 1 ) GPT trained with KE dialogues performs as well as DAMD trained using DST and template responses , in both automatic and human evaluation .
+Using the original scorer , DAMD achieved 85.40 Inform and 70.40 Success score , but when the responses are relexicalize and we use our scorer , the results are significantly lower .
+4
+The human evaluation confirms the correctness of our plain scorer and it shows that the relexicalization process is not a trivial task ; 2 ) Our model achieves a higher BLEU and F1 - score that other models trained with gold KB as input , and it achieve a significantly higher correctness compare to DFF .
+This is easily explainable by the fact that DFF does not issue booking API and thus it constantly mistakes the booking results .
+In appendix H , we show how our model handles the booking API .
+OpenDialKG is a human-to-human collected dataset ( Moon et al. , 2019 ) consisting of four domains : Music , Sport , Book , and Movie .
+No official split is provided and thus we randomly split the dataset in 80/10 / 10 for the train / valid / test , respectively .
+The dataset provides a large knowledge graph with 100K entities and 1.1 M relations , and the annotated entity path that connects U t and S t .
+The graph relations in the annotated path are the user goal query defined in Equation 4 , but after a careful analysis , we discover that the annotation is incomplete in most of the dialogues .
+Therefore , we decided to automatically generate the user goal queries using string matching and the CYPHER query language .
+5
+This process generates 11 K possible TEMPLATEs , which , if used over the user goal query output , generate over a billion KE dialogues .
+This is because the knowledge graph is large , and each user goal query returns a large number of equivalent entities .
+To overcome this issue , 1 ) we select a subset of the knowledge graph , 5,691 entities , and 39,728 relations , which covers most of the test set entities , and 2 ) we iteratively gener - 5 More details in Appendix A.1 ate dialogues by sampling TEMPLATES and using KE - RELEX over the sampled query results .
+Table 7 compares a GPT2 trained with the provided gold path as input with a GPT2 trained on an increasing number of dialogues generated by the iterative procedure .
+We observe that by increasing the number of iterations , thus the number of KE dialogues , the entity F1 - score increases , especially for OOV entities , but at the same time , the BLEU score decreases .
+After a careful qualitative analysis , we notice that the string matching algorithm used for extracting the user goal queries generate noisy and incomplete TEMPLATEs , and thus most of the KE dialogues have imprecise knowledge .
+We leave the annotation of the user goal queries and the human evaluation to the future work .
+Analysis and Discussions Templates vs .
+Performance
+In all experiments , we show that given the generated KE dialogues , the model learns to embed the KB into its parameters .
+However , the user goal query still requires human annotations ; thus , we want to analyze the effect of using increasingly less TEMPLATEs in KE .
+For instance , in Figure 2 , we report the number of TEMPLATEs used for fine-tuning versus the BLEU score and the entity F1 - score in the SMD dataset .
+In general , we observe that more TEMPLATEs increase significantly both the F1 and BLEU score .
+Especially , we observe that BLUE score linearly increase with the number of TEMPLATEs used in training , suggesting that a more diverse and fluent generation can be achieved using more TEMPLATEs .
+In Appendix F , we report the same analysis in each datasets , where we observe a similar trend .
+Limitation & Dynamic KB
+Throughout our experiments , we identify two major limitations : noisy KE dialogues generation and fine-tuning time for dynamic KBs .
+Although the proposed KE results successfully embed the KB into the model parameters , the generated KE dialogues are sometimes noisy .
+For example , the KE-DELEX function converts , " i want to find an expensive restaurant ... " into a TEMPLATE " i want to find an [ price- range ] restaurant ... " .
+Then the KE-RELEX can generate " i want to find a cheap restaurant ... " , which has a clear grammar mistake .
+This type of error does not happen often , and we notice that GPT2 is robust to this kind of noisy input .
+In future work , we propose to improve the robustness and fluency of our model using different regularization losses .
+Moreover , in the case of dynamic KBs a substantial fine-tuning cost is required for updating the KB .
+Figure 2 shows the average time - per-epoch spent for fine-tuning in SMD .
+In future work , we propose to study both a meta-learning ( Finn et al. , 2017 ) strategy for quick fine-tuning and continual learning approach for updating the KB while retaining the previous existing knowledge .
+Related Work Dialogue Systems are categorized into chit-chat ( Vinyals and Le , 2015 ; Serban et al. , 2016 ) and task- oriented ( Williams and Young , 2007 ; Young et al. , 2013 ) ; in this paper we focus on the latter .
+Task - oriented dialogue systems are further classified into : modularized ( Levin et al. , 2000 ; Hori et al. , 2009 ; Lee et al. , 2009 ) , retrieval ( Henderson et al. , 2019 ; end-to-end ( Bordes and Weston , 2017 ; Eric et al. , 2017a ; Eric and Manning , 2017 ; Reddy et al. , 2019 ; Madotto et al. , 2018 ; Wu et al. , 2019 b ; Madotto et al. , 2020a ; Neelakantan et al. , 2019 ; Qin et al. , , 2020 Haihong et al. , 2019 ; He et al. , 2020 ) and hybrid ( Shu et al. , 2018 ; Lei et al. , 2018 ; Zhang et al. , 2019a ; Mehri et al. , 2019 ; Peng et al. , 2020a ; Ham et al. , 2020 ; Hosseini - Asl et al. , 2020 ; Le et al. , 2020 ; Lin et al. , 2020 ) .
+To the best of our knowledge , these methods use either DST / S-ACT annotations , template responses , or all / partial KB as the input to the model , where instead we only use the dialogue history .
+Recently , several task - oriented dialogue models are introduced to tackle the resource scarcity challenges in target domains ( Bapna et al. , 2017 ;
+Wu et al. , 2019a ; and target languages ( Mrk ?i? et al. , 2017 ; Schuster et al. , 2019 ; Chen et al. , 2018 ; Liu et al. , 2019 b ) , and large pre-trained language models are shown to possess the capability to quickly adapt to taskoriented dialogue tasks by using only a few data samples ( Peng et al. , 2020 b ; Madotto et al. , 2020 b ; . Data Augmentation is a widely used technique to improve both robustness and performance ( Guo et al. , 2019 ; Yang et al. , 2020 ) .
+Task- oriented dialogue systems have been explored to improve DST ( Song et al. , 2020 ; Yoo et al. , 2020 ; Campagna et al. , 2020 ) , Natural Language Understanding ( NLU ) ( Peng et al. , 2020 c ) , intent classification and hybrid end-to - end systems ( Zhang et al. , 2019a ; Rastogi et al. , 2019 ) .
+These data augmentation methods aim to improve the final performance of the given task , e.g. , zeroshot performance , template response , etc. , where instead , our proposed approach aims to store the KB into the model parameters .
+Agenda - Based User Simulation builds an interactive system that models the user turns ( Schatzmann et al. , 2007 ) rather than the system .
+User simulators are designed to cover all possible user queries while keeping a diverse and fluent user interaction .
+This enables models to learn a better dialogue policy via interaction ( Asri et al. , 2016 ; Li et al. , 2017 ; Wu et al. , 2019c ; Peng et al. , 2018 ) , and it is especially useful in scenarios in where few or no data is available ( Liu and Lane , 2017 ; Shah et al. , 2018 ; Kreyssig et al. , 2018 ; Li et al. , 2020 ) .
+In our work , instead , we use all the possible user goal queries to generate dialogues directly , instead of creating a reinforcement learning loop to train the model .
+Language Models as Knowledge Bases has been used for encoding common sense knowledge into transformers ( Bosselut et al. , 2019 ; Liu et al. , 2019a ; Xiong et al. , 2019 ; Wang et al. , 2020 . ( Guan et al. , 2020 ) improved story generation by training a Language Model with knowledge triples converted into sentences using predefined templates ( Levy et al. , 2017 ) .
+Differently , we extract templates from real data , and we aim to store the KB into the models parameters to be able to extract knowledge directly , instead of improving common sense generation .
+Moreover , several studies tried to extract ( Petroni et al. , 2019 ; Kassner and Sch?tze , 2019 ; Petroni et al. , 2020 ) or use ( Roberts et al. , 2020 ) large pre-trained models , e.g. BERT ( Devlin et al. , 2019 ) , as knowledge bases .
+Conclusion
+In this paper , we propose to learn the KB directly into the model parameters using a novel Knowledge Embedded approach , that is fundamentally different from giving the KB as input or using the DST for querying the KB .
+We demonstrate that our approach is scalable to different KB sizes and it can be used with dynamically changing KBs via finetuning .
+Automatic and human evaluations confirm that models with embedded KBs achieve competitive performance in all evaluated datasets .
+Finally we show , for the first time , that end-to - end models can perform as well as pipelined modularized systems ( Zhang et al. , 2019a )

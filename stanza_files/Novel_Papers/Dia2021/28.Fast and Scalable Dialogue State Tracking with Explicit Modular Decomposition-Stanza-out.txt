@@ -1,0 +1,104 @@
+title
+Fast and Scalable Dialogue State Tracking with Explicit Modular Decomposition
+abstract
+We present a fast and scalable architecture called Explicit Modular Decomposition ( EMD ) , in which we incorporate both classification - based and extraction - based methods and design four modules ( for classification and sequence labelling ) to jointly extract dialogue states .
+Experimental results based on the MultiWoz 2.0 dataset validates the superiority of our proposed model in terms of both complexity and scalability when compared to the state - of - the - art methods , especially in the scenario of multi-domain dialogues entangled with many turns of utterances .
+Introduction
+Dialogue state tracking ( DST ) , responsible for extracting user goals / intentions from dialogues , is a core component in task - oriented dialogue systems ( Young et al. , 2013 ) .
+A dialogue state is commonly represented as a ( DOMAIN , SLOT TYPE , SLOT VALUE ) triplet , e.g. , ( hotel , people , 3 ) .
+We show an illustrated example of a multi-domain dialogue in Figure 1 , which involves two domains , i.e. , TRAIN and HOTEL .
+Previous approaches for DST usually fall into the following four categories : ( 1 ) adopt encoderdecoder models to generates states ( Kim et al. , 2020 ; Ren et al. , 2019 ; Li et al. , 2019 ; ; ( 2 ) cast DST as a multilabel classification task when a full candidate - value list is available ( Shan et al. , 2020 ; Zhong et al. , 2018 ; Ren et al. , 2018 ) ; ( 3 ) employ span-based methods to directly extract the states ( Chao and Lane , 2019 ; ; and ( 4 ) combine both classification - based and spanbased methods to jointly complete the dialogue state extraction ( Zhang et al. , 2019 ) .
+The most related work to ours is DS - DST ( Zhang et al. , 2019 ) , a joint model which highlights the problem that using classification - based or span-Figure 1 : A multi-domain dialogue example extracted from MultiWoz 2.0 .
+The S-type slot values are marked in bold and the arrow points to a pair of C-type slots and its corresponding value .
+The domain discussed changes from " train " to " hotel " at the fourth turn .
+Refer to Section 2 for the definitions of C-type and S-type .
+based approach alone is insufficient to cover all cases of DST in the task - oriented dialogue .
+While DS - DST has achieved some promising result on dialogue state tracking and demonstrated the utility of combining these two types of methods , some problems still remain unaddressed .
+On one hand , since the model is conditioned on domain-slot pairs , the computational complexity is not constant and will grow as the number of domains and slots involved in dialogues increases .
+To be more specific , if there are 1000 domain-slot pairs , the model needs to run 1000 times to obtain the expected dialogue states for the current turn at each time , which is a huge computational overhead .
+On the other hand , previous works usually directly concatenate the history content and the current utterance as input , which is difficult to scale in the multi-turn scenarios , especially when the number of turns of a dialogue is large .
+Furthermore , we observe that generative approaches may generate some domain outlier 1 triplets due to lack of domain constraints .
+To tackle these issues , we propose a fast and scalable method called EMD , where we decompose DST into three classification modules and one sequence labeling module to jointly extract the dialogue states .
+The benefits of our approach are summarised below :
+Our Proposed Model Formally , a multi-turn dialogue is represented as T = {( s 1 , u 1 , d 1 ) , ( s 2 , u 2 , d 2 ) , ? ? ? , ( s n , u n , d n ) } , d i ?
+D , where s i , u i and d i refer to the system utterance , the user utterance , and the domain at turn i , respectively 2 , and D represents the set of all domains in the training dataset .
+The overall architecture of our model is shown in Figure 2 .
+In our proposed model , we choose MT -DNN ( Liu et al. , 2019 ) , pretrained model which has the same architecture as BERT but trained on multiple GLUE tasks .
+MT - DNN has been shown to be a better contextual feature extractor for downstream NLP tasks .
+Given dialogue utterances as input , we represent the output of MT - DNN as { H [ CLS ] , H 1 , H 2 , ? ? ? , H n } , where n is the length of the concatenation of the system and user utterances .
+As a sentence - level representation , H [ CLS ] is expected to encode the information of the whole input sequence ( Devlin et al. , 2019 ; Liu et al. , 2019 ) .
+Based on these contextual representations , we predict the domain ( see ?2.1 ) and belief states ( see ?2.2 and ?2.3 ) .
+Figure 1 shows a typical multi-domain dialogue example , from which we can observe that some slot values can be directly found from utterances ( e.g. cambridge and london ) , while other slot values are implicit which are more challenging to discover , e.g. , requiring classification to infer the values ( e.g. internet : Yes ) .
+We divide slots into two categories that are handled by two two separate modules :
+S-type slots whose values could be extracted from dialogue utterances , and C-type slots whose values do not appear in utterances and are chosen from one of the three values { yes , no , do n't care} .
+Domain Prediction Module ( DPM )
+In a multi-domain dialogue , the target domain may change as the dialogue proceeds .
+Different from some previous works Castellucci et al. , 2019 ) , which directly use the first hidden state ( H [ CLS ] ) , in our model , apart from H [ CLS ] , we additionally incorporate D l , the domain result of the last turn into the our domain prediction module .
+The rationale behind is that when the domain of current utterances is not explicit , D l can provide useful reference information for domain identification .
+Formally , the domain is predicted as : y d = softmax ( W d [ H [ CLS ] ; E( D l ) ] ) ( 1 ) D c = arg max(y d ) , D c ? D ( 2 ) where ; denotes the concatenation operation and E ( ? ) embeds a word into a distributed representation using fixed MT -DNN ( Liu et al. , 2019 ) .
+D c is the predicted domain result .
+S-type Slots Tagging Module ( SSTM ) Domain-slot-matching constraints R
+To prevent our model from predicting some slots not belonging to the current domain , we generate a domain constrained contextual record R ? R 1 ? ( s+ 1 ) , where s is number of S-type slots of all domains 3 . Concretely speaking , R is a distribution over all S-type slots and [ EMPTY ] using
+In particular , L R , the loss for R is defined as the Kullback - Leibler ( KL ) divergence between Div( R real | | R ) , where distribution R real from the ground truth is computed as follows : R = softmax ( W R [ H [ CLS ] ; E( D l ] ) ( 3 ) ?
+If there is no slot required to be predicted , R real [ EM P T Y ] receives a probability mass of 1 for the special slot [ EMPTY ] .
+?
+If the number of slots needed to be predicted is k( ?
+1 ) , then corresponding k slot positions receive an equal probability mass of 1 / k .
+Next , we employ a sequence labeling approach to directly annotate the domain-slot values in the utterance instead of iterating over all domain-slot pairs one by one .
+Specifically , to tag S-type slots of the given input , we feed the final hidden states of H 1 , H 2 , ? ? ? , H n into a softmax layer to classify all the S-type slots , y s i = softmax ( W s H i ) , i ? [ 1 , 2 , ? ? ? , N ] ( 4 ) Instead of directly predicting S-type slot results based on y s i , we introduce a domain-slot-matching constraint R , which helps avoid generating S-type slots that do not belong to the predicted domain .
+The multiplication operation is given below , ?s i = R y s i ( 5 ) where is the element - wise multiplication .
+C-type Slots Classification Module ( CSCM )
+Given the currently predicted domain result D c , we build a set C Dc which contains all C-type slots from all domains D. If C Dc is empty , it indicates that there is no C-type slot needed to be predicted in the current domain .
+Otherwise , we classify each slot c Dc i in C D into one of the following following categories , i.e. , { yes , no , do n't care} , with the classification function below .
+y c = softmax ( W c [ E ( c Dc i ) ; E( D l ) ; H [ CLS ] ] ) ( 6 )
+Dialogue State Correction Module ( DSCM ) Previous models such as TRADE and COMER ( Ren et al. , 2019 ) requires that all dialogue states need to be predicted from scratch at each turn , including those dialogue states that have already been predicted at previous turns .
+This poses a big challenge to the model in terms of scalability , especially when the number of dialogue turns increases .
+Conversely , the input of our model consists of the system utterance and the user utterance at the current turn , so our model only outputs the estimates of the dialogue states for the current turn , and the previous dialogues are directly included where no re-prediction is needed .
+However , there is an issue with direct inclusion of previously predicted results in that some states may need to be updated or removed as the dialogue proceeds .
+For example , a user firstly looks for a hotel located in the center area , then a state ( hotel , area , center ) is estimated .
+Subsequently , the user utters a specified hotel name , e.g . " I wanna the King House " , then the previous state ( hotel , area , center ) is outdated and should be removed .
+To this end , we design the dialogue state correction module to update previously predicted results in order to improve the precision of the outputted dialogues states at each turn .
+Similar to the Ctype classification module , we cast this situation as a classification task , and for each triple tuple p from the previous dialogue states , the classifier is formulated as y p = sigmoid ( W p [ p ; E( D l ) ; H [ CLS ] ] ) ( 7 ) Here each item in p is embedded using E ( ? ) and p is the embedding sum of the three items in p.
+During training , we use cross entropy loss for y d , y c , y s and y p , which are represented as L y d , L y c , L y s and L y p , respectively .
+The loss for R ( denoted as L R ) is defined as Kullback - Leibler ( KL ) divergence between R real and R ( i.e , KL ( R real | | R ) ) .
+All parameters are jointly trained by minimizing the weighted - sum of five losses ( ? , ? , ? , ? , are hyper-parameters ) , Loss = ?L y d + ?L y c + ?L y s + ?L y p + L R ( 8 )
+Analysis of model complexity Table 1 reports the Inference Time Complexity ( ITC ) proposed by ( Ren et al. , 2019 ) , which is used to measure the model complexity .
+ITC calculates how many times inference must be performed to complete a prediction of the belief state in a dialogue turn .
+By comparison , we can observe that our model achieves the lowest complexity , O ( 1 ) , attributed to the modular decomposition and the usage of the sequence label based model .
+Model ITC DS -DST ( Zhang et al. , 2019 ) O(n ) SOM -DST ( Kim et al. , 2020 ) O( n ) SUMBT O( mn ) GLAD ( Zhong et al. , 2018 ) O( mn ) COMER ( Ren et al. , 2019 ) n O( n ) TRADE ( Wu et al. , 2019 ) O(n ) EMD O( 1 ) Table 1 : Inference Time Complexity ( ITC ) proposed in ( Ren et al. , 2019 ) , m is the number of values in a pre-defined ontology list and n is the number of slots .
+Note that the ITC reported refers to the worst scenarios .
+3 Experimental Setup
+Setup Dataset
+We evaluate our model performance based on the MultiWoZ 2.0 dataset , which contains 10 , 000 dialogues of 7 domains and 35 domain-slot pairs .
+Detailed dataset statistics is summarised in Table 2 . Evaluation metrics
+We utilize joint goal accuracy ( JGA ) ( Henderson et al. , 2014 )
+Results Overall comparison
+We compare our models against six strong baselines on the multi-domain dataset MultiWoz .
+Results are reported in Table 3 based on joint goal accuracy ( JGA ) .
+Our model achieves the best performance of 50.18 % in the multi-domain testset , while the accuracy achieved in the single- domain is on par with the state - of - theart results , which demonstrates the superiority of our model .
+Model JGA s JGA m JGA SOM -DST ( Kim et al. , 2020 ) --51.72 COMER ( Ren et al. , 2019 ) 48.62 41.21 45.72 SUMBT 46.99 39.68 42.40 DS -DST ( Zhang et al. , 2019 ) 51.99 48.69 51.01 GLAD ( Zhong et al. , 2018 )
+Analysis of model scalability
+We select 200 samples from the testing dataset , in which each dialogue has more than 8 turns of utterances between the system and the user .
+Then , taking the turn number 6 as a threshold , we divide the dialogue content into two categories , i.e. , COLD and From Table 4 , we observe that the model performance has a big drop for the four baseline models , but our model achieves a relatively stable performance , achieving 51.01 % in HOT and 51.89 % in COLD , respectively .
+This demonstrates that our model is not only fast in terms of inference speed ( cf. ?2.5 ) , but also has a good scalability which can maintain a high accuracy even when the dialogue proceeds into more turns and the input length becomes larger .
+Ablation study
+We conduct two ablation experiments to investigate the impacts of D l and R .
+We introduce a metric , called outlierslot ratio ( OSR ) , denoting the proportion of slots predicted by our model that do not belong to the current domain .
+From Table 5 , we notice that adding D l improves the domain accuracy , where one possible reason is that some utterances may not have a clear domain attribute , and thus the incorporated previous domain is believed to provide useful guiding information in domain prediction .
+Besides , by comparing OSR with and without using R , we can observe that using R reduces the proportion of generating slots that do not align to the predicted domain , which further improves the model performance .
+Case study
+To evaluate our proposed model qual - itatively , we show an exemplary dialogue and illustrate some generated results by EMD and two baseline models in Figure 3 .
+At turn 3 when the dialogue domain change from hotel to taxi , COMMER fails to capture the domain information and generates a domain outlier , " train " , which does not conform to the current context .
+Conversely , dialogue generated by our model always conforms to the domain at the current turn , which may benefit from the incorporation of the domain constrained contextual record R. Besides , another observation is that as the dialogue proceeds to the turn 8 when the history dialogue content accumulates , TRADER makes an incorrect prediction in the hotel - internet slot , which is correctly identified at the turn 1 .
+One possible reason is that it becomes more challenging for the model to correctly predict all dialogue state from scratch when both the history dialogue content and states involved increase .
+Instead of repeatedly generating those previously predicted states at each turn , our model only outputs the states for the current turn , and updates previous dialogue states with a separate module .
+Conclusion
+In this paper , we propose to decompose DST into multiple submodules to jointly estimate dialogue states .
+Experimental results based on the Multi-Woz 2.0 dataset show that our model not only reduces the model complexity , but also gives high scalability in coping with multi-domain and long task - oriented dialogue scenarios .
+Figure 2 : 2 Figure 2 : Our neural model architecture , which includes DPM for the domain prediction , whose output is the predicted domain , D c .
+D l denotes the domain at the previous turn .
+CSCM for the three classification of the domain-associated C-type slots , in which c Dc i denotes one of C-type slots in D c , and SSTM for tagging S-type slots in the given input , where tagging results are in IOB format ; DSCM is for deciding whether to remove outdated states from the history state set .
+y p i ?
+{ yes , no} , y c i ?
+{ yes , no , do n't care } and y s i ?
+{ O} { all S-type slots } .

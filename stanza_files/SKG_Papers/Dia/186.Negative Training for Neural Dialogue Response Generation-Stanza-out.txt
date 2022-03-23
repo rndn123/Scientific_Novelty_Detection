@@ -1,0 +1,179 @@
+title
+Negative Training for Neural Dialogue Response Generation
+abstract
+Although deep learning models have brought tremendous advancements to the field of opendomain dialogue response generation , recent research results have revealed that the trained models have undesirable generation behaviors , such as malicious responses and generic ( boring ) responses .
+In this work , we propose a framework named " Negative Training " to minimize such behaviors .
+Given a trained model , the framework will first find generated samples that exhibit the undesirable behavior , and then use them to feed negative training signals for fine-tuning the model .
+Our experiments show that negative training can significantly reduce the hit rate of malicious responses , or discourage frequent responses and improve response diversity .
+Introduction End-to- end dialogue response generation can be formulated as a sequence-to-sequence ( seq2seq ) task : given a dialogue context , the model is asked to generate a high-quality response .
+In recent years , deep learning models , especially seq2seq language generation models ( Sutskever et al. , 2014 ; Cho et al. , 2014 ) , have brought significant progress to the field of dialogue response generation .
+However , recent research has revealed undesirable behaviors of seq2seq models that are side effects of standard maximum likelihood estimation ( MLE ) training , such as the generic ( boring ) response problem ( Li et al. , 2016 ) , vulnerability to adversarial attacks ( Cheng et al. , 2018 ; Belinkov and Bisk , 2017 ) , and the malicious ( egregious ) response problem ( He and Glass , 2019 ) .
+In this work , we propose and explore the negative training framework to correct unwanted behaviors of a dialogue response generator .
+During negative training , we first find or identify input-output pairs for a trained seq2seq model that exhibit some
+The idea of negative training is inspired from the way parents might teach their children to use language by incorporating both positive and negative training signals .
+For example , when teaching children how to use " love " and " hate " , in addition to using positive examples like " I love apples but I hate bananas " , they might also point out that saying " I hate you " to someone is considered impolite .
+In this work , negative training is used to address the malicious response problem and the frequent response problem ( to be described in Section 3.2 and 3 . 3 ) in open-domain dialogue response generation .
+In our experiments , we show that negative training can significantly reduce the hit rate for malicious responses , or discourage frequent responses and greatly improve response diversity .
+Model Formulation
+In this work we adopt recurrent neural network ( RNN ) based encoder-decoder seq2seq models ( Sutskever et al. , 2014 ; Cho et al. , 2014 ; Mikolov et al. , 2010 ) , which are widely used in NLP applications like dialogue response generation ( Li et al. , 2016 ) , machine translation ( Luong et al. , 2015 ) , etc .
+We use x = {x 1 , x 2 , ... , x n } to denote onehot vector representations of the input sequence , which serves as context or history information ( e.g. the previous utterance ) , y = {y 1 , y 2 , ... , y m } 1 to denote scalar indices of the corresponding reference target sequence , and V as the vocabulary .
+We use ? to represent the parameters for the seq2seq model , and P ? ( y|x ) as the model 's generative distribution .
+On the encoder side , every x t will be first mapped into its corresponding word embedding x emb t .
+Then {x emb t } are input to a long-short term memory ( LSTM ) ( Hochreiter and Schmidhuber , 1997 ) RNN to get a sequence of latent representations {h enc t } 2 .
+For the decoder , at time t , similarly y t is first mapped to y emb t .
+Then a context vector c t , which is supposed to capture useful latent information of the input sequence , needs to be constructed .
+We adopt the " attention " mechanism for context vector construction : first an attention mask vector a t ( which is a distribution ) on the input sequence is calculated to decide which part to focus on , then the mask is applied to the latent vectors to construct c t : c t = n i=1 a t( i ) h enc i .
+We use the formulation of the " general " type of global attention , described in ( Luong et al. , 2015 ) , to calculate the mask .
+During baseline training , standard MLE training with stochastic gradient descent ( SGD ) is used to minimize the negative log-likelihood ( NLL ) of the reference target sentence given the input sentence in the data : L MLE ( P data ; ? ) = E ( x, y ) ?
+P data ( ? log P ? ( y| x ) ) = E ( x, y ) ?
+P data ( ? m t=1 log P ? ( y t |y <t , x ) ) ( 1 ) where y <t refers to {y 0 , y 1 , ... , y t?1 } , in which y 0 is set to a begin-of-sentence token < BOS >.
+We consider two popular ways of decoding ( generating ) a sentence given an input : greedy decoding and sampling .
+In practice for dialogue response generation , greedy decoding will provide stable and reproducible outputs , but is severely affected by the generic response problem .
+Sampling will provide more diverse but less predictable responses , and thus give rise to the malicious response problem .
+The Negative Training Framework
+Overview
+The negative training framework 3 is a two -stage process .
+Given a trained model , we put it under a " debugging " environment P test which provides test input samples 4 , get the model 's decoded samples and decide ( using well - defined criteria ) whether each input-output pair exhibits some undesirable behavior .
+Then , these " bad " pairs are used to provide negative training signals .
+Negative training can be derived from Empirical Bayes Risk Minimization ( Och , 2003 ) .
+Specifically , the overall objective is to minimize the expected risk that the model exhibits undesirable decoding behavior : L NEG ( P test ; ?) = E x?Ptest E y?P ? ( y|x ) c( x , y ) ( 2 ) where c( x , y ) refers to the binary criteria that will be 1 if ( x , y ) exhibits undesirable behavior , and 0 otherwise .
+Then , we take the derivative of L NEG w.r.t. to ? , using the log derivative trick ( widely used in Reinforcement Learning ( Sutton and Barto , 1998 ) ) : ? ? L NEG ( P test ; ?) = E x?Ptest E y?P ? ( y|x ) c( x , y ) ? ? ? log P ? ( y|x ) ( 3 ) Compared to L MLE in eq. ( 1 ) , which maximizes the log-likelihood of training data samples , L NEG minimizes the log-likelihood of undesirable model samples .
+This is the reason why we call it " Negative Training " .
+In our preliminary experiments , we find that negative training needs to be augmented with the standard MLE objective L MLE , encouraging the model to retain its original performance : L NEG + POS = L NEG + ? POS L MLE ( 4 ) In our experiments , we find ?
+POS can be simply set to 0.1 to work well .
+In the next two sections , we discuss how the general negative training framework is tailored for the malicious response problem and frequent response problem , respectively .
+Negative Training for the Malicious Response Problem
+For the malicious response problem , we follow the methodology proposed by ( He and Glass , 2019 ) .
+First a list of malicious target sentences are created , then the gibbs -enum algorithm 5 is called to find " trigger input " that will cause the model to assign large probability to the target sequence .
+The following " hit types " are defined : ? o- greedy - hit : A trigger input sequence is found such that the model generates the target sentence from greedy decoding .
+? o-sample-min / avg-hit :
+A trigger input sequence is found such that the model generates the target sentence with an minimum / average word log-probability larger than a given threshold T out . ? io-sample-min/ avg-hit :
+In addition to the definition of o-sample-min / avg - hit , we also require that the average log-likelihood of the trigger input sequence , measured by a LM , is larger than a threshold T in .
+This enforces the trigger input to be more likely to be input by real-world users .
+T out is set to the trained seq2seq model 's average word log-likelihood on the test data , and T in is set to be a reasonable LM 's 6 average word loglikelihood on the test set .
+The intuition is that the model should not assign larger probabilities to the malicious sentences than the reference sentences in the test set .
+Note that these hit types act as criteria c( x , y ) , indicating whether a target sentence is hit by a trigger input .
+As shown in ( He and Glass , 2019 ) , a typical seq2seq model trained by MLE has around a 10 % hit rate for malicious targets w.r.t. samplemin / avg - hit , across data-sets .
+However , very few malicious targets are hit w.r.t. greedy - hit , so in this work , we focus on the malicious response problem for sampling during decoding .
+In Table 1 hit ( c( x trigger , y target ) = 1 ) , we update the model to reduce the log-likelihood P ? (y target | x trigger ) .
+The process is formulated in Algorithm 1 7 .
+For each trigger input , multiple iterations of negative updates are usually needed before the hit criterion is no longer met .
+Note that in each iteration , the gibbs-enum algorithm is called again to find a new trigger input for each target .
+In our experiments , we show that negative training effectively reduces the hit rate for malicious targets after each iteration , and eventually , the gibbsenum algorithm can no longer find trigger inputs for a large number of targets that were initially hits .
+Negative Training for the Frequent Response Problem
+The generic response problem ( Li et al. , 2016 ) for end-to - end dialogue response generation refers to the typical behavior of a MLE trained model , whereby the generated responses are mostly safe , boring or uninformative ( such as " i do n't know " or " good idea " ) .
+However , it is difficult to invent an automatic criterion to determine whether a response is generic or not .
+In this work , we focus on the frequent response problem , as a sub-problem of the generic response problem .
+It refers to the behavior that a trained model generates exactly the same ( usually boring ) response , with a high frequency .
+We propose to use a metric called max-ratio to measure how severe the frequent response problem is .
+Given a test set and a decoding method , the model will generate a set of responses , and maxratio is defined to be the ratio of the most frequent response .
+In our experiments , the baseline models have a max-ratio of around 0.3 for response like " I do n't know " across different data-sets , showing the severity of the frequent response problem .
+During negative training for frequent response , first a threshold ratio r thres is selected ( such as 0.01 ) , and responses with frequency ratio larger than r thres will be discouraged .
+For each iteration , the model 's response to each training data input sentence is monitored and responses with frequency larger than r thres will be used as negative examples .
+The frequency statistics are calculated using the current and the last 200 mini-batches .
+The procedure is formulated in Algorithm 2 .
+Note that positive training is also needed here for the model to retain its original performance .
+? = ? ? ? ? ? ? logP ? (y sample | x pos )
+Positive update : ? = ? + ? ? ? POS ? ? ? logP ? ( y pos |x pos ) end if end for In our experiments , it is shown that negative training significantly reduces max-ratio for the model on test data , and greatly increases the diversity of the model 's responses .
+Experiments
+We conduct experiments on three publicly available conversational dialogue data-sets : Ubuntu , Switchboard , and OpenSubtitles .
+To save space , descriptions of the data-sets are provided in Appendix B .
+Baseline Model Training
+For all data-sets , we first train an LSTM based LM and attention based seq2seq models with one hidden layer of size 600 , and the embedding size is set to 300 .
+For Switchboard a dropout layer with rate 0.3 is added to the model because over-fitting is observed .
+The mini- batch size is set to 64 and we apply SGD training with a fixed starting learning rate ( LR ) for 10 iterations , and then another 10 iterations with LR halving .
+For Ubuntu and Switchboard , the starting LR is 1 , while a starting LR of 0.1 is used for OpenSubtitles .
+The results are shown in Appendix C .
+After negative training , in addition to measuring the hit rate for malicious targets or the diversity of the responses , it is also important to check whether the original sample quality of the baseline model is damaged .
+Towards that end , the perplexity of the model before and after negative training will be compared , we also conduct human evaluation to measure whether the sample quality is decreased .
+Other popular measurements , such as the BLEU score , have been found to correspond poorly with human judgements ( Liu et al. , 2016 ) .
+Nevertheless , we also find that the model 's BLEU score does not become worse after negative training .
+Experiments on the Malicious Response Problem Following ( He and Glass , 2019 )
+In our experiments , we spotted a harmful side effect of negative training where frequent words in the training target list are severely penalized and sometimes receive low probability even in normal perplexity testing , especially for experiments with small ?
+POS .
+To alleviate this problem , we use a simple technique called frequent word avoiding ( FWA ) : negative gradients are not applied to the most frequent words in the malicious training target list 9 .
+For example , when doing negative training against the target " i hate you < EOS > " , only " hate " will get a negative gradient .
+For all data-sets , negative training ( Algorithm 1 ) is executed on the ( trained ) baseline model for 20 iterations over the training target list .
+A fixed learning rate of 0.01 and a mini-batch size of 100 are used .
+?
+POS is set to 0.1 for Ubuntu , and to 1 for Switchboard and OpenSubtitles .
+The main results are shown in Table 3 . For Switchboard we focus on sample - avg - hit because we find very few targets are hit w.r.t. samplemin-hit ( Similar results are reported in ( He and Glass , 2019 ) ) , while for Ubuntu and OpenSubtitles we focus on sample - min-hit .
+Note that we get very similar results w.r .
+Ubuntu / OpenSubtitles , and we omit those results here .
+We first observe that , for all data-sets , negative training can effectively reduce the hit rate on the training target list to less than 5 % with little or no degradation on perplexity .
+We provide a comparison of the model 's behavior in Appendix D. Also , significant hit rate reduction is achieved on the test target list , which has no overlap with the training target list .
+This shows that negative training , similar to traditional positive training , also generalizes .
+It is also shown that training list augmentation can further reduce the malicious target hit rate consistently for both training and test lists .
+For example , on Ubuntu data , the hit rate after negative training w.r.t. o-sample-min-hit is 12.6 % , and can be reduced to 0 % with paraphrase augmentation .
+We find that that the model 's generation behavior in non-adversarial setting is almost the same as the baseline after negative training .
+For example , the 10 - best list from beam search before / after neg-train has larger than 90 % overlap .
+We also find that the model generates similar samples ( shown in Appendix G ) .
+We believe the reason is that negative training focuses on making the model more robust with the adversarial inputs , and the original generation behavior is kept intact by the positive training ( Equation 4 ) .
+Experiments on the Frequent Response Problem
+In this section we report results where the negative training framework ( Section 3.3 ) is applied to tackle the frequent response problem .
+For all datasets , negative training is executed for 20 iterations on the MLE trained model over the training data , with a selected r thres .
+A fixed learning rate of 0.001 is used for all three data-sets , the mini- batch size is set to 64 and ?
+POS is set to 1 .
+In this work , we focus on improving the model 's greedy decoding behavior instead of beam search for the following two reasons :
+1 ) For the baseline models our experiments , we found that beam search gives far worse response diversity than greedy decoding , because it favors short responses ( usually only of length one ) too much , resulting in a much larger max-ratio ; 2 ) During training , doing beam search is much more time - consuming than greedy decoding .
+To measure the diversity of the model 's generated responses , in addition to max-ratio introduced in Section 3.3 , which is specially design for the frequent response problem , we also adopt the entropy metric proposed in .
+Given a set of responses from decoding on the test set , Ent -n calculates the entropy of the n-gram distribution : Ent -n = g?Gn ?r( g ) log r( g ) ( 5 ) where G n is the set of all n-grams that appeared in the response set , and r( g ) refers to the ratio ( frequency ) of n-gram g w.r.t. all n-grams in the responses set .
+In our experiments with negative training , a harmful side-effect is spotted : during decoding , the model tends to output long and ungrammatical responses such as " i do n't know if it 's a real valid deterrent crime crime yeah i 'm satisfied trying not to " .
+We believe the reason is that the sentence end token < EOS > gets over penalized during negative training ( it appears in every negative example ) .
+So , we apply the same frequent word avoiding ( FWA ) technique used in Section 4.2 , except that here only the negative gradient for < EOS > is scaled by 0.1 10 .
+In addition to the baseline model , we compare our proposed negative training framework against a 10 We find that scal by zero will result in extremely short responses .
+GAN ( Goodfellow et al. , 2014a ) approach , where a discriminator D is introduced and the generator G tries to fool the discriminator to believe its samples are real data samples :
+Ubuntu min G max D V ( D , G ) = min G max D { E ( x, y ) ?
+P data log D ( x , y ) + E x?P data , y?G ( ?| x ) log ( 1 ? D ( x , y ) ) } ( 6 ) where the generator G refers to the seq2seq model P ? .
+The GAN framework is very attractive for tackling the generic response problem ( Li et al. , 2017 ; , because the discriminator can act as a critic to judge whether a response sample is boring .
+We describe the training details and hyper-parameter setting for the GAN approach in Appendix E .
+We also provide an comparison to the MMI decoding ( Li et al. , 2016 ) , which is a very popular work in this field .
+We implement MMI - antiLM for our models .
+The experimental results are shown in Table 4 .
+The experiment with best diversity result and nondegenerate sample quality are shown in bold .
+We first observe a large gap on the diversity measures between the baseline models and the test set , especially on Switchboard and OpenSubtitles data .
+That indicates the severity of the frequent / generic response problem .
+Then , results of negative training with different r thres show that negative training can significantly increase response diversity , with little or no loss on PPL or BLEU score ( shown in Appendix F ) performance .
+For example , maxratio is reduced by 73.7 % and Ent - 3 is increased by 149 % for Switchboard data .
+Further , consistent improvement is achieved when a smaller r thres is used .
+However , sample quality will decrease ( becoming too long or ungrammatical ) when r thres is too small .
+The reason could be that when too much diversity is asked for , the model will go to extremes to provide diversity , resulting in degradation of sample quality .
+Comparing to MMI , note that although on Switchboard / Opensubtitles MMI gives higher entropy , the max-ratio is not as low as the negative training result , which is the main focus of our work ( the frequent response problem ) .
+We also find MMIs hyper-parameters are difficult to tune : the working set of hyper-parameters dont transfer well between data-sets .
+Further , for MMI in a lot of configuration tries the model gives ungrammatical output samples ( this is problem is also mentioned in the paper ( Li et al. , 2016 ) ) .
+For the Ubuntu data , we can not even find a configuration that performs better than the baseline model .
+Further , the vanilla GAN approach is not shown to be effective in our experiments .
+The reason could be that despite its discriminative nature , GAN training still feeds " positive " gradient for samples from the model ( eq. ( 11 ) and eq. ( 12 ) in Appendix E ) , which is not enough to prevent the model from generating them .
+We believe additional techniques Li et al. , 2017 ) are needed for the GAN approach to be effective .
+We show some model samples before and after negative training in Table 5 .
+It is shown that negative training effectively discourages boring responses , and response diversity is improved .
+However , one limitation is observed that diversity does not necessarily lead to improvement on the informativeness of the response w.r.t. the input ( sometimes the model generates a completely unrelated response ) .
+More samples for all three data-sets are included in Appendix G .
+To rigorously verify negative training is not getting diversity when sacrificing the sample 's quality , a human evaluation is conducted and results are shown in Table 6 .
+It is observed that negative training wins by a significant margin for all three data-sets .
+This shows that , negative training does not damage the quality of the generated samples .
+Note that the human evaluation does not reflect the diversity of the model , because the raters only rate one response at a time .
+Related Works
+The malicious response problem and the gibbsenum algorithm to find trigger inputs ( He and Glass , 2019 ) originates from a large body of work on adversarial attacks for deep learning models , with continuous input space ( e.g. image classification ) ( Goodfellow et al. , 2014 b ; Szegedy et al. , 2013 ) seq2seq models ) ( Papernot et al. , 2016 ; Samanta and Mehta , 2017 ; Liang et al. , 2018 ; Ebrahimi et al. , 2017 ; Belinkov and Bisk , 2017 ; Chen et al. , 2017 ) .
+" Adversarial attacks " refer to the phenomenon that when an imperceptible perturbation is applied to the input , the output of the model can change significantly ( from correct to incorrect ) .
+The trigger inputs found by the gibbs-enum algorithm , can be regarded as a type of " targeted attack " , in which the attack triggers the model to assign large probability to a specific malicious target sentence .
+Motivated by the works on adversarial attacks , various adversarial training strategies ( Madry et al. , 2017 ; Belinkov and Bisk , 2017 ; Miyato et al. , 2016 ) have been proposed to make trained models more robust against those attacks .
+During adversarial training , the model is fed with adversarial examples and the correct labels .
+The negative training framework considered in this work differs from adversarial training in that , instead of asking the model to " do the right thing " ( referred to as " positive training " in this work ) , the model is trained to " not do the wrong thing " .
+To the best of our knowledge , this is the first work investigating the concept of negative training for dialogue response models , and the first proposed solution for the malicious response problem .
+The malicious target list used in this work is very similar to the one used in ( He and Glass , 2019 ) .
+We propose to add a test target list to test the generalization of negative training .
+Further , we show that the training list can be effectively augmented by utilizing a paraphrase model .
+In this work , we propose a definition for the frequent response problem , as a sub-problem of the generic response problem ( Li et al. , 2016 ) .
+Much research work has devoted to alleviate the generic response problem in end-to - end dialogue response generation , ( Li et al. , 2016 ) use the maximal mutual information ( MMI ) objective , and propose to utilize an auxiliary LM to penalize the generic response during decoding .
+Closely related to this work , sophisticated training frameworks based on GAN Li et al. , 2017 ) have also been shown to be effective , where techniques such as variational information maximization or reward for every generation step ( REGS ) are proposed to improve GAN training .
+However , in our experiments it is shown that a vanilla GAN approach gives unsatisfactory results .
+Whether negative training 11 is complementary to these frameworks is worth investigating in future work .
+Finally , note that the concept of negative training in this work is very different to the negative samples in word2vec training ( Mikolov et al. , 2013 ) .
+The negative samples in word2vec training are used to prevent the training from being trivial , and is usually chosen randomly .
+In this work , the negative samples are carefully chosen to exhibit some particular undesirable behavior of the model , and is then used to correct such behavior .
+Conclusion
+In this work , we propose the negative training framework to correct undesirable behaviors of a trained neural dialogue response generator .
+The algorithm involves two major steps , first input-output pairs that exhibit bad behavior are identified , and then are used for fine-tuning the model as negative training examples .
+We also show that negative training can be derived from an overall objective ( eq. ( 2 ) ) to minimize the expected risk of undesirable behaviors .
+In our experiments , we apply negative training to the malicious response problem and the frequent response problem and get significant improvement for both problems .

@@ -1,0 +1,160 @@
+title
+On Exposure Bias , Hallucination and Domain Shift in Neural Machine Translation
+abstract
+The standard training algorithm in neural machine translation ( NMT ) suffers from exposure bias , and alternative algorithms have been proposed to mitigate this .
+However , the practical impact of exposure bias is under debate .
+In this paper , we link exposure bias to another well - known problem in NMT , namely the tendency to generate hallucinations under domain shift .
+In experiments on three datasets with multiple test domains , we show that exposure bias is partially to blame for hallucinations , and that training with Minimum Risk Training , which avoids exposure bias , can mitigate this .
+Our analysis explains why exposure bias is more problematic under domain shift , and also links exposure bias to the beam search problem , i.e. performance deterioration with increasing beam size .
+Our results provide a new justification for methods that reduce exposure bias : even if they do not increase performance on in- domain test sets , they can increase model robustness to domain shift .
+Introduction Neural Machine Translation ( NMT ) has advanced the state of the art in MT ( Sutskever et al. , 2014 ; Bahdanau et al. , 2015 ; Vaswani et al. , 2017 ) , but is susceptible to domain shift .
+Koehn and Knowles ( 2017 ) consider out - of- domain translation one of the key challenges in NMT .
+Such translations may be fluent , but completely unrelated to the input ( hallucinations ) , and their misleading nature makes them particularly problematic .
+We hypothesise that exposure bias ( Ranzato et al. , 2016 ) , a discrepancy between training and inference , makes this problem worse .
+Specifically , training with teacher forcing only exposes the model to gold history , while previous predictions during inference may be erroneous .
+Thus , the model trained with teacher forcing may over-rely on previously predicted words , which would exacerbate error propagation .
+Previous work has sought to reduce exposure bias in training Ranzato et al. , 2016 ; Shen et al. , 2016 ; Wiseman and Rush , 2016 ; Zhang et al. , 2019 ) .
+However , the relevance of error propagation is under debate :
+Wu et al . ( 2018 ) argue that its role is overstated in literature , and that linguistic features explain some of the accuracy drop at higher time steps .
+Previous work has established a link between domain shift and hallucination in NMT ( Koehn and Knowles , 2017 ; M?ller et al. , 2019 ) .
+In this paper , we will aim to also establish an empirical link between hallucination and exposure bias .
+Such a link will deepen our understanding of the hallucination problem , but also has practical relevance , e.g. to help predicting in which settings the use of sequence - level objectives is likely to be helpful .
+We further empirically confirm the link between exposure bias and the ' beam search problem ' , i.e. the fact that translation quality does not increase consistently with beam size ( Koehn and Knowles , 2017 ; Stahlberg and Byrne , 2019 ) .
+We base our experiments on German ?
+English IWSLT '14 , and two datasets used to investigate domain robustness by M?ller et al . ( 2019 ) : a selection of corpora from OPUS ( Lison and Tiedemann , 2016 ) for German ?
+English , and a low-resource German ?
+Romansh scenario .
+We experiment with Minimum Risk Training ( MRT ) ( Och , 2003 ; Shen et al. , 2016 ) , a training objective which inherently avoids exposure bias .
+Our experiments show that MRT indeed improves quality more in out - of- domain settings , and reduces the amount of hallucination .
+Our analysis of translation uncertainty also shows how the MLE baseline over-estimates the probability of random translations at all but the initial time steps , and how MRT mitigates this problem .
+Finally , we show that the beam search problem is reduced by MRT .
+Minimum Risk Training
+The de-facto standard training objective in NMT is to minimize the negative log-likelihood L ( ? ) of the training data D 1 : L ( ? ) = ( x, y ) ? D |y | t=1 ? log P ( y t |x , y <t ; ? ) ( 1 ) where x and y are the source and target sequence , respectively , y t is the t th token in y , and y <t denotes all previous tokens .
+MLE is typically performed with teacher forcing , where y <t are groundtruth labels in training , which creates a mismatch to inference , where y <t are model predictions .
+Minimum Risk Training ( MRT ) is a sequencelevel objective that avoids this problem .
+Specifically , the objective function of MRT is the expected loss ( risk ) with respect to the posterior distribution : R ( ? ) = ( x,y ) ? D ?Y( x ) P ( ?|x ; ? ) ? ( ? , y ) ( 2 ) in which the loss ? ( ? , y ) indicates the discrepancy between the gold translation y and the model prediction ?.
+Due to the intractable search space , the posterior distribution Y( x ) is approximated by a subspace S( x ) by sampling a certain number of candidate translations , and normalizing : P ( ?|x ; ? , ? ) = P ( ?|x ; ? ) ? y ?S( x ) P ( y |x ; ? ) ? ( 3 ) where ? is a hyperparameter to control the sharpness of the subspace .
+Based on preliminary results , we use random sampling to generate candidate translations , and following Edunov et al . ( 2018 ) , do not add the reference translation to the subspace .
+Experiments
+Data
+To verify the effectiveness of our MRT implementation on top of a strong Transformer baseline ( Vaswani et al. , 2017 ) , we first conduct experiments on IWSLT '14 German ?
+English ( DE?EN ) ( Cettolo et al. , 2014 ) , which consists of 180 000 sentence pairs .
+We follow previous work for data splits ( Ranzato et al. , 2016 ; Edunov et al. , 2018 ) .
+For experiments with domain shift , we use data sets and preprocessing as M?ller et al . ( 2019 ) 2 . For DE?EN , data comes from OPUS ( Lison and Tiedemann , 2016 ) , and is comprised of five domains : medical , IT , law , koran and subtitles .
+We use medical for training and development , and report results on an in- domain test set and the four other domains ( out - of- domain ; OOD ) .
+German ?
+Romansh ( DE?RM ) is a low-resource language pair where robustness to domain shift is of practical relevance .
+The training data is from the Allegra corpus ( Scherrer and Cartoni , 2012 ) ( law domain ) with 100 000 sentence pairs .
+The test domain are blogs , using data from Convivenza 3 .
+We have access to 2000 sentences for development and testing , respectively , in each domain .
+We tokenise and truecase data sets with Moses ( Koehn et al. , 2007 ) , and use shared BPE with 32 000 units ( Sennrich et al. , 2016 ) .
+Model
+We implement 4 MRT in the Nematus toolkit ( Sennrich et al. , 2017 ) .
+All our experiments use the Transformer architecture ( Vaswani et al. , 2017 ) . Following Edunov et al. ( 2018 ) , we use 1 - BLEU smooth ( Lin and Och , 2004 ) as the MRT loss .
+Models are pre-trained with the token - level objective MLE and then fine-tuned with MRT .
+Hyperparameters mostly follow previous work ( Edunov et al. , 2018 ; M?ller et al. , 2019 ) ; for MRT , we conduct limited hyperparameter search on the IWSLT '14 development set , including learning rate , batch size , and the sharpness parameter ?.
+We set the number of candidate translations for MRT to 4 to balance effectiveness and efficiency .
+Detailed hyperparameters are reported in the Appendix .
+Evaluation
+For comparison to previous work , we report lowercased , tokenised BLEU ( Papineni et al. , 2002 ) with multi-bleu.perl for IWSLT '14 , and cased , detokenised BLEU with SacreBLEU ( Post , 2018 ) 5 otherwise .
+For settings with domain shift , we report average and standard deviation of 3 independent training runs to account for optimizer instability .
+The manual evaluation was performed by two native speakers of German who completed bilin- ( Edunov et al. , 2018 ) 32.8 ( + 0.6 ) Transformer ( MLE ) ( Wu et al. , 2019 ) 34.4 DynamicConv ( MLE ) ( Wu et al. , 2019 ) gual ( German / English ) high school or University programs .
+We collected ?3600 annotations in total , spread over 12 configurations .
+We ask annotators to evaluate translations according to fluency and adequacy .
+For fluency , the annotator classifies a translation as fluent , partially fluent or not fluent ; for adequacy , as adequate , partially adequate or inadequate .
+We report kappa coefficient ( K ) ( Carletta , 1996 ) for inter-annotator and intra-annotator agreement in Table 1 , and assess statistical significance with Fisher 's exact test ( two -tailed ) .
+Results
+Table 2 shows results for IWSLT '14 .
+We compare to results by Edunov et al . ( 2018 ) , who use a convolutional architecture ( Gehring et al. , 2017 ) , and Wu et al . ( 2019 ) , who report results with Transfomerbase and dynamic convolution .
+With 34.7 BLEU , our baseline is competitive .
+We observe an improvement of 0.5 BLEU from MRT , comparable to Edunov et al . ( 2018 ) , although we start from a stronger baseline ( + 2.5 BLEU ) .
+Table 3 shows results for data sets with domain shift .
+To explore the effect of label smoothing ( Szegedy et al. , 2016 ) , we train baselines with and without label smoothing .
+MLE with label smoothing performs better by itself , and we also found MRT to be more effective on top of the initial model with label smoothing .
+For DE?EN , MRT increases average OOD BLEU by 0.8 compared to the MLE baseline with label smoothing ; for DE ?
+RM the improvement is 0.7 BLEU .
+We note that MRT does not consistently improve in- domain performance , which is a first indicator that exposure bias may be more problematic under domain shift .
+Our OOD results lag slightly behind those of M?ller et al . ( 2019 ) , but note that the techniques employed by them , namely reconstruction ( Tu et al. , 2017 ; Niu et al. , 2019 ) , subword regularization ( Kudo , 2018 ) , and noisy channel modelling ( Li and Jurafsky , 2016 ) are orthogonal to MRT .
+We leave the combination of these approaches to future work .
+Analysis BLEU results indicate that MRT can improve domain robustness .
+In this section , we report on additional experiments to establish more direct links between exposure bias and domain robustness , hallucination , and the beam search problem .
+Experiments are performed on DE?EN OPUS data .
+Hallucination
+We manually evaluate the proportion of hallucinated translations on out-of- domain and in- domain test sets .
+We follow the definition and evaluation by M?ller et al . ( 2019 ) , considering a translation a hallucination if it is ( partially ) fluent , but unrelated in content to the source text ( inadequate ) .
+We report the proportion of such hallucinations for each system .
+Results in Table 4 confirm that hallucinations are much more pronounced in out - of- domain test sets ( 33 - 35 % ) than in in - domain test sets ( 1 - 2 % ) .
+MRT reduces the proportion of hallucinations on out - of- domain test sets ( N=500 for each system ; reductions statistically significant at p < 0.05 ) and improves BLEU .
+Note that the two metrics do not correlate perfectly : MLE with label smoothing has higher BLEU ( + 1 ) than MRT based on MLE without label smoothing , but a similar proportion of hallucinations .
+This indicates that label smoothing increases translation quality in other aspects , while MRT has a clear effect on the number of hallucinations , reducing it by up to 21 % ( relative ) .
+A closer inspection of segments where the MLE system was found to hallucinate shows that some segments were scored higher in adequacy with MRT , others lower in fluency .
+One example for each case is shown in Table 5 .
+Even the example where MRT was considered disfluent and inadequate actually shows an attempt to cover the source sentence : the source word ' Ableugner ' ( denier ) is ( M?ller et al. , 2019 ) 61.5 11.7 52.5 18.9 NMT +RC+SR +NC ( M?ller et al. , 2019 ) mistranslated into ' dleugner ' .
+We consider this preferable to producing a complete hallucination .
+Uncertainty Analysis
+Inspired by , we analyse the model 's uncertainty by computing the average probability at each time step across a set of sentences .
+Besides the reference translations , we also consider a set of ' distractor ' translations , which are random sentences from the in-domain test set which match the corresponding reference translation in length .
+In Figure 1 , we show out - of- domain results for an MLE model and multiple checkpoints of MRT fine-tuning .
+The left two graphs show probabilities for references and distractors , respectively .
+The right-most graph shows a direct comparison of probabilities for references and distractors for the MLE baseline and the final MRT model .
+The MLE baseline assigns similar probabilities to tokens in the references and the distractors .
+Only for the first time steps is there a clear preference for the references over the ( mostly random ! ) distractors .
+This shows that error propagation is a big risk : should the model make a wrong prediction initially , this is unlikely to be penalised in later time steps .
+MRT tends to increase the model 's certainty at later time steps 6 , but importantly , the increase is sharper for the reference translations than for the distractors .
+The direct comparison shows a widening gap in certainty between the reference and distractor sentences .
+7
+In other words , producing a hallucination will incur a small penalty at each time step ( compared to producing the reference ) , presumably due to a higher reliance on the source signal , lessening the risk of error propagation and hallucinations .
+Our analysis shows similar trends on in-domain references .
+However , much higher probabilities are assigned to the first few tokens of the references than to the distractors .
+Hence , it is much less likely that a hallucination is kept in the beam , or will overtake a good translation in overall probability , reducing the practical impact of the model 's overreliance on its history .
+8
+Beam Size Analysis
+Figure 1 shows that with MLE , distractor sentences are assigned lower probabilities than the references at the first few time steps , but are assigned similar , potentially even higher probabilities at later time steps .
+This establishes a connection between exposure bias and the beam search problem , i.e. the problem that increasing the search space can lead to worse model performance .
+9
+With larger beam size , it is more likely that hallucinations survive pruning at the first few time steps , and with high probabilities assigned to them at later time steps , there is a chance that they become the top-scoring translation .
+We investigate whether the beam search problem is mitigated by MRT .
+In Table 6 , we report OOD BLEU and the proportion of hallucinations with beam sizes of 1 , 4 and 50 .
+While MRT does not eliminate the beam search problem , performance drops less steeply as beam size increases .
+With beam size 4 , our MRT models outperform the MLE baseline by 0.5- 0.8 BLEU ; with beam size 50 , this difference grows to 0.6- 1.5 BLEU .
+Our manual evaluation ( N=200 for each system for beam size 1 and 50 ) shows that the proportion of hallucinations increases with beam size , and that MRT consistently reduces the proportion by 11 - 21 % ( relative ) .
+For the system with label smoothing , the relative increase in hallucinations with increasing beam size is also smaller with MRT ( + 33 % ) than with MLE ( + 44 % ) .
+9
+The beam search problem has previously been linked to length bias ( Yang et al. , 2018 ; Murray and Chiang , 2018 ) and the copy mode .
+We consider hallucinations another result of using large search spaces with MLE models .
+Conclusions
+Our results and analysis show a connection between the exposure bias due to MLE training with teacher forcing and several well - known problems in neural machine translation , namely poor performance under domain shift , hallucinated translations , and deteriorating performance with increasing beam size .
+We find that Minimum Risk Training , which does not suffer from exposure bias , can be useful even when it does not increase performance on an in- domain test set : it increases performance under domain shift , reduces the number of hallucinations substantially , and makes beam search with large beams more stable .
+Our findings are pertinent to the academic debate how big of a problem exposure bias is in practice - we find that this can vary substantially depending on the dataset - , and they provide a new justification for sequence - level training objectives that reduce or eliminate exposure bias .
+Furthermore , we believe that a better understanding of the links between exposure bias and well -known translation problems will help practitioners decide when sequence - level training objectives are especially promising , for example in settings where the test domain is unknown , or where hallucinations are a common problem .
+7 : Configurations of NMT systems used to pre-train and fine-tune over three datasets .
+Note in general hyperparameters , the items in brackets denote the options that will be used in MRT fine-tuning .
+A Appendix Figure 1 : 1 Figure 1 : Per-token probability of out -of- domain reference translations and in-domain distractors ( first two graphs share legend ) .
+Rightmost plot shows direct comparison for MLE baseline and final MRT model .
+DE?EN OPUS .
+Figure 2 : Figure 3 : 23 Figure 2 : Per-token probability of out -of- domain reference translations and in-domain distractors for different checkpoints in MRT training , showing a widening gap between references and distractors .
+DE?EN OPUS .
+Table 2 : 2 Results for IWSLT '14 DE ?EN with MLE and MRT ( in brackets , improvement over MLE ) .
+Table 3 : 3 Average BLEU and standard deviation on in- domain and out - of- domain test sets for models trained on OPUS ( DE?EN ) and Allegra ( DE? RM ) .
+RC : reconstruction ; SR : subword regularization , NC : noisy channel .
+% hallucinations ( BLEU ) system out -of- domain in - domain MLE w/o LS 35 % ( 9.7 ) 2 % ( 58.3 ) + MRT 29 % ( 10.2 ) - MLE w/ LS 33 % ( 11.2 ) 1 % ( 58.9 ) + MRT 26 % ( 12.0 ) -
+Table 4 : 4 Proportion of hallucinations and BLEU on outof-domain and in- domain test sets .
+DE?EN OPUS .
+source Wir haben ihn gefunden .
+reference
+We found him .
+MLE
+Do not pass it .
+MRT
+We have found it .
+sourceSo h?re nicht auf die Ableugner .
+reference
+So hearken not to those who deny ( the Truth ) .
+MLEDo not drive or use machines .
+MRTDo not apply to dleugner .
+Table 5 : 5 Out-of-domain translation examples .
+MLE hallucinates in both examples ; MRT was rated more adequate in top example , less fluent in bottom one .
+Table 6 : 6 Average OOD BLEU and proportion of hallucinations with different beam sizes k. DE?EN OPUS .
+This is equivalent to maximizing the likelihood of the data , hence Maximum Likelihood Estimation ( MLE ) .2 https://github.com/ZurichNLP/ domain-robustness
+The uncertainty of the baseline is due to label smoothing .7
+For intermediate checkpoints , see Appendix , Figure2.8 Figures are shown in the Appendix ( Figure3 ) .

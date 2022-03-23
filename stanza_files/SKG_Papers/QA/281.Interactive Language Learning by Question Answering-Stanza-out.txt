@@ -1,0 +1,408 @@
+title
+Interactive Language Learning by Question Answering
+abstract
+Humans observe and interact with the world to acquire knowledge .
+However , most existing machine reading comprehension ( MRC ) tasks miss the interactive , information - seeking component of comprehension .
+Such tasks present models with static documents that contain all necessary information , usually concentrated in a single short substring .
+Thus , models can achieve strong performance through simple word - and phrase - based pattern matching .
+We address this problem by formulating a novel text - based question answering task : Question Answering with Interactive Text ( QAit ) 1 .
+In QAit , an agent must interact with a partially observable text - based environment to gather information required to answer questions .
+QAit poses questions about the existence , location , and attributes of objects found in the environment .
+The data is built using a text - based game generator that defines the underlying dynamics of interaction with the environment .
+We propose and evaluate a set of baseline models for the QAit task that includes deep reinforcement learning agents .
+Experiments show that the task presents a major challenge for machine reading systems , while humans solve it with relative ease .
+Introduction
+The research community has defined the task of machine reading comprehension ( MRC ) to teach machines to read and understand text .
+In most MRC tasks , given a knowledge source ( usually a text document ) and a question on its content , a model is required to answer the question either by pointing to words in the source or by generating a text string .
+Recent years have seen a flourishing of MRC works , including the release of numerous ( 2016 ) show that a simple Information Retrieval method can achieve high sentence - level accuracy on SQuAD .
+Second , the information that supports predicting the answer from the source is often fully observed : the source is static , sufficient , and presented in its entirety .
+This does not match the information - seeking procedure that arises in answering many natural questions ( Kwiatkowski et al. , 2019 ) , nor can it model the way humans observe and interact with the world to acquire knowledge .
+Third , most existing MRC studies focus on declarative knowledge - the knowledge of facts or events that can be stated explicitly ( i.e. , declared ) in short text snippets .
+Given a static description of an entity , declarative knowledge can often be extracted straightforwardly through pattern matching .
+For example , given the EMNLP website text , the conference deadline can be extracted by matching against a date mention .
+This focus overlooks another essential category of knowledgeprocedural knowledge .
+Procedural knowledge entails executable sequences of actions .
+These might comprise the procedure for tying ones shoes , cooking a meal , or gathering new declarative knowledge .
+The latter will be our focus in this work .
+As an example , a more general way to determine EMNLP 's deadline is to open a browser , head to the website , and then match against the deadline mention ; this involves executing several mouse and keyboard interactions .
+In order to teach MRC systems procedures for question answering , we propose a novel task : Question Answering with Interactive Text ( QAit ) .
+Given a question q ?
+Q , rather than presenting a model with a static document d ?
+D to read , QAit requires the model to interact with a partially observable environment e ?
+E over a sequence of turns .
+The model must collect and aggregate evidence as it interacts , then produce an answer a to q based on its experience .
+In our case , the environment e is a text - based game with no explicit objective .
+The game places an agent in a simple modern house populated by various everyday objects .
+The agent may explore and manipulate the environment by issuing text commands .
+An example is shown in Table 1 .
+We build a corpus of related text - based games using a generator from C?t? et al. ( 2018 ) , which enables us to draw games from a controlled distribution .
+This means there are random variations across the environment set E , in map layouts and in the existence , location , and names of objects , etc .
+Consequently , an agent cannot answer questions merely by memorizing games it has seen before .
+Because environments are partially observable ( i.e. , not all necessary information is available at a single turn ) , an agent must take a sequence of decisions - analogous to following a search and reasoning procedure - to gather the required information .
+The learning target in QAit is thus not the declarative knowledge a itself , but the procedure for arriving at a by collecting evidence .
+The main contributions of this work are as follows : 1 . We introduce a novel MRC dataset , QAit , which focuses on procedural knowledge .
+In it , an agent interacts with an environment to discover the answer to a given question .
+2 . We introduce to the MRC domain the practice of generating training data on the fly .
+We sample training examples from a distribution ; hence , an agent is highly unlikely to encounter the same training example more than once .
+This helps to prevent overfitting and rote memorization .
+3 . We evaluate a collection of baseline agents on QAit , including state - of - the - art deep reinforcement learning agents and humans , and discuss limitations of existing approaches .
+2 The QAit Dataset
+Overview
+We make the question answering problem interactive by building text - based games along with relevant question - answer pairs .
+We use TextWorld ( C?t? et al. , 2018 ) to generate these games .
+Each interactive environment is composed of multiple locations with paths connecting them in a randomly drawn graph .
+Several interactable objects are scattered across the locations .
+A player sends text commands to interact with the world , while the game 's interpreter only recognizes a small subset of all possible command strings ( we call these the valid commands ) .
+The environment changes state in response to a valid command and returns a string of text feedback describing the change .
+The underlying game dynamics arise from a set of objects ( e.g. , doors ) that possess attributes ( e.g. , Note that player interactions might affect an object 's attributes .
+For instance , cooking a piece of raw chicken on the stove with a frying pan makes it edible , transforming it into fried chicken .
+In each game , the existence of objects , the location of objects , and their names are randomly sampled .
+Depending on the task , a name can be a made - up word .
+However , game dynamics are constant across all games - e.g. , there will never be a drinkable heat source .
+Text in QAit is generated by the TextWorld engine according to English templates , so it does not express the full variation of natural language .
+However , taking inspiration from the bAbI tasks ( Weston et al. , 2015 ) , we posit that controlled simplifications of natural language are useful for isolating more complex reasoning behaviors .
+Available Information
+At every game step , the environment returns an observation string describing the information visible to the agent , as well as the command feedback , which is text describing the response to the previously issued command .
+Optional Information :
+Since we have access to the underlying state representation of a generated game , various optional information can be made available .
+For instance , it is possible to access the subset of commands that are valid at the current game step .
+Other available metainformation includes all objects that exist in the game , plus their locations , attributes , and states .
+During training , one is free to use any optional information to guide the agent 's learning , e.g. , to shape the rewards .
+However , at test time , only the observation string and the command feedback are available .
+Question Types and Difficulty Levels Using the game information described above , we can generate questions with known ground truth answers for any given game .
+Question Types
+For this initial version of QAit we consider three straightforward question types .
+Location : ( " Where is the can of soda ? " )
+Given an object name , the agent must answer with the name of the container that most directly holds the object .
+This can be either a location , a holder within a location , or the player 's inventory .
+For example , if the can of soda is in a fridge which is in the kitchen , the answer would be " fridge " .
+Existence : ( " Is there a raw egg in the world ? " )
+Given the name of an object , the agent must learn to answer whether the object exists in the game environment e. Attribute : ( " Is ghargh edible ? " )
+Given an object name and an attribute , the agent must answer with the value of the given attribute for the given object .
+Note that all attributes in our dataset are binary - valued .
+To discourage an agent from simply memorizing attribute values given an object name ( Anand et al. , 2018 ) ( e.g. , apples are always edible so agents can answer without interaction ) , we replace object names with unique , randomly drawn made - up words for this question type .
+Difficulty Levels
+To better analyze the limitations of learning algorithms and to facilitate curriculum learning approaches , we define two difficulty levels based on the environment layout .
+Fixed Map : The map ( location names and layout ) is fixed across games .
+Random objects are distributed across the map in each game .
+Statistics for this game configuration are shown in Table 3 . Random Map : Both map layouts and objects are randomly sampled in each game .
+Action Space
+We describe the action space of QAit by splitting it into two subsets : information - gathering actions and question - answering actions .
+Information Gathering
+The player generates text commands word by word to navigate through and interact with the environment .
+On encountering an object , the player must interact with it to discover its attributes .
+To succeed , an agent must map the feedback received from the environment , in text , to a useful state representation .
+This is a form of reading comprehension .
+To make the QAit task more tractable , all text commands are triplets of the form {action , modifier , object } ( e.g. , open wooden door ) .
+When there is no ambiguity , the environment understands commands without modifiers ( e.g. , eat apple will result in eating the " red apple " provided it is the only apple in the player 's inventory ) .
+We list all supported commands in Appendix C .
+Each game provides a set of three lexicons that divide the full vocabulary into actions , modifiers , and objects .
+Statistics are shown in Table 3 .
+A model can generate a command at each game step by , e.g. , sampling from a probability distribution induced over each lexicon .
+This reduces the size of the action space compared to a sequential , freeform setting where a model can pick any vocabulary word at any generation step .
+An agent decides when to stop interacting with the environment to answer the question by generating a special wait command 2 .
+However , the number of interaction steps is limited : we use 80 steps in all experiments .
+When an agent has exhausted its available steps , the game terminates and the agent is forced to answer the question .
+Question Answering Currently , all QAit answers are one word .
+For existence and attribute questions , the answer is either yes or no ; for loca-tion questions , the answer can be any word in an observation string .
+Evaluation Settings and Metrics
+We evaluate an agent 's performance on QAit by its accuracy in answering questions .
+We propose three distinct settings for the evaluation .
+Solving Training Games :
+We use QA accuracy during training , averaged over a window of training time , to evaluate an agent 's training performance .
+We provide 5 training sets for this purpose with [ 1 , 2 , 10 , 100 , 500 ] games , respectively .
+Each game in these sets is associated with multiple questions .
+Unlimited Games :
+We implement a setup where games are randomly generated on the fly during training , rather than selected from a finite set as above .
+The distribution we draw from is controlled by a few parameters : number of locations , number of objects , type of map , and a random seed .
+From the fixed map game distribution described in Table 3 , more than 10 40 different games can be drawn .
+This means that a game is unlikely to be seen more than once during training .
+We expect that only a model with strong generalization capabilities will perform well in this setting .
+Zero-shot Evaluation :
+For each game setting and question type , we provide 500 held out games that are never seen during training , each with one question .
+These are used to benchmark generalization in models in a reproducible manner , no matter the training setting .
+This set is analogous to the test set used in traditional supervised learning tasks , and can be used in conjunction with any training setting .
+Baseline Models
+Random Baseline
+Our simplest baseline does not interact with the environment to answer questions ; it samples an answer word uniformly from the QA action space ( yes and no for attribute and existence questions ; all possible object names in the game for location questions ) .
+Human Baseline
+We conducted a study with 21 participants to explore how humans perform on QAit in terms of QA accuracy .
+Participants played games they had not seen previously from a set generated by sampling 4 game-question pairs for each question type and difficulty level .
+The human results presented below always represent an average over 3 participants .
+QA-DQN
+We propose a neural baseline agent , QA - DQN , which takes inspiration from the work of Narasimhan et al . ( 2015 ) and Yu et al . ( 2018 ) .
+The agent consists of three main components : an encoder , a command generator , and a question answerer .
+More precisely , at game step t , the encoder takes observation o t and question q as input to generate hidden representations .
+3
+In the information gathering phase , the command generator generates Q-values for all action , modifier , and object words , with rankings of these Q-values used to generate text commands c t .
+At any game step , the agent may decide to terminate information gathering and answer the question ( or it is forced to do so if it has used up all of its moves ) .
+The question answerer uses the hidden representations at the final information - gathering step to generate a probability distribution over possible answers .
+An overview of this architecture is shown in Figure 1 and full details are given in Appendix A .
+Reward Shaping
+We design the following two rewards to help QA - DQN learn more efficiently ; both used for training the command generator .
+Note that these rewards are part of the design of QA - DQN , but are not used to evaluate its performance .
+Question answering accuracy is the only evaluation metric for QAit tasks .
+Sufficient Information Bonus :
+To tackle QAit tasks , an intelligent agent should know when to stop interacting - it should stop as soon as it has gathered enough information to answer the question correctly .
+For guiding the agent to learn this behavior , we give an additional reward when the agent stops with sufficient information .
+Specifically , assuming the agent decides to stop at game step k : ?
+Location : reward is 1 if the entity mentioned in the question is a sub-string of o k , otherwise it is 0 .
+This means whenever an agent observes the entity , it has sufficient information to infer the entity 's location .
+?
+Existence : when the correct answer is yes , a reward of 1 is assigned only if the entity is a sub-string of o k .
+When the correct answer is no , a reward between 0 and 1 is given .
+The reward value corresponds to the exploration coverage of the environment , i.e. , how many locations the agent has visited , and how many containers have been opened .
+?
+Attribute : we heuristically define a set of conditions to verify each attribute , and reward the agent based on its fulfilment of these conditions .
+For instance , determining if an object X is sharp corresponds to checking the outcome of a cut command ( slice , chop , or dice ) while holding the object X and a cuttable food item .
+If the outcome is successful then the object X is sharp otherwise it is not .
+Alternatively , if trying to take the object X results in a failure , then we can deduces it is not sharp as all sharp objects are portable .
+The list of conditions for each attribute used in our experiments is shown in Appendix D. Episodic Discovery Bonus : Following Yuan et al. ( 2018 ) , we use an episodic counting reward to encourage the agent to discover unseen game states .
+The agent is assigned a positive reward whenever it encounters a new state ( in text - based games , states are simply represented as strings ) : r( o t ) = 1.0 if n( o t ) = 1 , 0.0 otherwise , where n( ? ) is reset to zero after each episode .
+Training Strategy
+We apply different training strategies for the command generator and the question answerer .
+Command Generation :
+Text - based games are sequential decision-making problems that can be described naturally by partially observable Markov decision processes ( POMDPs ) ( Kaelbling et al. , 1998 ) .
+We use the Q-Learning ( Watkins and Dayan , 1992 ) paradigm to train our agent .
+Specifically , following Mnih et al. ( 2015 ) , our Q-value function is approximated with a deep neural network .
+Beyond vanilla DQN , we also apply several extensions , such as Rainbow ( Hessel et al. , 2017 ) , to our training process .
+Details are provided in Section 4 . Question Answering : During training , we push all question answering transitions ( observation strings when interaction stops , question strings , ground - truth answers ) into a replay buffer .
+After every 20 game steps , we randomly sample a mini-batch of such transitions from the replay buffer and train the question answerer with supervised learning ( e.g. , using negative log-likelihood ( NLL ) loss ) .
+Experimental Results
+In this section , we report experimental results by difficulty levels .
+All random baseline performance values are averaged over 100 different runs .
+In the following subsections , we use " DQN " , " DDQN " and " Rainbow " to indicate QA - DQN trained with vanilla DQN , Double DQN with prioritized experience replay , and Rainbow , respectively .
+Training curves shown in the following figures represent a sliding - window average with a window size of 500 .
+Moreover , each curve is the average of 3 random seeds .
+For evaluation , we selected the model with the random seed yielding the highest training accuracy to compute its accuracy on the test games .
+Due to space limitations , we only report some key results here .
+See Appendix E for the full experimental results .
+Fixed Map Figure 2 shows the training curves for the neural baseline agents when trained using 10 games , 500 games and the " unlimited " games settings .
+Table 4 reports their zero-shot test performance .
+From Figure 2 , we observe that when training data size is small ( e.g. , 10 games ) , our baseline agent trained with all the three RL methods successfully master the training games .
+Vanilla DQN and DDQN are particularly strong at memorizing the training games .
+When training on more games ( e.g. , 500 games and unlimited games ) , in which case memorization is more difficult , Rain - bow agents start to show its superiority - it has similar accuracy as the other two methods , and even outperforms them in existence question type .
+From Table 4 we see similar observation , when trained on 10 games and 500 games , DQN and DDQN performs better on test games but on the unlimited games setting , rainbow agent performs as good as them , and sometimes even better .
+We can also observe that our agents fail to generalize on attribute questions .
+In unlimited games setting as shown in Figure 2 , all three agents produce an accuracy of 0.5 ; in zero-shot test as shown in Table 4 , no agent performs significantly better than random .
+This suggests the agents memorize gamequestion - answer triples when data size is small , and fail to do so in unlimited games setting .
+This can also be observed in Appendix E , where in attribute question experiments , the training accuracy is high , and sufficient information bonus is low ( even close to 0 ) .
+Random Map Figure 3 shows the training curves for the neural baseline agents when trained using 10 games , 500 games and " unlimited " games settings .
+The trends of our agents ' performance on random map games are consistent with on fixed map games .
+However , because there exist easier games ( as listed in Table 3 , number of rooms is sampled between 2 and 12 ) , agents show better training performance in such setting than fixed map setting in general .
+Interestingly , we observe one of the DQN agent starts to learn in the unlimited games , attribute question setting .
+This may be because in games with smaller map size and less objects , there is a higher chance to accomplish some sub-tasks ( e.g. , it is easier to find an object when there are less rooms ) , and the agent learn such skills and apply them to similar tasks .
+Unfortunately , as shown in Table 4 that agent does not perform significantly better than random on test set .
+We expect with more training episodes , the agent can have a better generalization performance .
+Question Answering Given Sufficient Information
+The challenge in QAit is learning the interactive procedure for arriving at a state with the information needed to answer the question .
+We conduct the following experiments on location questions to investigate this challenge .
+Based on the results in Table 4 , we compute an agent 's test accuracy only if it has obtained sufficient information - i.e. , when the sufficient information bonus is 1 .
+Results shown in Table 5 support our assumption that the QA module can learn ( and generalize ) effectively to answer given sufficient information .
+Similarly , experiments show that when objects being asked about are in the current observation , the random baseline 's performance goes up significantly as well .
+We report our baseline agents ' question answering accuracy and sufficient information bonuses on all experiment settings in Appendix E.
+Full Information Setup
+To reframe the QAit games as a standard MRC task , we also designed an experimental setting that eliminates the need to gather information interactively .
+From a heuristic trajectory through the game environment that is guaranteed to observe sufficient information for q , we concatenate all observations into a static " document " d to build a {d , q , a} triplet .
+A model then uses this fully observed document as input to answer the question .
+We split this data into training , validation , and test sets and follow the evaluation protocol for standard supervised MRC tasks .
+We take an offthe-shelf MRC model , Match -LSTM ( Wang and Jiang , 2016 ) , trained with negative log-likelihood loss as a baseline .
+Unsurprisingly , Match -LSTM does fairly well on all 3 question types ( 86.4 , 89.9 and 93.2 test accuracy on location , existence , and attribute questions , respectively ) .
+This implies that without the need to interact with the environment for information gathering , the task is simple enough that a word-matching model can answer questions with 2803 high accuracy .
+Most of these datasets focus on declarative knowledge and are static , with all information fully observable to a model .
+We contend that this setup , unlike QAit , encourages word matching .
+Supporting this contention , several studies highlight empirically that existing MRC tasks require little comprehension or reasoning .
+In Rychalska et al. ( 2018 ) , it was shown that a question 's main verb exerts almost no influence on the answer prediction : in over 90 % of examined cases , swapping verbs for their antonyms does not change a system 's decision .
+Jia and Liang ( 2017 ) show the accuracy of neural models drops from an average of 75 % F 1 score to 36 % F 1 when they manually insert adversarial sentences into SQuAD .
+Interactive Environments
+Several embodied or visual question answering datasets have been presented recently to address some of the problems of interest in our work , such as those of Brodeur et al . ( 2017 ) ; Das et al. ( 2017 ) ; Gordon et al. ( 2017 ) .
+In contrast with these , our purely text - based environment circumvents challenges inherent to modelling interactions between separate data modalities .
+Furthermore , most visual question answering environments only support navigating and moving the camera as interactions .
+In text - based environments , however , it is relatively cheap to build worlds with complex interactions .
+This is because text enables us to model interactions abstractly without the need for , e.g. , a costly physics engine .
+Closely related to QAit is BabyAI ( Chevalier - Boisvert et al. , 2018 ) .
+BabyAI is a gridworld environment that also features constrained language for generating simple home - based scenarios ( i.e. , instructions ) .
+However , observations and actions in BabyAI are not text - based .
+World of Bits ( Shi et al. , 2017 ) is a platform for training agents to interact with the internet to accomplish tasks like flight booking .
+Agents generally do not need to gather information in World of Bits , and the focus is on accomplishing tasks rather than answering questions .
+Information Seeking Information seeking behavior is an important capacity of intelligent systems that has been discussed for many years .
+Kuhlthau ( 2004 ) propose a holistic view of information search as a six-stage process .
+Schmidhuber ( 2010 ) discusses the connection between information seeking and formal notions of fun , creativity , and intrinsic motivation .
+Das et al. ( 2018 ) propose a model that continuously determines all entities ' locations during reading and dynamically updates the associated representations in a knowledge graph .
+Bachman et al. ( 2016 ) propose a collection of tasks and neural methods for learning to gathering information efficiently in an environment .
+To our knowledge , we are the first to consider interactive information - seeking tasks for question answering in worlds with complex dynamics .
+The QAit task was designed such that simple word matching methods do not apply , while more human-like information seeking models are encouraged .
+Discussion and Future Work Monitoring Information Seeking :
+In QAit , the only evaluation metric is question answering accuracy .
+However , the sufficient information bonus described in Section 3.3.1 is helpful for monitoring agents ' ability to gather relevant information .
+We report its value for all experiments in Appendix E .
+We observe that while the baseline agents can reach a training accuracy of 100 % for answering attribute questions when trained on a few games , the sufficient information bonus is close to 0 .
+This is a clear indication that the agent overfits to the question - answer mapping of the games rather than learning how to gather useful information .
+This aligns with our observation that the agent does not perform better than random on the unlimited games setting , because it fails to gather the needed information .
+Challenges in QAit : QAit focuses on learning procedural knowledge from interactive environments , so it is natural to use deep RL methods to tackle it .
+Experiments suggest the dataset presents a major challenge for existing systems , including Rainbow , which set the state of the art on Atari games .
+As a simplified and controllable text - based environment , QAit can drive research in both the RL and language communities , especially where they intersect .
+Until recently , the RL community focused mainly on solving single environments ( i.e. , training and testing on the same game ) .
+Now , we see a shift towards solving multiple games and testing for generalization ( Cobbe et al. , 2018 ; Justesen et al. , 2018 ) .
+We believe QAit serves this purpose .
+Templated Language : As QAit is based on TextWorld , it has the obvious limitation of using templated English .
+However , TextWorld provides approximately 500 human-written templates for describing rooms and objects , so some textual diversity exists , and since game narratives are generated compositionally , this diversity increases along with the complexity of a game .
+We believe simplified and controlled text environments offer a bridge to full natural language , on which we can isolate the learning of useful behaviors like information seeking and command generation .
+Nevertheless , it would be interesting to further diversify the language in QAit , for instance by having human writers paraphrase questions .
+Future Work : Based on our present efforts to tackle QAit , we propose the following directions for future work .
+A structured memory ( e.g. , a dynamic knowledge graph as proposed in Das et al .
+( 2018 ) ; Ammanabrolu and Riedl ( 2019a ) ) could be helpful for explicitly memorizing the places and objects that an agent has observed .
+This is especially useful when an agent must revisit a location or object or should avoid doing so .
+Likewise , a variety of external knowledge could be leveraged by agents .
+For instance , incorporating a pretrained language model could improve command generation by imparting knowledge of word and object affordances .
+In recent work , Hausknecht et al. ( 2019 ) show that pretrained modules together with handcrafted subpolicies help in solving text - based games , while Yin and May ( 2019 ) use BERT ( Devlin et al. , 2018 ) to inject ' weak common sense ' into agents for text - based games .
+Ammanabrolu and Riedl ( 2019 b ) show that knowledge graphs and their associated neural encodings can be used as a medium for domain transfer across text - based games .
+In finite game settings we observed significant overfitting , especially for attribute questions - as shown in Appendix E , our agent achieves high QA accuracy but low sufficient information bonus on the single - game setting .
+Sometimes attributes require long procedures to verify , and thus , we believe that denser rewards would help with this problem .
+One possible solution is to provide intermediate rewards whenever the agent achieves a sub-task .
+A Details of QA-DQN
+Notations
+In this section , we use game step t to denote one round of interaction between an agent with the QAit environment .
+We use o t to denote text observation at game step t , and q to denote question text .
+We use L to refer to a linear transformation .
+Brackets [ ? ; ?] denote vector concatenation .
+A.1 Encoder
+We use a transformer - based text encoder , which consists of an embedding layer , two stacks of transformer blocks ( denoted as encoder transformer blocks and aggregation transformer blocks ) , and an attention layer .
+In the embedding layer , we aggregate both word - and character - level information to produce a vector for each token in text .
+Specifically , word embeddings are initialized by the 300 - dimensional fastText et al. , 2018 ) word vectors trained on Common Crawl ( 600B tokens ) , they are fixed during training .
+Character level embedding vectors are initialized with 32 - dimensional random vectors .
+A convolutional layer with 64 kernels of size 5 is then used to aggregate the sequence of characters .
+We use a max pooling layer on the character dimension , then a multi-layer perceptron ( MLP ) of output size 64 is used to aggregate the concatenation of word - and character - level representations .
+Highway network ( Srivastava et al. , 2015 ) is applied on top of this MLP .
+The resulting vectors are used as input to the encoding transformer blocks .
+Each encoding transformer block consists of a stack of convolutional layers , a self-attention layer , and an MLP .
+In which , each convolutional layer has 64 filters , each kernel 's size is 7 , there are 2 such convolutional layers that share weights .
+In the self-attention layer , we use a block hidden size of 64 , as well as a single head attention mechanism .
+Layernorm and dropout are applied after each component inside the block .
+We add positional encoding into each block 's input .
+We use one layer of such an encoding block .
+At a game step t , the encoder processes text observation o t and question q , context aware encoding h ot ?
+R L o t ?H 1 and h q ?
+R L q ?H
+1 are generated , where L ot and L q denote number of tokens in o t and q respectively , H 1 is 64 .
+Following ( Yu et al. , 2018 ) , we use an context-query attention layer to aggregate the two representations h ot and h q .
+Specifically , the attention layer first uses two MLPs to convert both h ot and h q into the same space , the resulting tensors are denoted as h ? ot ?
+R L o t ?H 2 and h ? q ?
+R L q ?H 2 , in which H 2 is 64 .
+Then , a tri-linear similarity function is used to compute the similarities between each pair of h ? ot and h ?
+q items : S = W [ h ? ot ; h ? q ; h ? ot ? h ? q ] , ( 1 ) where ? indicates element- wise multiplication , W is trainable parameters of size 64 .
+Softmax of the resulting similarity matrix S along both dimensions are computed , this produces S A and S B .
+Information in the two representations are then aggregated by : h oq = [ h ? ot ; P ; h ? ot ? P ; h ? ot ? Q ] , P = S q h ? q , Q = S q S ? ot h ? ot , ( 2 ) where h oq is aggregated observation representation .
+On top of the attention layer , a stack of aggregation transformer blocks is used to further map the observation representations to action representations and answer representations .
+The structure of aggregation transformer blocks are the same as the encoder transformer blocks , except the kernel size of convolutional layer is 5 , and the number of blocks is 3 .
+Let M t ?
+R L o t ?H
+3 denote the output of the stack of aggregation transformer blocks , where H 3 is 64 .
+A.2 Command Generator
+The command generator takes the hidden representations M t as input , it estimates Q-values for all action , modifier , and object words , respectively .
+It consists of a shared Multi-layer Perceptron ( MLP ) and three MLPs for each of the components : R t = ReLU ( L shared ( mean ( M t ) ) , Q t, action =L action ( R t ) , Q t , modif ier =L modifier ( R t ) , Q t, object =L object ( R t ) .
+( 3 )
+In which , the output size of L shared is 64 ; the dimensionalities of the other 3 MLPs are depending on the number of the amount of action , modifier and object words available , respectively .
+The overall Q-value is the sum of the three components : Q t = Q t , action + Q t, modif ier + Q t, object . ( 4 )
+A.3 Question Answerer Similar to ( Yu et al. , 2018 ) , we append an extra stacks of aggregation transformer blocks on top of the aggregation transformer blocks to compute answer positions : U = ReLU ( L 0 [ M t ; M ? t ] ) .
+? = softmax ( L 1 ( U ) ) .
+( 5 ) In which M ? t ?
+R L o t ?H
+3 is output of the extra transformer stack , L 0 , L 1 are trainable parameters with output size 64 and 1 , respectively .
+For location questions , the agent outputs ? as the probability distribution of each word in observation o t being the answer of the question .
+For binary classification questions , we apply an MLP , which takes weighted sum of matching representations as input , to compute a probability distribution p( y ) over both possible answers : D = i ( ?
+i ? M ? t ) , p( y ) = softmax ( L 4 ( tanh ( L 3 ( D ) ) ) .
+( 6 ) Output size of L 3 and L 4 are 64 and 2 , respectively .
+A.4 Deep Q-Learning
+In a text - based game , an agent takes an action a 4 in state s by consulting a state-action value function Q(s , a ) , this value function is as a measure of the action 's expected long -term reward .
+Q-Learning helps the agent to learn an optimal Q(s , a ) value function .
+The agent starts from a random Qfunction , it gradually updates its Q-values by interacting with environment , and obtaining rewards .
+Following Mnih et al. ( 2015 ) , the Q-value function is approximated with a deep neural network .
+We make use of a replay buffer .
+During playing the game , we cache all transitions into the replay buffer without updating the parameters .
+We periodically sample a random batch of transitions from the replay buffer .
+In each transition , we update the parameters ? to reduce the discrepancy between the predicted value of current state Q(s t , a t ) and the expected Q-value given the reward r t and the value of next state max a Q(s t+ 1 , a ) .
+We minimize the temporal difference ( TD ) error , ? : ? = Q( s t , a t ) ? ( r t + ? max a Q( s t + 1 , a ) ) , ( 7 ) in which , ? indicates the discount factor .
+Following the common practice , we use the Huber loss to minimize the TD error .
+For a randomly sampled batch with batch size B , we minimize : L = 1 | B| L ( ? ) , where L ( ? ) = 1 2 ? 2 for |?| ? 1 , |?| ? 1 2 otherwise .
+( 8 ) As described in Section 3.3.1 , we design the sufficient information bonus to teach an agent to stop as soon as it has gathered enough information to answer the question .
+Therefore we assign this reward at the game step where the agent generates wait command ( or it is forced to stop ) .
+It is worth mentioning that for attribute type questions ( considerably the most difficult question type in QAit , where the training signal is very sparse ) , we provide extra rewards to help QA - DQN to learn .
+Specifically , we take a reward similar to as used in location questions : 1.0 if the agent has observed the object mentioned in the question .
+we also use a reward similar to as used in existence questions : the agent is rewarded by the coverage of its exploration .
+The two extra rewards are finally added onto the sufficient information bonus for attribute question , both with coefficient of 0.1 .
+B Implementation Details During training with vanilla DQN , we use a replay memory of size 500,000 .
+We use ?- greedy , where the value of ? anneals from 1.0 to 0.1 within 100,000 episodes .
+We start updating parameters after 1,000 episodes of playing .
+We update our network after every 20 game steps .
+During updating , we use a mini-batch of size 64 .
+We use Adam ( Kingma and Ba , 2014 ) as the step rule for optimization , The learning rate is set to 0.00025 .
+When our agent is trained with Rainbow algorithm , we follow Hessel et al . ( 2017 ) on most of the hyper-parameter settings .
+The four MLPs L shared , L action , L modifier and L object as described in Eqn. 3 are Noisy Nets layers ( Fortunato et al. , 2017 )
+The model is implemented using PyTorch ( Paszke et al. , 2017 ) .
+C Supported Text Commands
+All supported text commands are listed in Table 7 .
+D Heuristic Conditions for Attribute Questions
+Here , we derived some heuristic conditions to determine when an agent has gathered enough information to answer a given attribute question .
+Those conditions are used as part of the reward shaping for our proposed agent ( Section 3.3.1 ) .
+In Table 8 , for each attribute we list all the commands for which their outcome ( pass or fail ) gives enough information to answer the question correctly .
+Also , in order for a command 's outcome to be informative , each command needs to be executed while some state conditions hold .
+For example , to determine if an object is indeed a heat source , the agent needs to try to cook something that is cookable and uncooked while standing next to the given object .
+E Full results
+We provide full results of our agents on fixed map games in 8 : Heuristic conditions for determining whether the agent has enough information to answer a given attribute question .
+We use " object " to refer to the object mentioned in the question .
+Words in italics represents placeholder that can be replaced by any object from the environment that has the appropriate attribute ( e.g. carrot could be used as a cuttable ) .
+The columns Pass and Fail represent how much reward the agent will receive given the corresponding command 's outcome ( resp. success or failure ) .
+NB : cut can mean any of the following commands : Figure 1 : 1 Figure 1 : Overall architecture of our baseline agent .
+Figure 2 : 2 Figure 2 : Training accuracy over episodes on fixed map setup .
+Upper row : 10 games ; middle row : 500 games ; lower row : unlimited games .
+Figure 3 : 3 Figure 3 : Training accuracy on the random map setup .
+Upper row : 10 games ; middle row : 500 games ; lower row : unlimited games .
+Many large-scale machine reading comprehension and question answering datasets have been proposed recently .
+The datasets of Rajpurkar et al . ( 2016 ) ;
+Trischler et al. ( 2016 ) contain crowdsourced questions based on single documents from Wikipedia and CNN news , respectively .
+Nguyen et al. ( 2016 ) ; Joshi et al. ( 2017 ) ; Dunn et al. ( 2017 ) ; Clark et al. ( 2018 ) ; Kwiatkowski et al. ( 2019 ) present question - answering corpora harvested from information retrieval systems , often containing multiple supporting documents for each question .
+This means a model must sift through a larger quantity of information and possibly reconcile competing viewpoints .
+Berant et al . ( 2013 ) ; Welbl et al . ( 2017 ) ; Talmor and Berant ( 2018 ) propose to leverage knowledge bases to generate question - answer pairs .
+Yang et al. ( 2018 ) focuses on questions that require multi-hop reasoning to answer , by building questions compositionally .
+Reddy et al. ( 2018 ) ; Choi et al. ( 2018 ) explore conversational question answering , in which a full understanding of the question depends on the conversation 's history .
+DQN 0.818(0.818 ) 0.156(0.160 ) 0.898(0.607 ) 0.566(0.142 ) 1.000( 0.056 ) 0.518(0.036 ) DDQN 0.794(0.794 ) 0.142(0.154 ) 0.868(0.575 ) 0.606(0.153 ) 1.000( 0.037 ) 0.500( 0.033 ) Rainbow 0.670( 0.670 ) 0.144(0.170 ) 0.828(0.468 ) 0.586(0.128 ) 1.000( 0.071 ) 0.530( 0.018 ) 100 games DQN 0.550( 0.550 ) 0.184(0.204 ) 0.758(0.230 ) 0.668(0.181 ) 0.878(0.021 ) 0.524(0.017 ) DDQN 0.524(0.524 ) 0.188(0.204 ) 0.754(0.365 ) 0.662(0.205 ) 0.890( 0.025 ) 0.544(0.019 ) Rainbow 0.442(0.442 ) 0.174(0.184 ) 0.754(0.285 ) 0.654(0.190 ) 0.878(0.044 ) 0.504(0.032 ) 500 games DQN 0.430( 0.430 ) 0.204(0.216 ) 0.752(0.162 ) 0.678(0.214 ) 0.678(0.019 ) 0.530( 0.017 ) DDQN 0.458(0.458 ) 0.222(0.246 ) 0.754(0.158 ) 0.656(0.188 ) 0.716(0.024 ) 0.486(0.023 ) Rainbow 0.370( 0.370 ) 0.172(0.178 ) 0.748(0.275 ) 0.678(0.191 ) 0.636(0.020 ) 0.494(0.017 ) unlimited games DQN 0.316( 0.316 ) 0.188(0.188 ) 0.728(0.213 ) 0.668(0.218 ) 0.812(0.055 ) 0.506(0.018 ) DDQN 0.326(0.326 ) 0.206(0.206 ) 0.740(0.246 ) 0.694(0.196 ) 0.580(0.023 ) 0.482(0.017 ) Rainbow 0.340( 0.340 ) 0.258(0.258 ) 0.728(0.210 ) 0.686(0.193 ) 0.564(0.018 ) 0.470( 0.017 ) Table 10 : Agent performance on random map games .
+Accuracies in percentage are shown in black .
+We also investigate the sufficient information bonus used in our agent proposed in Section 3.3.1 , which are shown in blue .
+Figure 4 : 4 Figure 4 : Training accuracy over episodes on location questions .
+Upper row : fixed map , 1/2/10/100/500 / unlimited games ;
+Lower row : random map , 2/10/100/500 / unlimited games .
+Figure 5 : 5 Figure 5 : Training accuracy over episodes on existence questions .
+Upper row : fixed map , 1/2/10/100/500 / unlimited games ;
+Lower row : random map , 2/10/100/500 / unlimited games .
+Figure 6 : 6 Figure 6 : Training accuracy over episodes on attribute questions .
+Upper row : fixed map , 1/2/10/100/500 / unlimited games ;
+Lower row : random map , 2/10/100/500 / unlimited games .
+Table 2 : 2 Supported attributes along with examples .
+doors are openable ) , and a set of rules ( e.g. , open - ing a closed door makes the connected room ac- cessible ) .
+The supported attributes are shown in Table 2 , while the rules can be inferred from the list of supported commands ( see Appendix C ) .
+Table 4 : 4 Fixed Map Random Map Model Loc. Exi. Att. Loc. Exi. Att. Human 1.000 1.000 1.000 1.000 1.000 0.750 Random 0.027 0.497 0.496 0.034 0.500 0.499 10 games DQN 0.180 0.568 0.518 0.156 0.566 0.518 DDQN 0.188 0.566 0.516 0.142 0.606 0.500 Rainbow 0.156 0.590 0.520 0.144 0.586 0.530 500 games DQN 0.224 0.674 0.534 0.204 0.678 0.530 DDQN 0.218 0.626 0.508 0.222 0.656 0.486 Rainbow 0.190 0.656 0.496 0.172 0.678 0.494 unlimited games DQN 0.216 0.662 0.514 0.188 0.668 0.506 DDQN 0.258 0.628 0.480 0.206 0.694 0.482 Rainbow 0.280 0.692 0.514 0.258 0.686 0.470
+Agent performance on zero-shot test games when trained on 10 games , 500 games and " unlimited " games settings .
+Note Att. and Exi. are binary questions with expected accuracy of 0.5 .
+Table 5 : 5 Test performance given sufficient information .
+Model Fixed Map Random Map Random 14.7 16.5 10 games DQN 95.7 97.5 DDQN 90.4 92.2 Rainbow 91.8 84.7 500 games DQN 91.8 94.4 DDQN 95.6 90.2 Rainbow 96.9 96.6 unlimited games DQN 100.0 100.0 DDQN 100.0 100.0 Rainbow 100.0 100.0
+when the agent is trained in Rainbow setting .
+Detailed hyper-parameter setting of our Rainbow agent are shown in Table6 .
+Parameter Value Exploration ?
+0 Noisy Nets ?0 0.5 Target Network Period 1000 episodes Multi-step returns n n ? Uniform [ 1 , 3 ] Distributional atoms 51 Distributional min / max values [ - 10 , 10 ]
+Table 6 : 6 Hyper-parameter setup for rainbow agent .
+Table 7 : 7 Table 9 , and provide full results of our agents on random map games in Table 10 .
+Supported command list .
+To help investigating the generalizability of the sufficient information bonus we used in our pro- posed agent , we also report the rewards during both training and test phases .
+Note during test phase , we do not update parameters with the re- wards .
+Table
+slice , dice , or chop 2811 .972 ) 0.122(0.160 ) 1.000( 0.881 ) 0.628(0.124 ) 1.000( 0.049 ) 0.500(0.035 ) DDQN 0.960( 0.960 ) 0.156(0.178 ) 1.000( 0.647 ) 0.624(0.148 ) 1.000( 0.023 ) 0.498(0.033 ) Rainbow 0.562(0.562 ) 0.164(0.178 ) 1.000( 0.187 ) 0.616(0.083 ) 1.000( 0.049 ) 0.516(0.039 ) 2 games DQN 0.698( 0.698 ) 0.168(0.182 ) 0.948(0.700 ) 0.574(0.136 ) 1.000( 0.011 ) 0.510(0.028 ) DDQN 0.702(0.702 ) 0.172(0.178 ) 0.882(0.571 ) 0.550(0.109 ) 1.000( 0.098 ) 0.508(0.036 ) Rainbow 0.734(0.734 ) 0.160(0.168 ) 0.878(0.287 ) 0.616(0.085 ) 1.000( 0.030 ) 0.524(0.022 ) 10 games DQN 0.654( 0.654 ) 0.180(0.188 ) 0.822(0.390 ) 0.568(0.156 ) 1.000( 0.055 ) 0.518(0.030 ) DDQN 0.608(0.608 ) 0.188(0.208 ) 0.842(0.479 ) 0.566(0.128 ) 1.000( 0.064 ) 0.516(0.036 ) Rainbow 0.616(0.616 ) 0.156(0.170 ) 0.768(0.266 ) 0.590(0.131 ) 0.998(0.059 ) 0.520(0.023 ) .430 ) 0.224(0.244 ) 0.742(0.136 ) 0.674(0.279 ) 0.700( 0.015 ) 0.534(0.014 ) DDQN 0.406(0.406 ) 0.218(0.228 ) 0.734(0.173 ) 0.626(0.213 ) 0.714(0.021 ) 0.508(0.026 ) Rainbow 0.358(0.358 ) 0.190(0.196 ) 0.768(0.187 ) 0.656(0.207 ) 0.736(0.032 ) 0.496(0.029 ) unlimited games DQN 0.300( 0.300 ) 0.216(0.216 ) 0.752(0.119 ) 0.662(0.246 ) 0.562(0.034 ) 0.514(0.016 ) DDQN 0.318(0.318 ) 0.258(0.258 ) 0.744(0.168 ) 0.628(0.134 ) 0.572(0.027 ) 0.480( 0.024 ) Rainbow 0.316(0.330 ) 0.280(0.280 ) 0.734(0.157 ) 0.692(0.157 ) 0.566(0.017 ) 0.514(0.014 ) Location Existence Attribute Model Train Test Train Test Train Test Human - 1.000 - 1.000 - 1.000 Random - 0.027 - 0.497 - 0.496 1 game DQN 0.972( 0100 games DQN 0.498(0.498 ) 0.194(0.206 ) 0.756(0.139 ) 0.614(0.160 ) 0.838(0.019 ) 0.498(0.014 ) DDQN 0.456(0.458 ) 0.168(0.196 ) 0.768(0.134 ) 0.650(0.216 ) 0.878(0.020 ) 0.528(0.017 ) Rainbow 0.340( 0.340 ) 0.156(0.160 ) 0.762(0.129 ) 0.602(0.207 ) 0.924(0.044 ) 0.524(0.022 ) 500 games DQN 0.430( 0
+Table 9 : 9 Agent performance on fixed map games .
+Accuracies in percentage are shown in black .
+We also investigate the sufficient information bonus used in our agent proposed in Section 3.3.1 , which are shown in blue .
+.990 ) 0.148(0.162 ) 1.000( 0.779 ) 0.638(0.157 ) 1.000( 0.039 ) 0.534(0.033 ) DDQN 0.978( 0.978 ) 0.146(0.152 ) 1.000( 0.727 ) 0.602(0.158 ) 1.000( 0.043 ) 0.544(0.032 ) Rainbow 0.916( 0.916 ) 0.178(0.178 ) 0.972(0.314 ) 0.602(0.136 ) 1.000( 0.025 ) 0.512(0.021 ) Location Existence Attribute Model Train Test Train Test Train Test Human - 1.000 - 1.000 - 0.750 Random - 0.034 - 0.500 - 0.499 2 games DQN 0.990 ( 010 games 2812
+We call it " wait " because when playing multiple games in a batch , batched environment will terminate only when all agents have issued the terminating command .
+Before that , some agent will wait .
+This is analogous to paddings in natural language processing tasks .
+We concatenate ot with the command generated at previous game step and the text feedback returned by the game , as described in Section 2.2 .
+In our case , a is a triplet contains {action , modifier , ob-ject } as described in Section 2.4 .

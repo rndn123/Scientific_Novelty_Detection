@@ -1,0 +1,232 @@
+title
+Continual Learning in Multilingual NMT via Language-Specific Embeddings
+abstract
+This paper proposes a technique for adding a new source or target language to an existing multilingual NMT model without retraining it on the initial set of languages .
+It consists in replacing the shared vocabulary with a small language -specific vocabulary and fine-tuning the new embeddings on the new language 's parallel data .
+Some additional language-specific components may be trained to improve performance ( e.g. , Transformer layers or adapter modules ) .
+Because the parameters of the original model are not modified , its performance on the initial languages does not degrade .
+We show on two sets of experiments ( small-scale on TED Talks , and largescale on ParaCrawl ) that this approach performs as well or better as the more costly alternatives ; and that it has excellent zero-shot performance : training on English-centric data is enough to translate between the new language and any of the initial languages .
+Introduction Multilingual Neural Machine Translation models are trained on multilingual data to translate from and / or into multiple languages ( Firat et al. , 2016 ; Johnson et al. , 2017 ) .
+Multilingual NMT is a compelling approach in production , as one only needs to train , deploy and maintain one model ( instead of 2 ? N ones , where N is the number of languages ) .
+It has also been shown to improve MT quality for low-resource languages ( at the cost of a slight degradation for high- resource languages ) and it can allow translation between languages that have no aligned data ( " zero- shot translation " ) .
+However , such models can be costly to train , as they usually involve larger architectures and large datasets .
+Moreover , because they are trained jointly on all the languages , they require to know in advance the full set of languages .
+Adding a new language to an existing model usually means retraining the model on the full multilingual dataset .
+Naively fine-tuning the original model on the new language 's data is not an option because of vocabulary mismatch ( the shared vocabulary needs to be modified to include the new language 's tokens ) and catastrophic forgetting ( the model will quickly forget how to translate in the other languages ) .
+In this paper , we study the problem of multilingual NMT incremental training or continual learning and propose a novel way to efficiently add a new source or target language .
+Some desirable properties of an incremental training method are : ?
+No degradation on the existing language pairs ; ?
+Efficient training ( e.g. , no re-training on the existing language pairs ) ; ?
+Minimal amount of added parameters : the approach should scale to many languages and the model fit on a single GPU ; ?
+Minimal degradation in inference speed ; ?
+Good zero-shot performance : when training with X -EN ( or EN - X ) data , where X is a new language , we would like the model to be able to translate from X to any known language Y ( resp. from Y to X ) .
+We propose a novel technique for incrementally adding a new source or target language , which consists in substituting the shared embedding matrix with a language -specific embedding matrix , which is fine-tuned on the new language 's data only while freezing the other parameters of the model .
+In some cases ( e.g. , when the new language is on the target size ) , a small number of additional parameters ( e.g. , adapter modules ) have to be trained to match the performance of the re-training baseline .
+We perform two sets of experiments , with a 20 - language Transformer Base trained on TED Talks , and a 20language Transformer Big ( with deep encoder and shallow decoder ) trained on ParaCrawl ; and show that this approach is fast and parameter - efficient and that it performs as well or better as the more costly alternatives .
+Related work
+Some previous works study how to adapt a multilingual MT model to unseen low-resource languages , but without seeking to maintain good performance in the initial languages ( Neubig and Hu , 2018 ; Lakew et al. , 2019 ) . Garcia et al. ( 2021 ) introduce a " vocabulary substitution " approach for adding new languages to a multilingual NMT model .
+They create a new shared BPE vocabulary that includes the new language and initialize the embeddings of the overlapping tokens with their previous values .
+Then they fine- tune the entire model on the initial model 's training data combined with parallel or monolingual data in the new language .
+Contrary to ours , their approach assumes access to the initial model 's training data and results in a small performance drop in the existing languages .
+Lyu et al. ( 2020 ) and Escolano et al .
+( 2020 Escolano et al. ( , 2019 Escolano et al. ( , 2021 propose multi-decoder / multi-encoder architectures which they show to be compatible with incremental training .
+To add a new target ( resp. source ) language , one just has to freeze the model 's encoder ( resp. decoder ) and train a new languagespecific decoder ( resp. encoder ) .
+However , this results in an enormous number of parameters .
+; Pfeiffer et al. ( 2021 ) incrementally train language -specific embeddings for cross-lingual transfer of BERT classification models .
+This approach consists of four stages : 1 ) train a monolingual BERT on language L 1 ; 2 ) train embeddings on language L 2 using the masked LM objective while freezing the other parameters ; 3 ) fine - tune the L 1 BERT model on the desired classification task using labeled data in language L 1 ; 4 ) substitute the L 1 embeddings with the L 2 embeddings in the classification model and use it for L 2language classification .
+also combine their approach with L 2 -specific adapter layers and position embeddings .
+While this algorithm is close to ours , it is used on encoder-only Transformers for classification tasks .
+Our work extends this algorithm to encoder-decoder Transformers for multilingual MT .
+Also similar to our technique , Thompson et al . ( 2018 ) do domain adaptation by freezing most of the NMT parameters and only fine-tuning one component ( e.g. , the source embeddings ) .
+Philip et al. ( 2020 ) show that adapter modules can be used to adapt an English-centric multilingual model to unseen language pairs , but whose source and target languages are known .
+We wanted to go further and use adapter layers to adapt a multilingual model to unseen languages .
+However , we obtained the surprising result that adapting the embedding matrix is sometimes enough .
+In the other cases , adapter modules can be used sparingly to match baseline performance .
+?st?n et al. ( 2021 ) introduce " denoising adapters " which they show can be used to incrementally adapt a multilingual MT model to new languages using monolingual data only .
+The initial model is a many - to - many model with a shared vocabulary and source - side language codes ( to indicate the target language ) .
+New source language
+To add a new source language ( e.g. , Greek ) , we build a new ( smaller ) vocabulary for this language only and replace the source embedding matrix with a new embedding matrix corresponding to that vocabulary .
+Note that some tokens may appear in both vocabularies .
+Similarly to Pfeiffer et al. ( 2021 ) ; Garcia et al. ( 2021 ) , we initialize the new embeddings for those tokens with the existing embedding values .
+We train this new embedding matrix on Greek - English parallel data while freezing all the other parameters .
+There is no loss in performance in the existing languages as we do not modify the original parameters .
+At inference , to translate from the initial set of languages , we use the initial shared vocabulary and embeddings .
+To translate from Greek , we use the Greek embeddings and vocab .
+To better adapt to the new source language , we also try combining this language -specific embedding matrix with other language -specific components in the encoder .
+We either fine- tune the first encoder layer while freezing the other layers , train the full encoder , or plug in adapter modules after encoder layers and train these while freezing the Transformer parameters .
+Data augmentation
+As we will show in the experiments , source lang-specific parameters tend to give poor zero-shot results , i.e. , when training them on Greek - English data , the resulting model might have trouble translating into other languages than English .
+For this reason , we try training such models on additional data .
+One solution is to use a multi-aligned Greek corpus ( i.e. , Greek paired with all the initial languages ) , but this might not always be possible .
+We experiment with tiny amounts of such data ( e.g. , 1000 line pairs per initial language ) ; and with synthetic data : translate the English side of the Greek - English corpus into the other languages with the initial model , then use the resulting fake line pairs for training .
+We call this approach " back - translation " ( BT ) even though it is arguably closer to distillation than back - translation because the synthetic text will be on the target side .
+New target language
+The same incremental training techniques can be used to learn a new target language ( e.g. , Greek ) with some modifications .
+The decoder has a target embedding matrix and vocabulary projection matrix , which are usually tied and shared with the source embeddings ( i.e. , the same parameters are used for all 3 purposes ) .
+We need to adapt both the target embeddings and output projection to the new Greek vocabulary .
+Like in the initial model , we tie these two parameters .
+Additionally , the initial model does not have a " translate into Greek " language code .
+We add this language code to the source embedding matrix and freeze all source embeddings but this one .
+It is initialized with the " to English " language code embedding of the initial model .
+We combine this approach with languagespecific parameters ( adapter modules or fine- tuned Transformer layers ) in the decoder and / or encoder .
+New source and target languages
+To translate between two new languages ( e.g. , Greek to Ukrainian ) , we train language -specific parameters for each of these languages separately , as described previously .
+Then , at inference time , we combine these parameters .
+This is done by taking the new source Greek embedding matrix and target Ukrainian embedding matrix ( and vocabulary projection ) .
+The " translate into Ukrainian " language code embedding is concatenated to the Greek embedding matrix .
+Similarly , the combined model includes language -specific layers and adapters from both models .
+When both models have adapter modules at the same layers ( e.g. , last encoder layer ) , we stack them : the target - language adapters are plugged in after the source - language adapters .
+Baselines
+We compare our incremental training techniques with two types of baselines : bilingual models trained from scratch with only the new language 's parallel data ; and re-training , i.e. , training a new
+The tied target embedding matrix and output projection are replaced with the new language 's embeddings .
+Some language -specific parameters can be added in the decoder or encoder , and a new language code is added in the source embedding matrix .
+Everything is kept frozen except for these new parameters .
+multilingual model that includes the new language .
+To save computation time , similarly to Garcia et al . ( 2021 ) , we start from the initial model and substitute its vocabulary with a new vocabulary trained with the same settings and data as before plus text in the new language .
+This ensures a large overlap between the old and new vocabularies .
+Then , we initialize the embeddings of the overlapping tokens with their previous values and fine - tune the full model on the entire dataset .
+Note that these baselines do not meet our criteria for a good incremental training technique .
+Bilingual models are parameter - inefficient and cannot do zero-shot translation ( except via pivot translation , which is twice as slow ) .
+Re-training assumes access to the initial model 's training data and can be very slow .
+It could also result in a drop in performance in the initial languages .
+TED Talks Experiments
+We adapt a 20 - language model trained on TED Talks to Greek ( EL ) , either on the source side or target side .
+We pick Greek as the new language as it is from an unseen language family and uses an unseen alphabet .
+We also do experiments with Ukrainian ( UK ) , Indonesian ( ID ) , or Swedish ( SV ) as the new language , 1 which are shown in Appendix .
+Data and hyper-parameters
+We use the TED Talks corpus ( Qi et al. , 2018 ) with the same set of 20 languages as Philip et al . ( 2020 ) ; B?rard et al . ( 2021 ) .
+2
+This corpus is multi-parallel , i.e. , it has training data for all 380 ( 20? 19 ) language pairs .
+It also includes official valid and test splits for all these language pairs .
+Table 8 in Appendix shows the training data size per language .
+The initial model is the " multi-parallel " baseline from , a Transformer Base ( Vaswani et al. , 2017 ) trained in two stages : English-centric training ( 38 directions ) for 120 epochs ; then multi-parallel fine-tuning ( 380 directions ) for 10 epochs .
+3 More hyper-parameters are given in Appendix ( Table 23 ) .
+The shared vocabulary is created using BPE ( Sennrich et al. , 2016 ) with 64 k merge operations and inline casing ( B?rard et al. , 2019 ) .
+Both BPE and NMT training use temperature sampling with T = 5 ( Arivazhagan et al. , 2019 ) .
+Single characters with a total frequency higher than 10 are added to the vocabulary .
+The Greek vocabulary is obtained with the same BPE settings but on Greek monolingual data with 4 k merge operations .
+The bilingual baselines use a joint BPE model of size 8 k and the same settings as in Philip et al . ( 2020 ) .
+Our re-training baselines are obtained by creating a new shared BPE model of size 64 k including all 20 initial languages plus Greek and fine-tuning the multi-parallel model for 10 more epochs with this vocabulary .
+Note that there is a vocabulary mismatch with the initial model ( which did not have Greek ) .
+We initialize the known embeddings with their previous values and the new ones at random and reset the learning rate scheduler and optimizer .
+We also do a re-training baseline that includes all 4 new languages .
+Note that contrary to our incremental training approach , those models are trained with the new language ( s ) on both sides and use multi-aligned parallel data .
+Finally , we train a model that follows more closely Garcia et al . ( 2021 ) ( 2020 ) . ( 3 ) and ( 4 ) are from . tial vocabulary with a vocabulary of the exact same size that includes Greek , and whose new tokens are initialized with the outdated embeddings from the old model .
+Like Garcia et al. ( 2021 ) , we upscale the new data 's sampling frequency by a factor of 5 .
+Evaluation settings
+The TED Talks models are evaluated on the provided multi-parallel validation and test sets .
+Since those are already word-tokenized , we run Sacre - BLEU with the -- tok none option .
+4
+We report BLEU scores from / into English and average BLEU from / into the 19 other languages than English ( which correspond to a zero-shot setting when the incremental training is done on Greek - English only data ) .
+We also report chrF scores obtained with SacreBLEU on the test and validation sets in Appendix .
+5
+Results and analysis Table 29 in Appendix details the notations used in this paper and the tables .
+Baselines .
+Table 1 compares our initial models and re-training baselines against the state of the art on the initial set of 20 languages .
+In this instance , fine-tuning the initial model with more languages ( 5 , 6 ) does not degrade BLEU .
+Appendix
+Table 9 shows valid and test chrF on more baselines , including our implementation of the vocabulary substitution approach of Garcia et al . ( 2021 ) . sults on Greek , Ukrainian , Indonesian and Swedish are given in Appendix ( Tables 10 , 11 , 12 , and 13 ) .
+New source language .
+Training the source embeddings only ( 7 ) outperforms the bilingual baselines ( 1 ) and comes close to the costly re-training baselines ( 5 , 6 ) .
+In particular , it nearly matches the performance of the latter in the zero-shot EL ? / EN directions , even though the baselines have training data for those directions .
+Initializing the known tokens in the new vocabulary with their old embeddings does not improve final performance ( 7 vs 8 ) .
+But using language code embeddings from the initial model is necessary to be able to translate into non-English languages .
+Figure 4 shows that such initialization improves final performance under low-resource settings .
+Figure 7 in Appendix also shows that it speeds up training .
+Training additional components in the encoder , like adapter modules ( 11 , 12 , 13 ) or the first encoder layer ( 14 ) helps improve EL ?
+EN performance and outperform all baselines , though it is less useful when the new language is from a known family ( see Ukrainian and Swedish scores in Ap-pendix Tables 11 and 13 ) .
+However , this results in abysmal zero-shot performance ( EL ? / EN ) .
+As they only encounter the " to English " language code during training , those models quickly forget how to interpret the other lang codes .
+This catastrophic forgetting is illustrated by Figure 3 , where we see a plunge in EL ?
+FR performance after just a few epochs of training .
+Only tuning the encoder layer norm parameters and biases ( 9 ) gives slightly higher EL ?
+EN performance without suffering from catastrophic forgetting in the other languages .
+Note that language code forgetting is less pronounced when the initial model is Englishcentric ( see Table 18 in Appendix ) .
+In this setting , adapter modules do not hurt zero-shot translation .
+New target language .
+Table 3 shows test BLEU scores when incrementally adding Greek on the target side .
+Additional results on Greek , Ukrainian , Indonesian and Swedish are provided in Appendix ( Tables 14 , 15 , 16 , and 17 ) .
+The third quarter of With new target languages , only adapting the embedding matrix ( tied with vocabulary projection ) is not enough and strongly underperforms the baselines ( 24 vs 1 , 5 and 6 ) .
+Training decoder-side adapter modules ( 26 ) gets us closer to baseline performance ; and tuning the last decoder layer ( 30 ) bridges the gap with the baselines .
+However , the most effective strategy is to train some components in both the encoder and decoder ( 27 , 29 , 31 , 32 , 33 , 34 , 35 ) .
+We observed that it was important for the model to have a way to modify the output of the encoder before it is read by frozen decoder components .
+Interestingly , only having a large adapter module after the last encoder layer ( 28 ) is enough to match baseline performance .
+Adding small adapters after each decoder layer ( 29 ) fur-ther improves BLEU and brings the best parameter count / performance tradeoff .
+At the same parameter budget , training adapter modules after every encoder layer ( 32 , 34 , 35 ) gives worse / EN ?
+EL performance than an adapter at the last encoder layer combined with decoder-side parameters ( 31 , 33 ) , which is likely caused by the encoder overfitting to English .
+In this setting , there is no clear advantage to incremental training with multi-aligned Greek data ( 36 ) , as this hurts EN ? EL performance , without any notable improvement for / EN ? EL .
+Finally , multilingual incremental training ( with 4 new target languages at once ) is entirely possible ( 37 ) and gives competitive results to the baselines .
+Table 25 in Appendix analyzes the usefulness of learning a new language code , by comparing with three other strategies : incremental training without any language code ; with the " to English " language code ; or with the language code of a similar language .
+Interestingly , the more new parameters are learned ( esp. encoder-side ) , the less useful it is to learn a new language code .
+Moreover , adapting to Swedish by using a fixed English language code gives reasonable performance as the two languages are from the same family .
+And the proxy " to Russian " language code gives the same results as learning a new language code when adapting to
+Source model Target Ukrainian because both languages are very similar .
+New source and target languages Table 4 combines incrementally - trained parameters at inference time to translate between two new languages .
+Interestingly , combining target - language parameters with source - language parameters that had very poor zero-shot performance ( 14 ) gives excellent results .
+We hypothesize that the language code forgetting issue is less pronounced here because solely activating some language -specific parameters will make the model translate into that language .
+Despite showing the best EL ?
+EN performance , source - language encoder adapters ( 19 ) tend to perform more poorly when combined with targetlanguage parameters .
+While better performance is obtained by pivot translation through English with two incrementally trained models ( 14 and 31 ) , combining the parameters of these two models gives close results at a faster inference speed .
+Discussion
+Figure 4 shows final BLEU scores of our techniques when training with smaller amounts of data .
+We observe that incremental training is more data-efficient than bilingual models and can achieve decent performance even with tiny amounts of training data , making it a good fit for adaptation to low-resource languages .
+Figure 7 in Appendix illustrates the training speed of our approach compared to our implementation of Garcia et al . ( 2021 ) .
+In addition to maintaining the exact same performance on the previous languages and needing only English-centric data , our approach reaches higher performance in much fewer updates than the alternatives .
+Note that retraining might be an efficient solution if one wants to add several languages at once and on both sides .
+Finally , Tables 18 and 19 42 ) are the same models as in . our incremental training approach can be applied to English-centric initial models with similar results .
+ParaCrawl Experiments
+In this section , we test our approach in a more realistic , large-scale setting : a 20 - language Transformer Big initial model trained on ParaCrawl ( Ba?n et al. , 2020 ) .
+The incremental training experiments are done in three languages : Arabic ( AR ) , Russian ( RU ) , and Chinese ( ZH ) .
+Arabic and Chinese are both from unseen language families and use unseen scripts .
+Russian is close to a known language ( Bulgarian ) and uses the same script .
+For training on those languages , we use UNPC ( Ziemski et al. , 2016 ) .
+Data and hyper-parameters
+We download ParaCrawl v7.1 in the 19 highestresource languages paired with English .
+6
+Then , 6 { fr , de , es , it , pt , nl , nb , cs , pl , sv , da , el , fi , hr , hu , bg , ro , sk , lt} like Freitag and Firat ( 2020 ) , we build a multiparallel corpus by aligning all pairs of languages through their English side ( effectively removing any English duplicate ) .
+See Appendix Table 21 for training data statistics .
+We create a shared BPE vocab with 64 k merge operations and inline casing , by sampling from this data with T = 5 and include all characters whose frequency is higher than 100 .
+Our initial model is the Transformer Big 12 - 2 ( i.e. , with a deep encoder and shallow decoder ) multi-parallel model of .
+Like in the previous section , it was trained in two stages : English-centric training ( with T = 5 ) for 1 M steps ; then multi-parallel fine-tuning ( with T = 2 ) for 200k more steps .
+More hyper-parameters are given in Appendix ( Table 24 ) .
+Incremental training is done for 120k steps with English-centric data from UNPC v1.0 ( see Table 22 in Appendix for statistics ) , which we clean by removing any line pairs where either side is detected as being in the wrong language by langid.py ( Lui and Baldwin , 2012 ) .
+We use monolingual BPE models of size 8k .
+The Chinese data is tokenized with Jieba 7 before learning the BPE model .
+The English-centric bilingual baselines are Transformer Big 6 - 6 models trained on UNPC for 120k steps with joint BPE vocabularies of size 16 k .
+We do two " re-training " baselines , by fine-tuning either the English-centric or multi-parallel model on their initial ParaCrawl data plus UNPC data in all three new languages .
+We sample UNPC line pairs in each of the new directions with probability 0.05 .
+The remaining 0.7 probability mass is distributed among the initial ParaCrawl directions with T = 5 . with the monolingual ParaCrawl / UNPC data in all 23 languages ( with T = 5 ) .
+The new embeddings for the known tokens are initialized with their old values and the other embeddings at random .
+8 Note that contrary to the TED Talks experiments , we do not have multi-aligned data for the new languages .
+Evaluation settings
+For validation , we use our own split from TED2020 ( Reimers and Gurevych , 2020 ) : 3000 random line pairs for each translation direction .
+We report chrF scores 9 computed on these valid sets in Appendix .
+As test sets , we use FLORES devtest ( Goyal et al. , 2021 ) .
+We report scores computed with their new " spBLEU " metric , 10 which runs BLEU on top of a standardized multilingual BPE tokenization .
+8 78 % of the new tokens were in the initial vocabulary , and 84 % of the old tokens are in the new vocabulary .
+9 chrF2+n.6+s.false+v.1.5.1 10 BLEU+c.mixed+#.1+s.exp+tok.spm+v.1.5.1 ( https://github.com/ngoyal2707/sacrebleu)
+Results and analysis Baselines .
+Table 5 compares our initial model ( 42 ) with other baselines .
+Our multi-parallel model beats the M2M -124 model of Goyal et al . ( 2021 ) in all three settings .
+This is not so surprising , as their model only has 615 M parameters for 124 languages , compared to 255 M parameters for our 20 - language model .
+Last , we can observe that our " re-training " baselines ( 43 and 44 ) perform almost as well as the initial 20 - language models ( 40 , 42 ) .
+New source or target language .
+Training only source embeddings ( 46 ) is a good strategy for Russian , but underperforms the baselines in the more linguistically distant Arabic and Chinese .
+Learning more parameters ( + 8 % per source language ) can match baseline performance in all 3 languages ( 47 and 48 ) , but gives poor zero-shot performance .
+Adding small amounts of " back - translated " data ( 49 ) to the pivot translation baselines without hurting English-centric scores .
+For new target languages , the best strategy is to train the last decoder layer with an adapter module at the last encoder layer ( 54 ) , which matches the re-training baselines in all 3 languages and gets close performance to the parameter - inefficient bilingual baselines .
+Interestingly , target-side incremental training is very sensitive to training data noise .
+In a first iteration of our experiments , we trained with unfiltered UNPC data and observed catastrophic performance ( 55 ) .
+Simple language ID filtering solved this issue .
+New source and target languages .
+Table 7 combines source - language with target - language incrementally - trained parameters to translate between two new languages .
+The results are not as good as in our TED Talks experiments .
+The best combination in this setting ( 46 with 54 ) performs considerably worse than pivot translation through English with the baselines .
+However , it outperforms the " re-training " baseline ( 44 ) , which has only seen English-centric data for the new languages .
+And pivot translation with two incrementally - trained models ( 47 with 54 ) gives excellent results , close to the bilingual baselines .
+Conclusion
+We we implement an on- the-fly data loading pipeline that builds heterogeneous batches by sampling language pair k with probability : p k = D 1/ T k /( D 1/ T i ) where T is the temperature and D k is the total number of line pairs for that language pair ( Aharoni et al. , 2019 ) 25 : TED valid chrF delta ( ? 1000 ) of target-side incremental learning techniques with fixed language codes , compared to models with learned language codes .
+" None " corresponds to training and decoding without any language code . " EN " trains and decodes with the pre-trained ( and frozen ) " to English " language code .
+" Proxy " uses the closest pre-trained language code ( RU for UK , BG for EL , DE for SV and VI for ID ) .
+This is an oracle , obtained by computing the Euclidean distance between trained language codes in ( 6 ) .
+.447 .469 .416 .378 .425 .365

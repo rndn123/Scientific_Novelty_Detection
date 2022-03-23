@@ -1,0 +1,209 @@
+title
+SemFace : Pre-training Encoder and Decoder with a Semantic Interface for Neural Machine Translation
+abstract
+While pre-training techniques are working very well in natural language processing , how to pre-train a decoder and effectively leverage it for neural machine translation ( NMT ) still remains a tricky issue .
+The main reason is that the cross-attention module between the encoder and decoder cannot be pre-trained , and the combined encoder-decoder model cannot work well in the fine-tuning stage because the inputs of the decoder cross-attention come from unknown encoder outputs .
+In this paper , we propose a better pre-training method for NMT by defining a semantic interface ( SemFace ) between the pre-trained encoder and the pre-trained decoder .
+Specifically , we propose two types of semantic interfaces , including CL - SemFace which regards cross-lingual embeddings as an interface , and VQ - SemFace which employs vector quantized embeddings to constrain the encoder outputs and decoder inputs in the same language - independent space .
+We conduct massive experiments on six supervised translation pairs and three unsupervised pairs .
+Experimental results demonstrate that our proposed Sem - Face can effectively connect the pre-trained encoder and decoder , and achieves significant improvement by 3.7 and 1.5 BLEU points on the two tasks respectively compared with previous pre-training - based NMT models .
+* Contribution during internship at MSRA .
+Introduction
+In recent years , pre-trained language models ( Peters et al. , 2018 ; Devlin et al. , 2018 ; Radford et al. , 2019 ; Raffel et al. , 2020 ) significantly boost the performances of various natural language processing ( NLP ) tasks , receiving extensive attention in NLP communities .
+Following the idea of unsupervised pre-training methods in the NLP area , several approaches ( Lample and Conneau , 2019 ; Zhu et al. , 2020 ; have been proposed to improve neural machine translation ( NMT ) models with pretraining by leveraging the large-scale monolingual corpora .
+The typical training process usually consists of two stages : pre-training an encoder and a decoder separately with a large monolingual corpus in a self-supervised manner , and then fine-tuning on specific NMT tasks ( Lample and Conneau , 2019 ) .
+The above method essentially pre-trains a BERTlike ( Devlin et al. , 2019 )
+Transformer encoder , and uses it to initialize both the encoder and decoder .
+Although it shows promising results , pre-training decoder benefits little in their results .
+The potential reason is that the cross-attention between the encoder and decoder is not pre-trained , which is randomly initialized when they are connected for fine-tuning , resulting in a lack of semantic interfaces between the pre-trained encoder and decoder .
+Another line of work attempts to pre-train a sequence - to- sequence model directly , e.g. , MASS ( Song et al. , 2019 ) and BART .
+But these methods usually use monolingual denoising auto-encoder as the main training objective , and cannot learn the corss-lingual mapping between source and target languages explicitly .
+In parallel to the idea of DALL?E 1 which defines the cross-modality interface of image and text , we propose to pre-train the encoder and decoder with a language - independent semantic interface ( SemFace ) for neural machine translation .
+With the semantic interface , the encoder is pre-trained to extract features to this space , and the decoder is pretrained to generate contents with features provided by it .
+By defining this interface , we can decouple the encoder-decoder network and pre-train them separately .
+During the decoder pre-training , the cross-attention module is also pre-trained , thus the pre-trained encoder and decoder can be naturally connected for MT fine-tuning .
+We propose two types of semantic interfaces , namely CL - SemFace and VQ - SemFace .
+The former takes the trained unsupervised cross-lingual embeddings ( Artetxe et al. , 2018 ) as the interface for encoder and decoder pretraining .
+Inspired by the success of neural discrete representation learning ( Van Den Oord et al. , 2017 ) , the latter uses language - independent vector quantized ( VQ ) embeddings ( semantic unites ) as the interface to map encoder outputs and decoder inputs into the shared VQ space .
+Experiments conducted on both supervised and unsupervised translation tasks demonstrate that SemFace effectively connects the pre-trained encoder and decoder , and achieves a significant improvement by 3.7 and 1.5 BLEU points on the two tasks respectively .
+Our contributions are listed as follows : ?
+To the best of our knowledge , this is the first work to investigate and define a semantic interface between encoder and decoder for the MT pre-train - finetune framework .
+?
+We design and compare two effective types of semantic interfaces , which utilize crosslingual embeddings and vector quantized embeddings respectively .
+?
+We extensively verify the effectiveness of our proposed model on supervised and unsupervised NMT tasks .
+Particularly , our proposed CL - SemFace and VQ - SemFace lead to significant improvements of 3.38 and 3.76 BLUE points on low-resource language pairs .
+SemFace
+Pre-training both Encoder and Decoder
+The overview of our proposed SemFace is illustrated in Figure 1 .
+As shown in this figure , our method can be divided into two steps .
+First , we use monolingual data to pre-train encoder and decoder separately with a semantic interface between them .
+The encoder is pre-trained to map the input from the monolingual semantic space into the interface , while the decoder is pre-trained to use the content from the interface via the cross attention module to finish decoding .
+The parameters of the encoder and the decoder are updated independently , thus their pre-training processes can be either jointly or separately done .
+Then , we remove the semantic interface , and connect the pre-trained encoder and decoder with the pre-trained cross-attention as a sequence - to-sequence model for the subsequent machine translation fine-tuning .
+Note that in Figure 1 , the input to the encoder and decoder includes token representations , language embeddings and positional embeddings .
+There are three types of semantic interface .
+The first is the default output space of pre-trained encoder with the masked language model ( MLM ) training loss .
+In fact , previous work ( Song et al. , 2019 ; adopts this default settings in their pre-training method for machine translation .
+The second one is CL - SemFace ( Sec. 2.2 ) , which uses the pre-trained context- free cross-lingual embedding space as the semantic interface .
+The third is VQ - SemFace ( Sec. 2.3 ) , which automatically learns a context - aware vector quantized ( VQ ) embedding space as the interface during pre-training .
+The last two types define a language - independent interface , enforcing the pre-trained encoder and the decoder to generate or leverage the language - independent information .
+They can provide a better initialization for the following MT fine-tuning .
+We give our pre-training algorithm in Alg .
+1 . Note that the parameters of the cross-attention are included in ? dec .
+Next , we will introduce our proposed CL - SemFace and VQ - SemFace in detail .
+CL - SemFace CL - SemFace uses the cross-lingual embedding space as the interface between the encoder and the decoder during pre-training .
+We first concatenate the monolingual corpora of two languages and learn joint BPE , and then train cross-lingual BPE embeddings with VecMap ( Artetxe et al. , 2018 ) .
+As shown in Figure 2 , on the encoder side , we initialize the linear projection weights ( output embeddings ) before the Softmax with the pre-trained BPE embeddings , and pre-train the encoder with two training objectives .
+The first is the commonly used Masked Language Model ( MLM ) ( Devlin et al. , 2018 ) l mlm , and the other is the MSE loss l mse between the encoder output hiddens and the corresponding output embeddings .
+The latter controls the scale of the encoder outputs to be the same as the cross-lingual embeddings , in order to match the encoder outputs and the cross-attention inputs .
+To stabilize training , we calculate the MSE loss before the last normalization layer of the encoder .
+Formally , given an input sample x , the encoder pre-training loss function is : L enc =L mlm + L mse = i [? log p( x i | LN ( h i ( x ) ) ) + ( W i ? h i ( x ) ) 2 ] ( 1 ) where x i is the masked tokens in the input sentence , h i is the activation of the final layer of the encoder but before the final layer normalization LN , W i is the output embedding of the ground - truth token , and p is the output probability of the Softmax .
+When pre-training the decoder , we attempt to use the content from the semantic interface to simulate encoder outputs .
+To achieve that , given a monolingual training sample x , we first add some noise 1 into it to get the noisy sample C ( x ) ) , then we pass it through an embedding layer initialized with the pre-trained BPE embeddings to get the languageindependent representations E ( C ( x ) ) .
+The training target of the decoder is either the MLM or the Casual Language Model ( CLM ) ( Lample and Conneau , 2019 ) .
+Different from them , in our work , the decoder is trained to generate contents with the language - independent representations from the semantic interface .
+During this process , the parameters of the enc-dec attention ( cross-attention ) can also be pre-trained , which is critical to the subsequent machine translation fine-tuning .
+Formally , the decoder pre-training loss functions is : L dec mlm = j ? log p[y j |( s j ( x ) ) , E ( C ( x ) ) ] ( 2 ) or L dec clm = j ? log p(y j |( s <j ( x ) ) , E ( C ( x ) ) ] ( 3 ) where s is the final output hidden of the decoder and p is the output probability of the Softmax .
+VQ - SemFace
+The CL semantic space is constrained with the cross-lingual word embedding , which is contextindependent , meaning that the different meanings of the same word share the same embedding , and the number of semantic units should be the same with the size of the vocabulary .
+In order to learn context-dependent semantic units freely , we also propose another interface type , vector quantized embeddings , inspired by the recent success of VQbased speech pre-training ( Baevski et al. , 2020 ) .
+The concept of Vector Quantized ( VQ ) representations is first proposed in Van Den Oord et al . ( 2017 ) .
+The method uses a learnable code-book combined with the nearest neighbor search to train the discrete latent variable model .
+The code-book is essentially a group of learnable embeddings ( codes ) { z } K 1 .
+The nearest neighbor search is performed between the encoder outputs and the embedding of the latent code using the L2 distance metric .
+Formally , given the encoder output h( x ) , the discrete latent variable assignment is given by z i = arg min j ? [ K ] ||h( x ) ? z j || 2 ( 4 ) where K is the number of codes in the code-book , z j is j-th quantized vector in the code-book .
+That means , z i is the output of the VQ layer corresponding to h( x ) .
+The main issue of this method is that the arg min operation is not differentiable .
+Following Baevski et al. ( 2020 ) , we use the Gumbel-Softmax ( Gumbel , 1954 ; Jang et al. , 2016 ) to select discrete codebook variables in a fully differentiable way and we use the straight - through estimator of Jang et al . ( 2016 ) .
+Given the encoder output h( x ) , we apply a linear layer followed by a ReLU and another linear which outputs l ?
+R K logits for the Gumbel-Softmax .
+During inference , we simply pick the largest index in l .
+During training , the output probability to choose the j-th code is p j = exp ( l j + v j ) / ?
+K k=1 exp( l k + v k ) / ? ( 5 ) where v = ? log (? log ( u ) ) and u are uniform samples from U ( 0 , 1 ) .
+In the forward pass , only the embedding in the code-book with the largest probability is used , which means the output of the VQ layer is z i , where i = arg max i p i , while in the backward pass , the gradient is passed to all the Gumbel -Softmax outputs .
+The VQ layer groups the context- aware hidden states into limited semantic units ( codes ) , and the space of these codes can be used as our second language - independent semantic interface .
+As shown in Figure 3 , for the encoder , we add a VQ layer between the encoder output and the prediction layer of MLM .
+The training loss is the combination of the original MLM loss and two auxiliary losses as used in Baevski et al . ( 2020 ) .
+The first is the diversity loss L d to encourage the model to use the code-book entries equally often by maximizing the entropy of the averaged Softmax distribution over the codes across a batch of utterances as L d = 1 K K k=1 pk log pk ( 6 ) where pk is the averaged probability of choosing the k-th code in the code-book across a batch , and p k is calculated by Eq . ( 5 ) .
+The second auxiliary loss is an L2 penalty to stabilize the training , which is applied to the activations of the final encode layer but before the last normalization of the encoder .
+Therefore , the total loss of encoder pre-training is L enc = L mlm + L d + L2 .
+For the decoder , similar to CL - SemFace , we also use the content from the VQ interface to simulate the encoder output during pre-training .
+To get the VQ output , given a training sample , we first feed it into an embedding layer and then pass the readout embeddings to a two -layer Transformer , which can be regarded as a feature extractor .
+We use the Transformer output as the representations of each word and find the corresponding codes in the codebook according to Eq . ( 5 ) .
+The readout codes are the simulated encoder output , and they will be fed into the decoder via the cross-attention .
+Note that in the decoder pre-training , the VQ code-book is fixed .
+The training goal of the decoder is the same as that in CL - SemFace , i.e. , L dec mlm or L dec clm .
+Fine-tuning
+The semantic interface acts as a bridge to connect the encoder and decoder during pre-training .
+The encoder is pre-trained to project the input to the features in the semantic interface space , while the decoder is pre-trained to leverage the features from the interface space through the cross-attention to generate outputs .
+With this method , we can pretrain all the parameters of the whole sequenceto-sequence model , including the cross-attention between the encoder and the decoder .
+After pretraining , we connect the encoder and the decoder via the cross-attention directly by removing the semantic interface as shown in Figure 1 ( bottom ) .
+We then fine- tune the model on low-resource supervised NMT tasks and unsupervised NMT tasks .
+For the low-resource settings , we use the standard cross-entropy loss ? log p( y|x ) given the parallel training sample {x , y} , and for the unsupervised settings , we use the denoising auto-encoder and iterative back -translation as the objectives as in Lample and Conneau ( 2019 ) .
+Experiment
+Setup
+Dataset
+The languages we choose for our experiments are English ( en ) , French ( fr ) , German ( de ) , Romanian ( ro ) , Finnish ( fi ) , Estonian ( et ) , Latvian ( lv ) , Lithuanian ( lt ) , Gujarati ( gu ) , and Kazakh ( kk ) .
+The details of the datasets and statistics for each language pair are listed in Table 1 .
+All the data is provided by the recent WMT translation tasks .
+" Para Data " in this table means the number of training samples of " x-en " .
+The language pairs with parallel data in the table are chosen for the low-resource supervised settings , while those with only monolingual data are chosen for the unsupervised scenario only .
+For the language with more than 50 million monolingual data , we randomly sample 50 million from the corpus .
+We choose the corresponding development and test sets for each language pair from WMT translation tasks , as listed in Table 2
+Baselines
+We compare our method with two baselines .
+The first is XLM ( Lample and Conneau , 2019 ) , which pre-trains a Transformer encoder with the MLM or CLM loss and then initializes the encoder and the decoder with the pre-trained model .
+The parameters of the cross-attention module are randomly initialized .
+The second baseline is mBART , which pre-trains the whole sequenceto-sequence architecture with the denoising autoencoder loss on the multilingual corpus .
+For a fair Table 3 : BLEU scores of the low-resource language pairs .
+Baseline results are based on our reproduction .
+The last row means the averaged improvement of each method compared with the basic Transformer without pre-training .
+comparison , we use their pre-training method on the concatenated corpora of each language pair , i.e. , mBART02 in their paper .
+For the low-resource supervised settings , we also compare our method with the basic Transformer without pre-training .
+If there is a parallel corpus for a certain language pair , we use the parallel data to fine - tune the pretrained models in the two baselines .
+If there is only a monolingual corpus , we use the denoising autoencoder and iterative back -translation to fine - tune the pre-trained models .
+Implementation Details
+We implement our method based on the code released by Lample and Conneau ( 2019 ) . each language pair , we first lower - case all the casesensitive languages by default and pre-process the concatenated corpora of each language pair with 60,000 joint BPE codes .
+For both encoder and decoder , we use 6 - layer Transformers with the embedding and hidden dimensions of 1024 , 8 attention heads , and a dropout rate of 0.1 .
+The maximum sequence length is 256 and the batch size is 128 .
+We use the Adam optimizer ( Kingma and Ba , 2014 ) for both pre-training and fine-tuning .
+During pre-training , the learning rate is 0.0001 constantly .
+During MT fine-tuning , the learning rate is 0.0001 with 4,000 warm - up steps , and then decayed based on the inverse square root of the update number .
+The loss of the denoising auto-encoder objective is weighted by a coefficient ? , and it is linearly decreased to 0.1 in the first 100,000 steps and decreased to 0 in the next 200,000 steps .
+For VQ - SemFace , the code-book contains 102,400 codes with their dimensions being 1024 .
+Main Results
+In this section , we report the result of our pretraining method fine-tuned with neural machine translation .
+We have two settings .
+The first setting is low-resource supervised machine translation , which uses additional parallel corpus to fine - tune the pre-trained encoder and decoder .
+The second is unsupervised neural machine translation , which uses the two objectives of denoising auto-encoder and back -translation to fine - tune the model .
+Low-resource Language Pairs
+The results on the low-resource language pairs are shown in Table 3 .
+From the table , we see that our proposed methods CL - SemFace and VQ - SemFace significantly outperform the non-pre-training Transformer with an average improvement of over 3 BLEU scores .
+Compared with the strong baseline mBART , our methods also outperform it by 0.8 to 1.2 BLEU scores .
+For most translation directions , VQ - SemFace is better than CL - SemFace , maybe due to the lower quality of cross-lingual language embeddings of these language pairs , especially for the distant language pairs ( en-gu and en-kk ) .
+This also shows the shortcomings of the CL - SemFace that it depends on the quality of the cross-lingual embeddings .
+If the quality is not good , the semantic interface will be far from language - independent , posing difficulties for the splicing of the pre-trained encoder and the pre-trained decoder .
+By contrast , VQ - SemFace gets rid of the constraints of crosslingual embeddings and learns a context-dependent semantic space shared across languages , which can handle those language pairs with low-quality crosslingual embeddings better .
+Unsupervised Language Pairs
+We also report the results of three unsupervised language pairs in Table 4 .
+From the table , we find our proposed methods also significantly outperform the baseline XLM over 1 BLEU score .
+Compared with mBART , we also obtain an improvement of nearly 0.9 BLEU score ( CL - SemFace ) .
+Contrary to the result of low-resource pairs in Table 3 , for the language pairs in Table 4 , we see the performance of CL - SemFace is better than VQ - SemFace .
+This Table 4 : BLEU scores of three unsupervised language pairs .
+Baseline results are based on our reproduction .
+The last row means the averaged improvement of each method compared with the XLM .
+may be because the cross-lingual embeddings of these rich- resource language pairs are of higher quality , thus the semantic interface is initialized better during the pre-training .
+Discussion
+Ablation Study
+In this subsection , we first investigate the influence of the encoder losses ( Eq. 1 ) by removing each of them independently in the encoder pre-training .
+Besides , note that there are two types of loss used in our decoder pre-training , MLM and CLM , as shown in Eq. ( 2 , 3 ) , so we also compare the results with different losses in decoder pre-training , taking the supervised pair en-fi and unsupervised pair enro as examples .
+From the table , we find that for VQ - SemFace under encoder pre-training , the most influential auxiliary loss is the diversity loss L d , which contributes 4.33 BLEU scores in the final results , which is designed to encourage the model to use the codebook entries equally often .
+According to our observation , without L d , the model only uses a small group of codes in the code-book ( < 30 % ) , which indeed shrinks the VQ semantic space and leads to the bad performance .
+L mse and L2 have a sim-ilar effect that stabilizes the training , contributing about 1 BLEU score in the final result .
+For decoder pre-training , the performance of the two losses is comparable , with the MLM slightly better .
+Influence of Parallel Data
+In this section , we investigate the influence of the data quantity in the experiments .
+The language pair we choose is de-en , which has a large parallel corpus and makes it possible to conduct our investigation .
+We compare the performance of the model with our pre-training method and the model without pre-training .
+Note that we do not use any monolingual data in the training so the result here is not comparable with that in Table 4 .
+As shown in Figure 4 , when the number of parallel training data is less than 10 6.7 ? 5 M , the model with pre-training significantly outperforms the non-pre-training model by about 3 to 5 BLEU scores .
+However , when the training samples increase to over 10M , there is almost no difference in performance between the two models .
+Analysis about VQ As mentioned in Sec.2.3 , VQ space could be regarded as a language - independent semantic interface for the encoder and decoder pre-training .
+To test whether VQ space is trained to contain crosslingual representations , we carry out an analysis with a parallel sample of de-en .
+For each token pair ( w en , w de ) in the two sentences , we collect top - 100 codes according to Eq. ( 5 ) , and calculate how much the codes overlapped , as code 100 ( wen ) ?
+code 100 ( w de ) 100 .
+As shown in Figure 5 , the translated tokens share much of the codes chosen from the VQ code-book , which verifies our motivation that VQ could act like a language - independent semantic interface .
+Related Work Pre-training has been widely used in NLP tasks to learn better language representations ( Peters et al. , 2018 ; Devlin et al. , 2018 ; Lample and Conneau , 2019 ; Radford et al. , 2019 ; Dong et al. , 2019 ; . Typically , these methods first pre-train neural networks on largescale unlabeled corpora , and then fine - tune the models on downstream ( Devlin et al. , 2018 ) .
+The early pre-training techniques mainly focused on the natural language understanding tasks such as the GLUE benchmark ( Wang et al. , 2018 ) , and later it was gradually extended to the natural language generation tasks , e.g. , NMT .
+Recently , a prominent line of work has been proposed to improve NMT with pre-training .
+These techniques can be broadly classified into two categories .
+The first category usually uses pre-trained models as feature extractors of a source language , or initializes the encoder and decoder with pretrained models separately ( Lample and Conneau , 2019 ; Ren et al. , 2019 ; Yang et al. , 2020a ; Zhu et al. , 2020 ) .
+For example , Lample and Conneau ( 2019 ) proposed a cross-lingual language model with a supervised translation language modeling objective , and used MLM or CLM to pre-train the encoder and decoder of NMT .
+However , the combined encoder-decoder model , where the crossattention is randomly initialized , often does not work well because of the lack of semantic interfaces between the pre-trained encoder and decoder .
+There is also some work trying to leverage BERTlike pre-trained models for MT with an adapter ( Guo et al. , 2020 ) or an APT framework ( Weng et al. , 2020 ) .
+The former defines additional layers in the pre-trained encoder and decoder during finetuning , while the last adopts a fusion mechanism or knowledge distillation to leverage knowledge in BERT for MT .
+Different from them , we enable the encoder and decoder to interact with a semantic interface during pre-training , and they can be connected directly for the MT fine - tuning without any other additional layers or training loss .
+The second category methods pre-train a whole sequence - to-sequence model for NMT .
+MASS ( Song et al. , 2019 ) employed the encoder-decoder framework to reconstruct a sentence fragment given the remaining part of the sentence .
+BART adopted a similar framework and trained the model as a denoising auto-encoder .
+mBART trained BART model on large-scale monolingual corpora in many languages .
+Although the above work can pre-train the cross-attention of decoder , they are learned on monolingual denoising auto-encoding and cannot learn the corss-lingual transformation between source and target languages .
+There is also some work trying to explicitly introduce cross-lingual information in a code-switch way during the sequence - to- sequence pre-training , such as CSP ( Yang et al. , 2020 b ) and mRASP ( Lin et al. , 2020 ) .
+However , their methods need a lexicon or phrase translation table , which is inferred from unsupervised cross-lingual embeddings .
+Therefore , they depend on the quality of the dictionary .
+The most similar work to ours is probably the one of DALL ?E and CLIP ( Radford et al. , 2020 ) . DALL ?E is a transformer language model that receives both the text and the image as a single stream of data .
+The core idea is to define the cross-modality interface of image and text , which can generate images from text descriptions .
+In this paper , to address the above limitations of pretraining methods for NMT , we attempt to define a cross-lingual semantic interface to connect the pre-trained encoder and decoder .
+Conclusion
+We propose SemFace , a better pre-training method for neural machine translation .
+The key point is to use a semantic interface to connect the pre-trained encoder and decoder .
+By defining this interface , we can pre-train the encoder and decoder separately with the same intermediate language - independent space .
+The cross-attention can also be pre-trained with our method so that we can naturally combine the pre-trained encoder and decoder for fine-tuning .
+We introduce and compare two semantic interfaces , e.g. , CL - SemFace and VQ - SemFace , which leverage unsupervised cross-lingual embeddings and vector quantized embeddings as the intermediate interfaces respectively .
+Massive experiments on supervised and unsupervised NMT translation tasks show that our proposed SemFace obtains substantial improvements over the state - of - the - art baseline models .
+In the future , we will design and test more semantic interface types for extensions .
+Figure 1 : 1 Figure 1 : Overview of our method ( Top : pre-training ; Bottom : fine-tuning ) .
+The training steps of pre-training encoder and decoder are separated , therefore the training samples of them are not necesarrily the same .
+( In the figure , the training sample for pre-training the encoder is x 1 = x 1 1 x 2 1 ..x 6 1 ) and the training sample for pre-training the decoder is x 2 = x 1 2 x 2 2 ..x 6 2 ) .
+For MT fine-tuning , we use the parallel training sample {x 1 , y 1 } from the parallel corpus or generated from back - translation .

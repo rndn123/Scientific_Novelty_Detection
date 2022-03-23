@@ -1,0 +1,140 @@
+title
+The JHU -Microsoft Submission for WMT21 Quality Estimation Shared Task
+abstract
+This paper presents the JHU - Microsoft joint submission for WMT 2021 quality estimation shared task .
+We only participate in Task 2 ( post-editing effort estimation ) of the shared task , focusing on the target - side word - level quality estimation .
+The techniques we experimented with include Levenshtein Transformer training and data augmentation with a combination of forward , backward , round -trip translation , and pseudo post-editing of the MT output .
+We demonstrate the competitiveness of our system compared to the widely adopted OpenKiwi-XLM baseline .
+Our system is also the top-ranking system on the MT MCC metric for the English - German language pair .
+* Shuoyang Ding had a part-time affiliation with Microsoft at the time of this work .
+1
+While there is another sub-task for predicting source -side quality labels , we do not participate in that task .
+Introduction
+In the machine translation ( MT ) literature , quality estimation ( QE ) refers to the task of evaluating the translation quality of a system without using a human-generated reference .
+There are several different granularities as to the way those quality labels or scores are generated .
+Our participation in the WMT21 quality estimation shared task focuses specifically on the word- level quality labels ( word - level subtask of Task 2 ) , which are helpful for both human ( Lee et al. , 2021 ) and automatic ( Lee , 2020a ) post-editing of translation outputs .
+The task asks the participant to predict one binary quality label ( OK / BAD ) for each target word and each gap between target words , respectively .
+1
+Our approach closely follows our contemporary work ( Ding et al. , 2021 ) , which focuses on en-de and en-zh language pairs tested in the 2020 version of the shared task .
+The intuition behind our idea is that translation knowledge is very useful for predicting word - level quality labels of translations .
+However , usage of machine translation models is limited in the previous work mainly due to ( 1 ) the difficulties in using both the left and right context of an MT word to be evaluated ; ( 2 ) the difficulties in making the word - level reference labels compatible with subword - level models ; and ( 3 ) the difficulties in enabling translation models to predict gap labels .
+To resolve these difficulties , we resort to Levenshtein Transformer ( LevT , Gu et al. , 2019 ) , a model architecture designed for non-autoregressive neural machine translation ( NA - NMT ) .
+Because of its iterative inference procedure , LevT is capable of performing post-editing on existing translation output even just trained for translation .
+To further improve the model performance , we also propose to initialize the encoder and decoder of the LevT model with those from a massively pre-trained multilingual NMT model ( M2M - 100 , Fan et al. , 2020 ) .
+Starting from a LevT translation model , we then perform a two -stage finetuning process to adapt the model from translation prediction to quality label prediction , using automatically - generated pseudopost-editing triplets and human post-editing triplets respectively .
+All of our final system submissions are also linear ensembles from several individual models with weights optimized on the development set using the Nelder - Mead method ( Nelder and Mead , 1965 ) .
+Method
+Our system building pipeline is consisted of three different stages : ( LevT , 2019 ) to train the LevT translation model , except that we initialize the embedding , the encoder , and decoder of LevT with those from the small M2M - 100 - small model ( 418 M parameters , Fan et al. , 2020 ) to take advantage of large-scale pretraining .
+Because of that , we also use the same sentencepiece model and vocabulary as the M2M - 100 model .
+For to -English language pairs , we explored training multi-source LevT model .
+According to the results on devtest data , this is shown to be beneficial for the QE task for ro-en , ru-en and ne-en , but not for other language pairs .
+Stage 2 : Synthetic Finetuning During both finetuning stages , we update the model parameters to minimize the NLL loss of word quality labels and gap quality labels , for the deletion and insertion head , respectively .
+To obtain training targets for finetuning , we need translation triplet data , i.e. , the aligned triplet of source , target , and post-edited segments .
+Human post-edited data naturally provides all three fields of the triplet , but only comes in a limited quantity .
+To further help the model to generalize , we conduct an extra step of finetuning on synthetic translation triplets , similar to some previous work ( Lee , 2020 b , inter alia ) .
+We explored five different methods for data synthesis , namely : 1 . src-mt-tgt :
+Take the source side of a parallel corpus ( src ) , translate it with a MT model to obtain the MT output ( mt ) , and use the target side of the parallel corpus as the pseudo postedited output ( tgt ) .
+2 . src-mt1 - mt2 : Take a corpus in the source language ( src ) and translate it with two different MT systems that have clear system-level translation quality orderings .
+Then , take the worse MT output as the MT output in the triplet ( mt1 ) and the better as the pseudo post-edited output in the triplet ( mt2 ) .
+3 . bt-rt- tgt : Take a corpus in the target language ( tgt ) and back - translate it into the source langauge ( bt ) , and then translate again to the target language ( rt ) .
+We then use rt as the MT output in the triplet and tgt as the pseudo post-edited output in the triplet .
+4 . src-rt- ft :
+Take a parallel corpus and translate its source side and use it as the pseudo postedited output ( ft ) , and round - trip translate its target side ( rt ) as the MT output in the translation triplet .
+Multi-view Pseudo Post-Editing ( MVPPE ) : Same as Ding et al . ( 2021 ) , we take a parallel corpus and translate the source side ( src ) with a multilingual translation system ( mt ) as the MT output in the triplet .
+We then generate the pseudo-post-edited output by ensembling two different views of the same model : ( 1 ) using the multilingual translation model as a translation model , with src as the input ; ( 2 ) using the multilingual translation model as a paraphrasing model , with tgt as the input .
+The ensemble process is the same as ensembling standard MT models , and we perform beam search on top of the ensemble .
+Unless otherwise specified , we use the same ensembling weights of ? t = 2.0 and ? p = 1.0 as Ding et al . ( 2021 ) .
+Stage 3 : Human Post-editing Finetuning
+We follow the same procedure as stage 2 , except that we finetune on the human post-edited dataset provided by the shared task organizers for this stage .
+Compatibility With Subwords
+As pointed out before , since LevT predicts edits on a subwordlevel starting from translation training , we must construct reference tags that are compatible with the subword segmentation done for both the MT and the post-edited output .
+Specifically , we need to : ( 1 ) for inference , convert subword - level tags predicted by the model to word - level tags for evaluation , and ( 2 ) for both finetuning stages , build subword - level reference tags .
+We follow the same heuristic subword - level tag reference construction procedure as Ding et al . ( 2021 ) , which was shown to be helpful for task performance .
+Label Imbalance
+Like several previous work ( Lee , 2020a ; Wang et al. , 2020 ; Moura et al. , 2020 ) , we also observed that the translation errors are often quite scarce , thus creating a skewed label distribution over the OK and BAD labels .
+Since it is critical for the model to reliably predict both classes of labels , we introduce an extra hyperparameter ? in the loss function that allows us to upweight the words that are classified with BAD tags in the reference .
+which are translated into binary labels in postprocessing .
+To ensemble predictions from k models p 1 ( OK ) , p 2 ( OK ) , . . . , p k ( OK ) , we perform a linear combination of the scores for each label : L = L OK + ?L BAD p E ( OK ) = ?
+1 p 1 ( OK ) + ? 2 p 2 ( OK ) + ? ? ? + ? k p k ( OK )
+To determine the optimal interpolation weights , we optimize towards target - side MCC on the development set .
+Because the target- side MCC computation is not implemented in a way such that gradient information can be easily obtained , we experimented with two gradient - free optimization method : Powell method ( Powell , 1964 ) and Nelder - Mead method ( Nelder and Mead , 1965 ) , both as implemented in SciPy ( Virtanen et al. , 2020 ) .
+We found that the Nelder - Mead method finds better optimum on the development set while also leading to better performance on the devtest dataset ( not involved in optimization ) .
+Hence , we use the Nelder - Mead optimizer for all of our final submissions with ensembles .
+We set the initial points of Nelder - Mead optimization to be the vertices of the standard simplex in the k-dimensional space , with k being the number of the models .
+We find that it is critical to build ensembles from models that yield diverse yet high-quality outputs .
+Specifically , we notice that ensembles from multiple checkpoints of a single experimental run are not helpful .
+Hence , for each language pair , we select 2 - 8 models with different training configurations that also have the highest performance to build our final ensemble model for submission .
+Experiments
+Data Setup LevT Training
+We used the same parallel data that was used to train the MT system in the shared task , except for the en-de , et-en , and ps-en language pairs .
+For en-de language pair , we use the larger parallel data from the WMT20 news translation shared task .
+For et-en language pair , we experiment with augmenting with the News Crawl Estonian monolingual data from 2014 to 2017 , which was inspired by Zhou and Keung ( 2020 ) .
+For psen language pair , because there is no MT system provided , we take the data from the WMT20 parallel corpus filtering shared task and applied the baseline LASER filtering method .
+For the multisource LevT model , we simply concatenate the data from ro-en , ru-en , es-en ( w/ o monolingual augmentation ) and ne-en .
+The resulting data scale is summarized in Table 1 . Following the setup in Gu et al . ( 2019 ) , we conduct sequence - level knowledge distillation during training for all language pairs except for ne-en and ps-en 2 .
+For en-de , the knowledge distillation data is generated by the WMT19 winning submission for that language pair from Facebook .
+For en-zh , we train our own en-zh autoregressive model on the parallel data from the WMT17 news translation shared task .
+For the other language pairs , we use the decoding output from M2M - 100 mid ( 1.2 B parameters ) model to perform knowledge distillation .
+Synthetic Finetuning
+We always conduct data synthesis based on the same parallel data that was used to train the LevT translation model .
+For the only language pair ( en-de ) where we applied the src-mt1 - mt2 synthetic finetuning for shared task submission , we again use the WMT19 Facebook 's winning system to generate the higher -quality translation mt2 , and the system provided by the shared task to generate the MT output in the pseudo translation triplet mt1 .
+For all other combinations of translation directions , language pairs and MVPPE decoding , we use the M2M -100 -
+Human Annotation Finetuning
+We follow the data split for human post-edited data as determined by the task organizers and use test20 as the devtest for our system development purposes .
+Reference Tag Generation
+We implemented another TER computation tool 3 to generate the wordlevel and subword - level tags that we use as the reference for finetuning , but stick to the original reference tags in the test set for evaluation to avoid potential result mismatch .
+3 https://github.com/marian-nmt/moses-scorers
+Model Setup Our LevT - QE model is implemented based on Fairseq .
+All of our experiments uses Adam optimizer ( Kingma and Ba , 2015 ) with linear warmup and inverse-sqrt scheduler .
+For stage 1 , we use the same hyperparameters as Gu et al . ( 2019 ) for LevT translation training , but use a smaller learning rate of 2e - 5 to avoid overfitting for all to -English language pairs .
+For stage 2 and beyond , we stick to the learning rate of 2e - 5 and perform early - stopping based on the loss function on the development set .
+For stage 3 , e also experiment with label balancing factor ? = 1.0 and ? = 3.0 for each language pair and pick the one that works the best on devtest data , while for stage 2 we keep ? = 1.0 because early experiments indicate that using ? = 3.0 at this stage is not helpful .
+For pre-submission developments , we built OpenKiwi-XLM baselines ( Kepler et al. , 2019 ) following their xlmroberta.yaml recipe .
+Keep in mind due to the fact that this baseline model is initialized with a much smaller XLM - Robertabase model ( 281 M parameters ) compared to our M2M - 100 - small initialization ( 484 M parameters ) , the performance comparison is not a strict one .
+Devtest Results
+Our system development results on test20 devtest data are shown in Table 2 4 .
+In all language pairs , our systems can outperform the OpenKiwi baseline based upon the pre-trained XLM - RoBERTa - base encoder .
+Among these language pairs , the benefit of LevT is most significant on the language pairs with a large amount of available parallel data .
+Such behavior is expected , because the less parallel data we have , the less knowledge we can extract from the LevT training process .
+Furthermore , the lack of good quality knowledge distillation data in the low-resource language pairs also expands this performance gap .
+To our best knowledge , this is also the first attempt to train non-autoregressive translation systems under low-resource settings , and we hope future explorations in this area can enable us to build a better QE system from LevT .
+In terms of comparison between multilingual and bilingual models for to -English language pairs , the results are mixed , with the multilingual model per - Table 4 : Analysis of src-mt1 - mt2 and mvppe method on ro-en and et-en language pair .
+forming significantly better for ru-en language pair , but significantly worse for et-en language pair .
+Finally , our Nelder - Mead ensemble further improves the result by a small but steady margin .
+Analysis Ding et al. ( 2021 ) already conducted comprehensive ablation studies for techniques such as the effect of LevT training step , heuristic subword - level reference tag , as well as the effect of various data synthesis methods .
+In this section , we extend the existing analyses by studying if the synthetic finetuning is still useful with M2M initialization , and if it is universally helpful across different languages .
+We also examine the effect of label balancing factor ? and take a detailed look at the prediction errors .
+Synthetic Finetuning
+We redo the analysis on en-de synthetic finetuning with the smaller 2 M parallel sentence samples from Europarl , as in Ding et al . ( 2021 ) , but with the updated test20 test set and models with M2M - 100 - small initialization .
+The results largely corroborate the trend in the other paper , showing that src-mt1 - mt2 and mvppe being the most helpful two data synthesis methods .
+We then extend those two most helpful methods to roen and et-en , using the up-to-date Bing Translator production model as the stronger MT system ( a.k.a. mt2 ) in the src-mt1 - mt2 synthetic data .
+The result is mixed , with mvppe failing to improve performance for both language pairs , and src-mt1 - mt2 only being helpful for et-en language pair .
+We also trained two extra ro-en and et-en LevT models using the respective Bing Translator models to generate the KD data , which are neither helpful for improving performance on their own nor working better with src-mt1 - mt2 synthetic data .
+We notice that the mvppe synthetic data seems to significantly improve the F1 score of the OK label in general , for which we do n't have a good explanation yet .
+Label Balancing Factor
+We find the QE task performance to be quite sensitive to the label balancing factor ? , but there is also no universally optimal value for all language pairs .
+Table 5 shows this behavior for all to -English language pairs .
+Notice that while for most of the cases ? simply controls a trade- off between the performance of OK and BAD outputs , there are also cases such as ro-en where a certain choice of ? hurts the performance of both classes .
+This might be due to a certain label class being particularly hard to fit , thus creating more difficulties with learning when the loss function is designed to skew to this label class .
+It should be noted that this label balancing factor does not correlate directly with the ratio of the OK vs.
+BAD labels in the training set .
+For example , to obtain the best performance , ne-en requires ? = 3.0 while en-de requires ? = 1.0 , while the OK to BAD ratio for ne-en ( 2.14:1 ) is much less skewed compare to en-de ( 10.2:1 ) .
+Detailed Error Breakdown
+We found it hard to develop an intuition for the model performance from the MCC metric .
+To further understand which label categories our models struggle with the most , we breakdown the target- side metric into a cross product of { MT , GAP } tags and { OK , BAD } classes and compute precision , recall and F1 - score for each category .
+The breakdown is shown in Table 6 .
+It can be seen that our model is making the most mistakes with the GAP BAD category , while the category with the least mistakes is the GAP OK category .
+Also , note that for MT word tags , the models often seem to suffer more from low precision rather than low recall , while for gaps it is the opposite .
+Overall , we see that the highest F1 scores we can achieve for detecting bad MT words or gaps are rarely higher than 0.8 , which indicates that there should be ample room for improvement .
+It would also be interesting to measure the inter-annotator agreement of these word - level quality labels , in order to get a sense of the human performance we should be aiming for .
+Conclusion
+In this paper , we present our WMT21 word - level QE shared task submission based on Levenshtein Transformer training and a two -step finetuning process .
+We also explore various ways to create synthetic data to build more generalizable systems with limited human annotations .
+We show that our system outperforms the OpenKiwi+XLM baseline for all language pairs we experimented with .
+Our official results on the blind test set also demonstrate the competitiveness of our system .
+We hope that our work can inspire other applications of Levenshtein Transformer beyond the widely studied case of non-autoregressive translation .
+?
+Stage 1 : Training LevT for translation ?
+Stage 2 ( Optional ) : Finetuning LevT on synthetic post-editing triplets ?
+Stage 3 : Finetuning LevT on human postediting triplets Stage 1 : Training LevT for Translation
+We largely follow the same procedure as Gu et al .

@@ -1,0 +1,125 @@
+title
+An Instance Level Approach for Shallow Semantic Parsing in Scientific Procedural Text
+abstract
+In specific domains , such as procedural scientific text , human labeled data for shallow semantic parsing is especially limited and expensive to create .
+Fortunately , such specific domains often use rather formulaic writing , such that the different ways of expressing relations in a small number of grammatically similar labeled sentences may provide high coverage of semantic structures in the corpus , through an appropriately rich similarity metric .
+In light of this opportunity , this paper explores an instance - based approach to the relation prediction sub-task within shallow semantic parsing , in which semantic labels from structurally similar sentences in the training set are copied to test sentences .
+Candidate similar sentences are retrieved using SciBERT embeddings .
+For labels where it is possible to copy from a similar sentence we employ an instance level copy network , when this is not possible , a globally shared parametric model is employed .
+Experiments show our approach outperforms both baseline and prior methods by 0.75 to 3 F1 absolute in the Wet Lab Protocol Corpus and 1 F1 absolute in the Materials Science Procedural Text Corpus .
+Introduction
+Being able to represent natural language descriptions of scientific experiments in a structured form promises to allow tackling a range of challenges from automating biomedical experimental protocols ( Kulkarni et al. , 2018 ) to gaining materials science insight by large scale mining of the literature ( Mysore et al. , 2019 ) .
+To facilitate these applications , recent work has created datasets annotated with sentence level semantic structure for procedural scientific text from experimental biology ( Kulkarni et al. , 2018 ) and materials science ( Mysore et al. , 2019 ) .
+However , these corpora , the Wet Lab Protocols corpus ( WLP ) and the Materials Query : " Centrifuge the sample at 14,000 xg for 5 minutes . "
+Neighbor : " Centrifuge supernatant at 12,000 xg for 10 minutes . "
+Query : " Add 700 ? l 70 % ethanol to the tube and invert several times to wash the DNA pellet . "
+Neighbor : " Add 200 ? l 70 % ethanol and invert the tube twice to wash the pellet . "
+Science Procedural Text ( MSPT ) corpus remain small .
+This motivates approaches to parsing that are likely to generalize given limited labelled data .
+We propose an instance - based edge-factored approach for the relation prediction sub-problem of shallow semantic parsing .
+To predict a possible relation between two entities , our approach retrieves a set of sentences similar to the target sentence , and learns to copy relations in those sentences to the target sentence ( Figure 1 shows some examples ) .
+However , using only a nearest- neighbours approach over similar sentences poses a coverage problem , as some edge labels may have zero instances in the set of nearest neighbour sentences .
+To address this , we employ a parametric approach which can score a label when it is not possible to copy that label from any of the neighbours .
+Therefore , we combine a local , instance - level approach with a global , parametric approach .
+Our instance - based approach is motivated by the observation that text in the WLP and MSPT corpora , both of which describe experimental protocols , follow domain-specific writing conventions ( sometimes referred to as a sublanguage ( Grish-man , 2001 ; Grishman and Kittredge , 1986 ) ) resulting in text that is repetitive and semi-structured .
+In such restricted domains we postulate that a lowbias instance - level approach may generalize better compared to a parametric approach , which is likely to suffer from a lack of training data .
+In evaluations of the proposed approach we find the proposed local and global approach to outperform baseline methods based on parametric approaches by 0.75 F1 absolute in WLP and 1 F1 absolute in MSPT and prior work by 2.69 F1 absolute ( 12.7 % error reduction ) on the WLP corpus .
+We also present first results for relation prediction on the MSPT corpus .
+Code and data for our experiments is available .
+1
+Task Setup and Notation Given a sentence X = x 1 , . . . x i , . . . x L from a dataset D , let x denote tokens , and ( m , t ) entity mentions and their entity types , where m ?
+C , where C is the set of all possible contiguous token spans in X. 2
+In a sentence , we denote the set of all entity mentions with M . Given this , we focus on the task of relation prediction which outputs a set of directed edges E such that , e = ( m s , m d , r ) with e ? E ? M ?
+M , where m s , m d denote source and destination mentions , r ? { R ? ?} denotes a relation edge label , R denotes the set of relation labels defined for the dataset and ? denotes the absence of a relation .
+Local and Global Model for Relation Prediction
+The Plg( ri|ms , m d , N ) = 1 Z e E l ( r i , ms , m d , N ) if r i ? labels ( N ) 1 Z e Eg( r i , ms , m d ) if r i / ? labels ( N ) ( 1 ) 1 https://github.com/bajajahsaas/ knn-srl-procedural-text
+2 Non-contiguous entities in WLP ( < 1 % ) are excluded .
+Here , E g represents the globally shared scoring function and E l the local scoring function , here we drop additional arguments to these functions for brevity .
+Z denotes the normalization constant where : Z = r k ?labels ( N ) e E l ( r k ) + r j / ?labels ( N ) e Eg( r j ) .
+In computing the score from E l per label , an instance level score from E c ( r i , m s , m d , e n ) is aggregated for every label present in the neighbours N as : E l = logsumexp label ( en ) =r i E c
+This represents making a soft maximum selection of a neighbour edge most similar to the test edge for a given label r i .
+Here , labels ( N ) returns the set of labels present in N and label ( e n ) , returns the neighbour edge label .
+Equation 1 represents a model which is biased first to copy edge labels from N and in the absence of a label in N rely on a global model .
+This is in contrast to a model which trades off local and global models in a data dependent manner , the approach taken in the copy - generate model of See et al . ( 2017 ) .
+The proposed formulation imposes an inductive bias in the model to copy edge labels which we believe helps perform well in our small data regime .
+In practice , our approach uses the local model for more frequently occurring labels and the global model for rare labels .
+Conceptually , this is once again , in contrast to the models of See et al . ( 2017 ) and Gu et al . ( 2016 ) which use a copy-model for long-tail or low-frequency phenomena .
+We believe this contrast is reasonable due to the formulaic nature of the text and the small data regime .
+Here , a local instance - level approach is able to generalize better by copying labels while the global model suffers from a lack of training data to learn the majority label patterns .
+Low frequency labels would see comparable performance for the global and instance level models .
+We confirm these intuitions empirically in ?4 .
+Next we define the neural - network parameterization of the model .
+Edge Representation and Scoring Function Parameterization
+We define the instance level scoring function E c and E g for the global model as follows : E c ( e n ) = FFN R ( [ e q ; e n ; r n ] ) ( 2a ) e q = FFN e ( [ m s ; m d ; t s ; t d ; d s ,d ] ) ) ( 2 b ) e n = FFN e ( [ m ns ; m nd ; t ns ; t nd ; d ns , nd ] ) ( 2 c )
+Here , FFN
+R is a feed-forward network which returns a scalar , e q the vector representations for the query / test edge , e n the neighbour edge and r n the neighbours relation .
+Network FFN
+e produces a vector representations for e q or e n .
+And , m represents a contextualized representation for the source and destination entity mentions , t and d represents a vector representations of the entity type and the distance between the source and destination .
+The parameters t , r and d are learned as model parameters and contextualized mention representations are obtained from SCIBERT ( Beltagy et al. , 2019 ) ( word - pieces averaged ) without fine-tuning .
+Next , the global scoring function is formulated as : E g ( r i ) = FFN R ( [ e q ; e r i ; r i ] ) ( 3 )
+While most notation remains the same as in Equation 2 , e r i represents a globally shared " prototype " edge representation per label , learned as model parameters .
+Note that e r i is only used in the global model and is the same kind of object as e n .
+Training and Sentence Retrieval
+The proposed approach is trained by maximizing the log likelihood of the observed relations , r * in the dataset : L = D E log Plg( r * )
+In this work , we obtain the set of nearest neighbour sentences to obtain N based on representations obtained from SciBERT .
+Every sentence is represented by the average of the token ( word- piece ) representations : v X = 1 L L i=1 SciBERT ( x i ) .
+K nearest neighbours of the query sentence X q were ranked by scores obtained as : cosine sim( v Xq , v Xn ) .
+We set K = 5 at training time to obtain the set of edges , N .
+At test time we use K = 40 and K = 20 for WLP and MSPT respectively .
+In experiments , we work with approximate nearest neighbours obtained from the annoy package .
+3 Complete model hyperparameter and training details are presented in Appendix A.4 .
+Results and Analysis
+We evaluate the proposed approach on two datasets of procedural scientific text : the Materials Science Procedural Text ( MSPT ) corpus and the Wet Lab Protocols ( WLP ) corpus .
+In both corpora we focus on the sentence level relation prediction task given gold entity mention spans .
+The experimental setup is detailed in Appendix A.1 . 3 https://github.com/spotify/annoy
+Baselines
+We compare the proposed approach to several baseline approaches as well as prior work : KULKARNI18 : The best approach proposed in prior work on the WLP corpus .
+This is an edge factored parametric approach using lexical , dependency and entity - type features .
+COPYGEN : This is the copy - generate model proposed in ( See et al. , 2017 ) , modified for a relation prediction task .
+The method differs from ours in trying to predict a copy probability , ? using a mixing network which trades off the copy / instance or generate / global component in a data-dependent manner .
+The model is detailed in Appendix A.2.1 .
+STRINGCOPY : This approach attempts to copy the relation for a query edge ( m qs , m qd ) from a neighbour edge ( m ns , m nd ) , from the nearest neighbours N , first based on exact string matches of the mention and next the entity type t.
+If this is not possible it predicts ?.
+GLOBALMODEL : A parametric model approach without an instance learning component : P g ( r| m s , m d ) = Softmax ( FFN g ( e q ) ) .
+Since this is the dominant approach for relation prediction we believe it is the most reasonable relation prediction model to compare against to demonstrate the benefits of an instance learning approach .
+LOCALMODEL : Instance based local approach ( Eq 1 ) without the global model .
+Results Overall results :
+Table 1 presents performance of the proposed approach against a host of baseline methods and prior work .
+From row I , we note that the inductive bias to copy is better suited to WLP than to MSPT , and that simple rule- based approaches do n't perform at any useful level .
+Also note the proposed approach outperforms prior work on WLP ( II vs VI ) .
+Next , we note that the parametric and the instance based approach ( IV , V ) trade off precision and recall as we would expect and that the proposed approach ( VI ) outperforms both these approaches .
+Also note the ablation of model components provided in this result ( IV , V , VI ) .
+Next consider specifically the results on MSPT .
+Note here , the high-recall result of COPYGEN .
+We explain this as follows :
+First we note that given the formulaic nature of the data , the proposed approach is biased to have a higher precision given that it can copy labels .
+The COPYGEN and GLOBALMODELS lack of relations when considering all pairs of edges between entity mentions ( 1916/45732 = 4.1 % ) than WLP ( 8264/60338 = 13.6 % ) .
+To perform well on a sparsely labelled dataset a model must be biased for precision ( a conservative model biased for precision would label the true-positives and given the sparsity , have high recall and overall F1 ) , since the COPYGEN / GLOBALMODELS models are not biased for precision they make predictions more liberally leading to higher recalls but see significant hits to precision , in contrast to the proposed method .
+Finally , we note the gap between CopyGen and GlobalModel in MSPT and attribute it to training variance given the smaller size of MSPT .
+Finally , we also compare to an alternative datadependent method for combining a parametric and instance based approach ( III vs VI ) from See et al . ( 2017 ) .
+Our approach with a stronger inductive bias to copy relations outperforms this .
+We also note that this approach performs similarly to GLOB - ALMODEL ( III vs IV ) .
+Examination of the predicted copy- probability ( ? ) on development examples in COPYGEN shows these values to be very small ( MSPT mean : 10 ?5 , WLP mean : 10 ?5 ) confirming that the model always chooses to " generate " ( i.e. use a parametric model ) and lacks sufficient inductive bias to copy in our datasets .
+In contrast , in OUR METHOD the local model makes edge predictions in 1852 of 1916 edges ( 96 % ) in MSPT and 8131 of 8264 edges ( 98 % ) in WLP development sets .
+Confirming the intended and significant invocation of the local model in the proposed approach .
+Breakdown by label :
+As discussed in ?3 , given our small data regime , we believe a model with a simple inductive bias such as the local model generalizes better while the global model suffers a lack of training data to learn the majority label patterns , while in the case of very low frequency labels the global component would perform at par with a simple parametric approach .
+We see this behaviour in Table 3 .
+While this behaviour reverses the trend of methodologically similar instance based approaches ( See et al. , 2017 ; Snell et al. , 2017 ; Khandelwal et al. , 2020 ) , we believe it to be reasonable specifically due to the formulaic writing in our corpora .
+Varying training data : Finally , in Table 2 we note that the the proposed approach outperforms the parametric approach , GLOBALMODEL , at nearly all levels of training data .
+Demonstrating that the gains from copying labels from similar sentences in the training data hold out even as the pool of sentences to copy from shrinks , once again demonstrating the advantage of a model leveraging formulaic writing .
+Related Work Instance - based learning approaches have been applied to a rage number of information extraction tasks such as Semantic Role Labeling ( SRL ) , Named Entity Recognition ( NER ) , and Part of Speech ( POS ) tagging .
+Akbik and Li ( 2016 ) and Wiseman and Stratos ( 2019 ) presents closest related work in terms of the task instance level methods are applied to .
+Akbik and Li ( 2016 ) ( Khandelwal et al. , 2020 ) , knowledge base reasoning tasks ( Das et al. , 2020 ) , and few-shot classification ( Snell et al. , 2017 ; Sung et al. , 2018 ) and regression ( Quinlan , 1993 ) problems .
+Works in text generation such as summarization ( See et al. , 2017 ; Gu et al. , 2016 ) have also incorporated " copy " mechanisms , pointing at longtail phenomena from text to be summarized or translated rather than directly predicting them .
+These methods bear close methodological similarity to the proposed approach while differing in having a weaker inductive bias to copy labels .
+Also similar , are retrieve- and - edit approaches which have been applied instance based methods for generating complex structured outputs and text generation .
+Conclusion
+We propose an edge factored instance based approach to the relation prediction sub-task within shallow semantic parsing for procedural scientific text .
+Our approach leverages the highly formulaic writing of procedural scientific text to achieve better generalization than baseline methods with weaker inductive biases to copy and prior approaches which represent parametric approaches on two corpora of English scientific text .
+While our work has only looked at predicting relations in an edge factored manner future work might explore ways of predicting higher order groups of edges .
+Other extensions might consider jointly predicting spans and edges as in Akbik and Li ( 2016 ) .
+Future work might also consider questions of characterizing and measuring formulaicity in text and how a range of information extraction tasks may be tailored to these texts .
+Finally , our approach relies on a static retrieval of sentences , there may also be potential for this aspect to be improved upon with a dynamic retrieval model trained along side the label prediction models similar to Guu et al . ( 2020 ) , we expect this would be feasible particularly given the small dataset sizes in this domain .
+Figure 1 : 1 Figure 1 : Example sentences from the WLP corpus , and their nearest neighbours based on sentence representations obtained from SCIBERT .

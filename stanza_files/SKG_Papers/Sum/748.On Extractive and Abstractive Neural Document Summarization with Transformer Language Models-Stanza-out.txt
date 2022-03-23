@@ -1,0 +1,298 @@
+title
+On Extractive and Abstractive Neural Document Summarization with Transformer Language Models
+abstract
+We present a method to produce abstractive summaries of long documents that exceed several thousand words via neural abstractive summarization .
+We perform a simple extractive step before generating a summary , which is then used to condition the transformer language model on relevant information before being tasked with generating a summary .
+We also show that this approach produces more abstractive summaries compared to prior work that employs a copy mechanism while still achieving higher ROUGE scores .
+We provide extensive comparisons with strong baseline methods , prior state of the art work as well as multiple variants of our approach including those using only transformers , only extractive techniques and combinations of the two .
+We examine these models using four different summarization tasks and datasets : arXiv papers , PubMed papers , the Newsroom and BigPatent datasets .
+We find that transformer based methods produce summaries with fewer n-gram copies , leading to n-gram copying statistics that are more similar to human generated abstracts .
+We include a human evaluation , finding that transformers are ranked highly for coherence and fluency , but purely extractive methods score higher for informativeness and relevance .
+We hope that these architectures and experiments may serve as strong points of comparison for future work .
+Introduction Automatic text summarization is the process of compressing a document while preserving key information content and meaning .
+This process is often achieved through extractive or abstractive * Authors contributed equally to this work 1 Note :
+The abstract above was collaboratively written by the authors and one of the models presented in this paper based on an earlier draft of this paper .
+Introduction Language models ( LMs ) are trained to estimate the joint probability of an arbitrary sequence of words or characters using a large corpus of text .
+They typically factorize the joint distribution of tokens p( x1 , x2 ... xn ) into a product of conditional probabilities Qn i p( xi | x < i ) .
+It is possible to use n-gram based models to estimate these conditional probabilities via counts , relying on Markovian assumptions .
+However , Markovian assumptions and the curse of dimensionality make it harder for n-gram LMs to model long range dependencies and learn smooth functions that can learn similarities between words in the vocabulary .
+This has led to a preference for recurrent or feed -forward neural language models ( Bengio et al. , 2003 ; Mikolov et al. , 2010 ) in recent years due to to their ability to learn expressive conditional probability distributions ( Merity et al. , 2017 ; Radford et al. , 2019 ) .
+The sequence-to-sequence ( seq2seq ) paradigm ( Sutskever et al. , 2014 ) uses language models that learn the conditional probability of one sequence given another .
+Here , a language model serves as a " decoder " that is typically conditioned on a representation of an input sequence produced by an encoder neural network .
+These types of encoder-decoder architectures have been particularly successful when applied to problems such as machine translation ( Bahdanau et al. , 2014 ) and abstractive summarization ( Rush et al. , 2015 ) .
+The encoder and conditional decoder language models are often paramaterized as recurrent neural networks ( RNNs ) .
+Attention mechanisms ( Bahdanau et al. , 2014 ) are used in the decoder to provide more informative conditioning on the representations produced by the encoder and to ease gradient flow into the encoder .
+RNNs however , are limited by their sequential nature , making them 1 ) difficult to optimize and learn for long sequences with long range dependencies ( Hochreiter , 1998 ; Pascanu et al. , 2013 ) , and 2 ) hard to parallelize on modern hardware like GPUs , limiting their scalability .
+? Equal contribution , order determined by coin flip Preprint .
+Sent to peer review , May 2019 .
+Neural Document Summarization with Sentence Pointer Networks and Transformer Language Models 1 Introduction Language models ( LMs ) are trained to estimate the joint probability of an arbitrary sequence of words or characters using a large corpus of text .
+They typically factorize the joint distribution of tokens p( x1 , x2 ... xn ) into a product of conditional probabilities Qn i p( xi | x < i ) .
+It is possible to use n-gram based models to estimate these conditional probabilities via counts , relying on Markovian assumptions .
+However , Markovian assumptions and the curse of dimensionality make it harder for n-gram LMs to model long range dependencies and learn smooth functions that can learn similarities between words in the vocabulary .
+This has led to a preference for recurrent or feed -forward neural language models ( Bengio et al. , 2003 ; Mikolov et al. , 2010 ) in recent years due to to their ability to learn expressive conditional probability distributions ( Merity et al. , 2017 ; Radford et al. , 2019 ) .
+The sequence-to-sequence ( seq2seq ) paradigm ( Sutskever et al. , 2014 ) uses language models that learn the conditional probability of one sequence given another .
+Here , a language model serves as a " decoder " that is typically conditioned on a representation of an input sequence produced by an encoder neural network .
+These types of encoder-decoder architectures have been particularly successful when applied to problems such as machine translation ( Bahdanau et al. , 2014 ) and abstractive summarization ( Rush et al. , 2015 ) .
+The encoder and conditional decoder language models are often paramaterized as recurrent neural networks ( RNNs ) .
+Attention mechanisms ( Bahdanau et al. , 2014 ) are used in the decoder to provide more informative conditioning on the representations produced by the encoder and to ease gradient flow into the encoder .
+RNNs however , are limited by their sequential nature , making them 1 ) difficult to optimize and learn for long sequences with long range dependencies ( Hochreiter , 1998 ; Pascanu et al. , 2013 ) , and 2 ) hard to parallelize on modern hardware like GPUs , limiting their scalability .
+techniques .
+Extractive summarization is the strategy of selecting a subset of words , phrases or sentences from the input document to form a summary .
+Abstractive summarization consists of creating sentences summarizing content and capturing key ideas and elements of the source text , usually involving significant changes and paraphrases of text from the original source sentences .
+While extractive summarization is able to preserve saliency , the broader flow or coherency of the multiple sentences forming the summary can be less natural compared to a human generated summary .
+On the other hand , abstractive methods should produce coherent summaries without copying sentences verbatim while remaining faithful to statements asserted in the input document .
+Recent work by ( Radford et al. , 2019 ) ( GPT - 2 ) has demonstrated that Transformer Language Models ( TLMs ) trained on web text can inadvertently learn to perform abstractive summarization , since a large crawl of web documents may contain some documents which have a " tl;dr " token followed by a summary .
+We are interested here in explicitly configuring autoregressive transformer models to generate summaries in an intentional and focused manner .
+Since summaries or abstracts typically appear at the beginning of a document , a model trained from such web-crawl data does not enforce strong conditioning on the text to be summarized .
+Our tests using models naively trained on web-crawl data yielded summarization quality far below baseline methods .
+However , in this paper we explore what can be achieved through simply ordering the passages of an input text , correctly structuring the task definition and training procedure .
+We also examine the impact of combining this approach with simple but high quality extractive techniques .
+While pure language models can be applied to short input documents , memory considerations make it difficult to scale to long documents .
+Further , as high quality extractive summarization methods illustrate , much of the content of a long document is not needed to create a summary .
+For these reasons we also explore a hybrid approach which combines an extractive and abstractive approach .
+We achieve this by stepping away from the classical end-to - end sequence - to- sequence paradigm , using an initial extractive step that reduces the amount of context for a subsequent abstractive step ( see figure 1 ) .
+Such an approach could be thought of as a form of hard attention .
+Moreover , we show that such a paradigm works even for datasets where the entire input can fit in memory , i.e. see Table 4 and 5 .
+We take an approach whereby we restructure the input to a TLM by reordering the document and inserting standardized delimiters to identify the introduction , our extracted sentences , the abstract or summary and the rest- of- the-article .
+With our method , the resulting TLM can focus its attention on the relevant content and its model complexity on the summarization task .
+In general , as we shall detail in our experiments below , we find that TLMs are surprisingly effective at summarizing long documents , outperforming typical seq2seq approaches , even without using copying / pointing mechanisms , an encoder or additional losses .
+Our contribution consists of an extensive set of large scale experiments comparing our hybrid extractive and abstractive approach to long document summarization with different variants of our model , strong and simple baselines as well as with state - of - the - art summarization models ( see section 3.2 for a complete description of comparisons ) .
+We examine these models through ROUGE scores , through a study of the amount of n-gram copying performed by different models , as well as through a human evaluation using a standard protocol .
+We find that our hybrid approach yields results that surpass current state - of - the - art results on several metrics of these evaluations .
+We see our extensive experimentation and the wide variety of evaluation protocols provided here as being a key part of the contribution provided by this work and we hope that the analysis , insights and models here will serve as strong yet simple baselines for future comparison and research .
+Related Work
+The earliest attempts at automatic summarization focused on extractive techniques , which find words or sentences in a document that capture its most salient content .
+Recently , with advances in distributed representations of words , phrases and sentences , researchers have proposed to use these to compute similarity scores .
+Such techniques were further refined by Nallapati et al . ( 2016 b ) ; Cheng and Lapata ( 2016 ) ; Chen and Bansal ( 2018 ) with encoder-decoder architectures - the representations learned by the encoder are used to choose the most salient sentences .
+Cheng and Lapata ( 2016 ) and Nallapati et al . ( 2016 b ) trained encoder-decoder neural networks as a binary classifier to determine if each sentence in a document should belong to the extractive summary or not .
+Chen and Bansal ( 2018 ) use a pointer network ( Vinyals et al. , 2015 ) to sequentially pick sentences from the document that comprise its extractive summary .
+Such techniques however heavily rely on the span of words from the input document .
+Human summarizers have four common characteristics .
+They are able to ( 1 ) interpret a source document , ( 2 ) prioritize the most important parts of the input text , ( 3 ) paraphrase key concepts into coherent paragraphs and ( 4 ) generate diverse output summaries .
+While extractive methods are arguably well suited for identifying the most relevant information , such techniques may lack the fluency and coherency of human generated summaries .
+Abstractive summarization has shown the most promise towards addressing points ( 3 ) and ( 4 ) above .
+Abstractive generation may produce sentences not seen in the original input document .
+Motivated by neural network success in machine translation experiments , the attention - based encoder decoder paradigm has recently been widely studied in abstractive summarization ( Rush et al. , 2015 ; Nallapati et al. , 2016a ; Chopra et al. , 2016 ) .
+The advantages of extractive , abstractive and attention - based models were first combined in ( Gu et al. , 2016 ; Gulcehre et al. , 2016 ) with a copy mechanism for out - of- vocabulary words present in the source document .
+Similarly , ( See et al. , 2017 ) used the attention scores to calculate the probability of generating vs copying a word .
+The most similar approach to our hybrid extractive and abstractive technique is that of Chen and Bansal ( 2018 ) ; Gehrmann et al . ( 2018 ) ; Hsu et al . ( 2018 ) ; Liu et al . ( 2018 ) .
+In such set-ups , an extractor first selects salient sentences from the input .
+Then , an abstractive summarizer rewrites extracted sentences into a final summary .
+Our framework has a few advantages over previous methods .
+1 ) , we explore high capacity transformer LMs akin to Radford et al . ( 2019 ) as our abstractive summarizer , which results in grammatical and fluent generations 2 ) , our language modeling formulation of the problem allows us to easily " recycle " the input document and use it additional in-domain data for LM training .
+3 ) We improve over previous approaches without the use of a copy mechanism , which results in fewer n-gram copies from the input document .
+Liu et al . ( 2018 ) generate Wikipedia articles given references to source material and extracted sentences .
+They rank the importance of paragraphs found in the reference material based on techniques such as TextRank ( Mihalcea and Tarau , 2004 ) , a graph based ranking technique .
+In contrast , the extractive methods we use here are trained discriminatively using an extractive abstract as the target that is generated using an oracle .
+Wikipedia article synthesis also necessarily combines potentially redundant information from multiple documents that is relatively specific and less abstractive compared to the task of writing the abstract of a scientific paper .
+As seen in Figure 2 , human generated ( ground- truth ) abstractive summaries in our datasets actually have very little word overlap with the source document .
+Framework
+Our model comprises two distinct trainable components : 1 ) an extractive model , comprising a hierarchical encoder that outputs sentence representations , used to either point to or classify sentences in the input , and 2 ) a transformer language model , conditioned on the extracted sentences as well as a part of or the entire input document .
+Extractive Models
+We describe the two neural extractive models used in this section .
+We used different types of extraction techniques to demonstrate the TLM model sensitivity to the extracted sentences .
+For instance , the Sentence Pointer performs much better on the arxiv dataset ( see table 2 ) but the classifier is stronger on the Pubmed dataset ( see table 3 ) .
+Hierarchical Seq2seq Sentence Pointer
+Our extractive model is similar to the sentence pointer architecture developed by ( Chen and Bansal , 2018 ) with the main difference being the choice of encoder .
+We use a hierarchical bidirectional LSTM encoder with word and sentence level LSTMs while ( Chen and Bansal , 2018 ) use a convolutional word level encoder for faster training and inference .
+The decoder is in both cases is an LSTM .
+The procedure to determine ground -truth extraction targets is similar to previous work ( Nallapati et al. , 2017 ) : the ground truth is determined by computing the average ROUGE 1,2 , L score of each document sentence against each summary sentence .
+Considering the input document as a list of N sentences D = ( S 1 , . . . , S N ) and the target summary as a list of M sentences T = ( S 1 , . . . , S M ) , our heuristic provides N ?
+M scores , such that : SCORES extraction = { 1 3 r?1,2 , L ROUGE r ( S i , S j ) |S i ?
+D ; S j ?
+T }. Since single sentence extraction may not always contain the same information content as a target summary , we extended the number ground - truth extraction sentences per output summary sentence to two .
+This is done by choosing the top 2 sentences in D that have the highest SCORES extraction with respect to a given sentence in T .
+The resulting 2 M ordered sentences are used as context in the TLM .
+The TLM benefits from a more structured and larger context from the extractive summarization model during training .
+First , the " sentence- encoder " or token - level RNN is a bi-directional LSTM ( Hochreiter and Schmidhuber , 1997 ) encoding each sentence .
+The last hidden state of the last layer from the two directions produces sentence embeddings : ( s 1 , . . . , s N ) , where N is the number of sentences in the document .
+The sentence - level LSTM or the " document encoder " , another bi-directional LSTM , encodes this sequence of sentence embeddings to produce document representations : ( d 1 , . . . , d N ) .
+The decoder is an autoregressive pointer LSTM taking the sentence - level LSTM hidden state of the previously extracted sentence as input and predicting the next extracted sentence .
+Let i t the index of the previous extracted sentence at time step t.
+The input to the decoder is s it .
+The decoder 's output is computed by an attention mechanism from the decoder 's hidden state h t over the document representations ( d 1 , . . . , d N ) .
+We used the dot product attention method from ( Luong et al. , 2015 ) .
+The attention weights a t produce a context vector c t , which is then used to compute an attention aware hidden state ht .
+The attention weights a t are used as output probability distribution over the document sentences , of the choice for the next extracted sentence .
+The model is trained to minimize the cross-entropy of picking the correct sentence at each decoder time step .
+At inference , we use beam-search to generate the extracted summary .
+Sentence Classifier
+As with the pointer network , we use a hierarchical LSTM to encode the document and produce a sequence of sentence representations d 1 , ... , d N where N is the number of sentences in the document .
+We compute a final document representation as follows : d = tanh b d + W d 1 N N i=1 d i ( 1 ) where b d and W d are learnable parameters .
+Finally , the probability of each sentence belonging to the extractive summary is given by : o i =?
+W o d i d + b o ( 2 ) where ? is the sigmoid activation function .
+The model is trained to minimize the binary crossentropy loss with respect to the sentences in the gold -extracted summary .
+Model details and training parameters are included in the appendix .
+Transformer Language Models ( TLM ) Instead of formulating abstractive summarization as a seq2seq problem using an encoder-decoder architecture , we only use a single transformer language model that is trained from scratch , with appropriately " formatted " data ( see figure 1 , we also describe the formatting later in this section ) .
+We use a transformer ( Vaswani et al. , 2017 ) language model ( TLM ) architecture identical to Radford et al . ( 2019 ) .
+Our model has 220M parameters with 20 layers , 768 dimensional embeddings , 3072 dimensional position - wise MLPs and 12 attention heads .
+The only difference in our architectures ( to our knowledge ) is that we do not scale weights at initialization .
+We trained the language model for 5 days on 16 V100 GPUs on a single Nvidia DGX - 2 box .
+We used a linear ramp - up learning rate schedule for the first 40 , 000 updates , to maximum learning rate of 2.5? e ?4 followed by a cosine annealing schedule to 0 over the next 200 , 000 steps with the Adam optimizer .
+We used mixed - precision training ( Micikevicius et al. , 2017 ) with a batch size of 256 sequences of 1024 tokens each .
+In order to get an unconditional language model to do abstractive summarization , we can use the fact that LMs are trained by factorizing the joint distribution over words autoregressively .
+In other words , they typically factorize the joint distribution of tokens p(x 1 , x 2 . . . x n ) into a product of conditional probabilities n i p( x i |x < i ) .
+We therefore organize the training data for our models such that the ground - truth summary follows the information used by the model to generate a summary .
+As such , we can model the joint distribution of the document and the summary during training , and sample from the conditional distribution of the summary given document when we wish to perform inference .
+When dealing with extremely long documents that may not fit into a single window of tokens seen by a transformer language model , such as an entire scientific article , we use its introduction as a proxy for having enough information to generate an abstract ( summary ) and use the remainder of the paper as in domain language model training data ( Fig 1 ) .
+In such cases , we organize the arXiv and PubMed datasets as follows : 1 ) the paper introduction , 2 ) extracted sentences from the sentence pointer model , 3 ) the abstract , and 4 ) the rest of the paper .
+This ensures that at inference time , we can provide the language model the paper introduction and the extracted sentences as conditioning to gen-erate its abstract .
+We found that using the ground truth extracted sentences during training and the model extracted sentences at inference performed better than using the model extracted sentences everywhere .
+On other datasets , the paper introduction would be the entire document .
+In such case , the rest of the paper does not exist and is therefore not included .
+We use a special token to indicate the start of the summary and use it at test time to signal to the model to start generating the summary .
+The rest of the article is provided as additional in-domain training data for the LM .
+The entire dataset is segmented into non-overlapping examples of 1 , 024 tokens each .
+We use " topk " sampling at inference ( Fan et al. , 2018 ; Radford et al. , 2019 ) , with k = 30 and a softmax temperature of 0.7 to generate summaries .
+Results and Analysis Datasets
+We experiment with four different large-scale and long document summarization datasets - arXiv , PubMed ( Cohan et al. , 2018 ) , bigPatent ( Sharma et al. , 2019 ) and Newsroom ( Grusky et al. , 2018a Evaluation
+We evaluate our method using fulllength F- 1 ROUGE scores ( Lin , 2004 ) and re-used the code from ( Cohan et al. , 2018 ) for this purpose .
+All ROUGE numbers reported in this work have a 95 % confidence interval of at most 0.24 .
+Comparison
+We compare our results to several previously proposed extractive , abstractive and mixed summarization models on ROUGE scores .
+ROUGE scores tend to measure lexical overlap ( Ng and Abrecht , 2015 ) which favors extractive methods of summarization .
+Since ROUGE scores do not capture system summary fluency and readability ( which typically does not favor abstractive summarization ) , we also include a human evaluation .
+For this reason , Tables 2 , 3 , 4 , 5 have a " Type " column to inform the reader on the type model evaluated ( Ext=extractive , Mix=mixed and Abs=abstractive ) .
+All prior results reported on the arXiv and Pubmed benchmark are obtained from Cohan et al . ( 2018 ) , except for the Bottom - up model 2 ( Gehrmann et al. , 2018 ) .
+Similarly , prior results for the BigPatent dataset are obtained from ( Sharma et al. , 2019 ) and Newsroom from ( Grusky et al. , 2018a ) and ( Mendes et al. , 2019 ) .
+These methods include LexRank ( Erkan and Radev , 2004 ) , SumBasic ( Vanderwende et al. , 2007 ) , LSA ( Steinberger and Jezek , 2004 ) , Attention - Seq2Seq ( Nallapati et al. , 2016a ; Chopra et al. , 2016 ) , Pointer-Generator Seq2Seq ( See et al. , 2017 ) , Discourse-aware , which is a hierarchical extension to the pointer generator model , ( Cohan et al. , 2018 ) , Sent-rewriting ( Chen and Bansal , 2018 ) , RNN - Ext ( Chen and Bansal , 2018 ) , Exconsumm ( Mendes et al. , 2019 ) .
+We present our main results on summarizing arXiv and PubMed papers in tables 2 , 3 . TLM + I+E ( G , M ) sets a new state - of- the - art on Arxiv , Pubmed and bigPatent datasets on abstractive summarization ROUGE scores .
+Our extractive models are able to outperform previous extractive baselines on both the arXiv and Pubmed datasets .
+Our extractive techniques also score higher than our abstractive techniques on arXiv and Pubmed .
+Again , ROUGE does not capture all aspects of a summary 's quality such as fluency and coherence .
+For instance , previous work that have used RL to maximize ROUGE scores have concluded that " RL has the highest ROUGE - 1 and ROUGE -L scores , it produces the least readable summaries " ( Paulus et al. , 2017 ) .
+Our TLM conditioned on the extractive summary produced by our best extractive model ( TLM - I+E ( G , M ) ) outperforms prior abstractive / mixed results on the arXiv , Pubmed and bigPatent datasets , except on ROUGE -L .
+On Newsroom , our TLM model performs close to 7 times better than the other purely abstractive model ( Seq2Seq with attention ) .
+We achieve better performance than the pointer generator even on the abstractive and mixed which their model should be better suited for since it has a copy mechanism .
+The Exconsumm model ( Mendes et al. , 2019 ) however , which is primarily an extractive model does better on this dataset .
+We suspect the poor ROUGE -L result is due to the absence of a copy mechanism that makes it hard to get exact large n-gram matches .
+Figure 2 further supports this hypothesis , it is evident that a model with a copy mechanism is often able to copy even upto 25 - grams from the article .
+Further , Graham ( 2015 ) finds that ROUGE -L is poorly correlated with human judgements when compared to ROUGE - 1,2,3 .
+In table 8 and table 9 , we present qualitative results of abstracts of notable papers in our field and of our TLM conditioned on the introductions and extracted summaries of a random example from the arXiv test set .
+2019 ) .
+Note that extractive / mixed / abstractive columns denote the type of ground -truth summary .
+The Newsroom dataset has targets that are extracted from the input ( extractive ) , that are created with heuristics ( mixed ) and that are created by humans ( abstractive ) .
+Also note that the " Type " column refers to the model type for each row .
+Figure 2 : n-gram overlaps between the abstracts generated by different models and the input article on the arXiv dataset .
+We show in detail which part of the input was copied for our TLM conditioned on intro + extract .
+stractive summarization systems that use a copy mechanism effectively generate the summary by copying over large chunks from the article , essentially doing " extractive " summarization .
+Following this work , we measure how much a model copies from the article by counting the proportion of ngrams from the generated abstract that are also found in the article .
+These statistics measured on the arXiv dataset are presented in figure 2 . First , the original abstract and our TLM conditioned on the intro have small and very similar overlap fractions with the original article .
+A model using a pointing mechanism ( we used our own implementation of the model developed by Cohan et al . ( 2018 ) ) 3 copies more than our transformer model , especially for higher n-grams .
+In particular , more than 10 % of the 20 - grams from the abstracts generated by the pointing model are also found in the article , showing that it tends to copy long sequences of words .
+On the other hand , our proposed model produces more " abstractive " summaries , demonstrating its ability to paraphrase .
+Our model tends to copy longer sequences when conditioned on the introduction and the sentences from the extractor .
+We hypothesize that providing extracted sentences from the article that already contain a lot of words present in the reference abstract , makes the transformer 's task easier , by allowing it to copy words and phrases from the extracted sentences .
+We find empirical evidence of this in figure 2 , showing that the majority of n-gram copies come from the extracted sentences .
+For 5 - grams , close to 2/3rd of the words copied are from the extracted sentences .
+As the number of grams increases to 25 - grams , 4/5th of the words copied are from the extracted sentences .
+Human Evaluation
+We performed a human evaluation using the same experimental setup as in ( Grusky et al. , 2018a )
+Table 6 : Human evaluation on Newsroom abstractive summarization test data .
+Each pair of ( article , summary ) is presented to three unique crowd workers , who are asked to judge the summaries along four criteria : Coherence ( COH : does the summary make sense as a whole ) , Fluency ( FLU : is it well written ) , Informativeness ( INF : does the summary catch the most important points of the article ) , and Relevance ( REL : are the facts in the summary consistent with the article ) .
+As expected , Transformers are quite good making coherent and fluent summaries but not necessarily on informativeness and relevance .
+Transformers have a logarithmic or constant path length ( as opposed to linear in RNNs ) between a networks output and any of its inputs , making gradient flow much easier .
+This is a clear advantage over RNNs that tend to repeat sentences .
+Transformers are also known to hallucinate ( Lee et al. , 2019 ) but we notice that including extracted sentences , TLM + Intro + Extract , improve relevance by 3 % over TLM + Intro , bringing relevance closer to extractive methods .
+Interestingly , on Coherence , both our TLM variants also score better than the ground truth .
+Over the four categories , TLM + Intro + Extract performs best on average over TLM + Intro , despite the former having higher ROUGE scores on the abstractive test set in table 5 .
+Somewhat counter- intuitively we observe that human written summaries are often rated lower than model summaries .
+However , other work has also found that human written ground truth summaries consistently receive lower scores when compared to model written summaries when evaluated by turkers ( see for example Table 3 in the PEGASUS paper of ( Zhang et al. , 2020 ) ) .
+We believe that this could be because Newsroom summaries are sometimes noisy , ungrammatical and incoherent .
+Document - A new plan from the government of the Philippines would offer free wireless internet to people across the country while also likely eating into the annual revenue of the nations telecoms .
+Bloomberg reports that the Philippines government plans to roll - out its free Wi-Fi services to roughly half of the countrys municipalities over the next few months and the country has its sights set on nationwide coverage by the end of 2016 .
+The free wireless internet service will be made available in public areas such as schools , hospitals , airports and parks , and is expected to cost the government roughly $ 32 million per year .
+[...]
+Abstractive -:
+The government is reportedly considering a nationwide service plan to give free Wi-Fi access to rural areas .
+Mixed - The government of the Philippines is considering a new plan to provide free wireless internet to the nation 's largest cities and towns .
+Extractive
+- The new plan will include free wireless internet to residents across the country while also probably eating into the annual revenue of the country 's telecoms .
+Document -( CBS ) - Controversy over a new Microsoft patent has people questioning whether or not the intention has racist undertones .
+CNET reported that Microsoft has been granted a U.S. patent that will steer pedestrians away from areas that are high in crime .
+[...]
+Absractive Summary - The new Microsoft patent claims a device could provide pedestrian navigation directions from a smartphone .
+Mixed Summary Microsoft won a U.S. patent for a new way to steer pedestrians out of areas that are high in crime
+Qualitative Results
+Here we provide some qualitative results .
+Running our algorithm on a close to final version of this paper ( excluding this section ) and selecting the best sample from a set of 10 - 20 runs we found the following abstract : " we present a hybrid extractive and abstractive approach for generating summaries from long documents .
+we use an initial extractive step that reduces the amount of context for a subsequent abstractive step ( see figure [ fig : model ] ) . we show that this approach can produce a good summarization quality on both short and long documents , even without using copying and pointing mechanisms .
+further , by considering the context in both the text and the discourse , we find that the hybrid approach is effective at capturing the underlying context .
+we examine these models through rouge scores , through a study of the amount of n-gram copying performed by different models , as well as through a human evaluation using a standard protocol .
+our results show that our hybrid approach yields results that outperform current state - of - the - art results on several metrics of these evaluations . "
+Conclusion
+We have demonstrated that Transformer language models can generate high-quality summaries of long sequences of text via an extractive step followed by an abstractive step .
+We quantitatively measure the positive impact of the extractive step , by comparing it to a abstractive model variant that only sees the input text itself .
+Our approach outperforms previous extractive and abstractive summarization methods on the arXiv , PubMed and big-Patent datasets and is less prone to copying entire phrases or sentences from the input text .
+As with other problem domains , we have observed that abstractive summaries generated by transformers can generate imaginary content .
+We advise that such evaluations should probe multiple aspects of the summarization results including both factual correctness and coherency .
+We also note that for evaluating the correctness of the summaries of scientific articles and patents one must have highly trained evaluators who are willing to invest significant amounts of time to read the underlying papers and patents .
+Such studies could therefore require significant investments of resources .
+While we believe that this work is a step forward towards generating more abstractive summaries , it remains an open challenge to develop abstactive models that respect the underlying facts of the content being summarized while matching the creative ability of humans to coherently and concisely synthesize summaries .
+However , the TLMs we use here are of moderate size compared to what is now possible .
+It would be very interesting to see what kind of performance larger models could achieve .
+Generated abstract for " the attention model paper " ( Bahdanau et al. , 2014 )
+- In this paper , we propose a neural machine translation model , which learns to align and translate a source sentence without encoding it into a fixed length vector .
+The proposed model allows the neural network to align and translate jointly , and in addition , predicts a target word based on the context vectors associated with these source positions .
+We show that the proposed model achieves significantly improved translation performance than the conventional encoder decoder neural network approach , when the sentences in the training corpus are long .
+Quantitative analysis reveals that the proposed model finds a linguistically plausible soft alignment between a source sentence and the target sentence .
+Finally , we compare the performance of the proposed model with the state - of - the - art standard neural network translation models and show that the proposed approach outperforms the conventional approach in terms of both translation performance and the quality of the translations .
+Original abstract - Neural machine translation is a recently proposed approach to machine translation .
+Unlike the traditional statistical machine translation , the neural machine translation aims at building a single neural network that can be jointly tuned to maximize the translation performance .
+The models proposed recently for neural machine translation often belong to a family of encoder-decoders and consists of an encoder that encodes a source sentence into a fixed - length vector from which a decoder generates a translation .
+In this paper , we conjecture that the use of a fixed - length vector is a bottleneck in improving the performance of this basic encoder-decoder architecture , and propose to extend this by allowing a model to automatically ( soft - ) search for parts of a source sentence that are relevant to predicting a target word , without having to form these parts as a hard segment explicitly .
+With this new approach , we achieve a translation performance comparable to the existing state - of - the - art phrase - based system on the task of English - to - French translation .
+Furthermore , qualitative analysis reveals that the ( soft - ) alignments found by the model agree well with our intuition .
+Generated abstract for " the GPT - 2 paper " ( Radford et al. , 2019 ) - Language models have been successful in creating rich representations of complex systems , including tasks such as sentiment analysis .
+In this paper we demonstrate their ability to generalize well across domains and tasks .
+We demonstrate the utility of language models by demonstrating that a variety of tasks can be modeled using language models .
+We demonstrate the potential of language models in downstream tasks by highlighting the ability of these models to perform a wide range of tasks in a zero shot setting .
+Original abstract - Natural language processing tasks , such as question answering , machine translation , reading comprehension , and summarization , are typically approached with supervised learning on task -specific datasets .
+We demonstrate that language models begin to learn these tasks without any explicit supervision when trained on a new dataset of millions of webpages called WebText .
+When conditioned on a document plus questions , the answers generated by the language model reach 55 F1 on the CoQA dataset - matching or exceeding the performance of 3 out of 4 baseline systems without using the 127,000 + training examples .
+The capacity of the language model is essential to the success of zero-shot task transfer and increasing it improves performance in a log-linear fashion across tasks .
+Our largest model , GPT - 2 , is a 1.5B parameter Transformer that achieves state of the art results on 7 out of 8 tested language modeling datasets in a zero-shot setting but still underfits WebText .
+Samples from the model reflect these improvements and contain coherent paragraphs of text .
+These findings suggest a promising path towards building language processing systems which learn to perform tasks from their naturally occurring demonstrations .
+Generated abstract for " the BERT paper " ( Devlin et al. , 2018 )
+- We develop an architecture for deep bidirectional language models that allows the representation to fuse the left and the right context of a given token .
+Our framework uses bidirectional transformer encoder representations that enable the model to fuse the context representations of a token .
+We show that our architecture achieves state - of - the - art performance on a large suite of tasks , outperforming many systems with task -specific architectures .
+Our results are based on a set of eleven task specific tasks that are benchmarks for a large suite of nlp tasks .
+Original abstract - We introduce a new language representation model called BERT , which stands for Bidirectional Encoder Representations from Transformers .
+Unlike recent language representation models , BERT is designed to pre-train deep bidirectional representations from unlabeled text by jointly conditioning on both left and right context in all layers .
+As a result , the pre-trained BERT model can be fine-tuned with just one additional output layer to create state - of - the - art models for a wide range of tasks , such as question answering and language inference , without substantial task -specific architecture modifications .
+BERT is conceptually simple and empirically powerful .
+It obtains new state - of - the - art results on eleven natural language processing tasks , including pushing the GLUE score to 80.5 % ( 7.7 % point absolute improvement ) , MultiNLI accuracy to 86.7 % ( 4.6 % absolute improvement ) , SQuAD v1.1 question answering Test F1 to 93.2 ( 1.5 point absolute improvement ) and SQuAD v2.0 Test F1 to 83.1 ( 5.1 point absolute improvement ) .
+Generated abstract for " the seq2seq paper " ( Sutskever et al. , 2014 )
+- We present a novel approach to sequence to sequence learning using deep recurrent neural networks ( LSTMs ) .
+First , we transform a sequence to a vector representation that contains all the long short term memory ( LSTM ) features , and then we use the LSTM to generate elements of the output sequence using a simple left to right beam-search decoder .
+The advantage of this approach is that it learns to map all the words in the input sequence to a fixed dimensional vector representation , while the LSTM does not require any special training to learn the sentence representation .
+We demonstrate the LSTMs ability to train on the WMT14 English to French translation task using a simple left to right beam-search decoder .
+The model was found to be highly invariant to the active and passive voice .
+Original abstract - Deep Neural Networks ( DNNs ) are powerful models that have achieved excellent performance on difficult learning tasks .
+Although DNNs work well whenever large labeled training sets are available , they cannot be used to map sequences to sequences .
+In this paper , we present a general end-to - end approach to sequence learning that makes minimal assumptions on the sequence structure .
+Our method uses a multilayered Long Short - Term Memory ( LSTM ) to map the input sequence to a vector of a fixed dimensionality , and then another deep LSTM to decode the target sequence from the vector .
+Our main result is that on an English to French translation task from the WMT '14 dataset , the translations produced by the LSTM achieve a BLEU score of 34.8 on the entire test set , where the LSTM 's BLEU score was penalized on out - of- vocabulary words .
+Additionally , the LSTM did not have difficulty on long sentences .
+For comparison , a phrase - based SMT system achieves a BLEU score of 33.3 on the same dataset .
+When we used the LSTM to rerank the 1000 hypotheses produced by the aforementioned SMT system , its BLEU score increases to 36.5 , which is close to the previous best result on this task .
+The LSTM also learned sensible phrase and sentence representations that are sensitive to word order and are relatively invariant to the active and the passive voice .
+Finally , we found that reversing the order of the words in all source sentences ( but not target sentences ) improved the LSTM 's performance markedly , because doing so introduced many short term dependencies between the source and the target sentence which made the optimization problem easier .
+Generated abstract for " the GAN paper " ( Goodfellow et al. , 2014 ) - Adversarial nets are a class of deep generative networks that utilize the advantages of piecewise linear units .
+Here , we explore a novel model estimation procedure that combines several methods , such as backpropagation and dropout , to learn generative models .
+The proposed adversarial net framework can be thought of as analog to a team of counterfeiters , who try to produce fake currency and use it without being detected , while the discriminative model is analogous to the police , trying to detect the counterfeit currency .
+We refer to this special case as adversarial nets .
+We explore the special case when the generative model generates samples by passing random noise through a multilayer perceptron , and the discriminative model is also a multilayer perceptron .
+Original abstract - We propose a new framework for estimating generative models via an adversarial process , in which we simultaneously train two models : a generative model G that captures the data distribution , and a discriminative model D that estimates the probability that a sample came from the training data rather than G .
+The training procedure for G is to maximize the probability of D making a mistake .
+This framework corresponds to a minimax two -player game .
+In the space of arbitrary functions G and D , a unique solution exists , with G recovering the training data distribution and D equal to 1/2 everywhere .
+In the case where G and D are defined by multilayer perceptrons , the entire system can be trained with backpropagation .
+There is no need for any Markov chains or unrolled approximate inference networks during either training or generation of samples .
+Experiments demonstrate the potential of the framework through qualitative and quantitative evaluation of the generated samples .
+Table 8 : Qualitative Results - Generated abstracts of select papers using our Intro Only TLM .
+Table 9 : Qualitative Results - Generated abstracts from our models on a random example from the test set of ( Cohan et al. , 2018 ) TLM conditioned on intro - deep convolutional neural networks ( cnns ) have created new benchmarks in the object recognition challenge . most of these benchmark datasets contain thousands of images of interest . in addition to these datasets , several standard data - sets , such as pascal voc 2012 and the ms coco , have been used in conjunction with the same network in order to improve the object detection task . in this paper , we present a method for object localization using the deep convolutional neural networks trained for the simpler task of image - level classification . we propose localization candidates ( or bounding boxes ) which maximize classification scores for a class of interest . we explore the beam search strategy where the number of candidate bounding boxes are restricted as we traverse from the root node towards the leaf nodes . we then gradually explore smaller and smaller regions of interest till a point is reached where the classifier is not able to discriminate among the classes of interest . the detection candidates are organized in a search tree , the root node being represented by the entire test image . we then gradually explore smaller and smaller regions of interest till a point is reached where the classifier is not able to distinguish among the classes of interest .
+TLM conditioned on intro + pointer network extracted sentences - deep convolutional neural networks ( cnns ) are widely used in image recognition applications . however , they face a number of challenges . first , cnn models are computationally expensive to train and to perform . second , they are not easy to implement and can not exploit global features . to alleviate these issues , we present a method that leverages the correlation between semantic information present in feature maps and localization of an object of interest . the method leverages feature map activations for object localization . we demonstrate that this method is significantly faster than state - of - the - art in localization accuracy by a significant margin of up to 8 map on two standard data - sets with complex scenes , pascal voc 2012 and the much larger ms coco .
+Ground truth abstract - object localization is an important computer vision problem with a variety of applications . the lack of large scale object - level annotations and the relative abundance of image - level labels makes a compelling case for weak supervision in the object localization task . deep convolutional neural networks are a class of state - of - the - art methods for the related problem of object recognition . in this paper , we describe a novel object localization algorithm which uses classification networks trained on only image labels . this weakly supervised method leverages local spatial and semantic patterns captured in the convolutional layers of classification networks . we propose an efficient beam search based approach to detect and localize multiple objects in images . the proposed method significantly outperforms the state - of - the - art in standard object localization data - sets with a 8 point increase in map scores .

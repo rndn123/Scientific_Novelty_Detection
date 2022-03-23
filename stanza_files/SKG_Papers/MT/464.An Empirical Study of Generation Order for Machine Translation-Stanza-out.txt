@@ -1,0 +1,228 @@
+title
+An Empirical Study of Generation Order for Machine Translation
+abstract
+In this work , we present an empirical study of generation order for machine translation .
+Building on recent advances in insertion - based modeling , we first introduce a soft orderreward framework that enables us to train models to follow arbitrary oracle generation policies .
+We then make use of this framework to explore a large variety of generation orders , including uninformed orders , locationbased orders , frequency - based orders , contentbased orders , and model - based orders .
+Curiously , we find that for the WMT '14 English ? German and WMT'18 English ?
+Chinese translation tasks , order does not have a substantial impact on output quality .
+Moreover , for English ?
+German , we even discover that unintuitive orderings such as alphabetical and shortest - first can match the performance of a standard Transformer , suggesting that traditional left-to - right generation may not be necessary to achieve high performance .
+Introduction Neural sequence models ( Sutskever et al. , 2014 ; Cho et al. , 2014 ) have been successfully applied to a broad range of tasks in recent years .
+While these models typically generate their outputs using a fixed left-to - right order , there has also been some investigation into non-left- to - right and order-independent generation in pursuit of quality or speed .
+For example , explored the problem of predicting sets using sequence models .
+While this is a domain where generation order should intuitively be unimportant , they nevertheless found it to make a substantial difference in practice .
+Ford et al. ( 2018 ) explored treating language modeling as a two -pass process , where words from certain classes are generated first , and the remaining words are filled * Equal contribution .
+in during the second pass .
+They found that generating function words first followed by content words second yielded the best results .
+Separately , Gu et al. ( 2018 ) and Lee et al . ( 2018 ) developed non-autoregressive approaches to machine translation where the entire output can be generated in parallel in constant time .
+These models do away with order selection altogether but typically lag behind their autoregressive counterparts in translation quality .
+More recently , a number of novel insertionbased architectures have been developed for sequence generation ( Gu et al. , 2019 ; Stern et al. , 2019 ; Welleck et al. , 2019 ) .
+These frameworks license a diverse set of generation orders , including uniform ( Welleck et al. , 2019 ) , random ( Gu et al. , 2019 ) , or balanced binary trees ( Stern et al. , 2019 ) .
+Some of them also match the quality of state- ofthe - art left- to - right models ( Stern et al. , 2019 ) .
+In this paper , we utilize one such framework to explore an extensive collection of generation orders , evaluating them on the WMT '14 English - German and WMT '18 English - Chinese translation tasks .
+We find that a number of non-standard choices achieve BLEU scores comparable to those obtained with the classical approach , suggesting that left-to - right generation might not be a necessary ingredient for high-quality translation .
+Our contributions are as follows : ?
+We introduce a general soft order-reward framework that can be used to teach insertion - based models to follow any specified ordering .
+?
+We perform a large empirical study on various orders , including : uniform , random , leftto-right , right - to- left , common-first , rare-first , shortest - first , longest - first , alphabetical , and model- adaptive . ?
+We show that there is little variation in BLEU regardless of generation order .
+On the competitive WMT 2014 English ?
+German task , we ( the , 0 ) , ( a , 2 ) [ the , man , ate , a , snack ] ( EOS , 5 ) further find that most orders are able to match the performance of a standard base Transformer .
+Background Neural sequence models have traditionally been designed with left-to- right prediction in mind .
+In the classical setting , output sequences are produced by repeatedly appending tokens to the rightmost end of the hypothesis until an endof-sequence token is generated .
+Though highperforming across a wide range of application areas , this approach lacks the flexibility to accommodate other types of inference such as parallel generation , constrained decoding , infilling , etc .
+Moreover , it also leaves open the possibility that a non-left- to - right factorization of the joint distribution over output sequences could outperform the usual monotonic ordering .
+To address these concerns , several recent approaches have been proposed for insertion - based sequence modeling , in which sequences are constructed by repeatedly inserting tokens at arbitrary locations in the output rather than only at the right-most position .
+We use one such insertion - based model , the Insertion Transformer ( Stern et al. , 2019 ) , for our empirical study .
+We give a brief overview of the model in this section before moving on to the details of our investigation .
+Insertion Transformer
+The Insertion Transformer ( Stern et al. , 2019 ) is a sequence - to-sequence model in which the output is formed by successively inserting one or more tokens at arbitrary locations into a partial hypothesis .
+This type of generation is made possible through the use of a joint distribution over tokens and slots .
+More formally , given an input x and a partial output ?t at time t , the Insertion Transformer gives the joint distribution p(c , l | x , ?t ) = InsertionTransformer ( x , ?t ) , where c ?
+V is the content being selected from the vocabulary V and 0 ? l ? |?
+t | is the insertion location .
+As its name suggests , the Insertion Transformer extends the Transformer model ( Vaswani et al. , 2017 ) with a few key modifications to generalize from ordinary next-token modeling to joint tokenand -slot modeling .
+First , the Insertion Transformer removes the causal attention mask from the decoder , allowing for fully contextualized output representations to be derived after each insertion .
+Second , the Insertion Transformer pads the lengthn decoder input on both ends so that n + 2 output vectors are produced .
+It then concatenates adjacent pairs of output vectors to obtain n + 1 slot representations , which in turn inform the conditional distributions over tokens within each slot , p( c | l ) .
+Lastly , it performs an additional attention step over the slot representations to obtain a location distribution p ( l ) , which is multiplied with the conditional content distributions to obtain the full joint distribution : p( c , l ) = p( c | l ) p ( l ) .
+A schematic of the architecture is given in Figure 1 for reference .
+We note that Stern et al . ( 2019 ) also experimented with a number of other architectural variants , but we use the baseline version of the model described above in our experiments for simplicity .
+Decoding
+Once the model has been trained , it can be used for greedy autoregressive sequence generation as follows .
+At each step of decoding , we compute the joint argmax ( ?
+t , lt ) = argmax c,l p(c , l | x , ?t ) to determine what content ?t should be inserted at which location lt .
+We then apply this insertion , increasing the sequence length by one , and repeat this process until an end-of-sequence token is produced .
+This is the serial decoding procedure shown in the left half of Figure 2 .
+The model can also be used for parallel partially - autoregressive decoding .
+Instead of computing the joint argmax across all locations , we instead compute the best content for each location : ?l, t = argmax c p( c | l , x , ?t ) .
+We then insert the highest - scoring tokens in parallel for all slots that are not yet finished , increasing the sequence length by anywhere between one and n + 1 tokens .
+This strategy visualized in the right half of Figure 2 . ? log p( a ) Table 1 : Order functions for an action a corresponding to the insertion of word w into slot s within span ( i , j ) .
+The rank terms are computed with respect to the set of words from the valid action set A * .
+Soft Order-Reward Framework
+Having presented our model of interest , we now describe a general soft order-reward framework that can be used to train the model to follow any oracle ordering for sequence generation .
+Let O( a ) be an order function mapping insertion actions to real numbers , where lower values correspond to better actions , and let p ( a ) be the probability assigned by the model to action a .
+From these , we construct a reward function R ( a ) , an oracle policy q oracle , and a per-slot loss L : R ( a ) = ?O ( a ) ?a ? A * ? ?a ? A * q oracle ( a ) = exp ( R ( a ) / ? ) a ?A * exp ( R ( a ) / ? ) L = KL ( q oracle p)
+Here , A * is the set of all valid actions .
+The temperature ? ? ( 0 , ? ) controls the sharpness of the distribution , where ? ?
+0 results in a one-hot distribution with all mass on the best-scoring action under the order function O ( a ) , and ? ? ? results in a uniform distribution over all valid actions .
+Intermediate values of ?
+result in distributions which are biased towards better -scoring actions but allow for other valid actions to be taken some of the time .
+Having defined the target distribution , we take the slot loss L for insertions within a particular slot to be the KL - divergence between the oracle distribution q oracle and the model distribution p.
+Substituting L in for the slot loss within the training framework of Stern et al . ( 2019 ) then gives the full sequence generation loss , which we can use to train an Insertion Transformer under any oracle policy rather than just the specific one they propose .
+We describe a wide variety of generation orders which can be characterized by different order functions O( a ) in the subsections that follow .
+A summary is given in Table 1 .
+Uninformed Orders
+We evaluate two uninformed orders , uniform and random .
+The uniform order O( a ) = 0 gives equal reward or equivalently probability mass to any valid action .
+Consequently , this means we give each order a uniform probability treatment .
+We also experiment with random order O ( a ) = rank ( hash ( w ) ) , wherein we hash each word and use the sorted hash ID as the generation order .
+The random order forces the model to follow a specific random path , whereas the uniform order gives equal probability mass to any order .
+Location - based Orders
+We explore two types of location - based orders , balanced binary tree and monotonic orders .
+The balanced binary tree order O( a ) = |s ? ( i + j ) /2 | encourages the model to place most of its probability mass towards the middle tokens in a missing span .
+Consequently , this encourages the model to generate text in a balanced binary tree order .
+We also experiment with soft monotonic orders O( a ) = ?s , or soft left-to- right and soft right - to - left , which differ slightly from the left-toright teacher forcing traditionally used in seq2seq .
+First , we still maintain a uniform roll - in policy ( see Section 3.6 ) , which increases diversity during training and helps avoid label bias .
+Additionally , this endows the model with the ability to " look back " and insert missing tokens in the middle of the sequence during inference , as opposed to always being forced to append only at one end of the sequence .
+The order reward is also soft ( as described by the ? term above ) , wherein we do not place all the probability mass on the next monotonic token , but merely encourage it to generate in a monotonic fashion .
+Frequency - based Orders
+We evaluate two frequency - based orders : rare words first via O ( a ) = rank ( frequency ( w ) ) and common words first via O ( a ) = ?rank ( frequency ( w ) ) .
+For these orders , we simply sort the words based on their frequencies and used their rank as the order .
+We note the most frequent words tend to be punctuation and stop words , such as commas , periods , and " the " in English .
+Content - based Orders
+We also explore content - based orders .
+One class of orders is based on the word length : O ( a ) = ?rank ( length ( w ) ) .
+This encourages the model to either emit all the shortest words first or all the longest words first .
+We also explore alphabetical orderings O ( a ) = ?rank ( w ) , where sorting is based on Unicode order .
+We note that in Unicode , uppercase letters occur before lower case letters .
+This biases the model to produce words which are capitalized first ( or last ) , typically corresponding to nouns in German .
+Additionally , for Chinese , the characters are roughly sorted by radical and stroke count , which bears a loose relation to the complexity and frequency of the character .
+Model- based Orders
+The orders presented thus far are static , meaning they are independent of the model .
+We also explore orders which are adaptive based on the model 's posterior .
+We also introduce " easy " and " hard " adaptive orders induced by O( a ) = ? log p ( a ) .
+The adaptive orders look at the model 's posterior to determine the oracle policy .
+Consequently the loss is adaptive , as when the model updates after each gradient step , the order adapts to the model 's posterior .
+In the " easy " version , we use O( a ) = + log p ( a ) , which is similar to a local greedy soft EM loss .
+We renormalize our current model 's posterior over valid actions and optimize towards that distribution .
+This pushes the model 's posterior to what is correct and where it has already placed probability mass .
+Intuitively , this reinforces the model to select what it thinks are the easiest actions first .
+Conversely , the " hard " variant uses O( a ) = ? log p( a ) which encourages the model to place probability mass on what it thinks are the hardest valid actions .
+This is akin to a negative feedback system whose stationary condition is the uniform distribution .
+Roll - in Policy
+We follow Stern et al. ( 2019 ) and use a uniform roll - in policy when sampling partial outputs at training time in which we first select a subset size uniformly at random , then select a random subset of the output of that size .
+Repeated tokens are handled via greedy left or right alignment to the true output .
+Input :
+It would of course be a little simpler for the Germans if there were a coherent and standardised European policy , which is currently not the case .
+Output : Es w?re f?r die Deutschen nat ?
+rlich ein wenig einfacher , wenn es eine koh ?rente und einheitliche europ ?
+ische Politik g?be , was derzeit nicht der Fall ist .
+Parallel decode ( alphabetical ) :
+Es w?re f?r die Deutschen nat ?
+rlich ein wenig einfacher , wenn es eine koh ?
+rent e und einheitliche europ ?
+ische Politik g?be , was derzeit nicht der Fall ist .
+Es w?re f?r die Deutschen nat ?
+rlich ein wenig einfacher , wenn es eine koh ?
+rent e und einheitliche europ ?
+ische Politik g?be , was derzeit nicht der Fall ist .
+Es w?re f?r die Deutschen nat ?
+rlich ein wenig einfacher , wenn es eine koh ?
+rent e und einheitliche europ ?
+ische Politik g?be , was derzeit nicht der Fall ist .
+Es w?re f?r die Deutschen nat ?
+rlich ein wenig einfacher , wenn es eine koh ?
+rent e und einheitliche europ ?
+ische Politik g?be , was derzeit nicht der Fall ist .
+Es w?re f?r die Deutschen nat ?
+rlich ein wenig einfacher , wenn es eine koh ?
+rent e und einheitliche europ ?
+ische Politik g?be , was derzeit nicht der Fall ist .
+Es w?re f?r die Deutschen nat ?
+rlich ein wenig einfacher , wenn es eine koh ?
+rent e und einheitliche europ ?
+ische Politik g?be , was derzeit nicht der Fall ist .
+Es w?re f?r die Deutschen nat ?
+rlich ein wenig einfacher , wenn es eine koh ?
+rent e und einheitliche europ ?
+ische Politik g?be , was derzeit nicht der Fall ist .
+Input : according to the data of National Bureau of Statistics , the fixed asset investment growth , total imports and other data in July have come down .
+Output : ?7 ? Parallel decode ( alphabetical ) :
+Note that the desired ordering applies on a per-slot basis rather than a global basis .
+? ? ? ? ? ? ? ? 7 ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? 7 ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? 7 ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? 7 ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? 7 ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? 7 ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? 7 ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? 7 ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ?
+Input :
+It will be sung by all the artists at all the three concerts at the same time .
+Output :
+Es wird von allen K?nstlern bei allen drei Konzerten gleichzeitig gesungen .
+Parallel decode ( longest-first ) :
+Es wird von allen K?nstler n bei allen drei Konzert en gleichzeitig ges ungen .
+Es wird von allen K?nstler n bei allen drei Konzert en gleichzeitig ges ungen .
+Es wird von allen K?nstler n bei allen drei Konzert en gleichzeitig ges ungen .
+Es wird von allen K?nstler n bei allen drei Konzert en gleichzeitig ges ungen .
+Es wird von allen K?nstler n bei allen drei Konzert en gleichzeitig ges ungen .
+Es wird von allen K?nstler n bei allen drei Konzert en gleichzeitig ges ungen .
+Experiments
+For our experiments , we train and evaluate models for each order on two standard machine translation datasets : WMT14 En-De and WMT18 En-Zh .
+For WMT14
+En- De , we follow the standard setup with newstest2013 as our development set and newstest2014 as our test set .
+For WMT18 En- Zh , we use the official preprocessed data 1 with no additional data normalization or filtering , taking newstest2017 to be our development set and new-stest2018 our test set .
+En - Zh evaluation is carried 1 http://data.statmt.org/wmt18/ translation-task / preprocessed /zh-en/
+Input : imagine eating enough peanuts to serve as your dinner .
+Output : ? Parallel decode ( common-first ) : out using sacreBLEU 2 ( Post , 2018 ) .
+In both cases , we train all models for 1 M steps using sequencelevel knowledge distillation ( Hinton et al. , 2015 ; Kim and Rush , 2016 ) from a base Transformer ( Vaswani et al. , 2017 ) .
+We perform a sweep over temperatures ? ? { 0.5 , 1 , 2 } and EOS penalties ? { 0 , 0.5 , 1 , 1.5 , . . . , 8 } ( Stern et al. , 2019 ) ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ?
+Ability to Learn Different Orders
+By and large , we find that the Insertion Transformer is remarkably capable of learning to generate according to whichever order it was trained for .
+We give example decodes for three different generation orders in Figures 3 , 4 , and 5 .
+In the first example , we see that the alphabetical En- De model adheres to the Unicode ordering for Latin characters ( punctuation ? uppercase ? lowercase ) , and that the En- Zh model similarly adheres to the Unicode order for Chinese ( punctuation ? CJK characters sorted by radical and stroke count ) .
+In the second example , the longest- first En- De model generates subwords in decreasing order of length as expected .
+Finally , in the third example , the common-first En- Zh model begins with common particles and punctuation before generating the main content words .
+We give a quantitative measurement of the success of each model in Table 2 , computing the percentage of insertions across the development set that adhered to the best-scoring action under the desired ordering .
+Most models exhibit similar trends , with the majority of En- De models achieving accuracies in excess of 90 % when a low temperature is used , and with corresponding results in the mid-to- upper 80 % range for En-Zh .
+Even the random order based on token hashes has accuracies exceeding 80 % for both languages , demonstrating that the model has a strong capacity to adapt to any oracle policy .
+Test Results Next , we measure the quality of our models by evaluating their performance on their respective test sets .
+The resulting BLEU scores are reported in Table 3 .
+The uniform loss proposed by Stern et al . ( 2019 ) serves as a strong baseline for both language pairs , coming within 0.6 points of the original Transformer for En- De at 26.72 BLEU , and attaining a respectable score of 33.1 BLEU on En-Zh .
+We note that there is a slightly larger gap between the normal Transformer and the Insertion Transformer for the latter of 2.7 points , which we hypothesize is a result of the larger discrepancy between word orders in the two languages combined with the more difficult nature of the Insertion Transformer training objective .
+Most of the content - based orderings ( frequency - based , length - based , alphabetical ) perform comparably to the uniform loss , and even the random order is not far behind .
+The adaptive orders perform similarly well , with easy - first attaining one of the highest scores on En- De .
+Curiously , in our model adaptive easy -order , we were unable to identify any strong patterns in the generation order .
+The model did have a slight preference towards functional words ( i.e. , " , " and " der " ) , but the preference was weak .
+As for location - based losses , the binary tree loss is notable in that it achieves the highest score across all losses for both languages .
+On the other hand , we note that while the soft left-to - right and right - to - left losses perform substantially better than the hard loss employed in the original work by Stern et al . ( 2019 ) , performance does suffer when using parallel decoding for those models , which is generally untrue of the other orderings .
+We believe this is due in part to exposure bias issues arising from the monotonic ordering as compared with the uniform roll - in policy that are not shared by the other losses .
+Performance vs. Sentence Length
+For additional analysis , we consider how well our models perform relative to one another conditional on the length of the source sentence .
+Sentence length can be seen as a rough proxy measurement of the difficulty of translating a sentence .
+This is to determine if whether some order variations are able to achieve improved BLEU scores over other models depending on the source sentence 's length .
+For each sentence in the En-De and En- Zh development sets , we compute their lengths and bin them into groups of size 5 , up to a maximum length of 50 .
+Within each bin , we compute sentence - level BLEU and take the mean score across all sentences .
+This is done for each of our model variants .
+Figure 6 illustrates the results of this experiment .
+We observe a surprisingly small model variance across all bin lengths .
+This suggests that sentences that are difficult to translate are difficult across all orderings , and no particular ordering appears strictly better or worse than others .
+One small exception to this is a performance fall - off of hard - first orderings for very long sentences across both datasets .
+We also observe a different distribution of BLEU scores across bin lengths for En-De and En-Zh .
+In particular , En- De models are approximately monotonic - decreasing in performance as source length increases , while on En- Zh performance is roughly flat across sentence length .
+This also highlights the importance of taking additional diverse language pairs into consideration , as certain translation properties across one language pair may not be observed in others .
+Ultimately , given the similarity of the development scores across sentence lengths and the test scores for the various models , we come to the surprising conclusion that for single-sentence English - German and English - Chinese translation , generation order is relatively unimportant insofar as end-task performance is concerned .
+Related Work
+In recent work , several insertion - based frameworks have been proposed for the generation of sequences in a non-left- to - right fashion for machine translation ( Stern et al. , 2019 ; Welleck et al. , 2019 ; Gu et al. , 2019 ) . Stern et al. ( 2019 ) and balanced binary tree orders .
+We built upon and generalized this approach in order to explore a much broader set of orders .
+Welleck et al. ( 2019 ) explored insertions using a binary - tree formulation .
+They also explored uniform and model - based orders , but found them to lag significantly behind their left-to - right baselines .
+Additionally , despite using a binary - tree formulation for generation , they did not explore tree - based orders .
+Gu et al. ( 2019 ) introduced a model which did not explicitly represent the output canvas arising from insertions , but rather used an implicit representation through conditioning on the insertion sequence .
+They also performed an exploration of different generation orders , including random , odd- even , common-first , rare-first , and a search - adaptive order .
+Their search - adaptive order can be seen as a global version of our local model adaptive order , where we use the local greedy posterior as the reward function , and they use the sequence level log-probability as the reward function .
+Curiously , in their framework , the random order fell significantly behind the left-to - right baseline , while they showed small gains in their search adaptive order .
+One key difference between our work and Welleck et al . ( 2019 ) and Gu et al . ( 2019 ) is that we use a soft order-reward framework as opposed to teacher forcing .
+This might explain some of the performance differences , as our framework allows for a more flexible training objective .
+Additionally , since we use a uniform roll - in policy , our models may have less of a label bias problem , as they are trained to be able to continue from any partial output rather than just those arising from the target policy .
+Conclusion
+In this work , we investigated a broad array of generation orders for machine translation using an insertion - based sequence generation model , the Insertion Transformer .
+We found that regardless of the type of strategy selected , be it locationbased , frequency - based , length - based , alphabetical , model - based , or even random , the Insertion Transformer is able to learn it with high fidelity and produce high-quality output in the selected order .
+This opens a wide range of possibilities for generation tasks where monotonic orderings are not the most natural choice , and we would be excited to explore some of these areas in future work .
+Figure 2 : 2 Figure 2 : Example decoding paths for serial and parallel generation using the Insertion Transformer .

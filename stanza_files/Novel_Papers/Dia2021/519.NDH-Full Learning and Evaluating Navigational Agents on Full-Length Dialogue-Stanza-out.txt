@@ -1,0 +1,215 @@
+title
+NDH - FULL : Learning and Evaluating Navigational Agents on Full-Length Dialogue
+abstract
+Communication between human and mobile agents is getting increasingly important as such agents are widely deployed in our daily lives .
+Vision- and - Dialogue Navigation is one of the tasks that evaluate the agent 's ability to interact with humans for assistance and navigate based on natural language responses .
+In this paper , we explore the Navigation from Dialogue History ( NDH ) task , which is based on the Cooperative Vision - and - Dialogue Navigation ( CVDN ) dataset , and present a stateof - the - art model which is built upon Vision - Language transformers .
+However , despite achieving competitive performance , we find that the agent in the NDH task is not evaluated appropriately by the primary metric - Goal Progress .
+By analyzing the performance mismatch between Goal Progress and other metrics ( e.g. , normalized Dynamic Time Warping ) from our state - of - the - art model , we show that NDH 's sub-path based task setup ( i.e. , navigating partial trajectory based on its correspondent subset of the full dialogue ) does not provide the agent with enough supervision signal towards the goal region .
+Therefore , we propose a new task setup called NDH - FULL which takes the full dialogue and the whole navigation path as one instance .
+We present a strong baseline model and show initial results on this new task .
+We further describe several approaches that we try , in order to improve the model performance ( based on curriculum learning , pre-training , and data- augmentation ) , suggesting potential useful training methods on this new NDH - FULL task .
+1
+Introduction
+With the increased number of intelligent agents being deployed in our daily lives , effective communication between humans and agents is becoming more important .
+Natural language is one of the 1 Our code and dataset are publicly available at : https : //github.com/hyounghk/NDH-FULL
+Should I stay on this floor or go down the stairs ?
+Yeah , go down the stairs .
+And then I think you turn right but I ca n't really tell .
+Should I go left toward the door , or right around the corner ?
+Go to the left , through that door .
+Target : picture most effective ways of communication due to its flexibility .
+Therefore , many efforts have been devoted to exploring the potential of its application in several tasks .
+Vision - and - Language Navigation ( VLN ) is one of the tasks in which agents have to navigate to a goal location in the indoor or outdoor environment by following natural language instructions ( MacMahon et al. , 2006 ; Tellex et al. , 2011 ; Mei et al. , 2016 ; Hermann et al. , 2017 ; Brahmbhatt and Hays , 2017 ; Mirowski et al. , 2018 ; Blukis et al. , 2019 ; Thomason et al. , 2019 ; Nguyen and Daum ?
+III , 2019 ; Chen et al. , 2019 ; Shridhar et al. , 2020 ; Qi et al. , 2020 ; Hermann et al. , 2020 ; Berg et al. , 2020 ; Ku et al. , 2020 ) .
+While most VLN datasets only provide instructions from the oracle without considering the navigator 's response , the useful Cooperative Vision - and - Dialogue Navigation ( CVDN ) ( Thomason et al. , 2019 ) dataset extends this one - way communication to two -way multi-turn dialogue ( English ) interaction between the oracle and the navigator .
+The dataset simulates a situation in which agents navigate through indoor environments towards a goal region by holding a conversation with humans for oracle guidance .
+Figure 1 shows an example in the CVDN dataset .
+Given the target in- formation " picture " only , the navigator is asked to explore the environment by intuition ( green path ) .
+The navigator can ask the oracle for assistance during navigation and then make progress ( blue and red path ) based on the oracle 's response .
+From this dataset , Thomason et al . ( 2019 ) proposed the Navigation from Dialogue History ( NDH ) task , in which the agents are asked to navigate toward the goal region G given dialogue history and the current round of the dialogue .
+However , we find that this sub-path - based task setup does not provide enough supervision for the agent to reach the goal region G , and its primary evaluation metric - Goal Progress ( GP ) does not appropriately measure the agent 's performance on the sub-path based task .
+In the example shown in Figure 1 , one CVDN example is split into three navigation instances starting from p 0 , p 1 , p 2 and ends at p 1 , p 2 , G , respectively .
+One NDH instance only contains dialogue before the current navigation path ( e.g. , for navigation from p 1 to p 2 , the agent only knows the target " picture " and the first round of the dialogue , which is in the blue box ) , thus lacks supervision for how to navigate from p 2 to the goal region G. However , the agent is evaluated with GP - the distance made towards the goal region G from its starting point .
+This metric does not consider whether the agent follows the reference path .
+As a result , the agent could wander around to get a high GP score without following the path .
+Hence , in this paper , we aim to redefine the NDH task via enhanced levels of supervision given to the agent , for better path fidelity while maintaining the advantage of learning from interactive dialogues .
+For this , we first build a strong state - of - the - art model based on Vision - Language transformers and pre-training , and illustrate that the current NDH task setup is not suitable for evaluating the agent 's ability to follow natural language instructions .
+We show this by comparing the behaviors of the model on different evaluation metrics .
+Specifically , we find that a model with a higher GP score has a lower nDTW ( normalized Dynamic Time Warping ; Ilharco et al . ( 2019 ) ) scores ( see Table 3 ) .
+Considering a high nDTW score reflects better path fidelity ( and vice versa ) , pursuing high GP scores might not be suitable as an objective of an instructionfollowing navigation task .
+We attribute this mismatch to the aforementioned sub-path based task setup .
+Even though agents in the task could learn to navigate towards the target by commonsense and intuition , it might be hard to expect the agents to find the exact location of the target by using only their intuition ( since this is hard even for human ) , especially in unseen environments since there is no specific regularity for target object placement ( see Sec. 6.2 for analysis ) .
+Therefore , we next propose a new task setup called NDH - FULL .
+We combine the sub-paths from the NDH task into the full path with the corresponding full dialogue , allowing the full supervision for agents on the instruction - following navigation task setup .
+As shown in the example of Figure 2 , the NDH - FULL instance requires the agent to navigate from p 0 to G with full dialogue instruction ( i.e. , target and multiple rounds of dialogues ) .
+In this setting , the agent has explicit supervision towards the goal region and is further faced with the challenge of understanding and grounding longer dialogues to navigate longer paths compared with the NDH task .
+We present a strong baseline model and several enhancement suggestions ( based on curriculum learning , pre-training , and data- augmentation ) for this task , and still leaves a large room for useful future work by the community on this challenging and realistic NDH - FULL task setup .
+Our contributions are three -fold : ( 1 ) We first present a state - of - the - art model for the NDH task .
+( 2 ) We then demonstrate that the NDH task setup lacks supervision for reaching the goal region and its primary evaluation metric does not capture the agent 's path fidelity ( via both qualitative and quantitative analysis ) .
+( 3 ) Thus , we propose a new challenging and realistic task setup called NDH - FULL ( along with strong baseline models ) , which provides full paths with the corresponding full dialogue ; and enhances supervision to encourage path fidelity .
+Related Work Vision - Language / Vision -Dialogue Navigation .
+In Vision- and - Language Navigation tasks , robots / agents are given natural language instructions and follow them in the outdoor or indoor environment to navigate and perform given tasks ( MacMahon et al. , 2006 ; Mooney , 2008 ; Chen and Mooney , 2011 ; Tellex et al. , 2011 ; Mei et al. , 2016 ; Hermann et al. , 2017 ; Brahmbhatt and Hays , 2017 ; Mirowski et al. , 2018 ; Das et al. , 2018 ; de Vries et al. , 2018 ; Thomason et al. , 2019 ; Nguyen and Daum ?
+III , 2019 ; Chen et al. , 2019 ; Shridhar et al. , 2020 ; Qi et al. , 2020 ; Hermann et al. , 2020 ; Berg et al. , 2020 ; Zhu et al. , 2020a ; Ku et al. , 2020 ; . Especially , introduces a new dataset , called Room-for - Room by combining short paths from Room-to - Room for evaluating instruction fidelity .
+Vision- and - Dialogue Navigation extends the one- way instruction - following navigation to the two -way multi-round dialogue setup in which agents could ask oracle guidance when they are lost .
+However , the current NDH task setup , which is built from the CVDN dataset ( Thomason et al. , 2019 ) , does not provide enough supervision for agents ' learning and does not evaluate agents ' ability to navigate according to instructions .
+Thus , for better learning and evaluation , we introduce NDH - FULL which has the full path- dialogue pairs and leads to a more realistic , challenging setup .
+Vision - Language Pre-Training .
+There have been significant improvements in natural language processing applications since large-scale pre-training language models were introduced ( Radford et al. , 2018 ; Devlin et al. , 2019 ) .
+The trend has spread to vision - language applications ( Sun et al. , 2019 ; Lu et al. , 2019 ; Chen et al. , 2020 ; . Recently , the pre-training approach has shown promising results in visionand - language navigation tasks as well Hong et al. , 2021 ) .
+Following this trend , we also apply pre-training for our model .
+Compared with previous work , we take a more direct and effective approach by designing a pre-training model that is similar to the main navigation model and directly use VLN task as the pre-training objective .
+Dataset Background and Task Setup
+In this section , we discuss the vision- and - dialogue navigation task ( NDH ) .
+We first introduce the CVDN dataset , and then show the two main issues of NDH and propose a new setup , NDH - FULL .
+Cooperative Vision - Dialogue Navigation
+The Cooperative Vision- and - Dialogue Navigation ( CVDN ) dataset contains dialogues between an oracle and a navigator .
+The navigator needs to find the target by asking questions during navigation .
+The oracle has access to the optimal navigation paths towards the target and responds to the navigator 's questions .
+Specifically , each instance in the CVDN dataset contains a target object t 0 , the start point for navigation p 0 , the house scan S , the goal region G where the target object is located in , multiple turns of utterances between the oracle and navigator , and the navigator 's corresponding navigation trajectories after interacting with the oracle .
+Navigation from Dialogue History ( NDH ) NDH Overview .
+Based on the CVDN dataset , Thomason et al . ( 2019 ) defines the task of Navigation from Dialogue History ( NDH ) .
+In the NDH task , the navigation path is the sub-path of the full navigation path in the CVDN dataset .
+As shown in Figure 2 , the start point for this NDH instance is p 1 .
+The dialogue before this start point is recorded as the dialogue history .
+The red path is what a human navigator traverses based on target information , dialogue history , the current round of the dialogue , and navigation history from p 0 to p 1 .
+In NDH , the agent is asked to find the target located in the goal region G based on this given information .
+Issues with NDH Task Setup .
+Though many works Zhu et al. , 2020 b ; First , the NDH task asks the agent to find the target without providing enough supervision , which makes this task hard even for human to finish .
+One instance in NDH does not contain further dialogue turns .
+Thus , based on the information which is only limited to the oracle 's response and no further following dialogue rounds , the navigator cannot reach the target even with human intuition about where the target might be in an unseen room environment .
+As shown in Figure 2 , given target information , dialogue history , the current round of the dialogue , and navigation history , a human navigator can only traverse the red path , which is still far away from the goal region where the target locates .
+Second , the NDH task uses Goal Progress ( GP ) as the main metric to evaluate the navigation agent , which does not encourage instruction following and is not appropriate for measuring the performance on sub-path based task .
+As shown in Figure 2 , the shortest path between p 1 and G does not align with the human 's navigation according to dialogue information .
+The agent that navigates the shortest path or randomly explores the environment without following the instruction is not penalized by the GP metric .
+We show in Section 6.2 that the agent trained with the objective to have a higher GP will wander in the environment with long path length to get a GP without following the instruction , and thus deviates a lot from the reference path .
+This contradicts with the main goal of Vision - and - Language Navigation tasks which is to navigate environments by understanding instructions and grounding them with visual observations .
+New Task Setup : NDH-FULL
+In this section , we introduce the new task setup , NDH - FULL , to address the aforementioned issues in the NDH task .
+We create the NDH - FULL using the full dialogue - path pairs in CVDN .
+In other words , we combine multiple NDH instances that correspond to the same dialogue into one instance .
+As shown in Figure 2 , given the target and full dialogue , the agent is asked to navigate from the start point t 0 to the goal region G .
+We also keep the sub-dialogue - path alignment information in the dataset , which brings the possibility for the agent to learn from sub-instructions .
+The NDH - FULL task setup provides full supervision for the agent to navigate towards the goal region and encourages the agent to understand long interactive dialogue and navigate with fidelity .
+After combining all the sub-paths and dialogue turns into a full-length path- dialogue pair , the NDH - FULL has 1653 dialogue instances .
+We split them into training , validation - unseen , and test-unseen sets .
+We do not include validation seen set in NDH - FULL since we care more about agents ' generalizability to unseen environments .
+The training , validation - unseen , and test-unseen sets contain 1145 , 260 , 248 instances respectively .
+Each of them is from 47 , 10 , and 10 non-overlapped scans , which preserves the important property that the environments of evaluation splits are unseen from the training set .
+We show detailed statistical comparison between NDH and NDH - FULL in Table 1 .
+On average , the paths and dialogues of NDH - FULL are much longer than those of NDH ( 25.05 vs. 7.59 for path length , and 5.69 vs. 3.78 for dialogue length ) , which indicates that the NDH - FULL task setup is more challenging than NDH , allowing useful future work from the community .
+Furthermore , compared with NDH , the NDH - FULL gives the agent full supervision on how to reach the target and encourages the agent to understand long instructions and navigate based on the instructions .
+NDH and NDH - FULL Models
+We present the NDH task model and NDH - FULL task model in this section .
+To be specific , the NDH task model is built based on the visionand - language transformer .
+Similar to the previous works Hong et al. , 2021 ) , we employ LXMERT as the base architecture ( Figure 3 ) .
+The NDH - FULL task model takes the same architecture and is L n , L v , L l = TF LXT ( [ V MASK t ; C t ] , D MASK 1 : i ) ( 1 ) where L n , L v , L l are the losses for naviga-tion task , masked visual view prediction , and masked language model , respectively . [ ; ] is the concatenation operation , V MASK t = { v 1 , v [ MASK ] , ... , v [ MASK ] , ... , v t } and D MASK i = {d i0 , d i1 , ... , [ MASK ] , d i|D i | } are masked visual view and dialogue features , respectively .
+D 1:i is concatenation of the dialogue features up to the ith round .
+To compute the navigation loss , we use multi-head attention score ( of the last layer ) between the current visual view v t and the candidate visual views C t as the action logit following Hong et al . ( 2021 ) . TF LXT consists of multiple layers of multi-head self-attention and cross-attention .
+V j t , Dj 1 : i = MH - CrossATT ( V j t , D j 1 : i ) ( 2 ) V j+1 t = MH - SelfATT ( V j t ) ( 3 ) D j+1 1 : i = MH - SelfATT ( Dj 1 : i ) ( 4 ) where MH - SelfATT is the multi-head self-attention and MH - CrossATT is the multi-head crossattention .
+V j t and D j 1 :i are the input of visual view and dialogue features to the jth layer , respectively .
+The lth self / cross attention head at jth layer is computed by ( for the visual view feature case ) : a j,l = Softmax ( QK ? d h ) V ( 5 ) Q = W q j,l C j?1 t , K = W k j,l V j?1 t , V = W v j,l V j?1 t ( 6 ) V j t = [ a j,1 ; a j,2 ; ... ; a j,N l ] ( 7 ) where W q j,l , W k j,l , and W v j,l are trainable parameters , d h is hidden dimension , and N l is the number of attention heads .
+C j?1 t can be V j?1 t for self attention and D j?1 1 : i for cross attention .
+NDH Model .
+The dialogue navigation model for the NDH task shares the same base architecture as the pre-training model .
+On top of the pre-training model , we introduce the visual proxy token p t which links the candidate views to the current and past view history ( i.e. , the candidate views and the current / past view history only communicate with the proxy token via attention , but they do not directly interact with each other ) .
+It also plays as the recurrent state feature which maintains context history information .
+By introducing the visual proxy token , the view candidates ' logits are calculated from the multi-head attention scores between the visual proxy token and the view candidates .
+The visual proxy token allows the model to consider both explicit ( past view history ) and implicit ( recurrent state ) context .
+?t , pt = TF LXT ( [ V t ; p t ; C t ] , D 1 : i ) ( 8 ) p t+1 = Linear( p t ) ( 9 ) where ?t is the predicted view to proceed .
+The visual proxy token of the last output layer from the TF LXT model pt is fed to a linear layer to become the visual proxy token at next time step .
+NDH - FULL Model .
+For the NDH - FULL setup , we keep our strong NDH model as base architecture .
+In this model , we employ the CLIP visual feature ( Radford et al. , 2021 ) instead of the ResNet feature .
+To handle turns of the dialogue rounds , we introduce the dialogue progressor module which decides whether to move to the next round of the dialogue based on the current visual observation .
+S i = Linear ( [ p t ; d i0 ] ) ( 10 ) S i+1 = Linear ( [ p t ; d ( i+ 1 ) 0 ] ) ( 11 ) NextTurn = i if S i ?
+S i+1 i + 1 otherwise ( 12 )
+The dialogue progressor module simulates the situation in that the navigator is confused about which direction to go next and the oracle gives proper natural language guidance to the navigator .
+The progressor is trained from the alignment between sub-paths and corresponding dialogue rounds .
+Mixture of Imitation and Reinforcement Learning .
+We use a mixture of imitation ( IL ) and reinforcement learning ( RL ) to train the model .
+For RL , we employ Actor-Critic ( Mnih et al. , 2016 ) : L IL = ? t log p( a * t ) ( 13 ) L RL = ? t ( R t ? b t ) log p( a s t ) ? ?H ( p( a t ) ) ( 14 ) L M IX = L IL + ?L RL ( 15 ) where R t is the discounted cumulative reward , b t is the baseline and H ( p ( a t ) ) is the entropy term .
+a * t is the teacher action and a s t is the sampled action .
+We use distance - to - goal for the NHD task model and nDTW score for the NDH - FULL task model as the training rewards .
+Experimental Setup Metrics .
+We consider nDTW as the main metric of the new NDH - FULL task because nDTW reflects path fidelity better than other metrics ( Ilharco et al. , 2019 ) .
+Other than nDTW , we also present evaluation results on success rate ( SR ) , success weighted by path length ( SPL ) , trajectory length ( TL ) , and goal progress ( GP ) to allow evaluation from different perspectives .
+Training Details .
+For the pre-training model , we use 9 language and 5 cross-modal LXMERT layers ( but did not use their pre-trained weights ) , and use 768 as the hidden size .
+Following , we use Adam ( Kingma and Ba , 2015 ) as the optimizer with the learning rate 1 ? 10 ?4 and linear decay as in Devlin et al . ( 2019 ) .
+We use L2 loss for visual view prediction , and cross-entropy loss for masked language model and next view selection .
+We use CVDN ( Thomason et al. , 2019 ) , R2R , and a part of R2R 's augmented data ( Fried et al. , 2018 ; as the training data .
+For the NDH task model , we use AdamW ( Loshchilov and Hutter , 2018 ) as the optimizer with the learning rate 1 ? 10 ?5 . Only CVDN data is used for fine-tuning the model .
+In the NDH - FULL task , we do not apply pre-training for the full-dialogue model .
+We use ResNet -152 feature and ResNet50 based CLIP feature .
+All the experiments are run using the NVIDIA TITAN Xp / GeForce GTX 1080 Ti / GeForce RTX 2080 Ti GPUs .
+We use Py- Torch ( Paszke et al. , 2017 ) to build all models .
+We use manual tuning ( e.g , learning rate= { 1 ? 10 ?3 , ... , 1 ? 10 ?6 } , and the layers of the transformer model= { 5 ( cross-modal ) / 3 ( language ) , 9/5 } ) for selecting hyper-parameters .
+The number of trainable
+Models Val Unseen Test Unseen PREVALENT 3.15 2.44 CMN ( Zhu et al. , 2020 b ) 2.97 3.14 EAML 4.65 3.91 BabyWalk ( Zhu et al. , 2020a ) - 4.46 Ours 5.51 5.27 Table 2 : Performance on NDH task measured with Goal Progress .
+Our model outperforms all the stateof - the - art models in the validation unseen environment and ranks 1st ( at the time of EMNLP 2021 submission deadline ) on the NDH task leaderboard ( ' sagent ' team ) .
+EAML : Environment -Agnostic Multitask Learning .
+parameters of our NDH and NDH - FULL task models are 181M and 182M , respectively .
+6 Results
+State- of- the - Art Results on NDH Task
+In this section , we present our model 's performance on the NDH task .
+As shown in Table 2 , our model outperforms all the state - of - the - art models on the primary evaluation metric - Goal Progress by a large margin and ranks 1st ( at the time of EMNLP 2021 submission deadline ) on the leaderboard ( ' sagent ' team ) .
+2
+This shows that our model performs strongly on the navigation task .
+Analyzing the Issue in NDH Task Setup However , we believe that the NDH task is not evaluated appropriately via the primary metric ( i.e. , GP ) since GP could not reflect the instruction - following ability of the agents in the task .
+We conduct an experiment by running our model with two different rewards for reinforcement learning : global target reward and local target reward .
+In global target reward , the agent gets a positive reward if it moves closer to the final target region , and a negative reward otherwise .
+In local target reward , the agent receives the reward based on whether it moves closer to the final position of the sub-path .
+Since there is no explicit instruction for the path between the final position of the sub-path and the global target region ( except when the sub-dialoguepath pair is the last pair in the full dialogue supervision towards the global target region .
+We show the results in Table 3 . Goal Progress .
+The GP score of the global target model is much higher than the local target model ( 5.51 vs. 3.82 ) , indicating that the global target model reaches closer to the global target location with implicit supervision .
+Instruction Following .
+However , when we compare the success rate scores ( 19.8 vs. 37.2 ) and nDTW scores ( 0.253 vs. 0.518 ) , the local target model outperforms the global target model , indicating that the local target model follows the reference path better .
+This mismatch in metrics implies that GP cannot measure the agent 's ability to follow the path well .
+Intuition to Reach Target .
+A higher GP score of the global target model can be considered as the result of learning intuition to navigate towards the target region without explicit supervision .
+However , we show in Table 3 that the global target model has a much higher trajectory length ( TL ) compared with the local target model ( 24.582 vs. 10.591 ) , indicating that the agent learns to get a higher GP by wandering in the environment rather than proceeding towards a specific direction with intuition .
+We also show that the global target model has a lower nDTW + score ( which is a nDTW score against the extended reference path to the target location measuring the agent 's ability to follow the path from the current starting point to the target ) compared with the local target model ( 0.243 vs. 0.287 ) , which also supports the observation that the global target model does not follow the extended path towards the global target region with intuition to get a high GP score .
+Therefore , pursuing higher GP scores might not reflect agents ' ability to interpret and follow given dialogues .
+For this reason , we introduce a new task setup , NDH - FULL , which encourages instruction following by giving full supervision towards the global target to the agent .
+NDH -FULL Task Results & Suggestions
+We show the performance of our model and its ablations on the new NDH - FULL task .
+We experiment with the " Random - Walk " baseline which chooses a random heading and walks up to 5 steps forward as in Thomason et al . ( 2019 ) , " No - Dialogue " baseline which only considers visual input , and " Target - Only " baseline which considers visual input and the target information .
+As shown in Table 4 , with full supervision towards the target goal region ( Full - Dialogue ) , the agent outperforms the other baselines in all metrics , which indicates that fulldialogue provides useful supervision for the agent .
+However , performance gap between models is not large .
+Considering the full-dialogue model shows the best performance in the NDH task , the new NDH - FULL task is quite challenging with longer paths and dialogues .
+Moreover , requirement of aligning each sub-path and the corresponding dialogue round in the NDH - FULL task introduces additional dimension of difficulty to handle for better performance in instruction - following navigation .
+Therefore , we believe there is still a large room for potential improvement by applying more advanced approaches .
+Thus , we experiment with some of the advanced approaches here as an initial step to tackle this challenge .
+Curriculum Learning .
+We divide one data instance into multiple instances so that each resulting data point has a different number of dialogue rounds and a corresponding sub-path ( i.e. , 2 , 3 , and 4 or more than 4 dialogue rounds ) and train the model on the subset of the data and move on to the longer dialogue / path ones ( starting from the 2 dia- logue rounds to the original full dialogue rounds ) .
+But , as shown in Table 5 , this curriculum learning approach only does not show an improvement .
+With a more finely designed learning procedure , we believe curriculum learning would help improve the performance on the challenging new task .
+Pre-Training .
+We also apply the pre-trained weights which are used for the NDH model .
+However , this also does not give any distinct performance boost .
+This might be because the pretraining model for the NDH task is passive in that the model is given visual and textual features at once .
+On the other hand , in the NDH - FULL task , agents should actively ask for guidance when they are confused .
+Therefore , aligning dialogue rounds with the visual observation from the environment is one challenging factor in the new task .
+Data Augmentation .
+The data size of NDH - FULL shrinks after combining all sub-paths and dialogue rounds ( 7415 vs. 1653 , see Table 1 ) .
+To compensate for the loss , we try data augmentation by generating the oracle 's instruction with the speaker model ( Fried et al. , 2018 ; .
+We modify their speaker model to take the context ( i.e. , dialogue history ) as well as view trajectory to fit to the CVDN dataset .
+We replace the oracle 's instruction in a round of dialogue with the newly generated ones to give the model more diverse forms of instructions .
+But , we do not see an improvement from training the model on this augmented data possibly because NDH - FULL requires accurate instructions to navigate quite long paths and the quality of the current speaker model could not meet the criteria .
+This allows future work on more effective generation methods .
+Trajectory Comparison
+As shown from the top figure in Figure 4 , the NDH task agent ( red line ) fails to follow the correct reference trajectory ( yellow line ) by misunderstanding the oracle 's instruction ( " turn around and follow the red carpet path .
+Once you pass a vase on your left stop " ) while still getting a positive GP score ( 8.820 ) .
+On the other hand , the NDH - FULL task agent ( blue line ) can manage to follow the instructions showing a high path fidelity ( nDTW score : 0.735 ) .
+This example implies that GP is not a good metric for measuring instruction - following .
+In the bottom example , the NDH task agent starts from p 1 ( in the sub-path task setup ) and move towards the goal location , but it directly passes the target object and wanders in the room .
+This trajectory deviates much from the reference sub-path , but the agent still gets a high GP ( 8.226 ) since it finally stops near the goal region .
+Though the NDH - FULL task agent does n't stop at the goal region either , it follows the reference path well during most of the navigation process ( nDTW score : 0.549 ) .
+Conclusion
+We explored the NDH task , which is built on the useful Cooperative Vision - and - Dialogue Navigation ( CVDN ) dataset , and found the mismatch between the task setup and evaluation by analyzing the scoring behaviors of our state - of - the - art model .
+Therefore , we proposed a new task called NDH - FULL .
+We combined all split paths and dialogue rounds of NDH to create the full path and dialogue , resulting NDH - FULL has longer paths and dialogues than NDH and it makes NDH - FULL more challenging .
+We also presented a baseline model , resulting scores , and suggestions for promising research directions on the NDH - FULL task .
+Figure 1 : 1 Figure 1 : One example in the CVDN dataset .
+Given target information , dialogues in blue text and red text sequentially , the human navigates the green path , blue path , and red path accordingly .

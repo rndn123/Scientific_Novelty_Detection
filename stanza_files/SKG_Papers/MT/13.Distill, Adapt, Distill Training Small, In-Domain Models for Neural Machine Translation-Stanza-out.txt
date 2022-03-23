@@ -1,0 +1,154 @@
+title
+Distill , Adapt , Distill : Training Small , In -Domain Models for Neural Machine Translation
+abstract
+We explore best practices for training small , memory efficient machine translation models with sequence - level knowledge distillation in the domain adaptation setting .
+While both domain adaptation and knowledge distillation are widely - used , their interaction remains little understood .
+Our large-scale empirical results in machine translation ( on three language pairs with three domains each ) suggest distilling twice for best performance : once using general - domain data and again using indomain data with an adapted teacher .
+The code for these experiments can be found here .
+1
+Introduction
+Machine translation systems rely on large amounts of data to deduce the rules underlying translation from one language to another .
+This presents challenges in some important niche domains , such as patent and medical literature translation , due to the high cost of hiring experts to generate suitable training data .
+A cost-effective alternative is domain adaptation , which leverages large amounts of parallel documents from less difficult and more readily - available domains , such as movie subtitles and news articles .
+Domain adaptation works well in practice .
+However , these large datasets , which we call general domain datasets , introduce some scalability problems .
+Large datasets require large models ; neural machine translation systems can take days or weeks to train .
+Some models require gigabytes of disk space , making deployment to edge computing devices challenging .
+They can also require excessive compute during inference , making them slow and costly to scale up in production environments ( Gordon , 2019 ) .
+To alleviate these issues , knowledge distillation ( aka Teacher - Student ) ( Hinton et al. , 2015 ) is used 1 https://git.io/Jf2t8 to compress models into a manageable form .
+But although knowledge distillation is the most commonly used form of model compression in practice , it is also one of the least understood .
+In this work , we perform a large-scale empirical analysis to attempt to discover best practices when using knowledge distillation in combination with domain adaptation .
+Out of several common-sense configurations , we find that two stages of knowledge distillation give the best performance : one using general - domain data and another using in - domain data with an adapted teacher .
+We perform experiments on multiple language pairs ( Russian - English , German- English , Chinese- English ) , domains ( patents , subtitles , news , TED talks ) , and student sizes .
+Background Domain Adaptation helps overcome a lack of quality training data in niche domains by leveraging large amounts of data in a more accessible general - domain .
+Domain adaptation is usually accomplished by continued training ( Luong and Manning , 2015 ; Zoph et al. , 2016 ) , which involves two steps : 1 . A model is randomly initialized and trained until convergence on the general- domain data .
+2 . A new model is initialized with the parameters resulting from Step 1 and trained until convergence on the in-domain dataset .
+We can consider domain adaptation as extracting a useful inductive - bias from the general - domain dataset , which is encoded and passed along to the in-domain model as a favorable weight initialization .
+While there are other methods of extracting inductive bias from general - domain datasets ( including mixed fine - tuning ( Chu et al. , 2017 ) cost weighting ( Chen et al. , 2017 ) ) , continued training is most common and the focus of this paper .
+Knowledge Distillation is a method for improving the performance of under-parameterized " Student " models by exploiting the probability distribution of a more computationally complex " Teacher " network .
+Kim and Rush ( 2016 ) presented an extension of knowledge distillation to machine translation in two flavors : word -level and sequence - level knowledge distillation .
+Sequence-level knowledge distillation , which is more general , involves three steps : 1 . A large Teacher network is randomly initialized and trained until convergence on the data .
+2 . The source-side of the training data is decoded using the Teacher to produce " distilled " target data .
+3 . A smaller Student model is randomly initialized and trained until convergence on the distilled source - target pairs ( discarding the original target sequences in the data ) .
+The goal of knowledge distillation is to train the student model to mimic the teacher 's probability distribution over translations .
+Since the teacher and the student are trained on the same dataset , they should be capable of learning the same distribution in theory .
+In practice , however , pre-processing the training data with the teacher improves student test performance .
+2 Explanations for this phenomenon 2 Interestingly , this can be true even when the student has include dark knowledge ( Furlanello et al. , 2018 ) , mode reduction ( Zhou et al. , 2019 ) , and regularization ( Gordon and Duh , 2019 ; Dong et al. , 2019 ) , but no definitive evidence has been given .
+Sequence -level knowledge distillation is widely used in both industry ( Xia et al. , 2019 ) and research and is the second focus of this paper .
+3
+Distilling and Adapting How domain adaptation and knowledge distillation would interact when applied in combination was not previously clear .
+Specifically , our research questions are : ?
+Is a distilled model easier or harder to adapt to new domains ? ?
+Should knowledge distillation be used on indomain data ?
+If so , how should the teacher be trained ?
+To answer these questions , we performed experiments on 9 possible configurations which are assigned configuration numbers in Figure 1 .
+For ease of reference , we will primarily refer to small , in - domain models by their configuration number and encourage readers to consult Figure 1 . Each configuration has two attributes of interest .
+Distilling In-Domain Data
+How is in- domain data pre-processed using knowledge distillation ?
+Some models are trained with no pre-processing ( configurations 1 , 4 , and 7 ) , while others use a teacher to pre-process the in-domain training data .
+This teacher might be a baseline trained on indomain data only ( configurations 2 , 5 , and 8 ) or it can be trained on general - domain data and then adapted to in-domain via continued training ( con - figurations 3 , 6 , and 9 ) .
+Initialization
+How are models initialized ?
+A model might be randomly initialized ( configurations 1 , 2 , and 3 ) , or it might be adapted from a model trained on general - domain data .
+This general- domain model might be a baseline trained directly on the general- domain data ( configurations 4 , 5 , and 6 ) or it might be a student model trained on the output of a general - domain teacher ( configurations 7 , 8 , 9 ) .
+Experiments
+Data General -Domain Data
+We train models in multiple settings : 3 language pairs ( German - English , Russian - English , and Chinese-English ) each with 1 general- domain dataset and 2 different in- domain datasets .
+The general- domain datasets for each language are a concatenation of data from Open-Subtitles 2018 ( Tiedemann , 2016 ; Lison and Tiedemann , 2016 ) ( which contains translated movie subtitles ) and the WMT 2017 datasets ( Ondrej et al. , 2017 ) ( which includes a variety of sources , including news commentary , parliamentary proceedings , and web-crawled data ) .
+In -Domain Data
+We use the World International Property Organization ( WIPO ) COPPA - V2 dataset ( Junczys - Dowmunt et al. , 2018 ) and the TED Talks dataset ( Duh , 2019a ) as our two in-domain datasets .
+The WIPO data contains parallel sentences from international patent abstracts , while the TED Talks dataset consists of translated transcripts of public speeches .
+Data Statistics
+The size of each training dataset is presented in Table 1 . General-domain datasets contain tens of millions of sentences , while indomain datasets contain much less .
+German-English WIPO has an exceptional amount of training data ( 4.5 times more than the next biggest indomain dataset ) and helps qualify how our results Evaluation
+The general - domain development set for each language contains newstest2016 concatenated with the last 2500 lines of OpenSubti-tles2018 .
+We reserve 3000 lines of WIPO to use as the in-domain development set .
+TED talks development sets are provided by the authors and contain around 2000 lines each .
+Evaluations of each model are performed by decoding the appropriate development set with a beam-search size of 10 and comparing to the reference using multi-bleu .
+perl from the Moses toolkit .
+The tokenization used during multi-bleu. perl evaluation is the same as the one provided in ( Duh , 2019a ) .
+Architectures and Training A list of architecture sizes is provided in Table 2 .
+Teachers are trained using the Large hyperparameter settings , while we experiment with Medium , Small , and Tiny students for each configuration and language / domain setting .
+All models are Transformers ( Vaswani et al. , 2017 ) .
+We use the same hyper-parameters ( which are based on a template from ( Duh , 2019 b ) 5 ) for every model , except those that affect the size of the model ( model does not improve for 10 checkpoints ( earlystopping ) , whichever comes first .
+Continued Training Work by ( Gordon and Duh , 2019 ) suggests that students may benefit from training on some combination of the distilled and undistilled reference dataset .
+We experimented with this by continuing to train each in - domain student model on the original , un-distilled dataset , using similar stopping criterion to the first round of training .
+This improved some models by up to 1 BLEU .
+Because of this , we recommend that any distilled model continue training on the original dataset as long as development accuracy improves .
+When continued training improves performance of a student , we show that score instead of the score without continued training .
+Recommendations
+Adapt Teachers
+In this section , we compare training in- domain models with no teacher ( config 1 ) , a teacher trained on in- domain data only ( config 2 ) , and a teacher adapted from the general domain ( config 3 ) .
+The performance of the two teachers in each languagepair and domain is listed in Table 3 .
+It shows that adaptation greatly improves the performance of every in - domain teacher except German - English WIPO .
+6 Table 4 shows the results of using these teachers to distill the in-domain data before training student models in various settings .
+We see that in almost every case , using an adapted teacher gives the best or close to the best results .
+This is somewhat expected since models with better development scores tend to make better teachers ( Zhang Domain 3 : BLEU development score of in- domain teachers when either randomly initialized or initialized from the weights of a large model trained on general - domain data .
+Adaptation drastically improves performance on every language pair and domain , except de-en WIPO .
+et al. , 2018 ) .
+Although knowledge distillation is typically seen as " simplifying " data for students , in this case we suspect that the adapted teacher 's knowledge about the general - domain is making its way to students via the distilled in - domain data .
+Adapt the Best Student
+We also train small models directly on the generaldomain data and adapt them to in-domain data .
+The possible configurations are random initialization ( config 1 ) , initializing from a baseline model trained on general - domain data ( config 4 ) , or initializing from a student model distilled from a generaldomain teacher ( config 7 ) .
+Table 5 shows the performance of the models trained on the generaldomain datasets , and Table 6 shows their performance after being fine-tuned on in- domain data .
+Training small models directly on the generaldomain data and then fine-tuning on in- domain data gives much more substantial gains ( 5 - 10 BLEU ) than providing indirect access to the generaldomain data through an adapted teacher ( config 3 ) .
+We believe this is because a large amount of data is required to fully reveal the teacher 's probability distribution over translations ( Fang et al. , 2019 ) .
+While an adapted teacher might contain much information from the general - domain , it is unable to express that knowledge to students just by translating the smaller in-domain dataset .
+To get the full benefit of general - domain data , the small models must be directly pre-trained on general - domain data .
+7 Indirect access to the general- domain data through a general - domain teacher is insufficient .
+We also observe that Medium-sized models are not small enough to benefit from knowledge distillation in the general - domain , and so their generaldomain scores do not improve with distillation .
+Domain Size Cfg # de-en ru-en zh-en
+These distilled Medium-sized models ( config 7 ) also tend to do slightly worse than their baseline counter-parts ( config 4 ) on in- domain data .
+Indeed , Figure 2 shows that in- domain performance is roughly linearly related to general - domain performance regardless of whether distillation is applied before adaptation .
+This implies that distillation does not interfere with the adaptability of a model , so the model with the best general - domain performance should be adapted , regardless of whether distillation was applied .
+Adapting a distilled model can improve performance slightly over adapting the baseline model without distillation .
+Distill , Adapt , Distill Finally , we test whether these two ways of improving small , in - domain models are orthogonal .
+We might hypothesize that training small models directly on general- domain data eliminates the need to adapt teachers or use an in-domain teacher at all .
+To test this , we also train adapted student models using a baseline teacher ( config 8 ) and an adapted teacher ( config 9 ) .
+Table 6 : In-domain models that are initialized randomly ( config 1 ) , initialized from a baseline trained on general - domain data directly ( config 4 ) , or initialized from a general - domain student trained using a generaldomain teacher ( config 7 ) .
+Figure 2 : The BLEU of general- domain models vs. their corresponding in-domain scores when adapted to a different domain .
+We see that in- domain performance is roughly linearly related to general - domain performance regardless of whether distillation is applied before adaptation .
+ing in- domain data with an adapted teacher can further boost performance of an already distilled model , while using a teacher trained only on in-domain data can sometimes hurt performance .
+These results lead us to a general recipe for training small , in - domain models using knowledge distillation and domain adaptation in combination :
+1 . Distill general - domain data to improve general - domain student performance .
+Adapt the best model from Step 1 to indomain data .
+( 2- 10 BLEU better than no adaptation ) 3 . Adapt the teacher and distill again in- domain .
+( 0 - 2 BLEU better than no or non-adapted teacher )
+Following this procedure will result in either configuration 6 or 9 as described in Figure 1 .
+And indeed , configuration 9 performs the best or near best ( within 0.1 BLEU ) in almost every case , as shown in Table 9 .
+For those Medium sized models which were not improved by distillation in the general - domain , configuration 6 performs the best .
+Models trained on German-English WIPO are an exception , with adaptation from the generaldomain not improving performance .
+This is in line with the results from Table 3 which shows adaptation does not improve teachers , either .
+We suspect this is because the German- English WIPO dataset is the biggest out of any in- domain dataset , making adaptation unnecessary .
+Future work might also benefit from a quantification of domain similarity between datasets ( Britz et al. , 2017 ) , which would guide the use of domain adaptation in cases like these .
+Training Times
+The models trained in this work collectively required 10 months of single - GPU compute time .
+Table 10 breaks this down by model size and dataset .
+While distilling twice might give the best performance , it also increases the amount of computation time required .
+Rather than training a single indomain model , configuration 9 requires training a general - domain teacher , a general - domain student , and then adapting both .
+This can increase compute required to train models by 2 - 4x .
+A huge portion of computation was also spent on decoding the general - domain data using a teacher model for sequence - level knowledge distillation , which could take up to 24 days of GPU time ( using a beam size of 10 and a batch size of 10 ) .
+can be arbitrarily sped up using multiple GPUs in parallel , but future work might explore how to distill teachers in a less expensive way .
+Related Work
+Our work is one the few that focuses specifically on training small , under-parameterized in-domain models .
+There is , however , similar work which is not directly comparable but uses knowledge distillation to adapt to new domains .
+Knowledge Adaptation uses knowledge distillation to transfer knowledge from multiple , labeled source domains to un-labeled target domains .
+This is in contrast to our setting , which has labels for both general - domain and in- domain data .
+Ruder et al. ( 2017 ) introduced this idea as " Knowledge Adaptation , " using multi-layer perceptrons to provide sentiment analysis labels for unlabeled indomain data .
+Similar work includes Iterative Dual Domain Adaptation ( Zeng et al. , 2019 ) and Domain Transformation Networks .
+These ideas are not limited to machine translation ; recent work by Meng et al . ( 2020 ) trains in-domain speech recognition systems with knowledge distillation , while Orbes- Arteaga et al . ( 2019 ) does similar work on segmentation of magnetic resonance imaging scans .
+Compressing Pre-trained Language Models Domain adaptation via continued training in NMT is closely related to the idea of pre-training a language model and fine-tuning to different tasks , which might come from different data distributions than the pre-training data .
+Because language models tend to be extremely cumbersome to train and evaluate , more focus is given to the compression aspect of knowledge distillation .
+Sanh et al. ( 2019 ) , Sun et al. ( 2019 ) , and independently showed that knowledge distillation could be used to compress pre-trained models without affecting downstream tasks .
+Tang et al. ( 2019 ) showed that task -specific information could be distilled from a large Transformer into a much smaller Bi-directional RNN .
+These methods might reasonably be extended to domain adaptation for NMT .
+Conclusion
+In this work , we conducted a large-scale empirical investigation to determine best practices when using sequence - level knowledge distillation and domain adaptation in combination .
+We found that adapting models from the general- domain makes them better teachers and that distilling using general - domain data does not impact a model 's adaptability .
+This leads us to recommend distilling twice for best results : once in the general - domain to possibly improve student performance , and again using an adapted in - domain teacher .
+The results are robust among multiple language pairs , student sizes , in - domain settings .
+Figure 1 : 1 Figure 1 : There are 9 possible configurations for training small , in - domain models with knowledge distillation and domain adaptation .
+Models trained on general- domain data are shown on the left , and in- domain models are shown on the right .
+Solid arrows represent domain adaptation via continued training .
+Dashed arrows represent improved optimization via sequence - level knowledge distillation .
+Configuration 1 is the model which is trained on in-domain data with random initializations and without the assistance of a teacher .

@@ -1,0 +1,223 @@
+title
+Meta-Reinforced Multi-Domain State Generator for Dialogue Systems
+abstract
+A Dialogue State Tracker ( DST ) is a core component of a modular task - oriented dialogue system .
+Tremendous progress has been made in recent years .
+However , the major challenges remain .
+The state- of - the - art accuracy for DST is below 50 % for a multi-domain dialogue task .
+A learnable DST for any new domain requires a large amount of labeled indomain data and training from scratch .
+In this paper , we propose a Meta-Reinforced Multi-Domain State Generator ( MERET ) .
+Our first contribution is to improve the DST accuracy .
+We enhance a neural model based DST generator with a reward manager , which is built on policy gradient reinforcement learning ( R - L ) to fine - tune the generator .
+With this change , we are able to improve the joint accuracy of DST from 48.79 % to 50.91 % on the Multi-WOZ corpus .
+Second , we explore to train a DST meta-learning model with a few domains as source domains and a new domain as target domain .
+We apply the model- agnostic metalearning ( MAML ) algorithm to DST and the obtained meta-learning model is used for new domain adaptation .
+Our experimental results show this solution is able to outperform the traditional training approach with extremely less training data in target domain .
+Introduction A Dialogue State Tracker ( DST ) is a core component of a modular task - oriented dialogue system .
+For each dialogue turn , a DST module takes the user utterance and the dialogue history as input , and outputs a belief estimate of the dialogue state .
+The dialogue state as of today is simplified as a set of requests and goals , both of which are represented as ( slot , value ) pairs such as ( area , centre ) , ( food , Chinese ) for a user request I 'm looking for a Chinese restaurant in the centre of the city .
+A highly accurate DST is crucial to ensure moderate price south .
+the hotel Figure 1 : An example of dialogue state tracking process for booking a hotel , looking for an attraction and booking a taxi between them .
+Each turn contains a user utterance ( grey ) and a system utterance ( blue ) .
+The dialogue state tracker ( yellow ) tracks all the ( domain , slot , value ) until the current turn .
+Blue color texts indicate mentions of slot values appeared at that turn .
+Best viewed in color .
+the quality and smoothness of a human-machine dialogue .
+Budzianowski et al. ( 2018 ) recently introduced a multi-domain dialogue dataset Multi-domain Wizard - of - Oz ( MultiWOZ ) , which is more than one order of magnitude larger than all previous annotated task - oriented corpora with around 10 k dialogues and involves more than 7 domains .
+A domain of a task - oriented system is often defined by an ontology , which defines all entity attributes called slots and all possible values for each slot .
+MultiWOZ presents conversation scenarios much similar to those in real industrial applications .
+Figure 1 shows an example of a multi-domain dialogue , where a user starts a conversation about hotel reservation and moves on to look for attractions nearby of his interest .
+It adds a layer of complexity to the DST and brings new challenges .
+The first new challenge is how to appropriately model DST for a multi-domain dialogue task .
+Multi-domain DST is in its infancy before Multi-WOZ ( Rastogi et al. , 2017 ) .
+Most previous work on DST focus on one given domain ( Henderson et al. , 2013 ( Henderson et al. , , 2014 Mrk?i? et al. , 2017 ; Zhong et al. , 2018 ; Korpusik and Glass , 2018 ; Liu et al. , 2019 ) .
+As pointed out , to process the MultiWOZ data , the DST model has to determine a triplet ( domain , slot , value ) instead of a pair ( slot , value ) at each turn of dialogue .
+MultiWOZ contains 30 ( domain , slot ) pairs over 4,500 possible slot values in total .
+The prediction space is significantly larger .
+This change seems quantitative .
+However , it challenges the foundation of most successful DST models , where DST is casted as a neural model based classification problem , each ( slot , value ) pair is an independent class and the number of classes is relatively limited .
+When the number of classes is large enough as the case in MultiWOZ , classification - based approaches are not applicable .
+In real industry scenarios , the prediction space is even larger and it is often not possible to have full ontology available in advance ( Xu and Hu , 2018 ) .
+It 's hard to enumerate all possible values for each slot .
+The second challenge is how to model the commonality and differences among domains .
+The number of domains is unlimited in real-life .
+It wo n't be able to scale up if each new domain requires a large amount of annotated data .
+To overcome these challenges , proposed a TRAnsferable Dialogue statE generator ( TRADE ) that generates dialogue states from utterances using a copy mechanism , facilitating knowledge transfer between domains .
+The prominent difference from previous one-domain DST models is that TRADE is based on a generation approach instead of a close-set classification approach .
+The generation model parameters are shared among various domains and slots .
+TRADE is able to help boost the DST accuracy up to 48.62 % with the MultiWOZ corpus .
+It is obvious this accuracy is far from being acceptable .
+In this paper , we are motivated to enhance this generation - based approach for two objectives , higher accuracy and better domain adaptability .
+To improve DST accuracy , we propose a new framework which contains the state generator and reward manager .
+The state generator follows the same setup of TRADE .
+The Reward Manager calculates the reward to fine- tune the generator through policy gradient reinforcement learning ( PGRL ) .
+We use the reward manager to help the generator alleviate the objective mismatch challenge .
+Objective mismatch is a limitation of encoder-decoder generation approaches , where the training process is set to maximize the log likelihood , but it does n't assure producing the best results on discrete evaluation metrics such as the DST accuracy .
+Model MERET
+The overview of our model is illustrated in Figure 2 .
+It consists of a generator model and a reward manager .
+The Generator
+In this paper , we take TRADE as our baseline .
+The TRADE model comprises three components : ( 1 ) an utterance encoder , ( 2 ) a context - enhanced slot classifier , ( 3 ) a state generator .
+We briefly describe the TRADE model in this Section .
+The utterance encoder encodes dialogue utterances into a sequence of fixed - length vectors .
+TRADE uses Bi-GRU ( Chung et al. , 2014 ) , to encode .
+Instead of initializing by concatenating GloVe embeddings ( Pennington et al. , 2014 ) , our model explore to use BERT ( Devlin et al. , 2019 ) as embedding model .
+We denote a sequence of dialogue turns as a matrix X t = [ U t?l , R t?l , ... , U t , R t ] ?
+| Xt |?d emb , where l is the length of the dialogue history selected , U is the user turn , R represents the system response and d emb indicates the turn - level embedding size .
+The encoder encodes X t into a hidden matrix H t = [ h enc 1 , ... , h enc | Xt | ] ?
+| Xt |?d hdd , hdd is the hidden size .
+The state generator uses GRUs as the decoder , which takes the embedding of the jth ( domain , slot ) pair as well as the kth word as input and outputs a hidden vector h dec jk at the kth decoding step .
+This hidden vector is then mapped to distribution over the vocabulary V and over the dialogue history as shown in Eq ( 1 ) .
+P vocab jk = Softmax ( E ? ( h dec jk ) ) ? | V | ( 1 ) P history jk = Softmax ( H t ? ( h dec jk ) ) ?
+| Xt|
+These two distributions are combined as Eq ( 2 ) as the final results , P f inal jk = p gen jk ?
+P vocab j k + ( 1 ? p gen jk ) ?
+P history j k ( 2 )
+The context - enhanced slot classifier takes as input H t and classifies it into one of the three class-es : ptr , none , dontcare .
+With a linear layer parameterized by W g ? 3?d hdd , the slot classifier for the jth ( domain , slot ) pair is defined as G j = Softmax ( W g ?
+( P history j0 ? H t ) ) ? 3 ( 3 ) If this slot classifier determines none or dontcare , the system ignores any output from the state generator .
+Optimization is performed jointly for both the state generator and the slot classifier .
+The crossentropy loss is used for both , with L s representing the loss for the slot classifier and L g for the generator .
+They are combined with hyper-parameters ? and ?.
+L mix = ?L s + ?L g ( 4 )
+A Reward Manager Generally , the cross-entropy loss is used to train a generator .
+In our task , the true words Y label j is used and the cross-entropy loss can be defined as : loss g = ?
+J j=1 | Y j | k=1 log P f inal jk ?
+( y label jk ) ( 5 ) where y label jk is the ground truth of the value word for the jth ( domain , slot ) pair .
+In this paper , we propose a RL - based Reward Manager to work the generator .
+The Reward Manager is used for calculating the reward to fine - tune the Generator through PGRL .
+The specific modeling process of reinforcement learning adaptation for DST task is summarized in Algorithm 1 : We treat the Generator as the target agent to be trained .
+The agent interacts with an external environment ( utterances , domains , slots and reward manager ) by taking actions and receiving environment state and reward .
+The actions are the choices of tokens for slot value that generates for any given ( domain , slot ) pair .
+The action space is the vocabulary .
+Following each action , the reward manager calculates a reward by comparing the generated token to the corresponding ground - truth token .
+When reaching the last decoding step , the agent updates its parameters towards maximizing the expected reward .
+RL loss is defined as follows : L rl = ?
+J j=1 | Y j | k=1 r(y s jk ) log P f inal ( y s jk ) ( 6 ) where y s jk is a token sampled from the vocabulary probability distribution and r(y s jk ) means the reward for the sampled token y s jk , computed by a reward function .
+Intuitively , the loss function L rl enlarges the probability of the sampled y s jk if it obtains a higher reward for the kth token in jth ( domain , slot ) pair .
+We also define a combined loss function : L = ?L rl + ?L mix ( 7 ) where L rl is defined as the reinforcement learning loss , L mix is the cross-entropy loss from TRADE , ? and ? are the combined hyper-parameters .
+Algorithm 1 shows how this method works .
+MAML - adaptive DST
+The traditional paradigm of supervised learning is to train a model for a specific task with plenty of annotated data .
+Meta-learning aims at learning new tasks with few steps and little data based on existing tasks .
+MAML ( Finn et al. , 2017 ) is the most popular meta-learning algorithm .
+It has been successfully employed in various tasks .
+We propose to apply MAML to perform dialogue state tracking for new domains .
+The MAML algorithm tries to build an internal representation of multiple tasks and maximize the sensitivity of the loss function when applied to new tasks , so that small update of parameters could lead to large improvement of new task loss value .
+In this paper , we explore how it works with DST , a key component in task - oriented dialogue systems .
+Compute L rl and L using Eq ( 6 ) and Eq ( 7 ) ; 12 : Update the parameters of network with learning rate ? , ? ? ? + ? ? L ? ; 13 : end while 14 : Testing Steps : 15 : for batch of X and Y do L M = d L d ( M d , D v d ) ( 8 ) Finally , we minimize the meta loss for updating the current model M until an ideal meta-learned model M is achieved , M ? M ? ?
+M d L d ( M d , D v d ) ( 9 )
+To adapt to a new domain , we start with the metalearned model M instead of initializing randomly , new-domain training data is used to update model parameters as multiple batches and the learnt task model is fit for the new domain .
+Experiments
+Dataset and Evaluation Matrix
+In this paper , we use MultiWOZ as our training and testing corpus .
+MultiWOZ is a fully - labeled collection of human-human written conversations spanning over multiple domains and topics .
+It contains 8438 multi-turn dialogues with on average 13.7 turns per dialogue .
+It has 30 ( domain , slot ) pairs and over 4,500 slot values .
+We use the most frequent five domains ( restaurant , hotel , attraction , taxi , train ) in our experiments .
+Two common metrics to evaluate DST models are joint goal accuracy and slot accuracy .
+Joint accuracy measures the accuracy of dialogue states , where a dialogue state is correctly predicted only if Pre-update model with gradient descent : M d ? M ? ? M L d ( M , D t d ) 5 : Compute L d ( M d , D v d ) using D v d ; 6 : end for 7 : Update the current model M : M ? M ? ?
+M d L d ( M d , D v d ) 8 : end while 9 : return meta-learned model M ; all the values of for all the ( domain , slot ) pairs are correctly predicted .
+Slot accuracy is the accuracy of the ( domain , slot , value ) tuples .
+Joint accuracy is a more challenging metric .
+Implementation Details
+For all experiments , we choose Bi-GRU networks with a hidden size of 768 to be the encoder and the decoder .
+The model is optimized using Adam ( Kingma and Ba , 2015 ) with a learning rate of 0.001 .
+We reduce the learning rate to half if the validation loss increases .
+We set the batch ( Ioffe and Szegedy , 2015 ) size to 32 and the dropout ( Zaremba et al. , 2014 ) rate to 0.2 .
+Different reward functions have been tried through the experiment progress .
+We choose a binary reward that a positive value is given when the output token equals the target and a punishment otherwise , 1 and - 0.1 respectively .
+We evaluate the model every epoch and adopt early stopping on the validation dataset .
+In meta-training phase , we set different numbers of updating M due to the differences in slot complexity for each domain .
+The model was implemented in the py-Torch .
+Multi-domain Results
+Table 1 shows our experimental results with MERET .
+MERET achieves the joint goal accuracy of 50.91 % , which is 2.12 % above the latest state - of- the - art DST model COMER and is 2.29 % higher than TRADE .
+Table 1 also shows accuracies of a few latest systems on the same corpus .
+MERET is also able to obtain the best slot accura -
+DST Models Joint Acc Slot Acc MultiWOZ Benchmark ( Budzianowski et al. , 2018 ) 25.83 - GLAD ( Zhong et al. , 2018 ) 35.57 95.44 HyST ( ensemble ) ( Goel et al. , 2019 ) 44.22 - TRADE 48.62 96.92 COMER ( Ren et al. , 2019 ) 48 cy 97.07 % which is slightly higher than TRADE , but not substantial .
+To prove the effectiveness of our structure , we conduct ablation experiments in different setups .
+MERET -BERT ( remove BERT , acc 50.35 % , + 1.73 % ) has the same embedding Glove with TRADE , the improvement here mainly comes from RL , benefitting from the reward manager , which provides an ability for the entire model to explore rather than to be greedy at every single step and overcomes the existing limitation of encoder-decoder generation approach as men-tioned in the intro .
+MERET - RL ( remove RL , acc 50.09 % , + 1.47 % ) shows the increment due to embedding changes , which uses BERT instead of Glove , integrating powerful pre-trained language representation of BERT .
+We can see that MERET 's advantage mainly comes from the RL .
+The way we employ RL with the generator in this paper is a good baseline .
+We are encouraged by these experimental results for future exploration in this line of research .
+New Domain Results
+To test the effectiveness of MERET , we choose hotel , train and restaurant as the source domains , taxi and attraction as the target domains .
+with 1 % sampled data from each target domain .
+Experimental results are listed in Table 2 . MERET achieves substantial higher accuracy , 64.7 % joint goal accuracy for the Taxi domain and 43.10 % for the Attraction domain , comparing to the other two setups .
+Similar advantages are obtained for slot accuracies for both target domains .
+To explore the K-shot performance of the MERET model , we conduct experiments to measure the impact of the number of training examples from the target domain .
+We meta-train MERET with source domains and meta-test on the taxi and attraction domain .
+The number of training samples K from the target domains varies from 1 to 10 .
+We use K = ( 1 , 3 , 5 , 10 ) as the testing point .
+Figure 3 illustrates our experiments .
+It 's natural that the accuracy increases as the training data increases .
+We can observe that the accuracy with K = 5 of the attraction domain surpasses the accuracy with training MERET from scratch using 1 % ( 30 dialogues ) of the attraction domain data .
+This demonstrates our model 's capability to achieve good performance with a fraction of the target data .
+Analysis and Discussion
+We analyze the wrong predictions and draw a heat map of distributions for the slot classifier considering the importance of its determining to the final output .
+From the map in Figure 4 , we can see the main cause of the error-maker is the classifier 's inertia of omit-prediction from ptr to none , which stands up to 47.3 % proportion .
+The over-prediction cause comes in the next , with a 27.3 % rate .
+Value on the diagonal of the lower - left corner shows the mis-prediction rate of the generator .
+Combined with the comparison of the two pictures , we can get the point that our proposed model has a higher generative ability over state value .
+An overview correct-error analysis of multidomain for slots is shown in Figure 5 .
+The numberrelated slots book stay in hotel domain and book day in restaurant domain have the highest correct rates , 98.97 % and 98.94 % , respectively .
+The namerelated slots in the restaurant , attraction , and hotel domains have the highest error rates , 8.94 % , 7.36 % , and 7.21 % , respectively .
+It is because these slots usually have a large number of possible values set and high annotation errors .
+The type slot of hotel domain also keeps a high error rate in different experiments , even if it is an easy task with only two possible values in the ontology .
+The reason is that labels of the ( hotel , type ) pair are usually missing in the dataset .
+We further show the performance of our model over different dialogue turn in Figure 6 .
+As the number of dialogue turn increases ,
+User : I 'm looking for a jamaican restaurant in the east .
+System :
+There are no jamaican restaurants in the east .
+Would you like to try another food type or area ?
+User : I 'm looking for a place that serves jamaican food in the east .
+If not , italian will do .
+System :
+There is one Italian place in the east , Pizza Hut Fen Ditton .
+TRADE prediction : { ( restaurant , area , east ) , ( restaurant , food , jamaican ) } MERET prediction : { ( restaurant , area , east ) , ( restaurant , food , italian ) } the influence of context gradually appears for the final results due to the abilities of different models .
+We can see that MERET outperforms TRADE gradually .
+This is especially true when the context length is long .
+Our model can carry information over multiple turns which will be used for state generator with the help of RL maximizing rewards expectations in a better way .
+We sample one typical dialogue from MultiWOZ to demonstrate the effectiveness of MERET in the case study .
+Due to limited space , we present the same key parts derived from two models and the details are shown in Table 3 .
+We observe that the constraint for food slot is dynamic and MERET is sensitive to capture this context information with the advantage of RLbased fine - tune state Generator , which reinforces in greater exploration for DST and maximizes reward expectation in a better way .
+( 2018 ) propose global-local modules to learn representations of the user utterance and system actions and calculate similarity between the contextualized representation and the ( slot , value ) pair .
+Xu and Hu ( 2018 ) utilize pointer network to track dialogue state , which proposes a conception of unseen states and unknown states earlier .
+Chao and Lane ( 2019 ) use BERT as dialogue context encoder and get contextualized representation , which is passed to the classification module and get three classes : none , dontcare , span .
+When the class is span , the start and end positions of slot values are obtained in the dialogue context .
+However , Both Xu and Hu ( 2018 ) and Chao and Lane ( 2019 ) suffers from the fact that they can not get correct answer when the value does not exist in the input .
+propose an approach that the model generates a sequence of value from utterances by copy mechanism , which can avoid the case that the value is not in the input .
+It also uses a three - way classifier to get a probability distribution over none , dontcare , ptr classes .
+Ren et al. ( 2019 ) achieve state - of- the - art performance on the MultiWOZ dataset by applying a hierarchical encoder-decoder structure for generating a sequence of belief states .
+The model shares parameters and has a constant inference time complexity .
+Related Work Reinforcement learning is a way of training an agent during interaction with the environment by maximizing expected reward .
+The idea of policy gradient algorithm has been applied in training of sequence to sequence model .
+Ranzato et al. ( 2016 ) propose MIXER algorithm , which is the first application of REINFORCE algorithm ( Williams , 1992 ) in training sequence to sequence model .
+However , an additional model , which is used to predict expected reward , is required in MIXER .
+Rennie et al. ( 2017 ) proposed a self-critical method for sequence training ( SCST ) .
+It directly optimizes the true , sequence -level , evaluation metric , and avoids the training of expected future rewards estimating model .
+Paulus et al. ( 2018 ) applied SCST in summary generation , which improved the rouge value of generated result .
+SCST algorithm was also used by Zhao et al . ( 2018 ) for improving story ending generation .
+Keneshloo et al. ( 2018 ) present some of the most recent frameworks that combine concepts from RL and deep neural networks and explain how these two areas could benefit from each other in solving complex seq2seq tasks .
+Meta-learning aims at learning target tasks with little data based on source tasks .
+This algorithm is compatible with any model optimized with gradient descent so that it has a wide range of applicability .
+Meta-learning has been applied in various fields such as image classification ( Santoro et al. , 2016 ; Finn et al. , 2017 ) and robot manipulation ( Duan et al. , 2016 ; Wang et al. , 2016 ) , etc .
+In the field of natural language processing , some exploratory work ( Gu et al. , 2018 ; Huang et al. , 2018 ; Qian and Yu , 2019 ; have been proposed in recent years .
+Most of them are focused on the generation - related tasks and machine translation .
+To our knowledge , few related work in dialogue state tracking ( DST ) was found till now .
+We propose to apply model- agnostic meta-learning ( MAML ) ( Finn et al. , 2017 ) algorithm for training a DST meta-learning model with a few domains as the training domains and a new domain as the testing domain to achieve multi-domain adaptation .
+Conclusion
+We introduce an end-to- end generative framework with pre-trained language model and copymechanism , using RL - based generator to encourage higher semantic relevance in greater exploration space for DST .
+Experiments on multidomain dataset show that our proposed model achieves state - of - the - art performance on the DST task , exceeding current best result by over 2 % .
+In addition , we train the dialogue state tracker using multiple single -domain dialogue data with richresource by using the MAML .
+The model is capable of learning a competitive and scalable DST on a new domain with only a few training examples in an efficient manner .
+Empirical results on Mul-tiWOZ datasets indicate that our solution outperforms non-meta- learning baselines training from scratch , adapting to new few -shot domains with less data and faster convergence rate .
+In future work , we intend to explore more with the combination of RL and DST on the basis of reward designing , trying to explore more in the internal mechanism .
+In the long run , we are interested in combing many tasks into one learning process with meta-learning .
+Figure 2 : 2 Figure 2 : The architecture of the proposed MERET model , which contains a Generator and a Reward Manager in general .
+The Generator includes ( a ) an utterance encoder , ( b ) a context - enhanced slot classifier , and ( c ) a state generator .
+The Reward Manager calculates the reward values based on the reward functions to fine - tune the generator through PGRL .

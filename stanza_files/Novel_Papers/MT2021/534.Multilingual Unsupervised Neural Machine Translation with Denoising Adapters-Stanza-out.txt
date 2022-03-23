@@ -1,0 +1,228 @@
+title
+Multilingual Unsupervised Neural Machine Translation with Denoising Adapters
+abstract
+We consider the problem of multilingual unsupervised machine translation , translating to and from languages that only have monolingual data by using auxiliary parallel language pairs .
+For this problem the standard procedure so far to leverage the monolingual data is back - translation , which is computationally costly and hard to tune .
+In this paper we propose instead to use denoising adapters , adapter layers with a denoising objective , on top of pre-trained mBART - 50 .
+In addition to the modularity and flexibility of such an approach we show that the resulting translations are on - par with back - translating as measured by BLEU , and furthermore it allows adding unseen languages incrementally .
+*
+Work done during an internship at NAVER LABS Europe .
+Introduction
+Two major trends have in the last years provided surprising and exciting new avenues in Neural Machine Translation ( NMT ) .
+First , Multilingual Neural Machine Translation ( Firat et al. , 2016 ; Ha et al. , 2016 ; Johnson et al. , 2017 ; Aharoni et al. , 2019 ) has achieved impressive results on large-scale multilingual benchmarks with diverse sets of language pairs .
+It has the advantage of resulting in only one model to maintain , as well as benefiting from cross-lingual knowledge transfer .
+Second , Unsupervised Neural Machine Translation ( UNMT ) ( Lample et al. , 2018 ; Artetxe et al. , 2018 ) allows to train translation systems from monolingual data only .
+Training bilingual UNMT systems ( Conneau and Lample , 2019 ; Artetxe et al. , 2019 ) often assume high-quality in- domain monolingual data and is mostly limited to resource - rich languages .
+In addition to the pretraining and the denoising autoencoding , they require one or more expensive steps of back - translation ( Sennrich et al. , 2016 ) in order to create an artificial parallel training corpus .
+Multilingual UNMT aims at combining these two trends .
+As depicted in Fig 1 , some auxiliary languages have access to parallel data paired with English ( en ? xx 1 ) , while unsupervised languages only have monolingual data ( zz 1 ) .
+The goal of such an approach is to make use of the auxiliary parallel data to learn the translation task and hopefully transfer this task knowledge to the unsupervised languages .
+The end model should be able to translate to / from English in both the auxiliary and unsupervised languages .
+This setting has only been addressed very recently ( Sun et al. , 2020 ; Wang et al. , 2021 ; Garcia et al. , 2021 ) .
+However all current approaches rely on back - translation , either offline or online .
+This is computationally costly and it requires a lot of engineering effort when applied to large-scale setups .
+In this paper , we propose a 2 - step approach based on denoising adapters that enable modular multilingual unsupervised NMT without backtranslation .
+Our approach combines monolingual denoising adapters with multilingual transfer learning on auxiliary parallel data .
+More precisely our denoising adapters are lightweight adapter mod-ules inserted into multilingual BART ( Liu et al. , 2020 , mBART ) and trained with a denoising objective on monolingual data for each language separately .
+The first step , i.e. monolingual training , allows learning of language -specific encoding and decoding through adapter modules which can easily be composed with other languages ' adapters for translation .
+The second step transfers mBART to multilingual UNMT by plugging in our denoising adapters and then fine-tuning cross-attention with auxiliary parallel data .
+Our approach also allows extending mBART with new languages which are not included in pretraining as shown in Sect. 6.1 .
+This means that denoising adapters can be trained incrementally after mBART fine -tuning to add any new language to the existing setup .
+In our experiments , we train denoising adapters for 17 diverse unsupervised languages together with 20 auxiliary languages and evaluate the final model on TED talks ( Qi et al. , 2018 ) .
+Our results show that our approach is on par with backtranslation for a majority of languages while being more modular and efficient .
+Moreover , using denoising adapters jointly with back -translation further improves unsupervised translation performance .
+Contributions
+In summary , we make the following contributions : 1 ) We propose denoising adapters , monolingually - trained adapter layers to leverage monolingual data for unsupervised machine translation .
+2 ) We introduce a 2 - step approach for multilingual UNMT using denoising adapters and multilingual fine-tuning of mBART 's cross-attention with auxiliary parallel data .
+3 ) We conduct experiments on a large set of language pairs showing effectiveness of denoising adapters with and without back - translation .
+4 ) Finally , we provide further analysis to the use of denoising adapters such as extending mBART with completely new languages .
+Background
+mBART fine-tuning for translation Multilingual BART , mBART , is a Transformer - based sequence - to-sequence model that consists of an encoder and an autoregressive decoder ( hence Bidirectional and Auto- Regressive Transformer ) .
+It is pretrained by reconstructing , i.e. denoising the original text from a noisy version corrupted with a set of noising functions .
+Although in the original BART , several noising functions were introduced such as token masking , token deletion , word-span masking , sentence permutation and document rotation ; mBART uses only text infilling ( which is based on span masking ) and sentence permutation .
+Architecturewise , mBART is a Transformer model ( Vaswani et al. , 2017 ) with 12 encoder and 12 decoder layers with hidden dimension of 1024 and 16 attention heads .
+It has a large multilingual vocabulary of 250k tokens obtained from 100 languages .
+To finetune mBART to machine translation , the weights of the pretrained model are loaded and all parameters are trained with parallel data either in a bilingual or a multilingual setup ( Stickland et al. , 2021 ; Tang et al. , 2020 ) to leverage the full capacity of multilingual pretraining .
+In our experiments we use mBART - 50 1 ( Tang et al. , 2020 ) , which is pretrained on 50 different languages , as both the parent model for our adapters and as a strong baseline for multilingual MT finetuning .
+Adapters for MT Adapter modules ( Houlsby et al. , 2019 ) , or simply adapters , are designed to adapt a large pretrained model to a downstream task with lightweight residual layers ( Rebuffi et al. , 2018 ) that are inserted into each layer of the model .
+The adapter layers are trained on the downstream task 's data while keeping the parameters of the original pretrained model ( the parent model ) frozen .
+This allows a high degree of parameter sharing and avoids catastrophic forgetting of the knowledge learned during pretraining .
+Adapters have mainly been used for parameter - efficient fine-tuning ( Houlsby et al. , 2019 ; Stickland and Murray , 2019 ) but they have also been used to learn language -specific information within a multilingual pretrained model in zeroshot settings ( ? st? n et al. , 2020 ) .
+Similar to our work , Pfeiffer et al . ( 2020 ) have proposed to learn language and task adapters via masked language modelling and target task objective respectively to combine them for cross-lingual transfer .
+However , unlike our approach , they trained adapters for transfer learning from one language to another but not in a multilingual setup .
+Moreover , they focus on sequence classification tasks , which highly differ from sequence - to-sequence tasks such as MT .
+Our work instead proposes a fully multilingual transfer learning method for unsupervised MT that requires composition of encoder and decoder adapters .
+In machine translation , Bapna and Firat ( 2019 ) proposed bilingual adapters for improving a pretrained multilingual MT model or for domain adaptation whereas Philip et al . ( 2020 ) trained languagespecific adapters in a multilingual MT setup with a focus on zero-shot MT performance .
+Finally , Stickland et al. ( 2021 ) use language - agnostic task adapters for fine-tuning BART and mBART to bilingual and multilingual MT .
+However , none of these approaches are directly applicable for unsupervised MT task as they train language or task -specific adapters on parallel data .
+Multilingual Unsupervised NMT
+We define Multilingual UNMT as the problem of learning both from parallel data centered in one language ( English ) and monolingual data for translating between the centre language and any of the provided languages .
+Prior work ( Sen et al. , 2019 ; Sun et al. , 2020 ) trained a single shared model for multiple language pairs by using a denoising autoencoder and back -translation .
+Sun et al. ( 2020 ) also proposed to use knowledge distillation to enhance multilingual unsupervised translation .
+Another line of research ( Wang et al. , 2021 ; Garcia et al. , 2021 ) has explored the use of auxiliary parallel data in a multilingual UNMT setting .
+These studies employ a standard two -stage training schema ( Conneau and Lample , 2019 ) that consists of a first multi-task pretraining step with denoising and translation objectives , and a second fine -tuning step using back - translation .
+eliminated the back - translation step by fine-tuning the pretrained multilingual model on a language pair ( e.g. hi?en ) related to the desired unsupervised language pair ( e.g. ne?en ) .
+More similar to our work , Garcia et al . ( 2021 ) trained a single model on several unsupervised languages pairs by using monolingual data in those languages plus auxiliary parallel data , following the setup illustrated by Fig.
+1 . Furthermore , they leverage synthetic parallel data via offline back - translation ( Sennrich et al. , 2016 ) and iterative back -translation in subsequent steps to fine -tune their model .
+In contrast to our approach , their method focuses on combining existing back - translation methods with multilingual UNMT in several steps .
+Additionally , their method is based on joint multi-task pretraining for all lan -
+Denoising Adapters for Multilingual Unsupervised MT
+We address the limitations of existing methods mentioned above by proposing denoising adapters for multilingual unsupervised MT .
+Denoising adapters are monolingually - trained language adapters , therefore eliminating the dependence on parallel data .
+They allow learning and localizing general - purpose language -specific representations on top of pretrained models such as mBART .
+These denoising adapters can then easily be used for multilingual MT , including unsupervised machine translation without back -translation .
+Architecture
+For our denoising adapters , following , we use a simple feedforward network with a ReLU activation .
+Each adapter module also includes a parametrized normalization layer that acts on the input of the adapter and allows learning the activation pattern of Transformer layers .
+Figure 2 shows the architecture of an adapter layer .
+More formally , a denoising adapter module D i at layer i consists of a layernormalization LN of the input z i ?
+R h , followed by a down- projection W down ?
+R h?b with bottleneck dimension b , a non-linear function and a up projection W up ?
+R b?h combined with a residual connection with the input z i : D i ( z i ) = W T up ReLU ( W T down LN ( z i ) ) + z i Bias terms are omitted for clarity .
+For simplicity , we denote as D E = { D E 1 ?i? 12 } ( resp .
+D D ) the set of encoder ( resp. decoder ) adapters .
+Similarly to Philip et al. ( 2020 ) , we insert an adapter module into each layer of the Transformer encoder and decoder , after the feed-forward In 3a , denoising adapters ( colored boxes ) are trained on monolingual data separately for each language , including languages without parallel data .
+In this step only adapter layers are trained .
+In 3 b , all denoising adapters that are trained in 3a are frozen , and only the cross-attention of mBART is updated with auxiliary parallel data .
+block ; and we train encoder and decoder denoising adapters ( D E xx , D D xx ) for each language xx in a language -specific manner .
+This enables to combine encoder adapters D E xx for source language xx and decoder adapters D D yy for target language yy to translate from xx to yy .
+Learning adapters from monolingual data
+We train the denoising adapters on a denoising task , which aims to reconstruct text from a version corrupted with a noise function similar to mBART pretraining .
+Formally , we train denoising adapters D to minimize L Dxx : L Dxx = T ?xx ?logP ( T | g ( T ) ; D xx ) where T is a sentence in language xx and g is the noise function .
+We train denoising adapters on monolingual data for each language separately , including the unsupervised languages .
+This provides a high degree of flexibility for the later stages , such as unsupervised MT .
+During monolingual training , adapters are injected into layers of mBART , but only the adapter parameters are updated .
+The other parameters of the model stay frozen .
+As noise function g , we use span masking following mBART pretraining .
+A span of text with length ( randomly sampled by a Poisson distribution ) is replaced with the mask token .
+Multilingual MT fine-tuning with auxiliary parallel data
+After denoising adapters are trained for each language , the mBART model in which all adapters are inserted is fine-tuned on the auxiliary multilingual English -centric parallel data .
+This step is required to force the model to learn how to use and combine denoising adapters for the translation task .
+During fine-tuning , we only update the parameters of the decoder 's cross-attention , similarly to Stickland et al . ( 2021 ) to limit the computational cost and mitigate catastrophic forgetting .
+The remaining parameters , including the newly pluggedin adapters are kept frozen at this stage .
+When translating from language xx to language yy , only the encoder denoising adapters D E xx and decoder denoising adapters D D yy are activated , as shown in Fig.
+3 b . Multilingual UNMT process
+To summarize , we propose the following 2 - stage training process for multilingual unsupervised MT : ( 1 ) Training denoising adapters within mBART , separately on each language 's monolingual data ; ( 2 ) Fine-tuning the cross-attention of a mBART augmented with the denoising adapters .
+Fig. 3 gives an overview of this process .
+Our approach enables to use the final model for both supervised translation and unsupervised translation .
+For an unseen language zz that has no parallel data , denoising adapters D E zz and D D zz can be trained on monolingual data and then combined with other existing languages for source / target side unsupervised translation .
+Denoising adapters not only allow us to skip back - translation , but also provide a high level of modularity and flexibility .
+Except for the second step that uses only languages with parallel data , no additional joint training is needed .
+As we show in Sect. 6.1 , by using denoising adapters , a new language which is not included in pretraining , can also be added successfully to mBART and used for unsupervised MT .
+Note that all those new languages are however covered by the tokenizer ( which is trained on 100 languages ) .
+Experimental Setup Dataset
+We use TED talks ( Qi et al. , 2018 ) to create an English-centric ( en ) multilingual dataset by picking 20 languages with different training size ranging from 214 k ( ar ) to 18 k ( hi ) parallel sentences .
+For multilingual UNMT evaluation , in addition to the 20 training languages , we select 17 " unsupervised " languages , 6 of which are unknown to mBART ( Tang et al. , 2020 ) .
+To train the denoising adapters , we use Wikipedia 2 and News Crawl 3 with maximum 20 M sentences per language .
+Details of languages and training datasets are given in Appendix A.1 Baselines
+We compare our approach with the following baselines : ( 1 ) BILINGUAL , baseline bilingual models trained on TED talks .
+These are small Transformer models trained separately on each language direction , using the same settings as Philip et al . ( 2020 ) .
+Note that these models do not have any pretraining and they are trained from scratch .
+( 2 ) MBART - FT , standard fine-tuning of mBART on the multilingual MT task .
+( 3 ) TASK ADAPTERS , multilingual fine-tuning for language - agnostic MT adapters and cross-attention on top of mBART , similarly to Stickland et al . ( 2021 ) .
+The bilingual models and all the mBART variants are fine-tuned on the same English-centric multilingual parallel data .
+Multilingual MT training details
+We train mBART - based models by using a maximum batch size of 4 k tokens and accumulated gradients over 5 update steps with mixed precision ( Ott et al. , 2018 ) for 120k update steps .
+We apply Adam ( Kingma and Ba , 2014 ) with a polynomial learning rate decay , and a linear warmup of 4 000 steps for a maximum learning rate of 0.0001 .
+Additionally , we use dropout with a rate of 0.3 and label smoothing with a rate of 0.2 .
+For efficient training , we filter out the unused tokens from the mBART vocabulary after tokenization of the training corpora ( including both TED talks and monolingual datasets ) which results a shared vocabulary of 210k tokens .
+Finally , following Arivazhagan et al. ( 2019 ) , we use temperature - based sampling with T = 5 to balance language pairs during training .
+As for bilingual baselines , we train these models for 25 k updates on the TED talks bilingual data , with maximum 4 k tokens per batch and accumulated gradients over 4 updates .
+Joint BPE models of size 8 k are used for these models .
+All experiments are performed with the fairseq library .
+Adapter Modules
+We used the architecture of Philip et al . ( 2020 ) for the adapters with a bottleneck dimension of 1024 in all experiments .
+As noising function for our denoising adapters , we mask 30 % of the words in each sentence with a span length that is randomly sampled by a Poisson distribution ( ? = 3.5 ) as same with mBART .
+We train these adapters separately for each language for 100k training steps by using a maximum batch size of 4 k tokens , accumulating gradients over 8 update steps and a maximum learning rate of 0.0002 .
+Other hyperparameters are the same as in the NMT training .
+Back-translation
+As second part of the evaluation , we also used offline back - translation for ( 1 ) comparing DENOISING ADAPTERS with baselines that are additionally trained on back - translated synthetic parallel data ; and ( 2 ) measuring the impact of back - translation when it is applied in conjunction with denoising adapters .
+Following Garcia et al. ( 2021 ) - that shows the effectiveness of offline back - translation for multilingual UNMT - , we back - translate the monolingual data into English ( en ) for each unsupervised language zz with the respective model .
+After that , we fine - tune the corresponding model by using its back - translated parallel data in a single ( bilingual ) direction for both zz?en and en?zz separately .
+For fine- tuning we either fine - tune the full model ( MBART - FT ) or only update adapters ' and cross-attention 's parameters ( TASK A. , DENOISING A. ) for 120k additional steps .
+For fair comparison , we limit the monolingual data to 5 M for both denoising adapter training and back -translation in these experiments .
+Note that this procedure is both memory and timeintensive operation as it requires back - translating a large amount of monolingual data , and it also results in an extra bilingual model to be trained for each unsupervised language and for all models that are evaluated .
+Results
+Table 1 shows translation results for 11 languages that have no parallel data , in zz?en and en?zz directions .
+The first two blocks in each direction , ( 1 ) and ( 2 ) , give unsupervised translation results without using back - translation .
+For zz?en , the two baselines MBART - FT and TASK ADAPTERS are quite decent : the ability of mBART to encode the unsupervised source languages and its transfer to NMT using auxiliary parallel data provide good multilingual unsupervised NMT performance .
+Among the two baselines , task-specific MT adapters better mitigate catastrophic forgetting , ensuring the model does not overfit to the supervised languages and to benefit more from multilingual fine-tuning which results in + 5.4 BLEU compared to standard finetuning .
+Our approach , however , outperforms the two mBART baselines and the bilingual models : denoising adapters are superior for all languages compared to MBART - FT and TASK ADAPTERS and result in respectively + 8.6 and + 3.2 BLEU on average .
+Finally , it even performs better than the supervised bilingual models for most languages ( all but es and nl ) .
+For the en?zz direction , the two baselines MBART - FT and TASK ADAPTERS are ineffective , showing the limitation of mBART pretraining for multilingual UNMT when translating from English .
+A possible explanation for this is the fact that these models have learnt to encode English with only auxiliary target languages ; and the transfer from mBART to NMT has made the decoder forget how to generate text in the 11 unsupervised languages we are interested in .
+Fig. 4 shows unsupervised translation performance for en?nl in validation set during mBART fine-tuning .
+As opposed to our approach , the low start in MBART - FT and the quick drop in TASK ADAPTERS confirm the forgetting in generation .
+However , denoising adapters that leverage monolingual training for language -specific representations enable the final model to achieve high translation quality without any parallel data even without back - translation .
+Denoising adapters also outperform the supervised bilingual models trained with less than 50 k parallel sentences .
+Impact of back - translation 3rd blocks ( 3 ) in Table 1 show the unsupervised translation results after models are fine-tuned with offline back - translated parallel data .
+Note that in this step each model is fine-tuned for a single language - pair and only one direction .
+For zz?en , although back - translation slightly improves the results , the overall impact of backtranslation is very limited for all models including our approach .
+Interestingly , for ur the backtranslation decreased the performance .
+We relate this to the domain difference between test ( TED talks ) and back - translated data ( Wikipedia / News ) .
+Here , denoising adapters without back -translation still provide superior unsupervised translation quality compared to baselines even after the backtranslation .
+For en?zz , the back -translation significantly increased translation results : + 15.0 , +16.2 and + 3.0 BLEU for MBART -FT , TASK ADAPTERS and DE-NOISING ADAPTERS respectively .
+We hypothesize that the huge boost in the baselines scores is due to the fact that training on the back - translated parallel data allows these models to recover generation ability in the target languages .
+However , our approach outperforms baselines in all languages , showing that denoising adapters can be used jointly with back - translation for further improvements .
+Finally , denoising adapters without back - translation ( 2 ) are still competitive with the mBART baselines .
+6 Analysis and Discussion
+Denoising adapters for languages unknown to mBART
+All the languages considered so far ( in Table 1 ) were included in the mBART - 50 pretraining data ( Tang et al. , 2020 ) .
+Here , we also evaluate our model on languages that are new to mBART - 50 , 4 to test whether our denoising adapters can be used to extend the translation model incrementally to new languages using monolingual data .
+After training our denoising adapters , we insert them into the existing NMT model of Sect .
+3 for unsupervised MT with no additional NMT training .
+Denoising adapter layers are trained the same way as before with only a small difference : we update the output projection layer of mBART together with adapter layers to improve language -specific decoding .
+Table 2 shows the results in both directions for the bilingual baselines and other mBART variants that are fine-tuned with only auxiliary parallel data .
+For zz?en although the models are trained on English-centric multilingual parallel corpora with related languages , mBART baselines still have very poor unsupervised MT performance .
+Denoising adapters , however , with the advantage of monolingual data and modular training , display competitive or better results even compared to supervised bilingual baselines .
+Moreover , for the en?zz direction , it provides a reasonable level of unsupervised translation quality that can be used with back - translation for further improvements .
+Note that , since neither mBART pretraining nor the multilingual fine-tuning include those new languages , the other baselines are not able to translate in these directions .
+Overall these results confirm that denoising adapters offer an efficient way to extend mBART to new languages .
+Moreover , taken together with the other results ( Sect. 5 ) , unsupervised translation quality for the missing languages without additional NMT training demonstrates the effectiveness of our approach .
+Monolingual data size
+To see the impact of the monolingual data size that is used for training of denoising adapters , we additionally trained adapters on larger data for 6 languages ( es , sv , nl , hr , uk , fi ) .
+Fig. 5 shows the unsupervised translation results when they are trained on two different data sizes : 5 m and 20 m sentences .
+Interestingly , for a majority of languages , the performance improvement is very limited with increase in data size .
+This confirms that denoising adapters achieve competitive performance without the need of a huge amount of monolingual data .
+Supervised translation Finally , we evaluate the baselines and our model on the supervised languages ( i.e. the auxiliary languages with access to parallel data ) .
+Table 3 shows BLEU scores for xx?en and en?xx directions .
+In this setting , in addition to the main baselines , we include LANGUAGE ADAPTERS ( Philip et al. , 2020 ) , which correspond to fine-tuning both language -specific MT adapters and cross-attention on top of mBART only with parallel data .
+As expected , for both directions multilingual fine-tuning of mBART ( MBART - FT ) performs the best on av-erage .
+The performance of LANG .
+ADAPTERS is on par with full fine-tuning .
+For xx?en , it outperforms full fine- tuning in 10 out of 20 language pairs , with the a very similar overall score .
+For en?xx , it has only - 0.5 BLEU on average .
+TASK ADAPTERS have slightly lower translation performance than these other two models on both directions .
+Nonetheless , on en?xx direction , as the amount of parallel data decreases ( see Sect . A.1 ) , the gap between this model and full MBART - FT reduces , confirming that task adapters are beneficial for small data and distant language pair conditions ( Stickland et al. , 2021 ) .
+As for multilingual finetuning with DENOIS .
+ADAPTERS , although it has lower scores than other mBART variants , it still performs competitively with the bilingual baselines .
+It outperforms the bilingual baselines in xx?en and gets - 0.7 BLEU on average in en?xx .
+Unlike other mBART variants , fine-tuning only the decoder 's cross-attention seems to penalize performance .
+Considering that denoising adapters are designed specifically for multilingual unsupervised MT , these results show that our approach still performs on a competitive level in the large-scale supervised multilingual NMT setup .
+Comparison with state- of- the- art With the goal of providing a comparison point with a previously reported set - up that does not include back - translation , we replicate the languagetransfer results reported in ( Liu et al. , 2020 , mBART ) .
+For that , we fine- tune mBART - 50 ( Tang et al. , 2020 ) on Hindi-English ( hi?en ) parallel ( Guzm ? n et al. , 2019 ) . MBART -FT and DENOIS .
+ADAPT .
+are trained only on hi?en .
+Note that we used mBART - 50 for our replication of MBART - FT and DENOISING ADAPTERS , however the original paper results are based on mBART - 25 .
+MBART ( * ) results are taken from the paper and are the only evaluation results in this paper not done by ourselves .
+data from IITB ( Kunchukuttan et al. , 2017 ) and test the resulting model on two unseen languages , Nepali ( ne ) and Sinhalese ( si ) , from the FLoRes dataset ( Guzm ? n et al. , 2019 ) without any further training on back - translated data .
+For DENOISING ADAPTERS , we trained adapters on monolingual data provided by FLoRes for all 4 languages ( en , hi , ne , si ) .
+Finally for MT transfer , we inserted these language -specific adapters to mBART , and updated cross-attention layers as in the previous experiments .
+Results are shown in Table 4 .
+We compare results in terms of BLEU , 5 chrF ( Popovi ? , 2015 ) , COMET ( Rei et al. , 2020 ) 6 and BERT Score ( Zhang et al. , 2020 ) . 7
+In all three metrics DENOISING ADAPTERS significantly outperform MBART - FT , showing the effectiveness of denoising adapters for low resource languages , compared to a strong baseline .
+Note that since we used mBART - 50 in our experiments , results for MBART - FT are slightly different from the ones in original paper ( mBART - 25 ) .
+Conclusion
+We have presented denoising adapters , adapter modules trained on monolingual data with a denoising objective , and a 2 - step approach to adapt mBART by using these adapters for multilingual unsupervised NMT .
+Our experiments conducted on a large number of languages show that denoising adapters are very effective for unsupervised translation even without the need of back - translation .
+Moreover , denoising adapters are complementary with back - translation ; using them jointly improves the translation quality even further .
+We have also demonstrated that for a language new to mBART , 5 SacreBLEU ( Post , 2018 ) signature : BLEU+c.mixed+#.1+s.exp+tok.13a+v.1.5.0 6 COMET model : wmt20-comet-da
+7 Bert score hash code : roberta-large_L17_no-idf_version=0.3.10 ( hug_trans =4.10.0 ) - rescaled _fast-tokenizer denoising adapters offer an efficient way to extend mBART incrementally .
+Finally , although it is designed for unsupervised NMT , our approach still reaches competitive performance in supervised translation in a multilingual NMT setup .
+For the future direction , translating between two unseen languages may be considered as a natural extension of our work .
+As preliminary experiment , we addressed a language pair including two languages of the unsupervised setup : Spanish ( es ) and Dutch ( nl ) .
+We inserted denoising adapters of those languages to encoder / decoder and directly used this model without further training for nl ?es and es?nl .
+Although our auxilliary language pairs with parallel data are English-centric , these two models perform at a decent level ( 15.4 , 7.2 BLEU respectively ) and they could be a good starting point for further improvements .
+Another direction is to apply denoising adapters to domain adaptation , a use-case where back - translation is a standard solution to leverage monolingual data .
+We provide supplementary material to facilitate future research .
+8

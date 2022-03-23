@@ -1,0 +1,142 @@
+title
+Improving Question Answering over Incomplete KBs with Knowledge-Aware Reader
+abstract
+We propose a new end-to- end question answering model , which learns to aggregate answer evidence from an incomplete knowledge base ( KB ) and a set of retrieved text snippets .
+Under the assumptions that the structured KB is easier to query and the acquired knowledge can help the understanding of unstructured text , our model first accumulates knowledge of entities from a question - related KB subgraph ; then reformulates the question in the latent space and reads the texts with the accumulated entity knowledge at hand .
+The evidence from KB and texts are finally aggregated to predict answers .
+On the widely - used KBQA benchmark WebQSP , our model achieves consistent improvements across settings with different extents of KB incompleteness .
+1
+Introduction Knowledge bases ( KBs ) are considered as an essential resource for answering factoid questions .
+However , accurately constructing KB with a welldesigned and complicated schema requires lots of human efforts , which inevitably limits the coverage of KBs ( Min et al. , 2013 ) .
+As a matter of fact , KBs are often incomplete and insufficient to cover full evidence required by open-domain questions .
+On the other hand , the vast amount of unstructured text on the Internet can easily cover a wide range of evolving knowledge , which is commonly used for open-domain question answering .
+Therefore , to improve the coverage of KBs , it is straightforward to augment KB with text data .
+Recently , text - based QA models along ( Seo et al. , 2016 ; Xiong et al. , 2017 ; Yu et al. , 2018 ) have achieved remarkable performance when dealing with a single passage that is guaranteed to include the answer .
+However , they are still insufficient when multiple documents 1 https://github.com/xwhan/Knowledge-Aware-Reader.
+Here the answer cannot be directly found in the KB .
+But the knowledge provided by the KB , i.e. , Cam Newton is a football player , indicates he signed with the team he plays for .
+This knowledge can be essential for recognizing the relevant text piece .
+are presented .
+We hypothesize this is partially due to the lack of background knowledge while distinguishing relevant information from irrelevant ones ( see Figure 1 for a real example ) .
+To better utilize textual evidence for improving QA over incomplete KBs , this paper presents a new end-to - end model , which consists of ( 1 ) a simple yet effective subgraph reader that accumulates knowledge of each KB entity from a question - related KB subgraph ; and ( 2 ) a knowledge - aware text reader that selectively incorporates the learned KB knowledge about entities with a novel conditional gating mechanism .
+With the specifically designed gate functions , our model has the ability to dynamically determine how much KB knowledge to incorporate while encoding questions and passages , thus is able to make the structured knowledge more compatible with the text information .
+Compared to the previous state - of- the - art ( Sun et al. , 2018 ) , our model achieves consistent improvements with a much more efficient pipeline , which only requires a single pass of the evidence resources .
+( Veli?kovi ?
+et al. , 2017 ) to collect information for each entity in the question - related subgraph .
+The learned knowledge of each entity ( e ) is then passed to the text reader b ) to reformulate the question representation ( q ) and encode the passage in a knowledge - aware manner .
+Finally , the information from the text and the KB subgraph is aggregated for answer entity prediction .
+Task Definition
+The QA task we consider here requires answering questions by reading knowledge base tuples K = {( e s , r , e o ) } and retrieved Wikipedia documents D. To build a scalable system , we follow Sun et al . ( 2018 ) and only consider a subgraph for each question .
+The subgraph is retrieved by running Personalized PageRank ( Haveliwala , 2002 ) from the topic entities 2 ( entities mentioned by the question : E 0 = { e|e ? Q} ) .
+The documents D are retrieved by an existing document retriever and further ranked by Lucene index .
+The entities in documents are also annotated and linked to KB entities .
+For each question , the model tries to retrieve answer entities from a candidate set including all KB and document entities .
+Model
+The core components of our model consist of a graph-attention based KB reader ( ?3.1 ) and a knowledge - aware text reader ( ?3.2 ) .
+The interaction between the modules is shown in Figure 2 .
+SubGraph Reader
+This section describes the KB subgraph reader ( SGREADER ) , which employs graph-attention techniques to accumulate knowledge of each subgraph entity ( e ) from its linked neighbors ( N e ) .
+The graph attention mechanism is particularly designed to take into account two important aspects : ( 1 ) whether the neighbor relation is relevant to the question ; ( 2 ) whether the neighbor entity is a topic entity mentioned by the question .
+After the propagation , the SGREADER finally outputs a vectorized representation for each entity , encoding the knowledge indicated by its linked neighbors .
+Question -Relation Matching
+To match the question and KB relation in an isomorphic latent space , we apply a shared LSTM to encode the question { w q 1 , w q 2 , ... , w q lq } and the tokenized relation { w r 1 , w r 2 , ... , w r lr } .
+With the derived hidden states h q ?
+R lq?d h and h r ?
+R lr?d h for each word , we first compute the representation of relations with a self-attentive encoder : r = i ? i
+h r i , ?i ? exp ( wr ? h r i ) , where h r i is the i-th row of h r and w r is a trainable vector .
+Since a question needs to be matched with different relations and each relation is only described by part of the question , instead of matching the relations with a single question vector , we calculate the matching score in a more finegrained way .
+Specifically , we first use r to attend each question token and then model the matching s r by a dot product as follows : sr = r ? j ?j h q j , ?j ? exp ( r ? h q j ) .
+Extra Attention over Topic Entity Neighbors
+In addition to the question-relation similarities , we find another binary indicator feature derived from the topic entity is very useful .
+This indicator is defined as I [ e i ?
+E 0 ] for a neighbor ( r i , e i ) of an arbitrary entity e. Intuitively , if one neighbor links to a topic entity that appear in the question then the corresponding tuple ( e , r i , e i ) could be more relevant than other non-topic neighbors for question answering .
+Formally , the final attention score s( r i , e i ) over each neighbor ( r i , e i ) is defined as : s( r i , e i ) ? exp ( I [ ei ? E0 ] + sr i ) .
+Information Propagation from Neighbors
+To accumulate the knowledge from the linked tuples , we define the propagation rule for each entity e : Query Reformulation in Latent Space First , we update the question representation in a way that the KB knowledge of the topic entity can be incorporated .
+This allows the reader to discriminate relevant information beyond text matching .
+Formally , we first take the original question encoding h q and apply a self-attentive encoder to get a stand-alone question representation : q = i b i h q i .
+We collect the topic entity knowledge of the question by e q = e?E 0 e /|E 0 |.
+Then we apply a gating mechanism to fuse the original question representation and the KB knowledge : q = ? q q + ( 1 ? ? q ) tanh ( W q [ q , e q , q ? e q ] ) , where W q ?
+R h d ?3h d , and ?
+q = sigmoid ( W gq [ q , e q , q ? e q ] ) is a linear gate .
+3 g( x , y ) = sigmoid ( W [ x ; y ] ) ? ( 0 , 1 ) .
+4
+The above step can be viewed as a gated version of the graph encoding techniques in NLP , e.g. , ( Song et al. , 2018 ; Xu et al. , 2018 ) .
+These general graph-encoders and graphattention techniques may help when the questions require more hops and we leave the investigation to future work .
+Knowledge - aware Passage Enhancement
+To encode the retrieved passages , we use a standard bi-LSTM , which takes several token - level features 5 .
+With the entity linking annotations in passages , we fuse the entity knowledge with the token - level features in a similar fashion as the query reformulation process .
+However , instead of applying a standard gating mechanism ( Yang and Mitchell , 2017 ; Mihaylov and Frank , 2018 ) , we propose a new conditional gating function that explicitly conditions on the question q .
+This simple modification allows the reader to dynamically select the inputs according to their relevance to the question .
+Considering a passage token w d i with its token features f d w i and its linked entity e w i 6 , we define the conditional gating function as : i d w i = ?
+d e w i + ( 1 ? ? d ) f d w i , where ?
+d = sigmoid ( W gd [ q ? e w i ; q ? f d w i ] ) .
+e w i denotes the entity embedding learned by our SGREADER .
+Entity Info Aggregation from Text Reading Finally we feed the knowledge- augmented inputs i d w i into the biLSTM and use the output token - level hidden state h d w i to calculate the attention scores ?
+i = q T h d w i .
+Afterwards , we get each document 's representation as d = i ?
+i h d w i .
+For a certain entity e and all the documents containing e : D e = { d|e ? d} , we simply aggregate the information by averaging the representations of linked documents as e d = 1 | D e | d?D e d.
+Answer Prediction
+With entities representations ( e and e d ) , we predict the probability of an entity being the answer by matching the query vectors and the entity representations : s e = ? s ( q T W s [ e ; e d ] ) .
+Experiment 4.1 Setup Dataset
+Our experiments are based on the We- bQSP dataset ( Yih et al. , 2016 ) .
+To simulate the real-world scenarios , we test our models following the settings of ( Sun et al. , 2018 ) , where the KB is downsampled to different extents .
+For a fair comparison , the retrieved document set is the same as the previous work .
+Baselines and Evaluation Key-Value ( KV ) Memory Network ( Miller et al. , 2016 ) is a simple baseline that treats KB triples and documents as memory cells .
+Specifically , we consider its two variants , KV - KB and KV - KB + Text .
+The former is a KB - only model while the latter uses both KB and text .
+We also compare to the latest method GraftNet ( GN ) ( Sun et al. , 2018 ) , which treats documents as a special genre of nodes in KBs and utilizes graph convolution ( Kipf and Welling , 2016 ) to aggregate the information .
+Similar to the KV - based baselines , we denote GN - KB as the KB-only version .
+Further , both GN - LF ( late fusion ) and GN - EF ( early fusion ) consider both KB and text .
+The former one considers KB and texts as two separate graphs , and then ensembles the answer scores .
+GN - EF is the existing best single model , which considers KB and texts as a single heterogeneous graph and aggregate the evidence to predict a single answer score for each entity .
+F1 and His@1 are used for evaluation since multiple correct answers are possible .
+The implementation details of our model can be found in the Appendix .
+Results and Analysis
+We show the main results of different incomplete KB settings in Table 1 .
+For reference , we also show the results under full KB settings ( i.e. , 100 % , all of the required evidence is covered by KB ) .
+The row of SGREADER shows the results of our model using only KB evidence .
+Compared to the previous KBQA methods ( KV - KB and GN - KB ) , SGREADER achieves better results in incomplete KB settings and competitive performance with the full KB .
+Here we do not compare with existing methods that utilize semantic parsing anno- tations ( Yih et al. , 2016 ; Yu et al. , 2017 ) .
+It is worth noting that SGREADER only needs one hop of graph propagation while the compared methods typically require multiple hops .
+Augmenting the SGREADER with our knowledge - aware reader ( KAREADER ) results in consistent improvements in the settings with incomplete KBs .
+Compared to other baselines , although our model is built upon a stronger KB - QA base model , it achieves the largest absolute improvement .
+It is worth mentioning that our model is still a single model , but it achieves competitive results to the existing ensemble model ( GN - LF + EF ) .
+The results demonstrate the advantage of our knowledge - aware text reader .
+Ablation Study
+To study the effect of each KAREADER component , we conduct ablation analysis under the 30 % KB setting ( Table 2 ) .
+We see that both query reformulation and knowledge enhancement are essential to the performance .
+Additionally , we find the conditional gating mechanism proposed in ?3.2 is important .
+When replacing it with a standard gate function ( see the row w/o conditional knowledge gate ) , the performance is even lower than the reader without knowledge enhancement , suggesting our proposed new gate function is crucial for the success of knowledgeaware text reading .
+The potential reason is that without the question information , the gating mechanism might introduce some irrelevant and misleading knowledge .
+Table 3 : Human analysis on test samples in the 30 % KB settingo .
+1 ) and 2 ) show some typical examples of the case ( 83.2 % of all test samples ) where the KAREADER improves upon our SGREADER .
+3 ) shows some examples where using KB alone is better than using both KB and Text ( 16.8 % ) .
+The Freebase IDs of the entities are also included for reference .
+Qualitative Analysis In Table 3 , there are two major categories of questions that can be better answered using our full model .
+In the first category , indicated by 1 ) , the answer fact is missing in the KB , mainly because there are no links from the question entities to the answer entity .
+In these cases , the SGREADER sometimes can predict an answer with a correct type , but the answers are mostly irrelevant to the question .
+The second category , denoted as 2 ) , indicates examples where the KB provides relevant information but does not cover some of the constraints on answers ' properties ( e.g. , answers ' entity types ) .
+In the two examples shown above , we can see that SGREADER is able to give some reasonable answers but the answers do not satisfy the constraints indicated by the question .
+Finally , when the KB is sufficient to answer a question , there are some cases where the KAREADER introduces wrong answers into the top-ranked answer list .
+We list two examples at the bottom of the Table 3 .
+These newly included incorrect answers are usually relevant to the original questions but come from the noises in machine reading .
+These cases suggest that our concatenation - based knowledge aggregation still has some room for improvement , which we leave for future work .
+Conclusion
+We present a new QA model that operates over incomplete KB and text documents to answer opendomain questions , which yields consistent improvements over previous methods on the We- bQSP benchmark with incomplete KBs .
+The results show that ( 1 ) with the graph attention technique , we can efficiently and accurately accumulate question - related knowledge for each KB entity in one - pass of the KB sub-graph ; ( 2 ) our designed gating mechanisms could successfully incorporate the encoded entity knowledge while processing the text documents .
+In future work , we will extend the proposed idea to other QA tasks with evidence of multimodality , e.g. combining with symbolic approaches for visual QA ( Gan et al. , 2017 ; Mao et al. , 2019 ; Hu et al. , 2019 ) . Implementation Details
+Throughout our experiments , we use the 300 - dimension GloVe embeddings trained on the Common Crawl corpus .
+The hidden dimension of LSTM and the dimension of entity embeddings are both 100 .
+We use the same pre-trained entity embeddings as used by Sun et al . ( 2018 ) .
+For graph attention over the KB subgraph , we limit the max number of neighbors for each entity to be 50 .
+We use the norm for gradient clipping as 1.0 .
+We apply dropout =0.2 on both word embeddings and LSTM hidden states .
+The max question length is set to 10 and the max document length is set to 50 .
+For optimization , we apply label smoothing with a factor of 0.1 on the binary cross-entropy loss .
+During training , we use the Adam with a learning rate of 0.001 .
+Figure 1 : 1 Figure 1 : A real example from WebQSP .
+Here the answer cannot be directly found in the KB .
+But the knowledge provided by the KB , i.e. , Cam Newton is a football player , indicates he signed with the team he plays for .
+This knowledge can be essential for recognizing the relevant text piece .

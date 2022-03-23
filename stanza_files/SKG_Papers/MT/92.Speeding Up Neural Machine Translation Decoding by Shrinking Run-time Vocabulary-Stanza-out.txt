@@ -1,0 +1,96 @@
+title
+Speeding Up Neural Machine Translation Decoding by Shrinking Run-time Vocabulary
+abstract
+We speed up Neural Machine Translation ( NMT ) decoding by shrinking run-time target vocabulary .
+We experiment with two shrinking approaches : Locality Sensitive Hashing ( LSH ) and word alignments .
+Using the latter method , we get a 2x overall speed - up over a highly - optimized GPU implementation , without hurting BLEU .
+On certain low-resource language pairs , the same methods improve BLEU by 0.5 points .
+We also report a negative result for LSH on GPUs , due to relatively large overhead , though it was successful on CPUs .
+Compared with Locality Sensitive Hashing ( LSH ) , decoding with word alignments is GPU - friendly , orthogonal to existing speedup methods and more robust across language pairs .
+Introduction Neural Machine Translation ( NMT ) has been demonstrated as an effective model and been put into large-scale production ( Wu et al. , 2016 ; He , 2015 ) .
+For online translation services , decoding speed is a crucial factor to achieve a better user experience .
+Several recently proposed training methods ( Shen et al. , 2015 ; Wiseman and Rush , 2016 ) aim to solve the exposure bias problem , but require decoding the whole training set multiple times , which is extremely time - consuming for millions of sentences .
+Slow decoding speed is partly due to the large target vocabulary size V , which is usually in the tens of thousands .
+The first two columns of Table 1 show the breakdown of the runtimes required by sub-modules to decode 1812 Japanese sentences to English using a sequence - to-sequence model with local attention ( Luong et al. , 2015 ) . ( Nakazawa et al. , 2016 ) .
+The time is measured on a single Nvidia Tesla K20 GPU .
+Softmax is the most computationally intensive part , where each hidden vector h t ?
+R d needs to dot-product with V target embeddings e i ?
+R d .
+It occupies 40 % of the total decoding time .
+Another sub-module whose computation time is proportional to V is Beam Expansion , where we need to find the top B words among all V vocabulary according to their probability .
+It takes around 17 % of the decoding time .
+Several approaches have proposed to improve decoding speed : 1 . Using special hardware , such as GPU and Tensor Processing Unit ( TPU ) , and lowprecision calculation ( Wu et al. , 2016 ) .
+2 . Compressing deep neural models through knowledge distillation and weight pruning ( See et al. , 2016 ; Kim and Rush , 2016 ) .
+3 . Several variants of Softmax have been proposed to solve its poor scaling properties on large vocabularies .
+Morin and Bengio ( 2005 ) propose hierarchical softmax , where at each step log 2 V binary classifications are performed instead of a single classification on a large number of classes .
+Gutmann and Hyv?rinen ( 2010 ) propose noise- contrastive estimation which discriminate between positive labels and k ( k << V ) negative labels sampled from a distribution , and is applied successfully on natural language processing tasks ( Mnih and Teh , 2012 ; Vaswani et al. , 2013 ; Williams et al. , 2015 ; Zoph et al. , 2016 ) .
+Although these two approaches provide good speedups for training , they still suffer at test time .
+Chen et al. ( 2016 ) introduces differentiated softmax , where frequent words have more parameters in the embedding and rare words have less , offering speedups on both training and testing .
+In this work , we aim to speed up decoding by shrinking the run-time target vocabulary size , and this approach is orthogonal to the methods above .
+It is important to note that approaches 1 and 2 will maintain or even increase the ratio of target word embedding parameters to the total parameters , thus the Beam Expansion and Softmax will occupy the same or greater portion of the decoding time .
+A small run-time vocabulary will dramatically reduce the time spent on these two portions and gain a further speedup even after applying other speedup methods .
+To shrink the run-time target vocabulary , our first method uses Locality Sensitive Hashing .
+Vijayanarasimhan et al. ( 2015 ) successfully applies it on CPUs and gains speedup on single step prediction tasks such as image classification and video identification .
+Our second method is to use word alignments to select a very small number of candidate target words given the source sentence .
+Recent works ( Jean et al. , 2015 ; Mi et al. , 2016 ; L'Hostis et al. , 2016 ) apply a similar strategy and report speedups for decoding on CPUs on richsource language pairs .
+Our major contributions are : 1 . To our best of our knowledge , this work is the first attempt to apply LSH technique on sequence generation tasks on GPU other than single-step classification on CPU .
+We find current LSH algorithms have a poor performance / speed trade- off on GPU , due to the large overhead introduced by many hash table lookups and list-merging involved in LSH .
+2 . For our word alignment method , we find that only the candidate list derived from lexical translation table of IBM model 4 is adequate to achieve good BLEU / speedup trade - off for decoding on GPU .
+There is no need to combine the top frequent words or words from phrase table , as proposed in Mi et al . ( 2016 ) . 3 . We conduct our experiments on GPU and provide a detailed analysis of BLEU / speedup trade - off on both resource- rich / poor language pairs and both attention / non-attention NMT models .
+We achieve more than 2x speedup on 4 language pairs with only a tiny BLEU drop , demonstrating the robustness and efficiency of our methods .
+Methods
+At each step during decoding , the softmax function is calculated as : P ( y = j|h i ) = e h T i w j +b j V k=1 e h T i w k +b k ( 1 ) where P (y = j|h i ) is the probability of word j = 1 ... V given the hidden vector h i ?
+R d , i = 1 ... B. B represents the beam size .
+w j ?
+R d is output word embedding and b j ?
+R is the corresponding bias .
+The complexity is O( dBV ) .
+To speed up softmax , we use word frequency , locality sensitive hashing , and word alignments respectively to select C ( C << V ) potential words and evaluate their probability only , reducing the complexity to O( dBC + overhead ) .
+Word Frequency
+A simple baseline to reduce target vocabulary is to select the top C words based on their frequency in the training corpus .
+There is no run-time overhead and the overall complexity is O ( dBC ) .
+Locality Sensitive Hashing
+The word j = arg max k P (y = k|h i ) will have the largest value of h T i w j + b j .
+Thus the arg max problem can be converted to finding the nearest neighbor of vector [ h i ; 1 ] among the vectors [ w j ; b j ] under the distance measure of dot-product .
+Locality Sensitive Hashing ( LSH ) is a powerful technique for the nearest neighbor problem .
+We employ the winner - take - all ( WTA ) hashing ( Yagnik et al. , 2011 ) where P distinct permutations are applied and the index of the maximum value of the first K elements of each permutations is recorded .
+To perform approximate nearest neighbor searching , we follow the scheme used in ( Dean et al. , 2013 ; Vijayanarasimhan et al. , 2015 ) : 1 . Split the hash code W T A ( x ) into W bands ( as shown in equation 4 ) , with each band P W log 2 ( K ) bits long .
+2 . Create W hash tables [ T 1 , ... , T w , ... , T W ] , and hash every word index j into every table T w using W T A band ( w j ) [ w ] as the key .
+3 . Given the hidden vector h i , extract a list of word indexes from each table T w using the key W T A band ( h i ) [ w ] .
+Then we merge the W lists and count the number of the occurrences of each word index .
+Select the top C word indexes with the largest counts , and calculate their probability using equation 1 .
+The 4 hyper-parameters that define a WTA - LSH are { K , P , W , C} .
+The run-time overhead comprises hashing the hidden vector , W times hash table lookups and W lists merging .
+The overall complexity is O ( B( dC + K * P +W +W * N avg ) ) ) , where N avg is the average number of the word indexes stored in a hash bin of T w .
+Although the complexity is much smaller than O( dBV ) , the runtime in practice is not guaranteed to be shorter , especially on GPUs , as hash table lookups introduce too many small kernel launches and list merging is hard to parallelize .
+Word Alignment Intuitively , LSH shrinks the search space utilizing the spatial relationship between the query vector and database vectors in high dimension space .
+It is a task - independent technique .
+However , when focusing on our specific task ( MT ) , we can employ translation - related heuristics to prune the run-time vocabulary precisely and efficiently .
+One simple heuristic relies on the fact that each source word can only be translated to a small set of target words .
+The word alignment model , a foundation of phrase - base machine translation , also follows the same spirit in its generative story : each source word is translated to zero , one , or more target words and then reordered to form target sentences .
+Thus , we apply the following algorithm to reduce the run-time vocabulary size : 4 . Construct the new embedding matrix and bias vector according to V new , then perform the normal beam search on target side .
+The only hyper-parameter is { M } , the number of candidate target words for each source word .
+Given a source sentence of length L s , the run-time overhead includes L s times hash table lookups and L s lists merging .
+The complexity for each decoding step is O ( dB |V new |+( L s +L s M ) / L t ) , where L t is the maximum number of decoding steps .
+Unlike LSH , these table lookups and list mergings are performed once per sentence , and do not depend on the any hidden vectors .
+Thus , we can overlap the computation with source side forward propagation .
+Experiments
+To examine the robustness of these decoding methods , we vary experiment settings in different ways : 1 ) We train both attention ( Luong et al. , 2015 ) and non-attention ( Sutskever et al. , 2014 ) both resource - rich language pairs , French to English ( F2E ) and Japanese to English ( J2E ) , and a resource - poor language pair , Uzbek to English ( U2E ) ; 3 ) We translate both to English ( F2E , J2E , and U2E ) and from English ( E2J ) .
+We use 2layer LSTM seq2seq models with different attention settings , hidden dimension sizes , dropout rates , and initial learning rates , as shown in Table 3 .
+We use the ASPEC Japanese -English Corpus ( Nakazawa et al. , 2016 ) , French -English Corpus from WMT2014 ( Bojar et al. , 2014 ) , and Uzbek-English Corpus ( Linguistic Data Consortium , 2016 ) .
+Table 2 shows the decoding results of the three methods .
+Decoding with word alignments achieves the best performance / speedup trade - off across all four translation directions .
+It can halve the overall decoding time with less than 0.17 BLEU drop .
+The speedup of English - to - Uzbek translation is relatively low ( around 1.7 x ) .
+This is because the original full vocabulary size is small ( 25 k ) , leaving less room for shrinkage .
+LSH achieves better BLEU than decoding with top frequent words of the same run-time vocabulary size C on attention models .
+However , it in- troduces too large an overhead ( 50 times slower ) , especially when softmax is highly optimized on GPU .
+When doing sequential beam search , search error accumulates rapidly .
+To reach reasonable performance , we have to apply an adequately large number of permutations ( P = 5000 ) .
+We also find that decoding with word alignments can even improve BLEU on resource -poor languages ( 12.17 vs. 11.67 ) .
+Our conjecture is that rare words are not trained enough , so neural models confuse them , and word alignments can provide a hard constraint to rule out the unreasonable word choices .
+Conclusion
+We apply word alignments to shrink run-time vocabulary to speed up neural machine translation decoding on GPUs , and achieve more than 2x speedup on 4 translation directions without hurting BLEU .
+We also compare with two other speedup methods : decoding with top frequent words and decoding with LSH .
+Experiments and analyses demonstrate that word alignments provides accurate candidate target words and introduces only a tiny overhead over a highlyoptimized GPU implementation .
+defined as : W T A(x ? R d ) = [ I 1 ; ... ; I p ; ... ; I P ] ( 2 ) I p = arg max K k=1 P ermute p ( x ) [ k ] ( 3 ) W T A band ( x ) = [ B 1 ; ... ; B w ; ... ; B W ] ( 4 ) B w = [ I ( w?1 ) * u+1 ; ... ; I ( w?1 ) * u+i ; ... ; I w * u ] ( 5 ) u = P/W ( 6 )

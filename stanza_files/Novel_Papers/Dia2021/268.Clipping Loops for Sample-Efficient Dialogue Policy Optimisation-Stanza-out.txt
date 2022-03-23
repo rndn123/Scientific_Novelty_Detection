@@ -1,0 +1,243 @@
+title
+Clipping Loops for Sample-Efficient Dialogue Policy Optimisation
+abstract
+Training dialogue agents requires a large number of interactions with users : agents have no idea about which responses are bad among a lengthy dialogue .
+In this paper , we propose loop -clipping policy optimisation ( LCPO ) to eliminate useless responses .
+LCPO consists of two stages : loop clipping and advantage clipping .
+In loop clipping , we clip off useless responses ( called loops ) from dialogue history ( called trajectories ) .
+The clipped trajectories are more succinct than the original ones , and the estimation of state - value is more accurate .
+Second , in advantage clipping , we estimate and clip the advantages of useless responses and normal ones separately .
+The clipped advantage distinguishes useless actions from others and reduces the probabilities of useless actions efficiently .
+In experiments on Cambridge Restaurant Dialogue System , LCPO uses only 260 training dialogues to achieve 80 % success rate , while PPO baseline requires 2160 dialogues .
+Besides , LCPO receives 3.7/5 scores in human evaluation where the agent interactively collects 100 real-user dialogues in the training phase .
+Introduction Based on dialogue policies , task - oriented dialogue systems decide when and how to give or request information from users .
+Learning dialogue policies is often formulated as a reinforcement learning ( RL ) problem since we usually receive feedback from users for the whole dialogue but not the correct answer for a single response ( Young et al. , 2013 ; Levin et al. , 1997 ) .
+With high- capacity of function approximation , deep reinforcement learning has been widely applied to dialogue policy optimisation ( Su et al. , 2016 ; Li et al. , 2016 ; . Typically , when applying deep reinforcement learning for dialogue policy management , more than thousands of dialogues are required to reach convergence .
+However , requiring thousands of human dialogues during training is quite impractical for most academic or real-life scenarios .
+Users might lose patience and exhibit different behaviour during training .
+Therefore , in most prior work , the agents are trained via simulated users instead of real ones .
+Model - based reinforcement learning ( MBRL ) is commonly applied to make dialogue policy optimisation sample -efficient .
+MBRL approaches for dialogue management build a user model to predict users ' behaviour ( Wu et al. , 2020b , a ; Peng et al. , 2018 ; Su et al. , 2018 ; Wu et al. , 2019 ; Zhang et al. , 2019 ) .
+Using the user model , DDQ ( Peng et al. , 2018 ) generates pseudo-data .
+The accuracy of the user model strongly affects the quality of generated pseudo-data .
+If the behaviour of pseudo-data is far from real users ' behaviour , dialogue policies learnt from these data might not be optimal ( Su et al. , 2018 ) .
+Manipulating when to use how much data in experience buffers becomes critical in these approaches .
+Trainable -action - mask ( TAM ) ( Wu et al. , 2020 b ) blocks useless actions by learning action-masks from data to explore the action space more efficiently .
+Instead of predicting the users ' behaviour directly , TAM predicts only the termination and similarity of future dialogue states to ease the training difficulties .
+However , the wrong predictions of the user model block the wrong actions , which makes the policy performance unstable .
+Moreover , the wrong output of policy does not learn from the predictions of the user model since it is blocked .
+Wrong values in policy networks make the performance unstable .
+In this work , we propose loop -clipping policy optimisation ( LCPO ) , which clips off useless actions in trajectories , computes advantages of actions in / out of the loop separately and optimises policy based on proximal policy optimisation ( PPO ) ( Schulman et al. , 2017 ) .
+First , LCPO is a model-free and parameter - free algorithm .
+There is no additional effort of tuning hyperparameters of the user model .
+Also , it takes almost no extra running time during testing .
+Second , instead of brutally blocking actions like TAM does , LCPO directly reduces the probabilities of useless actions which makes optimisation smoother and easier .
+In our experiment on the Cambridge Restaurant Dialogue System , LCPO uses only 260 dialogues in the training phase to reach an 80 % success rate , while the PPO baseline requires 2160 .
+In the humanin-the - loop experiment , LCPO that trained with only 100 dialogue receives 3.7/5 scores and high remarks of conciseness and fluency .
+Overall , our main contributions are two -fold : ?
+We propose LCPO , a parameter -free , sample efficient algorithm to optimise dialogue policies .
+This algorithm is easy to implement and has barely any overhead . ?
+We demonstrate that training dialogue systems with real users is feasible within 100 dialogues on Cambridge Restaurant Dialogue System .
+Preliminaries
+This section goes through the notations in this paper .
+We start with formulating dialogue management as an RL problem in section 2.1 .
+In section 2.2 , we explain how to optimise the policy through proximal policy optimisation ( PPO ) .
+In section 2.4 , we explain what is episodic memory .
+Reinforcement learning for dialogue systems
+When applying reinforcement learning for dialogue management ( Levin et al. , 1997 ; Young et al. , 2013 ; Williams , 2008 ) , a state s , or a belief state , is the belief distribution over users ' requests .
+An action a is the summarised action taken by a system .
+A reward r and a termination t are given by simulated users or real users .
+An episode E is a dialogue .
+The goal of reinforcement learning is to learn a policy ?( a i |s i ) that maximises the cumulative reward R = L i=0 ?
+i r i , where L is the length of the dialogue .
+Proximal Policy Optimisation ( PPO ) Policy gradient is a fundamental optimisation algorithm with the loss function : L P G ( ? ) = ? i [ log ? ? ( a i |s i ) ?i ] , ( 1 ) where ?i is the estimated advantage at timestep i .
+In order to ensure new policy is not changing far from the old one , trust region policy optimisation ( TRPO ) is set to surrogate the KL - divergence between the old and the current policies .
+In a similar but much simpler way , proximal policy optimisation ( PPO ) ( Schulman et al. , 2017 ) clips probability ratios r i to mitigate the excessive updates in TRPO .
+r i = ? ? ( a i |s i ) ? ? old ( a i |s i ) . ( 2 ) L P P O ( ? ) = ?[ min(r i ( ? ) ? i , r clip i ? i ) ] , ( 3 ) where r clip i = clip ( r i ( ? ) , 1 ? , 1 + ) ( 4 ) Advantage ?i and state- value Vi are estimated by generalised advantage estimation ( GAE ) as follow : ?i = ? i + ? ?i+ 1 , ( 5 ) Vi = ? i + V i , ( 6 ) where ? decays future state- value , which represents our confidence in state - value estimation .
+? decays the future TD - error , which represents a trade- off between bias and variance of advantage estimation .
+V i is the predicted state- value of s i , and ?
+i is the TD- error : ? i = r i + ?V i+1 ? V i . ( 7 )
+Trainable-action- mask ( TAM ) Trainable -action - mask ( TAM ) ( Wu et al. , 2020 b ) is a model - based baseline that blocks useless actions directly .
+TAM learns a user model during dialogue interaction .
+The user model predicts the termination , reward , and the similarity between the current and the next dialogue state , and the action mask is constructed based on these features .
+Though TAM is simple and effective , it is not stable enough .
+The first reason is a common pitfall of model - based approaches : the user model is hard to train and usually leads to inaccurate predictions that harm the dialogue policy .
+Second , the policy and state- value approximator ( i.e. the policy network and value network in PPO ) do not learn from the predictions of the user model .
+The wrong values estimated by these networks can not be updated efficiently since these actions are blocked .
+Episodic memory
+In most policy gradient algorithms , the history of interactions is recorded in a memory buffer M , which contains several episodes E. An episode E consists of N transitions { T 0 , T 1 , ..T N }. A transition T i ?
+{s i , a i , s i + 1 , r i , t i } , where s i is the current state .
+a i is the action taken on s i , which leads to the next state s i+1 with a reward r i .
+If the episode terminates after taking action a i , t i is T rue or otherwise F alse .
+In this paper , we propose loop -clipping policy optimisation ( LCPO ) to improve sample efficiency .
+As illustrated in Figure 1 , LCPO consists of three components : loop clipping , advantage clipping , and policy optimisation .
+We adopt proximal policy optimisation ( PPO ) ( Schulman et al. , 2017 ) for the policy optimisation part in this work .
+Firstly , we give definitions to loops in section 3.1 , and illustrate how to get clean trajectories via loop clipping in section 3.2 .
+In section 3.3 , we demonstrate how to estimate and clip advantages and statevalues of loops for policy optimisation .
+Note that in the following subsections , we utilise two domain knowledge in dialogue systems .
+?
+Prior 1 : Information gain is non-negative since by asking more questions , we know better about user needs .
+?
+Prior 2 : The last action of a failed dialogue and actions that loop over the same state are unwanted .
+Definition of loop
+In this paper , loop means transitions that consist of useless or unwanted actions .
+As illustrated in Figure 2 , we define two kinds of the loop : N -hop loop and termination loop corresponding to our prior 2 . Definition 1 . A N -hop loop L N i is a sequence of N transitions { T i , T i+1 , ..T i+N ?1 } where s i = s i+N .
+Since in a loop that the starting state s i becomes the same as final state s N , { a i , a i + 1 , .. , a i+N ?1 } is a useless action sequence on state s i .
+In dialogue systems , N -hop loop might result from repetitively asking the same questions or giving the same information .
+Compared with the definition of useless actions in TAM ( Wu et al. , 2020 b ) which only considers the similarity of the next state ( i.e 1 - hop loop ) , N -hop loop is a more general definition and is able to detect more useless actions .
+Definition 2 . A termination loop L T i is a transition T i state s i where t i = T rue and r i ?
+0 . In dialogue systems , a i is a useless action on state s i since the dialogue is terminated and failed .
+For example , termination loops might result from saying goodbye before completing tasks or making users out of patience .
+Note that the definition of loops utilises domain knowledge and might not be suitable for other applications .
+Loop clipping
+As illustrated in Figure 3 , the original trajectory might contain several identical states .
+We search for the identical states pair-wisely and detect loops by definitions in section 3.1 .
+1
+The detected loops are clipped off from the original trajectory .
+After clipping , the trajectory becomes succinct so that reward signals can be assigned to useful actions effectively ( Figure 3 b ) .
+In dialogue systems , the information for each state in a loop is the same since there is no information gain after taking useless actions .
+Therefore , a N -hop loop can be viewed as multiple one - hop loops as illustrated in Figure 3 c .
+Loop advantage estimation ( LAE ) After loop clipping , the original trajectory is split into a clean trajectory and several loops .
+Then We estimate the advantages of the clean trajectory and loops separately .
+For the clean trajectory , standard 1 When the loop structure is complex .
+The solution of N-hop loop clipping is not unique .
+generalised advantage estimation ( GAE ) ( Schulman et al. , 2015 ) is applied as shown in Eq. 5 , 6 .
+If we only update the policy based on clean trajectories , the clipped useless actions will not be treated as training data .
+Therefore , these useless actions will not be penalised , resulting in unwanted lengthy dialogue .
+We first illustrate how to estimate state-values and advantage for loops , noted as loop advantage estimation ( LAE ) to distinguish from GAE .
+Second , we propose an advantage clipping trick , which makes the policy optimisation much more sample -efficient .
+State-value estimation
+According to prior 1 , in dialogue systems , information gain V i+1 ? V i ?
+0 . In a loop L N i with length N , since the Vi ? Vi+1 ? .. ? Vi+N ( 8 ) and the same states share the same value i.e.
+Vi = Vi+N , ( 9 ) all the state- values in L N i are the same : Vi = Vi+1 = .. = Vi+N . ( 10 ) Advantage estimation
+The loop advantage for action a i is : ?LAE i = ? i + ? ? GAE , ( 11 ) where ?
+i = r i + ?V i+1 ? V i .
+Note that ?GAE is the next advantage ?i+ N after the loop L n i .
+No matter how long the loop is , the loop advantage is computed from the transition after loop .
+When state- values converge , V i+1 V i in loop L i by eq. 10 .
+We can see that V i+1 V i =? ? i r i + ( ? ? 1 ) V i . = R i =? ?LAE i R i + ? ?GAE =? ?LAE i ?LAE i +1 , ( 12 ) where R i = r i + ( ? ? 1 ) V i .
+It is straightforward that when values converge , the advantage of loop is the advantage of best actions A GAE i with a oneturn penalty for all useless actions on state s i ( since the agent wastes one more turn on the same state ) .
+When ?GAE converges to zero , ?LAE converges to R i .
+Advantage clipping
+However , we found that the advantage estimation is still not very accurate in the early stage of training process .
+The advantages of looping actions sometimes are higher than others and these actions are not penalised .
+To properly penalise the looping actions , we clip the advantages in both LAE and GAE .
+The clipping threshold R i = r + ( ? ?
+1 ) V i since ?LAE converges to this value .
+? ClipGAE i = max ( R i , ?GAE i ) , ( 13 ) ?ClipLAE i = min( R i , ?LAE i ) , ( 14 ) where R i = r i + ( ? ? 1 ) V i , so that ?
+ClipGAE i ? R i ? ? ClipLAE i . ( 15 ) This trick distinguishes bad responses from good ones explicitly and makes policy converge faster .
+The instruction of LCPO implementation is in Algorithm 1 .
+Experiments Experiments are conducted on the Cambridge restaurant dialogue system using the PyDial toolkit .
+We evaluate the agents on both a simulated user and real users .
+From section 4.1 to 4.5 , we illustrate the experiments with a simulated user .
+For human- in- the -loop experiment , see section 4.6 .
+Settings User simulator
+We use a goal-driven simulated user on the semantic level ( Schatzmann et al. , 2007 ; Schatzmann and Young , 2009 ) .
+The maximum dialogue length is set to 25 turns and ? = 0.99 .
+The reward is defined as 20 for a successful dialogue ferent slot-values .
+In practice the optimal threshold depends on the noise level of state observation .
+Evaluation
+In the experiment with the simulated user , we evaluate each agent with 500 dialogues after every 100 training dialogues .
+The mean and standard deviation of performance is computed over 10 runs with different neural networks initialisation .
+The mean ? standard deviation is depicted as the shaded area .
+The x-axes of figures are in log-scale to emphasise both the early stage and the final performance of the training process .
+Baseline Comparisons
+In figure 4 , we compare the performance of PPO ( Schulman et al. , 2017 ) , TAM ( Wu et al. , 2020 b ) , and LCPO .
+The left part of the figure shows the learning curves of the success rate .
+We can see that LCPO is considerably stable and sampleefficient .
+Worth to note that LCPO has the best final performance .
+TAM learns slower , and PPO requires a large number of training dialogues .
+The right part of the figure shows the average turns taken by the agent .
+The lower , the better .
+We can see that LCPO takes more turns in the beginning but becomes more concise than the baselines later .
+In table 1 , we can see the detail of performance at 200 and 2000 training dialogues respectively .
+In low resource scenario , where the dialogue policy is trained by 200 dialogues , LCPO outperforms other baselines with small variance .
+Yet the average number of loops in each dialogue is higher .
+That is because LCPO takes more turn than other agents .
+Other agents often give poor responses so that the users leave the dialogue out of patience with fewer turns .
+Regarding final performance at 2000 dialogues , all of the agents perform similarly .
+We can note that LCPO takes the least number of turns since its algorithm prevents from doing useless actions .
+LCPO requires only 260 dialogues to reach 80 % success rate while PPO takes 2160 .
+In addition , LCPO is light - packed and does not consume a lot of additional training time like TAM .
+Ablation study : termination loop
+In the left part of figure 5 , the red and brown lines are LCPO with and without clipping termination loop L T respectively .
+We can see that without clipping L T , the learning curves become less stable and inhibit the cold-start problem at the beginning of training .
+In a failed dialogue , some actions are good and should not be penalised for the failure of conversation .
+Therefore , we should clip off the last transition in failed dialogue , so that the rest transitions in the clean trajectories ( not in loops ) are not penalised for the failure .
+For example , if we clip off the last the action " bye " in a failed dialogue , only ' bye ' is strongly penalised while other normal interactions are not .
+Ablation study : advantage clipping
+We propose 4 agents for comparisons : 1 ) clip both GAE and LAE , 2 ) clip LAE , 3 ) clip GAE , 4 ) no advantage clipping .
+The success rates after training with 100 , 200 , 2000 dialogues are reported in Table 2 .
+In the low-resource scenario ( less than 200 dialogues ) , clipping both GAE and LAE outperforms other methods considerably .
+And LCPO with no advantage clipping is the worst .
+Without clipping , inaccurate advantage estimation in the early stage of the training process cannot reduce the probabilities of useless actions efficiently .
+Regarding the final performance after training agents with 2000 dialogues , all of the methods perform similarly .
+Yet , if we only clip the GAE , the final performance is slightly worse than others .
+That is because not all the actions in clean trajectories are useful .
+The ' clean ' trajectories still contain several useless actions though not detected .
+Assigning larger advantages to all actions in clean trajectories makes performance unstable .
+Robustness to hyperparameters
+In the right part of figure 5 , policy update interval is set to 50 and 100 for PPO and LCPO .
+The red and brown lines are LCPO and the green and blue lines are PPO with different update intervals .
+We can see that the performance of PPO is strongly affected by the update interval .
+In contrast , LCPO still shows high stability and sample efficiency .
+Its robustness to hyperparameters makes tuning LCPO effortless .
+Human-in-the-loop Evaluation General Settings
+The dialogue system uses a rule- based belief tracker , and an NLG model ( Wen et al. , 2015 ) .
+In each dialogue , one of the agents is randomly picked to talk with a user .
+The users have to interact with the agent according to a given instruction on the user goal sampled from the corpus .
+The users can decide to leave the dialogue session if they are out of patience .
+Figure 1 : 1 Figure 1 : Illustration of LCPO .
+( a) Loop clipping .
+Clip off loops in trajectories to make them succinct .
+( b) Advantage clipping .
+Set a threshold such that the advantages of loops are always less than other useful actions .
+( c ) Policy optimisation .
+We adopt proximal policy optimisation ( PPO ) in this paper .
+Figure 2 : 2 Figure 2 : Illustration of two kinds of loops .
+In this paper , loop means transitions consist of useless or unwanted actions .
+( a) N-hop loop L N , where N = 5 in this example .
+( b) Termination loop L T .
+Figure 3 : 3 Figure 3 : Loop clipping .
+The shaded circles are states and the arrows are actions taken between states .
+( a) The original trajectory .
+( b) The clean trajectory after loop clipping .
+In this example , a 1 - hop loop and a 2 - hop loop are detected .
+( c ) In dialogue systems , the states in a loop are the same since there is no information gain .
+Figure 4 : 4 Figure 4 : Learning curves of different algorithms .
+Left : Success rate .
+Right : Average number of turns .
+The results are evaluated by 10 runs .
+The lines are averages and the shades represent standard deviations .
+Figure 5 : 5 Figure 5 : Left : Ablation study of termination loop .
+Right : Robustness to hyper-parameters .
+Algorithm 1 : LCPO Algorithm 1 Collect N transitions into Memory M 2 for Episode E in M do //
+Loop clipping 3 for T i in E do 4 if i<ptr then 5 continue 6 for T i in E do 7 if s i == s j then 8 ptr = j 9 if i<ptr then 10 T i ?
+L // Advantage estimation in reversed order 11 for Transition T i in reversed ( E ) do 12 if T i ?
+L then 13 Estimate ? , V via clipped LAE ( Eq. 14 , 10 ) 14 else 15 Estimate ? , V via clipped GAE ( Eq. 13 , 6 ) minus the number of turns in the dialogue .
+15 % semantic error rate ( SER ) is included in the user simulator to accommodate for automatic speech recognition ( ASR ) error .
+Policy optimisation Proximal policy optimisa- tion ( PPO ) is applied .
+The state and action di- mension of policy and value networks are 268 and 16 .
+Dimensions of two hidden layers are 130 and 50 .
+The agent collects a N = 100 transitions to update the policy ? with K = 10 epochs and mini- batch size B = 16 .
+After an update , the memory is flushed and becomes empty again .
+Optimiser is ADAM ( Kingma and Ba , 2014 ) with a learning rate 0.001 .
+Entropy coefficient is 0.01 and standardised advantages is applied .
+During testing , actions are sampled from the output distributions of the policy network .
+Loops Detection
+In theory , the starting state and the ending state are identical in a loop .
+Yet , due to numerical uncertainty , we use cosine similarity with threshold ? = 0.99 to justify whether two states are the same .
+Under this strict setting , two states are considered different if they have any dif -
+Table 1 : 1 Baseline comparison .
+The highest performance in each column is highlighted .
+The success rate , number of turns , and number of loops are reported for 200 and 2000 training dialogues .
+The number of training dialogue required to reach 80 % success rate and the training time usage are also listed in the table .
+# Dialogue means the average required number of dialogues to reach 80 % success rate .
+Time means the average training time for 2000 training dialogues .
+Low resource experiment@200D Final performance@2000D Algorithm Suc. Turns # Loops # Dialog Suc. Turns # Loops Time PPO 37.8 ? 17.2 % 7.4 ? 2.3 3.5 2160 95.16 ? 1.1 % 7.8 ? 0.4 2.3 58 min TAM 36.2 ? 6.8 % 8.6 ? 0.9 4.1 1140 93.58 ? 1.5 % 7.4 ? 0.5 2.5 125 min LCPO 76.0 ? 2.9 % 11.5 ? 0.8 4.7 260 95.7 ? 1.1 % 6.3 ? 0.3 0.9 68 min
+Table 2 : 2 Comparison of different advantage clipping methods .
+Success rates are reported after training agents with 100 , 200 , 2000 dialogues .
+The highest success rate in each column is highlighted .
+Success Rate Methods @ 100 @200 @2000 Clip GAE +LAE 55.4 76.0 93.7 Clip LAE 50.7 73.5 93.9 Clip GAE 51.1 72.6 91.0
+No adv clip 45.7 61.8 93.5
+Optimise the policy ? via PPO ( Eq. 3 ) , with K epochs and mini-batch size B

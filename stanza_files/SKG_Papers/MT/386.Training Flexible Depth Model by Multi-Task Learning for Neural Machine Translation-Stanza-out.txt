@@ -1,0 +1,114 @@
+title
+Training Flexible Depth Model by Multi-Task Learning for Neural Machine Translation
+abstract
+The standard neural machine translation model can only decode with the same depth configuration as training .
+Restricted by this feature , we have to deploy models of various sizes to maintain the same translation latency , because the hardware conditions on different terminal devices ( e.g. , mobile phones ) may vary greatly .
+Such individual training leads to increased model maintenance costs and slower model iterations , especially for the industry .
+In this work , we propose to use multi-task learning to train a flexible depth model that can adapt to different depth configurations during inference .
+Experimental results show that our approach can simultaneously support decoding in 24 depth configurations and is superior to the individual training and another flexible depth model training method -- LayerDrop .
+Introduction
+As neural machine translation models become heavier and heavier ( Vaswani et al. , 2017 ) , we have to resort to model compress techniques ( e.g. , knowledge distillation ( Hinton et al. , 2015 ; Kim and Rush , 2016 ) ) to deploy smaller models in devices with limited resources , such as mobile phones .
+However , a practical challenge is that the hardware conditions of different devices vary greatly .
+To ensure the same calculation latency , customizing distinct model sizes ( e.g. , depth , width ) for different devices is necessary , which leads to huge model training and maintenance costs ( Yu et al. , 2019 ) .
+For example , we need to distill the pretrained large model into N individual small models .
+The situation becomes worse for the industry when considering more translation directions and more frequent model iterations .
+An ideal solution is to train a single model that can run in different model sizes .
+Such attempts have been explored in SlimNet ( Yu et al. , 2019 ) and LayerDrop ( Fan et al. , 2020 ) .
+SlimNet allows running in four width configurations by joint training of these width networks , while LayerDrop can decode with any depth configuration by applying Dropout ( Srivastava et al. , 2014 ) on layers during training .
+In this work , we take a further step along the line of flexible depth network like LayerDrop .
+As shown in Figure 1 , we first demonstrate that when there is a large gap between the predefined layer dropout during training and the actual pruning ratio during inference , LayerDrop 's performance is poor .
+To solve this problem , we propose to use multitask learning to train a flexible depth model by treating each supported depth configuration as a task .
+We reduce the supported depth space for the aggressive model compression rate and propose an effective deterministic sub-network assignment method to eliminate the mismatch between training and inference in LayerDrop .
+Experimental results on deep Transformer ( Wang et al. , 2019 ) show that our approach can simultaneously support decoding in 24 depth configurations and is superior to the individual training and LayerDrop .
+2 Flexible depth model and LayerDrop
+Flexible depth model
+We first give the definition of flexible depth model ( FDM ) : given a neural machine translation model M M ?N whose encoder depth is M and decoder depth is N , in addition to ( M, N ) , if M M ?N can also simultaneously decode with different depth configurations ( m i , n i ) k i=1 where m i ?
+M and n i ?
+N and obtain the comparable performance with independently trained model M m i ?n i , we refer to M M ?N as a flexible depth model with a capacity of k .
+We notice that although a pretrained vanilla Transformer can force decoding with any depth , its performance is far behind the independently trained model 1 . Therefore , the vanilla Transformer does not belong to FDM .
+LayerDrop
+In NMT , both encoder and decoder are generally composed of multiple layers with residual connections , which can be formally described as : x i+ 1 = x i + Layer ( x i ) .
+( 1 ) To make the model robust to pruned layers ( shallower networks ) , LayerDrop proposed by Fan et al . ( 2020 ) , applies structured dropout over layers during training .
+A Bernoulli distribution associated with a pre-defined parameter p ? [ 0,1 ] controls the drop rate .
+It modifies Eq. 1 as : x i+1 = x i + Q i * Layer( x i ) ( 2 ) where P r( Q i = 0 ) = p and P r( Q i = 1 ) = 1 ? p. In this way , the l-th layer theoretically can take any proceeding layer as input , rather than just the previous one layer ( l ? 1 - th layer ) .
+At runtime , given the desired layer - pruning ratio p = 1 ? D inf / D where D inf is the number of layers actually used in decoding and D is the total number of layers , LayerDrop selects to remove the d-th layer such that : d ? 0 ( mod 1 p ) ( 3 ) 1 BLEU score is only 0.14 if we ask the vanilla Transformer with M=12 and N=6 to decode with M=1 and N=1 directly .
+However , an individual trained model with M=1 and N=1 can obtain 30.36 .
+LayerDrop 's problem for flexible depth Although LayerDrop can play a good regularization effect when training deep Transformer ( Fan et al. , 2020 ) , we argue that this method is not suitable for FDM .
+As illustrated in Figure 1 , we demonstrate that LayerDrop suffers a lot when there is a large gap between the pre-defined layer dropout p in training and the actual pruning ratio p at runtime .
+We attribute it to two aspects : 1 . Huge sub-network space in training .
+Consider a D-layer network , because each layer can be masked or not , up to 2 D sub-networks are accessible during training , which is a major challenge when D is large .
+Mismatch between training and inference .
+As opposite to training , LayerDrop uses a deterministic sub-network at inference when given the layer pruning ratio p ( See Eq. 3 ) , which leads to a mismatch between training and inference .
+For example , for D=6 and D inf =3 , there are D D inf sub-network candidates during training , while only one of them is used in decoding .
+Algorithm 1 : Training Flexible Depth Model by Multi-Task Learning .
+Reduce depth space .
+For depth D , in principle , LayerDrop can be pruned to any depth of ?( D ) = { 0 , 1 , 2 , . . . , D}. However , consider the actual situation of model compression for resourcelimited devices , it is unnecessary if the compressing rate is too low , e.g. , D ? D -1 .
+Therefore , for an aggressive compress rate , we replace the entire space ?( D ) with the set of all positive divisors of D 2 : 1 pre-train M M ?N on training data D ; 2 generate distillation data D by M M ?N ; 3 M M ?N ? M M ?N ; 4 for t in 1 , 2 , . . . , T do 5 B ? sample batch from D ; 6 gradient G ? 0 ; 7 for ( m i , n i ) in ?( M ) ? ?( N ) do 8 SN e , SN d ? F( m i , M ) , F( n i , N ) ; 9 Feed B into network ( SN e , SN d ) ; ?( D ) = { d | D %d = 0 , 1 ? d ? D } ( 4 )
+The physical meaning of ?( D ) is to compress every D/d layers into one layer , where d ? ?( D ) .
+Guideline for deterministic sub-network assignment .
+The use of deterministic sub-networks is critical to maintaining the consistency between training and inference .
+However , for each d ? ?( D ) , it is not trivial to decide which d layers should be selected to construct the d-layer subnetwork .
+Here we propose two metrics to guide the procedure .
+The first is task balance ( TB ) , whose motivation is to make every layer have as uniform tasks as possible .
+We use the standard deviation of the number of tasks per layer to measure it quantitatively : TB = i? [ 1 , D ] t( i ) ? t 2 D ( 5 ) 2 For the diversity of depth configuration , we assume that D is not a prime number in this work .
+where t( i ) is the number of tasks in which the i-th layer participates and t = d ? ?( D ) d D .
+The second is average layer distance ( ALD ) , which requires the distance between adjacent layers in the subnetwork SN ( d ) = { L a 1 , L a 2 , . . . , L a d } should be large .
+For example , for a 6 - layer network , if we want to build a 2 - layer sub-network , it is unreasonable to select { L 1 , L 2 } directly because the features extracted by adjacent layers are semantically similar ( Peters et al. , 2018 ; Raganato and Tiedemann , 2018 ) .
+Therefore , we use the average distance between layers in all sub-networks as the metric : ALD = d? ?( D ) a i , a i + 1 ?SN ( d ) | a i+1 ? a i | Z ( 6 ) where Z = d? ?( D ) ( d ? 1 ) is the normalization item .
+Proposed method .
+Guided by these two metrics , we design an effective sub-network assignment method Optimal .
+We record the usage state s i of each layer to ensure not to put too many tasks on the same layer .
+At initialization , we set s i as Alive .
+For d ? ?( D ) , Optimal prioritizes to process large depth .
+Optimal uniformly assigns one layer for every c = D/d layers to make ALD high .
+In each chunk , we pick the middle layer of ceil ( c / 2 ) ? 1 ( called MiddleLeft ) .
+Note that , LayerDrop uses the leftmost layer in each chunk ( called Left ) , as shown in Eq.
+3 . Although Left and MiddleLeft have the same ALD , we found that there is a large gap in TB .
+For example , when D=12 , Left 's TB is 1.5 , which is much higher than MiddleLeft 's 0.78 ( lower is better ) .
+Then , Optimal records which layers are used and picks the less used layers as much as possible .
+Each used layer is marked as Dead .
+If current alive layers cannot accommodate the picked depth d , we pass it and choose a smaller d until the alive layers are sufficient , or reset all layers as Alive .
+Training .
+Algorithm 1 describes the training process of our method .
+During training , compared with individual training and LayerDrop from scratch , our FDM finetunes on the individually pretrained M M ?N and uses sequence - level knowledge distillation ( Seq - KD ) ( Kim and Rush , 2016 ) to help shallower networks training .
+We note that in conventional Seq - KD , the student model cannot finetune on the teacher model directly because the two models have different sizes .
+However , FDM allows models with different depths to share the same parameters , and finetuning on the pre-trained teacher model also promotes model convergence .
+M N 1 2 3 6 Base ? LD ? M T Base ? LD ? M T Base ? LD ? M T Base ? LD ? M
+Experiments
+Setup
+We conducted experiments on IWSLT '14 German ?
+English ( De? En , 160k ) following the same setup as Wu et al . ( 2019 ) .
+To verify FDM 's efficiency , we train all models with a deep encoder to contain more tasks .
+Specifically , we train a PreNorm Transformer ( Wang et al. , 2019 ) with M=12 and N=6 .
+See Appendix
+A for the details .
+We mainly compare our method MT with the two baselines :
+Results and Analysis Main results .
+As shown in Table 1 , we compared Baseline , LayerDrop and our MT in all tasks .
+Although LayerDrop outperforms our method 3 Original LayerDrop in Fan et al. ( 2020 ) samples a batch to update the model , while we modify it by accumulating 6?4=24 batches to keep the training cost comparable with Baseline and MT .
+Also , more samples improve Layer - Drop 's performance .
+For example , the average BLEU score in 24 tasks with one batch and 24 batches is 32.31 and 34.18 , respectively .
+We report TB and ALD on encoder side .
+? denotes the lower the better , while ? is on contrary .
+Note that , unlike the standard BLEU score , BLEU 6?4 is more difficult to change significantly because it is scaled of the number of tasks .
+Strategy when a few layers pruned , we can see that MT is the winner in most tasks ( 20 / 24 ) .
+It indicates that our method is superior to LayerDrop for FDM training and demonstrates the potential to substitute a dozen models with different depths to just one model .
+Besides , in line with Fan et al . ( 2020 ) , it is interesting to see the FDM without any pruning outperforms the individually trained model ( see M=12 , N=6 ) , which is obvious evidence that jointly training of various depth models has a good regularization effect .
+Knowledge distillation .
+Table 2 shows average BLEU scores of 24 tasks when training a flexible depth model with / without Seq-KD .
+It is clear that using distillation data helps FDM training in all systems , which is in line with the previous singlemodel compression study ( Kim and Rush , 2016 ) .
+According to Zhou et al . ( 2020 ) , Seq -KD makes the training data distribution smoother , so we suspect that FDM benefits from Seq - KD because of the difficulty of multi-task learning .
+Sub-layer assigiment strategy .
+Training efficiency .
+Our multi-task learning needs to accumulate gradients on all tasks , and its cost is linearly related to the number of tasks .
+Actually , we can sample fewer tasks instead of enumerating them all .
+For example , randomly sam - 5 .
+First of all , we can see that more training costs can obtain better performance .
+Compared with reducing tasks and reducing batches , we found that the former is a better choice .
+In particular , sampling more depths on the encoder side is more important than the decoder side , which is consistent with the recent observation in Wang et al . ( 2019 ) that encoder is more important than decoder in terms of translation performance .
+Conclusion
+We demonstrated LayerDrop is not suitable for FDM training because of ( 1 ) the huge sub-network space in training and ( 2 ) the mismatch between training and inference .
+Then we proposed to use multi-task learning to mitigate it .
+Experimental results show that our approach can decode with up to 24 depth configurations and obtain comparable or better performance than individual training and LayerDrop .
+In the future , we plan to explore more effective FDM training methods , and combining flexible depth and width is also one of the attractive directions .
+10 Collect gradient g by Back - Propa. ; 11 G ? G + g ; 12 end 13 Optimize M M ?N with gradient G ; 14 end 15 Return M M ?N

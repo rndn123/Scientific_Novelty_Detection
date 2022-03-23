@@ -1,0 +1,368 @@
+title
+Controlling Machine Translation for Multiple Attributes with Additive Interventions
+abstract
+Fine- grained control of machine translation ( MT ) outputs along multiple attributes is critical for many modern MT applications and is a requirement for gaining users ' trust .
+A standard approach for exerting control in MT is to prepend the input with a special tag to signal the desired output attribute .
+Despite its simplicity , attribute tagging has several drawbacks : continuous values must be binned into discrete categories , which is unnatural for certain applications ; interference between multiple tags is poorly understood .
+We address these problems by introducing vector-valued interventions which allow for fine- grained control over multiple attributes simultaneously via a weighted linear combination of the corresponding vectors .
+For some attributes , our approach even allows for fine-tuning a model trained without annotations to support such interventions .
+In experiments with three attributes ( length , politeness and monotonicity ) and two language pairs ( English to German and Japanese ) our models achieve better control over a wider range of tasks compared to tagging , and translation quality does not degrade when no control is requested .
+Finally , we demonstrate how to enable control in an already trained model after a relatively cheap fine-tuning stage .
+Introduction
+Some modern machine translation ( MT ) applications require fine- grained control along multiple attributes , and such mechanisms also increase the users ' trust in scenarios when the system speaks on their behalf ( Prabhumoye et al. , 2021 ) .
+For example , MT applications like video subtitling in streaming , video conferencing , online education and speech MT require that one can control the length and monotonicity of the translation , setting clear constraints on the output .
+In open-domain * Google AI Resident .
+MT , it is unlikely that such constraints are known or can be inferred from the source to generate an appropriate translation .
+However , the uncertainty around the desired register , style or politeness level of the translation could be resolved by providing users with an explicit option to control such attributes .
+This in turns increases the MT system 's trustworthiness by providing an explicit contract ( Jacovi et al. , 2021 ) , formulated as " whenever there is an ambiguity , we enable users ' agency " .
+A standard method to exert control over MT outputs is the tagging approach , where an explicit token is prepended to the source sentence or output hypothesis to signal the desired attribute of the output ( Kobus et al. , 2017 ; Sennrich et al. , 2016 ; Johnson et al. , 2017 ) .
+While such tags do enable certain level of control , discrete tags , by their nature , allow only for coarse- grained control and require that attributes with continuous values , like monotonicity or length ratio , are binned .
+For example , Lakew et al. ( 2019 ) used only three tags to control translation length , which would arguably be too coarse for many practical applications .
+Also , chaining multiple tags may become cumbersome and , more importantly , the interference between tags and the effect of their ordering have not yet been extensively studied .
+An additional desideratum for systems enabling attribute control is how efficiently they can be realized .
+For deployed MT engines , ( re- ) training a model for every attribute is unrealistic , due to the associated costs in time and computational power .
+Therefore , having a light -weight intervention , materialized as a small number of tunable parameters , would considerably improve the practicality of attribute - enabled systems .
+In this paper we introduce additive vector-valued interventions which allow for fine- grained , combinable and fine-tunable control of translations , addressing all of the points above .
+We propose two implementations of vector-valued control : 1 ) one attribute embedding vector with the control direction and strength regulated by a multiplicative scalar factor , appropriate for continuous attributes , and 2 ) separate embedding vectors for each discrete attribute value , each with tunable multiplicative strengths .
+The attributes ' embeddings are additively combined with the encoder 's last layer representation and are used by a subset of the decoder layers through the source-attention mechanism .
+Compared with the tagging approach , the control intervention residing in vector spaces has three advantages : 1 ) It avoids the coarse binning inherent to tagging and enables a more fine- grained , widerrange and precise control of translations , especially around bin boundaries .
+2 ) It simplifies simultaneous control for multiple attributes via a linear combination of control interventions for each attribute , with control strength defined by multiplicative scaling factors .
+3 ) For some attributes it allows for enhancing neural MT models trained without controllability via fine-tuning of intervention vectors .
+Our contributions are as follows : 1 . We propose a novel mechanism to control different translation attributes and evaluate it on three important use cases : length , politeness and monotonicity for translation into German and Japanese ( from English ) .
+2 . In all the three use cases , the ability to control attributes comes at no cost in translation quality .
+In fact , including explicit politeness information , the evaluation scores improved as compared to strong baselines ( + 0.6 BLEU points for German and + 2.5 for Japanese ) .
+3 . Given a system trained on data without attribute annotation , we demonstrate that we can add a control component to it , needing only 20 % of the original training time .
+The level of control is not on - par with a full training pass , but the performance is still similar to the tagging approach .
+Related work
+The tagging approach for controlling translations has been used for multiple purposes : to indicate the target language in multilingual NMT ( Johnson et al. , 2017 ) ; to produce translations in more natural language by tagging data provenance , backtranslated or natural ( Caswell et al. , 2019 ) ; to control gender ( Kuczmarski and Johnson , 2018 ; Figure 1 : Model diagram .
+Elaraby et al. , 2018 ) ; to indicate source domains in multi-domain NMT ( Kobus et al. , 2017 ) .
+Closer to our applications , tags can control length ( Lakew et al. , 2019 ) , and formality of translations from English to German ( Sennrich et al. , 2016 ) and to Japanese ( Yamagishi et al. , 2016 ; Feely et al. , 2019 ) , as well as from French to English ( Niu et al. , 2018 ) . Stergiadis et al. ( 2021 ) experimented with a pair of tags to control domain and provenance .
+Closely related to controllable generation is work on monolingual style transfer : Krishna et al. ( 2020 ) , Riley et al. ( 2021 ) and Niu et al . ( 2018 ) .
+In contrast to these papers , we use a classifier of the target side for labelling the controlling attribute .
+3 Additive control
+Base Transformer model
+The Transformer model ( Vaswani et al. , 2017 ) consists of a decoder D and an encoder E ; the latter takes the input tokens {x t } t=1 ... T and produces an intermediate encoded representation z = {z t } t=1 ... T ? R d .
+Layers of D then decode this representation z into a target sentence ? = {? s } s=1 ... S .
+The decoding process is carried out in an autoregressive way : at each time step t the decoder uses the previously generated output tokens {? s } s?t and accesses z through the attention mechanism .
+Control-induced Transformer model
+We propose to achieve control in the encoder 's intermediate space by intervening with a perturbation of the representations z .
+For each attribute a to control we define an intervention vector V a of the same dimensionality as z t , which is added to all outputs z t of the encoder E. Defining V = a w a V a , the new hidden representation at each step becomes zt = z t + V .
+Note that w a is a continuous weight that can be used as a " dial " to tune the strength of the intervention for each attribute .
+The additive approach is motivated by the following desiderata : 1 . It is an approach with a clear algebraic structure that covers multiple attributes in an interpretable manner .
+2 . It ensures the existence of a neutral state and the possibility of only modifying a subset of attributes .
+3 . It is permutation invariant , i.e. we did not wish to have a dependence on the specification order of the attributes ( cf. tagging approach ) .
+At training time we need an annotation of the bilingual sentence pairs to train the representations V a , but we do not require the full training data to be annotated .
+For unannotated training pairs we simply set the vector V to zero .
+This makes the approach specially attractive if the desired attribute is costly to annotate , be it because of the need of expensive human annotation , fuzzy definition of the attribute itself or an expensive classifier to run .
+Similarly , at inference time if the user does not want to control attribute a , V a can be set to 0 , the " neutral " vector .
+Setting the full intervention V = 0 , which we denote the " neutral mode " , we recover the behaviour of the initial underlying model , guaranteeing a fall - back to baseline performance ( assumed to be of acceptable quality ) .
+We also experimented an architecture in which V was prefixed to the the embeddings corresponding to the input sequence { x t } t=1 ... T instead of being added to the encoder representation { z t } t=1 ... T , which more closely resembles the tagging architecture .
+This approach however resulted in models with a degraded translation quality for the continuous attributes , and thus we focus the discussion on the additive approach .
+More efficient realization
+We additionally considered a modification of the approach described in the previous section where the shifts z t + V are only accessible by the last N layers of the decoder , see Figure 1 .
+For example , the first decoder layers have access to the standard , non-modified , z t encoder representation through the attention mechanism , while the last layers access the modified zt .
+This modification allows for faster training and small footprint finetuning , as the weights of the first decoder layers are kept fixed .
+From a model interpretability point of view , we can use this modification to understand which layers process a specific syntactic / semantic attribute , as an attributes - informed version of layer probing used to analyze Transformer encoder-only models ( Tenney et al. , 2019 ) .
+Attribute representation
+In this work we considered three different attributes for control , but the approach can naturally be generalized to other attributes .
+Length ( L ) For length control the confounding factor is that longer inputs would generate longer translations .
+Thus , instead of aiming to control the output length directly , we control the ratio r between the output and input lengths , both computed after tokenization and subword splitting .
+For this attribute the weight w l corresponds to the ratio r , and the system learns the length control embedding V l .
+Politeness ( P ) Although politeness is an inherently discrete attribute , we also introduce a continuous feature representation ( P d vs.
+P c ) .
+The discrete feature uses a separate embedding for each politeness level i , i.e. we train a different V p i vector for each politeness level .
+For the continuous feature we fix the weights w p i of the different levels , and the system trains a single politeness embedding vector V p . Monotonicity ( M 0.1 )
+We understand monotonicity as the closeness of the word order in the target sentence to the word order in the source sentence .
+We formally define monotonicity as the strength of the off-diagonal alignment deviations , inspired by the fast_align model ( Dyer et al. , 2013 ) .
+For a translated pair s = ( s input , s target ) and an alignment { ( i , j ) } between the token positions i ? { 1 , ? ? ? , n} of the input sentence s input and j ? { 1 , ? ? ? , m} of the target sentence s target , we define the deviation strength : ?( s ) = 1 # { ( i , j ) } { ( i , j ) }
+i n ? j m , ( 1 ) where # { ( i , j ) } denotes the cardinality of the alignment .
+In the completely monotonic case , having n = m and { ( i , j ) } being a strictly increasing bijection , ?( s ) would be zero ; in the general case , the lower ?( s ) is , the higher the monotonicity between the input and the translation .
+To annotate ?( s ) in the training data we used fast_align , and this is fed into the system as the weight w m .
+However , if ?( s ) is small the resulting representation could potentially " collide " with the neutral state V m = 0 ; we therefore use the shifted representation w m = ?( s ) + k ; we found that a small shift like k = 0.1 works well to avoid a collision .
+For all attributes , we looked for the minimum number of decoder layers that have access to the representation with interventions that would work for all three attributes and found that two layers was the smallest value ( even for length , the simplest attribute , one layer was not enough ) .
+Experiments
+We evaluate our control approach on two language pairs ( English - to - German and English - to - Japanese ) , and three different attributes ( length , politeness and monotonicity of the generated translations ) .
+We verify the validity of the approach regarding the general translation quality and for each controlled attribute individually .
+We end this section with experiments on fine-tuning additive control models from pretrained baseline models that were trained without any attribute annotation .
+For reproducibility , we include setup details in ?A.4 .
+Datasets and baselines For EN ?
+DE we trained on the WMT17 dataset , using newstest2016 as the development set and newstest2017 as the test set ( Bojar et al. , 2017 ) .
+In order to test the behaviour on an out-of- domain setting , where the distribution of the controlled attribute may vary from the training data , we also evaluate our methods on a subset of OpenSubtitles .
+For EN ?
+JA we trained and evaluated on JESC ( Pryzant et al. , 2018 ) .
+All the reported results use SacreBLEU ( Post , 2018 ) 1 .
+Model configuration and training We reimplemented the standard Transformer architecture ( Vaswani et al. , 2017 ) in JAX ( Bradbury et al. , 2018 ) , using the neural network library Flax ( Heek et al. , 2020 ) .
+All our models correspond to the Base Transformer configuration ( Vaswani et al. , 2017 ) .
+For training our additive models we label the whole corpus with the corresponding attributes and use the standard cross-entropy loss .
+However , to encourage the additive model to learn to produce good translations in the Neutral mode , we randomly mask each attribute independently with a 1 Configuration signatures in ?A.3 .
+Model Mode BLEU 20 % chance .
+We also trained an improved tagging baseline Tag mask where tags are masked at a 20 % rate so that it approximates the Neutral mode of the additive model .
+As there was a 2.7 % relative difference in BLEU 2 caused by the different order of tags we also trained a mode Tag inv where , additionally to being randomly masked , tags are also shuffled to achieve permutation invariance .
+For binning the continuous attributes of the tagging models we used five buckets for length and three for monotonicity .
+Base
+Translation quality results
+The main goal of the additive interventions is to achieve precise control of the desired attributes .
+As such , translation quality as measured by standard metrics may degrade if we keep the references fixed ( e.g. generating a translation with an informal politeness level when the reference is polite ) .
+To this end we also analyse the effect of control-enabled models on general quality to ensure their performance is on par with the baseline models .
+We contrast the Neutral and the Oracle modes where the latter corresponds to a realistic scenario where the user knows what attribute value the output should have .
+A good control model is expected to take advantage of the Oracle information and improve its performance .
+When presenting the results , the additive models are denoted by Add with the enabled attribute fea -
+Model Method BLEU
+For tagging , by ordering the tags differently , we get results between 26.58 and 27.32 points , which indicates that the tag order may require additional fine-tuning .
+( L , M , P ) produced the best result while the permutation trick for alleviating order effect ( i.e. Tag inv ) helped but did not solve the problem completely .
+It is worth noting that using masking to support the Neutral mode works well both with continuous and tagging models .
+Base EN ? JA ( Table 2 ) :
+The performance of the best additive model in Neutral mode suffers a reduction of 0.2 BLEU in comparison to the baseline , similar to the Tag inv ( L , M , P d ) .
+Importantly , moving to the Oracle mode regains up to 2.9 BLEU over the baseline which is a better improvement than what the tagging model achieves in the same Oracle mode .
+Controlling length
+We turn to evaluating length control and show that the continuous approach yields a more fine- grained and robust control than tagging .
+For this analysis we compute the ratio r of the source sentence length with respect to the reference length , and ask the model to produce a longer or shorter translation by a multiplicative intervention , i.e. replacing r with r ? i r .
+For example i r = 1.0 corresponds to asking the model to match the length of the references , while i r = 0.9 to make translations 10 % shorter than the references .
+We can then measure the effectiveness of length control by regressing the length of translations over the length of references to obtain a realized length shift ?s as a function of i r , where an ideal control would achieve ?s = i r .
+We plot results for the model Add( L , M 0.1 , P c ) in Figure 2a .
+To measure the degree of distributional robustness we also measured the realized shifts on a test set from OpenSubtitles as an out-of- distribution test set .
+As the models were trained on WMT17 , on OpenSubtitles ideally one should obtain the same length control we achieved on WMT17 with the same ?s resulting from the same i r .
+We illustrate how the BLEU score changes with the value of intervention in Figure 2 c , where the interventions show a graceful degradation of BLEU ( about 2.3 BLEU points to accommodate a 10 % length change ) .
+To make sure that the additive control reformulates sentences in a sensible way and not simply repeats or trims tokens and is not limited to simple word- level modifications , we considered a naive baseline , rewriter , that takes the translations from the neutral mode and rewrites them to the resulting desired length either by truncating or by repeating tokens cyclically from the beginning till reaching the desired length .
+We compare the BLEU scores of this rewriter with our proposed model in Figure 2d : for German the difference is positive for i r in the wide range [ 0.75 , 1.3 ] and for Japanese the range is even wider 3 .
+We provide exemplars of changing the length for German and Japanese in ?A.13 .
+Comparison to tagging .
+For tagging we can shift length in incremental steps by shifting the tag bucket id ( corresponding to the reference ) , e.g. id + x for x ? {? 4 , ? ? ? , + 4 } and clipping it to stay in the range of available buckets .
+Here x = 0 would correspond to the ( length ) Oracle mode .
+Note that tagging achieves a much smaller range of effective length control ( Figure 2 b ) than our continuous method and that ?s is not a monotonically increasing function of x .
+For the out-ofdistribution robustness we compared the realized shifts of tagging and the continuous method using the test sets of OpenSubtitles and WMT for Ger - man ( Figure 2e ) and the test and dev set of JESC for Japanese 4 ( Figure 2 f ) .
+We see that the continuous method gives consistent , close to ideal , shifts for the same interventions , while tagging is affected by the distribution shift .
+Controlling politeness
+We now focus on controlling translation politeness and formality for two languages that mark these registers : German with two formality levels and Japanese with a more developed hierarchy of speech registers .
+EN ? DE
+We annotated German politeness using the ParZu parser and the lexical rules from ( Sennrich et al. , 2016 ) , which mostly look at the German 2nd person pronouns ' Sie ' ( polite ' you ' ) and ' du ' ( informal ' you ' ) and the corresponding verbs .
+Because WMT contains a very small amount of the informal class , for evaluation purposes we used the test set for OpenSubtitles 5 .
+We introduced a third annotation level , unknown , as a sink for the examples that the rule- based classifier assigns neither to polite nor to informal ; during translation we found that introducing and enforcing the unknown mode results in a frequent switch to the indefinite German pronoun " man " that corresponds to impersonal speech .
+For example , the English sentence " What would you like to eat ? " , would be translated into the unknown politeness as " Was will man essen ? "
+( " What would one like to eat ? " ) .
+We found that politeness for the additive models can be controlled with similar results using either discrete P d or continuous P c .
+As P c relies on a lower 1 - dimensional latent representations , we focus on reporting results for the P c representation .
+For the multipliers w p i we used values { 0.5 , 1.0 , 1.5 } for unknown , polite and informal respectively .
+We did not aim to tune these multipliers ( e.g. by treating them as hyper-parameters or model parameters ) , because our goal was to show that as long as there is some separation between the values the model can learn to generate different formalities , irrespective of a formality ranking order ( e.g. having unknown in between polite and informal ) .
+To evaluate the quality of politeness control , as in previous works ( Sennrich et al . ( 2016 ) ble 3 ) .
+Note that in all the additive models the Oracle mode leads to substantial improvements , especially on the informal split of the test data .
+Moreover , one can further improve the results by tuning a small length intervention ( denoted by L-Fin ) on top of the length oracle 6 , which is probably effective because evaluation here happens out -ofdistribution .
+In the supplementary materials ( Table 9 ) we report the results of applying the politeness classifier on the generated translations .
+In the first exemplar in Table 5 we give an example of changing the politeness level in German to match the reference .
+For Japanese we include exemplars in the supplementary material in Table 15 . For Japanese politeness and formality levels we re-implemented the rules of ( Feely et al. , 2019 ) introducing a fourth category unknown in addition to the original three classes informal , formal and polite ( ?A.9 ) .
+To first approximation , the polite level is characterized by specific verb endings , e.g. ? ? or ? , while the formal one is characterized by honorific expressions , e.g. ?.
+The multipliers we used can be found in the supplementary materials ( Table 10 ) .
+We see that controlling politeness improves BLEU scores on every split when the rule- based feature is supplied ( Table 4 ) .
+Controlling monotonicity
+In this task we simulate a use case where we need the NMT system to produce translations of increasing monotonicity , having in mind applications like interpreting or lecture translation .
+Here the intervention consists in supplying to the model a desired value ? for the ?( s ) of Equation 1 . Non-monotonicity measure .
+We introduce as a measure of non-monotonicity for a set of translations pairs S ?( S ) = s?S len(s target ) ? ?( s ) , which intuitively measures by how many positions the translation deviates from the input sentence 7 .
+To measure the fraction of translations surpassing the references in terms of token displacements we introduce the relative non-monotonicity ? rel ( cut ) = ?( {s = ( s in , s out ) : ?( s ) ? cut} ) ?( {s = ( s in , s ref ) : ?( s ) ? cut} ) , which allows us to take a " snapshot " at different thresholds for cut , comparing generated outputs with references .
+To make this more clear we report the nonmonotonicity measure for the Base model , starting with German .
+Looking at Figure 3a , it becomes clear that the Base translating to German produces translations that are more monotone than the references and that ? rel ( cut ) decreases with cut .
+For comparison , we have also plotted the ratios ?( cut ) / ?( 0 ) for the references to highlight how cut affects the distribution of len(s target ) ? ?( s ) for the references ; intuitively for German lots of " mass " for the references is concentrated at low values of ?( s ) .
+We report the same for the Base model translating into Japanese in Figure 3 b .
+Here the situation is different - while as before the Base produces translations that are more monotone than the references , the rate of drop is slower than for German and then the trend reverses at about cut = 0.2 where ?( cut ) / ?( 0 ) = 53 % .
+Japanese references also put more mass on higher values of cut than the German ones ; this should not be surprising , as English and German languages are SVOs while Japanese is SOV , so more re-ordering are necessary to translate into the latter .
+Evaluation of control with respect to monotonicity .
+In Figure 2g we compare a few EN ?
+DE control-enabled models on the task of monotonicity control of translations .
+All the models produce more monotone translations compared to the baseline and there is no significant difference between tagging and additive control .
+However the model Add 2 has a smaller effect than the model Add in improving monotonicity , probably indicating that monotonicity is a harder attribute benefiting from the interplay between more layers .
+A similar conclusion holds for Japanese ( Figure 2h ) .
+Here it might be interesting to note that Base , for large values of cut , produces translations that are less monotone than the references and that even the simpler Add 2 helps to reduce this effect .
+In the second exemplar in Table 5 we give an example of increasing the monotonicity compared to the reference and of matching the reference 's alignment score .
+For Japanese we supply examples in ?A.13 .
+In terms of decreasing monotonicity we found that the continuous approach is more fine- grained ; more details are given in ?A.11 .
+Learning to control attributes with fine-tuning Obtaining controllable models with fine-tuning a baseline model is important to reduce costs of developing attribute -specific models and reduce memory , ideally allowing to override a ( small ) subset of parameters of the main model already in memory .
+We focused on the direction EN ?
+DE starting from the checkpoint of the Base model and we were able to learn politeness and length control , while monotonicity proved to be a harder attribute to bootstrap from the baseline model .
+Simultaneously we aimed at learning joint attribute control with a minimal number of parameters - learning just the attribute embedding ( s ) and either fine-tuning the last two layers of the decoder or resetting them to a random initialization , both affecting about 13.9 % of the original model parameters .
+In Figure 4 we report results at two time points during the training : the first was chosen when we saw an early indication of achieving control and the second when the control results had stabilized .
+Here ?s is an increasing function of i r even though not close to the ideal ?s = i r as for the Add model ; for the model with ( without ) resetting at about 15 % ( 20 % ) of the original training time one can increase length by about 17 % ( 5 % ) , and one can decrease length by about 15 % ( 10 % ) .
+Regarding politeness , for the first time point the gains on OpenSubtitles between the Neutral and the Oracle mode are already relatively close to those obtained with training from scratch ( ?A.12 ) .
+Overall , BLEU scores remain close to those of the model trained from scratch ( e.g. on WMT 26.78 in Neutral mode for the model without resetting ) .
+Conclusions
+We propose a novel approach for controlling NMT system with respect to multiple attributes .
+This approach has several advantages : first , it uses interpretable additive interventions , where each attribute has a " control " subspace in latent space ; second , it allows to control any subset of attributes while still generating good quality translations in the absence of any attribute intervention ; third , it results in a more fine- grained and robust control of continuous attributes compared to the common tagging approach without the necessity of committing to a choice of buckets for continuous features ; finally , it allows for a more efficient fine-tuning procedure where attribute control can be introduced by affecting a smaller subset of the original model parameters .
+We show- cased the flexibility of the approach by controlling length , politeness and monotonicity of generated translations from English into German and Japanese .
+Future directions of work include : 1 ) learning latent attribute embeddings in an unsupervised way , 2 ) application to other attributes like translation domain or target language in multi-lingual systems , 3 ) optimizing the finetuning to affect even less model parameters , 4 ) an investigation of which attributes are " easier " and " harder " to learn .
+A Appendix
+A.1 Datasets and baselines
+The WMT17 dataset was available via Tensorflow 's Datasets .
+For OpenSubtitles we used a random split to obtain a dev and a test set .
+Cardinalities of the dev and test set are available in Table 5
+A.2 Tokenizer configuration For EN ? DE we trained a joint unigram Sen-tencePiece ( Kudo , 2018 ; Kudo and Richardson , 2018 ) model with a vocabulary size of 32K .
+For EN ? JA , following ( Feely et al. , 2019 ) , we trained two disjoint BPE subword vocabularies with size 32 k and character coverage ? = 0.9995 using the same SentencePiece code .
+A.3 SacreBLEU configuration For German we used the configuration string : BLEU +case.mixed+lang .
+de-en+numrefs.1+smooth.exp+tok.13a+version.1.4.3 ; for Japanese we used the configuration string BLEU+case.mixed+lang.ja-en+numrefs.1+smooth.exp+tok.none+version.1.5.1 .
+Note that as in ( Feely et al. , 2019 ) the Japanese text was tokenized using the KyTea tokenizer before computing the BLEU score .
+A.4 Experiment setup Our implementation of the Base Transformer is based on the Flax WMT example 8 .
+On the WMT14 test set , used to verify implementation correctness , our baseline model 's and the original Base Transformer 's scores ( Vaswani et al. , 2017 ) are , respectively , 27.8 BLEU points and 27.3 .
+We trained on TPUv2 ( 16 cores ) with batch size 256 and used sentence packing ( Shazeer et al. , 2018 ) to increase efficiency of accelerator usage .
+The learning rate was set to 0.0625 with 1 k steps of linear warm - up and square- root decay afterwards .
+We used the default Adam optimizer and a dropout rate of 0.1 .
+For EN ?
+DE we trained for a minimum of 100k steps and after that used early stopping , evaluating every 10 k steps , on the dev's set BLEU score with a patience of 5 ; results were evaluated on the best checkpoint for the dev set .
+For EN ?
+JA we used a patience of 10 and we used two separate embeddings on top of the separate BPE vocabularies following the configuration reported in ( Feely et al. , 2019 ) . For EN ?
+DE we used beam search with beam size 4 and lengthpenalty 0.6 .
+For EN ?
+JA we used beam search with beam size 10 and length- penalty 0.9 ; these parameters having been fine-tuned for the Base on the dev set .
+We were unable to replicate the performance score of 18.8 for the Base model in ( Feely et al. , 2019 ) even though the improvements we saw for controlling politeness are consistent with their results .
+We conjecture these might be due to a mismatch of some model configuration or to a different setup for evaluating the BLEU score .
+A.5 Tagging configuration
+For length ( resp. monotonicity ) we used 5 ( resp. 3 ) buckets whose boundaries were chosen so that each bucket contains approximately the same amount of data .
+For the tagging models that have a Neutral mode , this was simulated by a " neutral " masking tag that replaces each original tag independently with a 20 % probability .
+When using tags interventions were made by shifting , i.e. shifting each tag id by k positions and clipping to a valid tag ; so if there are l tags there are 2 * l ?
+1 possible interventions where k = 0 corresponds to the Oracle mode .
+A.6 BLEU scores for the different permutations of tagging In Tables 6 and 7 we report the BLEU scores on WMT and OpenSubtitles for models trained with the different permutations of the tags .
+The best and worst results are indicated by an asterisk ( * ) and are reported in the main paper .
+A.7 Annotation of German politeness
+We used the rules from ( Sennrich et al. , 2016 ) , that look at the German 2nd person pronouns ' Sie ' ( polite ' you ' ) and ' du ' ( informal ' you ' ) and the corresponding verbs .
+Here the parser is mainly used to correctly classify ambiguous pronouns , e.g. " ihr " to make sure it refers to a second person .
+In Table 8 we report relative frequencies of the data annotated as polite or informal .
+Model
+A.8 Classification accuracy on the politeness rewriting task
+We took the test subsets of OpenSubtitles where the references is classified as polite or informal and translate the source side into either polite or informal mode and run the rule - base classifier on the translations to find out the realized rewriting accuracy ( Table 9 ) .
+Thanks to the flexibility of the additive approach , we were able to match this accuracy by fine-tuning the informal multiplier for after training .
+For example , for the model Add 2 ( L , M 0.1 , P c ) the multiplier value for informal that we found by grid-search was 1.9 which resulted in a rewriting accuracy of 79.6 % in Oracle mode and resp .
+and 20.22 .
+In our grid-search we optimized for the BLEU score ; however there is a trade- off with the rewriting accuracy as the latter can be further increased above 85 % while keeping the BLEU score above 18.0 .
+A.9 Annotation of Japanese politeness For Japanese a politeness and formality registers can be inferred from verb endings and presence of honorific expressions .
+We took the rules from Table 3 of ( Feely et al. , 2019 ) and used the SpaCy parser .
+In Listing 1 we report the code we used for annotation .
+The formal_verbs , polite_verbs and informal_verbs are Python 's sets of strings that we report in Tables 16 and 17 .
+Each string represents the way SpaCy parses a grammatical rule of politeness inside a sentence and for each string we report how a full example sentence was parsed by SpaCy .
+The values of the multipliers used for the continuous feature are in Table 10 .
+A.10 Quantifying non-monotonicity
+To evaluate translation monotonicity one would like to measure how the change in the monotonicity , ?( s ) , is affected when requesting translations with lower or higher ?( s ) .
+First note that ?( s ) is already normalized to lie in [ 0 , 1 ] as the ratios i/n , j /m in its definition rescale the sentence lengths to the unit interval .
+In the limit case of n , m ? ? we might think of of an alignment , which concretely consists of pairs ( i/n , j / m ) , as representing a continuous curve t ? c ( t ) mapping [ 0 , 1 ] to [ 0 , 1 ] .
+Now ?( s ) would become the L 1 - distance between c and the identity mapping t ?
+t. In the finite case , if we think of an alignment as a curve , possibly with jumps , we can then think of reparametrizing it to be defined on a domain corresponding to the sentence length ; we thus propose to multiply ?( s ) by the length of the translation s target , to arrive at interpretation of len(s target ) ? ?( s ) as a nonmonotonicity measure - by how many positions in the translation tokens deviate from the corresponding tokens in the input sentence .
+Now , given a set of translations S we define the of their non-monotonicity as : ?( S ) = s?S len(s target ) ? ?( s ) , which quantifies by how many token positions the translations cumulatively deviate from the corresponding input sentences .
+However , we are interested in comparing monotonicity between sets of translations ; so given two sets S , S of translations of the same inputs we look at ?( S ) / ?( S ) .
+This alone , however , would give a partial picture as it does not take into account the distribution of the ?( s ) .
+Therefore , we propose to slice ?( S ) at cuts by looking at subsets of S , S where ?( s ) ? cut .
+Put together , we define the relative non-monotonicity as : ? rel ( cut ) = ?( t : translation with ?( t ) ? cut ) ?( t : reference with ?( t ) ? cut ) , which compares the translations with the references , with values larger than 1.0 indicating more re-orderings than the references and vice-versa .
+A.11 Decreasing monotonicity
+When asking the model to decrease monotonicity , we observed that the continuous approach gives a more fine - grained control .
+For example in Figure 3 we compare a tagging and a continuous model in the direction EN ?
+DE for different values of the interventions .
+Note that asking to reduce monotonicity does result in lower BLEU scores , so to make a fair comparison with tagging we fixed a range of values for the continuous interventions that does not lead to a worse reduction in BLEU than tagging .
+Here we observe that with the continuous feature we have a smoother and broader range of possible effects .
+For Japanese , besides a similar situation , we also found a significant difference between the oracle mode for the continuous and the tagging approaches .
+In oracle mode , we would expect the translations to closely match the references and hence the ? rel ( cut ) to stay close to the ideal line y = 1.0 as cut varies .
+In Figure 4 we see that at a certain point the continuous approach performs better than tagging ; for example at cut = 0.3 the tagging model has already increase around y = 1.5 while the continuous approach is still around y = 1.07 .
+Note there we are not yet at the tail of the distribution as for the references the ?( 0.3 ) / ?( 0 ) is at about 15 % .
+A.12 Fine-tuning results
+In Table 11 we report the BLEU scores on WMT17 and the formal / informal splits of OpenSubtitles for the selected checkpoints .
+On WMT we still see good performance with similar scores between Neutral and Oracle mode .
+The results on OpenSubtitles show that the model learns to use the politeness annotation to improve the quality of translations .
+A.13 Exemplars In Table 12 there is an example of varying the length of a translation for German .
+Here the controllable model is not simply dropping tokens from the end even in the range of i r where we found it comparable to the rewriter in terms of BLEU score .
+For example at i r = 0.6 it takes out some additional information like the year of the restoration but keeps the main verb .
+Note that in neutral mode the translation was shorter than the reference and for i r = 1.0 , corresponding to oracle mode , the system tries to match the length of the translation .
+In Table 13 we consider an example of varying the length of a translation in Japanese .
+Going from shorter to longer translations : the system first translates the main verb / imperative ( i r = 0.3 ) , then it translates the " together " ( i r = 0.5 ) and keeps refining the verb ending till i r = 1.0 ; after that length is increased by introducing explicitly personal pronouns or the " why ? " that would be optional in Japanese .
+As a side effect , length interventions are generating also a broader grammatical variety of translations .
+In Table 14 we have some exemplars for monotonicity control .
+In the first German example the reference is less monotonic because the subject comes at the end and the information about the 58 - years old is first ; the more monotonic translation corrects the order .
+In the first Japanese example to increase monotonicity the model adds the personal pronoun " I " that is missing from the reference , shifting the alignment .
+In the second Japanese example we observed that setting the target ? for ?( s ) small produces a bit more variety of translations ( an advantage of a continuous representation of monotonicity ) where the model tries to get a translation where the time information about " a few years " comes towards the end of the sentence .
+In Table 15 we show how the politeness Oracle helps in German and Japanese to get a translation more close to the reference since the English input sentences admit different translations in the target languages , e.g. regarding choices for the informal / formal pronouns for German , or verb endings and honorifics for Japanese .
+A.14 Model implementation
+In Listing 2 we give an indication of how the model can be implemented in Flax .
+Note that for simplicity we assume that the encoder and the two parts of the decoder are already implemented , e.g. by taking them from the WMT example in the Flax library .
+To make the code listing clear and short we assume the each row of the batch contains a single sentence , i.e. that the model is not implemented to work with sentence packing .
+In the case of sentence packing a few modifications are necessary but are easy to implement using either jax.lax.scan or jnp.einsum , depending on how one keeps track of the sentence id .
+together why do n't sit down ?
+i r = 1.00 ??
+together not sitting down ?
+i r = 1.10 ?? with me together when sitting down how 's it ?
+i r = 1.20 ??
+why with me together not sitting down ?
+i r = 1.30 ??
+why with me together not sitting down ?
+i r = 1.50 ? ??
+why you with me together not sitting down ?
+Length control : realized shifts by Add model .
+Length control : realized shifts by Tag model with confidence bands due to bucketing .
+Length control : BLEU on WMT as a function of ir .
+Length control : BLEU comparison to the rewriter postprocessor for German ( WMT ) and Japanese ( JESC ) .
+Length control : out-of-distribution comparison for German .
+Length control : comparison on test / dev set for Japanese . , M0.1 , Pc ) Tag inv ( L , M , Pd ) ( h ) Increasing monotonicity : JESC .
+Figure 2 : 2 Figure 2 : Control Evaluation .
+Figure 3 : 3 Figure 3 : Comparison of the translation monotonicity to references for translation into German ( WMT ) and Japanese ( JESC ) .
+Figure 4 : 4 Figure 4 : Fine-tuning length control .
+Figure 3 : 3 Figure 3 : How we can vary monotonicity EN ? DE for different interventions .
+The model using tagging is Tag( L , M , P d ) while the continuous model is Add( L , M 0.1 , P c ) .
+Darker shades of the same color represent larger values of the intervention ?.
+Figure 4 : 4 Figure 4 : Comparing continuous and tagging for EN ?
+JA monotonicity in oracle mode .
+The model using tagging is Tag inv ( L , M , P d ) while the continuous model is Add( L , M 0.1 , P c ) .
+input why do n't you come sit down with me ?
+reference ??
+over here come together not sitting down ?
+i r = 0.30 ? sit down !
+i r = 0.50 ? ? together sit down !
+i r = 0.70 ? together let 's sit down i r = 0.90 ? ??
+Table 2 : 2 BLEU scores on JESCEN - JA .
+tures indicated between brackets ; the subscript in Add 2 means that the intervention was applied only on the last two decoder layers .
+Models using tags are denoted by Tag. - 15.14
+Tag inv ( L , M , P d ) Neutral 15.02 Tag inv ( L , M , P d ) Oracle 17.52 Add ( L , M 0.1 , P c , ) Neutral 14.64 Add( L , M 0.1 , P c ) Oracle 18.04 Add 2 ( L , M 0.1 , P c ) Neutral 14.92 Add 2 ( L , M 0.1 , P c ) Oracle 17.60 EN ? DE ( Table1 ) :
+The performance of the additive model in the Neutral mode is very close to or even better than the Baseline and the Neutral variants of the tagging models .
+Thus , training a control-enabled model does not hurt translation performance even in the case where the attribute values are left unspecified .
+Table 3 : 3 , Feely et al. ( 2019 ) ) , we measure BLEU improvements on different splits of the OpenSubtitles test set ( Ta - BLEU scores of a WMT - trained model on OS by politeness split .
+Sizes : all : 4566 , unknown : 3617 , polite : 276 , informal : 673 .
+Model Mode all unknown polite informal Base - 19.32 20.75 20.59 13.31 Tag ( L , M , P d ) Oracle 21.99 22.05 24.94 20.47 Tag ( L , P d , M ) Oracle 21.17 21.14 23.66 20.21
+Tag mask ( L , M , P d ) Neutral 19.66 21.05 21.01 13.78
+Tag mask ( L , M , P d ) Oracle 21.50 21.67 23.29 20.09 Tag inv ( L , M , P d ) Neutral 19.41 20.77 21.21 13.47 Tag inv ( L , M , P d ) Oracle 21.38 21.42 23.35 20.33 Add ( L , M 0.1 , P c ) Neutral 19.99 21.82 22.41 12.33 Add ( L , M 0.1 , P c ) Oracle 21.55 21.95 24.13 18.93 Add ( L , M 0.1 , P c ) L- Fin 21.97 22.33 24.73 19.39 Add 2 ( L , M 0.1 , P c ) Neutral 20.33 21.98 23.72 12.83 Add 2 ( L , M 0.1 , P c ) Oracle 21.70 22.05 24.26 19.32 Add 2 ( L , M 0.1 , P c ) L- Fin 22.32 22.6 24.55 20.15
+Table 4 : 4 BLEU scores on JESC by politeness split .
+Model Method unknown informal polite formal Base - 14.60 14.92 15.61 21.95 Tag inv ( L , M , P d ) Neutral 14.51 15.66 15.06 27.87 Tag inv ( L , M , P d ) Oracle 14.42 19.63 20.03 52.85 Add ( L , M 0.1 , P c ) Neutral 15.16 14.25 17.24 38.31 Add ( L , M 0.1 , P c ) Oracle 15.60 19.32 20.28 53.28 Add 2 ( L , M 0.1 , P c ) Neutral 16.11 15.42 15.73 20.44 Add 2 ( L , M 0.1 , P c ) Oracle 16.31 17.79 18.97 45.15
+Sizes : unknown : 1176 , informal : 308 , polite : 508 , formal : 8 .
+Table 5 : 5 Controlling politeness and monotonicity in German translations .
+Table 5 : 5 . Cardinalities of datasets .
+Dataset Split Cardinality WMT17 dev 2999 WMT17 test 3004 OpenSubtitles dev 4572 OpenSubtitles test 4566 JESC dev 2000 JESC test 2000
+Table 6 : 6 BLEU scores on WMT EN - DE for the different permutations of tags .
+* difference is statistically significant with pval < 10 ?10 . Mode BLEU Tag( L , M , P d ) Oracle 27.32 *
+Tag ( L , P d , M ) Oracle 26.58 *
+Tag ( M , L , P d ) Oracle 26.62 Tag ( M , P d , L ) Oracle 27.06 Tag( P d , L , M ) Oracle 27.13 Tag( P d , M , L ) Oracle 27.28 Model Mode all unknown polite informal Tag ( L , M , P d ) Oracle 21.99 22.05 24.94 20.47 Tag ( L , P d , M ) Oracle 21.17 21.14 23.66 20.21 Tag ( M , L , P d ) Oracle 21.50 21.41 23.78 20.69 Tag ( M , P d , L ) Oracle 21.60 21.65 24.06 20.34 Tag ( P d , L , M ) Oracle 21.73 21.81 23.35 20.67 Tag ( P d , M , L ) Oracle 21.81 21.80 24.59 20.59
+Table 7 : BLEU scores of a WMT - trained model on OpenSubtitles by politeness split for all permutations of tags .
+Sizes : all : 4566 , unknown : 3617 , polite : 276 , informal : 673 .
+Table 8 : 8 Relative frequency of politeness annotation for German .
+Model polite informal Base 62.7 8.5 Tag ( L , M , P d ) 87.1 82.8 Tag ( L , P d , M ) 85.9 79.0 Tag ( M , L , P d ) 85.4 78.1 Tag ( M , P d , L ) 87.2 81.0 Tag ( P d , L , M ) 86.6 81.7 Tag ( P d , M , L ) 87.7 81.8
+Tag mask ( L , M , P d ) 84.4 79.5 Tag inv ( L , M , P d ) 85.7 79.9 Add( L , M 0.1 , P c ) 77.8 70.2 Add 2 ( L , M 0.1 , P c ) 77.9 70.8
+Table 9 : 9 Classification accuracy ( % ) on rewriting into polite and informal for the OpenSubtitles test set .
+Formality Level Multipliers unknown 0.5 informal 1.0 polite 1.5 formal 2.0
+Table 10 : 10 Multipliers for Japanese politeness .
+Table 11 : 11 BLEU scores for fine-tuning .
+Model Mode Dataset BLEU Neutral WMT 26.78 Oracle WMT 26.55 15 % Neutral OS - informal Oracle OS - informal 13.32 17.55 Neutral OS - polite 22.17 Reset Oracle OS -polite Neutral WMT 23.11 26.74 Oracle WMT 26.53 35 % Neutral OS - informal Oracle OS - informal 13.37 18.24 Neutral OS - polite 22.35 Oracle OS - polite 23.12 Neutral WMT 26.66 Oracle WMT 26.87 20 % Neutral OS - informal Oracle OS - informal 12.96 18.04 Neutral OS - polite 22.81 Fine Tune Oracle OS -polite Neutral WMT 23.24 26.73 Oracle WMT 26.90 35 % Neutral OS - informal Oracle OS - informal 13.30 19.23 Neutral OS - polite 22.96 Oracle OS - polite 23.79
+Table 13 : 13
+Modifying length of a Japanese translation .
+input
+It was a first for the 58 - year-old .
+reference F?r den 58 - J?hrigen war es eine Premiere .
+make more monotone
+Es war ein erster f?r den 58 - J?hrigen .
+match reference monotonicity F?r den 58 - J? hrigen war dies eine erste .
+input i've already met four people reference ?4 ?
+already 4 people met make more monotone ?4 ? ?
+I already 4 people met match reference monotonicity ?4 ?
+already 4 people meeting input this thing was discovered just a few years reference ? ? this only a number years before discovered conj .
+particle make more monotone ? 2~3 ?
+discovered subj .
+particle only 2~3 years before make more monotone ? ? this discovery already number of years prep .
+since make more monotone ? ? this discovered subj .
+particle a little number years prep .
+since match reference monotonicity ? ? this already a number years before discovered conj .
+particle Table 14 : Increasing monotonicity .
+Table 15 : 15
+Matching politeness of references .
+Reported as ( max-min ) / mean of BLEU scores .
+Out of the plotted range the model and the rewriter become equivalent .
+Some tags lead to the same shift , so we get < 9 points .5
+The dataset was also considered by Sennrich et al . ( 2016 ) .
+ir ? [ 0.9 , 1.1 ] tuned on the dev set .
+https://github.com/google/flax/tree/master/examples/wmt

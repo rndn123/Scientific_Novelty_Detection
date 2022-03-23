@@ -1,0 +1,197 @@
+title
+Balancing Training for Multilingual Neural Machine Translation
+abstract
+When training multilingual machine translation ( MT ) models that can translate to / from multiple languages , we are faced with imbalanced training sets : some languages have much more training data than others .
+Standard practice is to up-sample less resourced languages to increase representation , and the degree of up-sampling has a large effect on the overall performance .
+In this paper , we propose a method that instead automatically learns how to weight training data through a data scorer that is optimized to maximize performance on all test languages .
+Experiments on two sets of languages under both one- to-many and manyto- one MT settings show our method not only consistently outperforms heuristic baselines in terms of average performance , but also offers flexible control over the performance of which languages are optimized .
+1
+Introduction Multilingual models are trained to process different languages in a single model , and have been applied to a wide variety of NLP tasks such as text classification ( Klementiev et al. , 2012 ; Chen et al. , 2018a ) , syntactic analysis ( Plank et al. , 2016 ; Ammar et al. , 2016 ) , named-entity recognition ( Xie et al. , 2018 ; Wu and Dredze , 2019 ) , and machine translation ( MT ) ( Dong et al. , 2015 ; Johnson et al. , 2016 ) .
+These models have two particularly concrete advantages over their monolingual counterparts .
+First , deploying a single multilingual model is much more resource efficient than deploying one model for each language under consideration ( Arivazhagan et al. , 2019 ; Aharoni et al. , 2019 ) .
+Second , multilingual training makes it possible to transfer knowledge from high- resource languages ( HRLs ) to improve performance on lowresource languages ( LRLs ) ( Zoph et al. , 2016 ; Nguyen and Chiang , 2018 ; Neubig and Hu , 2018 ; Wang and Neubig , 2019 ; Aharoni et al. , 2019 ) .
+A common problem with multilingual training is that the data from different languages are both heterogeneous ( different languages may exhibit very different properties ) and imbalanced ( there may be wildly varying amounts of training data for each language ) .
+Thus , while LRLs will often benefit from transfer from other languages , for languages where sufficient monolingual data exists , performance will often decrease due to interference from the heterogeneous nature of the data .
+This is especially the case for modestly - sized models that are conducive to efficient deployment ( Arivazhagan et al. , 2019 ; Conneau et al. , 2019 ) .
+To balance the performance on different languages , the standard practice is to heuristically adjust the distribution of data used in training , specifically by over-sampling the training data from LRLs ( Johnson et al. , 2016 ; Neubig and Hu , 2018 ; Arivazhagan et al. , 2019 ; Conneau et al. , 2019 ) .
+For example , Arivazhagan et al. ( 2019 ) sample training data from different languages based on the dataset size scaled by a heuristically tuned temperature term .
+However , such heuristics are far from perfect .
+First , Arivazhagan et al. ( 2019 ) find that the exact value of this temperature term significantly affects results , and we further show in experiments that the ideal temperature varies significantly from one experimental setting to another .
+Second , this heuristic ignores factors other than data size that affect the interaction between different languages , despite the fact that language similarity has been empirically proven important in examinations of cross-lingual transfer learning ( Wang and Neubig , 2019 ; Lin et al. , 2019 ) .
+In this paper , we ask the question : " is it possible to learn an optimal strategy to automatically balance the usage of data in multilingual model training ? "
+To this effect , we propose a method that learns a language scorer that can be used throughout training to improve the model performance on all languages .
+Our method is based on the recently proposed approach of Differentiable Data Selection ( Wang et al. , 2019b , DDS ) , a general machine learning method for optimizing the weighting of different training examples to improve a pre-determined objective .
+In this work , we take this objective to be the average loss from different languages , and directly optimize the weights of training data from each language to maximize this objective on a multilingual development set .
+This formulation has no heuristic temperatures , and enables the language scorer to consider the interaction between languages .
+Based on this formulation , we propose an algorithm that improves the ability of DDS to optimize multiple model objectives , which we name Multi-DDS .
+This is particularly useful in the case where we want to optimize performance on multiple languages simultaneously .
+Specifically , MultiDDS ( 1 ) has a more flexible scorer parameterization , ( 2 ) is memory efficient when training on multiple languages , and ( 3 ) stabilizes the reward signal so that it improves all objectives simultaneously instead of being overwhelmed by a single objective .
+While the proposed methods are model- agnostic and thus potentially applicable to a wide variety of tasks , we specifically test them on the problem of training multilingual NMT systems that can translate many languages in a single model .
+We perform experiments on two sets of languages ( one with more similarity between the languages , one with less ) and two translation directions ( one - to - many and many - to - one where the " one " is English ) .
+Results show that MultiDDS consistently outperforms various baselines in all settings .
+Moreover , we demonstrate MultiDDS provides a flexible framework that allows the user to define a variety of optimization objectives for multilingual models .
+Multilingual Training Preliminaries Monolingual Training Objective
+A standard NMT model is trained to translate from a single source language S to a target language T .
+The parameters of the model are generally trained by preparing a training dataset D train , and defining the empirical distribution of sentence pairs x , y sampled from D train as P .
+We then minimize the empirical risk J ( ? , P ) , which is the expected value of the loss function ( x , y ; ? ) over this distribution : train is training data for language pair S i - T i .
+From these datasets , we can define P i , the distribution of sentences from S i - T i , and consequently also define a risk J ( ? , P i ) for each language following the monolingual objective in Eq. 1 . ? * = argmin ? J ( ? , D train ) where J ( ? , D train ) = E x,y?P ( X , Y ) [ ( x , y ; ? ) ]
+( 1 However , the question now becomes : " how do we define an overall training objective given these multiple separate datasets ? "
+Several different methods to do so have been proposed in the past .
+To discuss all of these different methods in a unified framework , we further define a distribution P D over the n sets of training data , and define our overall multilingual training objective as J mult ( ? , P D , D train ) = E i?P D ( i ; ? ) J ( ? , D i train ) . ( 2 ) In practice , this overall objective can be approximated by selecting a language according to ? ? P D ( i ) , then calculating gradients with respect to ? on a batch of data from D ? train .
+Evaluation Methods
+Another important question is how to evaluate the performance of such multilingual models .
+During training , it is common to use a separate development set for each language D dev = D 1 dev , D 2 dev , ... , D n dev to select the best model .
+Given that the objective of multilingual training is generally to optimize the performance on all languages simultaneously ( Arivazhagan et al. , 2019 ; Conneau et al. , 2019 ) , we can formalize this objective as minimizing the average of dev risks 2 : J dev ( ? , D dev ) = 1 n n i=1 J ( ? , D i dev ) .
+( 3 ) Relation to Heuristic Strategies
+This formulation generalizes a variety of existing techniques that define P D ( i ) using a heuristic strategy , and keep it fixed throughout training .
+Uniform :
+The simplest strategy sets P D ( i ) to a uniform distribution , sampling minibatches from each language with equal frequency ( Johnson et al. , 2016 ) .
+Proportional :
+It is also common to sample data in portions equivalent to the size of the corresponding corpora in each language ( Johnson et al. , 2016 ; Neubig and Hu , 2018 ) .
+Temperature - based : Finally , because both of the strategies above are extreme ( proportional underweighting LRLs , and uniform causing overfitting by re-sampling sentences from limited - size LRL datasets ) , it is common to sample according to data size exponentiated by a temperature term ?
+( Arivazhagan et al. , 2019 ; Conneau et al. , 2019 ) : P D ( i ) = q 1 / ?
+i n k=1 q 1 / ?
+k where q i = | D i train | n k=1 | D k train | . ( 4 ) When ? = 1 or ? = ? this is equivalent to proportional or uniform sampling respectively , and when a number in the middle is chosen it becomes possible to balance between the two strategies .
+As noted in the introduction , these heuristic strategies have several drawbacks regarding sensitivity to the ?
+hyperparameter , and lack of consideration of similarity between the languages .
+In the following sections we will propose methods to resolve these issues .
+Differentiable Data Selection
+Now we turn to the question : is there a better way to optimize P D ( i ) so that we can achieve our final objective of performing well on a representative development set over all languages , i.e. minimizing J dev ( ? , D dev ) .
+In order to do so , we turn to a recently proposed method of Differentiable Data Selection ( Wang et al. , 2019b , DDS ) , a general purpose machine learning method that allows for weighting of training data to improve performance on a separate set of held - out data .
+Specifically , DDS uses a technique called bilevel optimization ( Colson et al. , 2007 ) , that learns a second set of parameters ? that modify the training objective that we use to learn ? , so as to maximize the final objective J dev ( ? , D dev ) .
+Specifically , it proposes to learn a data scorer P ( x , y ; ? ) , parameterized by ? , such that training using data sampled from the scorer optimizes the model performance on the dev set .
+To take the example of learning an NMT system to translate a single language pair i using DDS , the general objective in Eq. 1 could be rewritten as ? * = argmin ? J ( ? * ( ? ) , D i dev ) where ? * ( ? ) = argmin ? E x,y?P ( x,y ; ? ) [ ( x , y ; ? ) ] . ( 5 ) DDS optimizes ? and ? iteratively throughout the training process .
+Given a fixed ? , the update rule for ? is simply ?
+t ? ? t?1 ? ? ? E x,y?P ( x,y ; ? ) [ ( x , y ; ? ) ]
+To update the data scorer , DDS uses reinforcement learning with a reward function that approximates the effect of the training data on the model 's dev performance R( x , y ; ? t ) ? ?J (? t , D i dev ) ? ? ? ( x , y ; ? t?1 ) ? cos ?J (? t , D i dev ) , ? ? ( x , y ; ? t?1 ) ( 6 ) where cos ( ? ) is the cosine similarity of two vectors .
+This reward can be derived by directly differentiating J ( ?( ? ) , D i dev ) with respect to ? , but intuitively , it indicates that the data scorer should be updated to up-weigh the data points that have similar gradient with the dev data .
+According to the REINFORCE algorithm ( Williams , 1992 ) , the update rule for the data scorer then becomes ?
+t+ 1 ? ? t + R( x , y ; ? t ) ? ? ? logP ( x , y ; ? ) ( 7 )
+DDS for Multilingual Training
+In this section , we use the previously described DDS method to derive a new framework that , instead of relying on fixed heuristics , adaptively optimizes usage of multilingual data for the best model performance on multiple languages .
+We illustrate the overall workflow in Fig. 1 . First , we note two desiderata for our multilingual training method : 1 ) generality : the method should be flexible enough so that it can be utilized universally for different multilingual tasks and settings ( such as different translation directions for NMT ) .
+2 ) scalablity : the method should be stable and efficient if one wishes to scale up the number of languages that a multilingual model supports .
+Based on these two properties , we introduce Multi- DDS , an extension of the DDS method tailored for multilingual training .
+Method MultiDDS directly parameterizes the standard dataset sampling distribution for multilingual training with ? : P D ( i ; ? ) = e ? i / n k=1 e ? k ( 8 ) and optimizes ? to minimize the dev loss .
+Notably , unlike standard DDS we make the design decision to weight training datasets rather than score each training example x , y directly , as it is more efficient and also likely easier to learn .
+We can thus rewrite the objective in Eq. 2 to incorporate both ? and ? as : ? * = argmin ?
+J dev ( ? * ( ? ) , D dev ) where ? * = argmin ? E i?P D ( i ; ? ) J ( ? , D i train ) ( 9 ) In other words , while the general DDS framework evaluates the model performance on a single dev set and optimizes the weighting of each training example , our multilingual training objective evaluates the performance over an aggregation of n dev sets and optimizes the weighting of n training sets .
+The reward signal for updating ?
+t is R ( i ; ?t ) ? cos ? ( Jdev ( ? t , Ddev ) ) , ? ? J ( ?t? 1 , D i train ) = cos ?
+1 n n k=1 J ( ?t , D k dev ) , ? ? J ( ?t? 1 , D i train ) , ( 10 ) where J dev ( ? ) defines the combination of n dev sets , and we simply plug in its definition from Eq.
+3 . Intuitively , Eq. 10 implies that we should favor the training language i if its gradient aligns with the gradient of the aggregated dev risk of all languages .
+Implementing the Scorer Update
+The pseudocode for the training algorithm using MultiDDS can be found in line 25 .
+Notably , we do not update the data scorer ? on every training step , because it is too computationally expensive for NMT training ( Wang et al. , 2019 b ) .
+Instead , after training the multilingual model ? for a certain number of steps , we update the scorer for all languages .
+This implementation is not only efficient , but also allows us to x Scorer Model re-estimate more frequently the effect of languages that have low probability of being sampled .
+? ?
+J( D i train ; ? t ) ? ?
+J dev ( ? t+ 1 , D dev ) ?
+t D 1 train D n train ?
+D 1 dev D n dev ? ? t P D ( i ; ? t )
+In order to do so , it is necessary to calculate the effect of each training language on the current model , namely R( i ; ? t ) .
+We estimate this value by sampling a batch of data from each D i train to get the training gradient for ?
+t , and use this to calculate the reward for this language .
+This process is detailed in line 11 of the line 25 .
+Unlike the algorithm in DDS which requires storing n model gradients , 3 this approximation does not require extra memory even if n is large , which is important given recent efforts to scale multilingual training to 100 + ( Arivazhagan et al. , 2019 ; Aharoni et al. , 2019 ) or even 1000 + languages ( ?stling and Tiedemann , 2017 ; Malaviya et al. , 2017 ) .
+Stabilized Multi-objective Training
+In our initial attempts to scale DDS to highly multilingual training , we found that one challenge was that the reward for updating the scorer became unstable .
+This is because the gradient of a multilingual dev set is less consistent and of higher variance than that of a monolingual dev set , which influences the fidelity of the data scorer reward .
+4 Algorithm 1 : Training with MultiDDS Input : D train ; M : amount of data to train the multilingual model before updating ? ;
+Output : The converged multilingual model ? * Initialize P D ( i , ? ) to be proportional to dataset size 1 P D ( i , ? ) ?
+| D i train | n j=1 | D j train | 2 while not converged do Load training data with ?
+3 X , Y ? ? 4 while | X , Y | < M do 5 ? ? P D ( i , ? t ) 6 ( x , y ) ? D ? train 7 X , Y ? X , Y ? x , d ? ? n i=1 R ( i ; ? ) ? ? ? log ( P D ( i ; ? ) ) 24 ? ? GradientUpdate ( ? , d ? ) 25 end
+Thus , instead of using the gradient alignment between the training data and the aggregated loss of n dev sets as the reward , we propose a second approach to first calculate the gradient alignment reward between the data and each of the n dev sets , then take the average of these as the final reward .
+{g 1 dev , ... , g n dev } are independent .
+Then the sum of the gradients from the n languages has a variance of var ( n k=1 g k dev ) = n?.
+This can be expressed mathematically as follows : R ( i ; ?t ) ? cos ? ? 1 n n k=1 J ( ?t , D k dev ) , ? ? J ( ?t? 1 , D i train ) ?
+1 n n k=1 cos ? ? J ( ?t , D k dev ) , ? ? J ( ?t? 1 , D i train ) ( 11 )
+To implement this , we can simply replace the standard reward calculation at Line 11 of line 25 to use the stable reward .
+We name this setting MultiDDS -S .
+In ? 6.6 we show that this method has less variance than the reward in Eq. 10 .
+6 Experimental Evaluation
+Data and Settings
+We use the 58 - languages - to - English parallel data from Qi et al . ( 2018 ) .
+A multilingual NMT model is trained for each of the two sets of language pairs with different level of language diversity : Related : 4 LRLs ( Azerbaijani : aze , Belarusian : bel , Glacian : glg , Slovak : slk ) and a related HRL for each LRL ( Turkish : tur , Russian : rus , Portuguese : por , Czech : ces ) Diverse : 8 languages with varying amounts of data , picked without consideration for relatedness ( Bosnian : bos , Marathi : mar , Hindi : hin , Macedonian : mkd , Greek : ell , Bulgarian : bul , French : fra , Korean : kor ) Statistics of the datasets are in ? A.3 .
+For each set of languages , we test two varieties of translation : 1 ) many-to-one ( M2O ) : translating 8 languages to English ; 2 ) one-to-many ( O2M ) : translating English into 8 different languages .
+A target language tag is added to the source sentences for the O2M setting ( Johnson et al. , 2016 ) .
+Experiment Setup
+All translation models use standard transformer models ( Vaswani et al. , 2017 ) as implemented in fairseq with 6 layers and 4 attention heads .
+All models are trained for 40 epochs .
+We preprocess the data using sentencpiece ( Kudo and Richardson , 2018 ) with a vocabulary size of 8 K for each language .
+The complete set of hyperparameters can be found in ? A.2 .
+The model performance is evaluated with BLEU score ( Papineni et al. , 2002 ) , using sacreBLEU ( Post , 2018 ) .
+Baselines
+We compare with the three standard heuristic methods explained in ?
+2 : 1 ) Uniform ( ? = ? ) : datasets are sampled uniformly , so that LRLs are over-sampled to match the size of the HRLs ; 2 ) Temperature : scales the proportional distribution by ? = 5 ( following Arivazhagan et al. ( 2019 ) ) to slightly over-sample the LRLs ; 3 ) Proportional ( ? = 1 ) : datasets are sampled proportional to their size , so that there is no over-sampling of the LRLs .
+Ours we run MultiDDS with either the standard reward ( MultiDDS ) , or the stabilized reward proposed in Eq. 11 ( MultiDDS - S ) .
+The scorer for Mul-tiDDS simply maps the ID of each dataset to its corresponding probability ( See Eq. 8 .
+The scorer has N parameters for a dataset with N languages . )
+Main Results
+We first show the average BLEU score over all languages for each translation setting in Tab .
+2 . First , comparing the baselines , we can see that there is no consistently strong strategy for setting the sampling ratio , with proportional sampling being best in the M2O setting , but worst in the O2M setting .
+Next , we can see that MultiDDS outperforms the best baseline in three of the four settings and is comparable to proportional sampling in the last M2O - Diverse setting .
+With the stabilized reward , MultiDDS -S consistently delivers better overall performance than the best baseline , and outperforms MultiDDS in three settings .
+From these results , we can conclude that MultiDDS -S provides a stable strategy to train multilingual systems over a variety of settings .
+Next , we look closer at the BLEU score of each language pair for MultiDDS -S and the best baseline .
+The results for all translation settings are in Tab .
+1 . In general , MultiDDS -S outperforms the baseline on more languages .
+In the best case , for the O2M - Related setting , MultiDDS -S brings significant gains for five of the eight languages , without hurting the remaining three .
+The gains for the Related group are larger than for the Diverse group , likely because MultiDDS can take better advantage of language similarities than the baseline methods .
+It is worth noting that MultiDDS does not impose large training overhead .
+For example , for our M2O system , the standard method needs around 19 hours and MultiDDS needs around 20 hours for convergence .
+The change in training time is not siginificant because MultiDDS only optimizes a simple distribution over the training datasets .
+Prioritizing what to Optimize Prior works on multilingual models generally focus on improving the average performance of the model on all supported languages ( Arivazhagan et al. , 2019 ; Conneau et al. , 2019 ) .
+The formulation of MultiDDS reflects this objective by defining the aggregation of n dev sets using Eq. 3 , which is simply the average of dev risks .
+However , average performance might not be the most desirable objective under all practical usage settings .
+For example , it may be desirable to create a more egalitarian system that performs well on all languages , or a more specialized system that does particularly well on a subset of languages .
+In this section , we examine the possibility of using MultiDDS to control the priorities of the multilingual model by defining different dev set aggregation methods that reflect these priorities .
+To do so , we first train the model for 10 epochs using regular MultiDDS , then switch to a different dev set aggregation method .
+Specifically , we compare MultiDDS with three different priorities : Regular : this is the standard MultiDDS that optimizes all languages throughout training using the average dev risk aggregation in Eq. 3 Low : a more egalitarian system that optimizes the average of the four languages with the worst dev perplexity , so that MultiDDS can focus on optimizing the low-performing languages High : a more specialized system that optimizes the four languages with the best dev perplexity , for MultiDDS to focus on optimizing the highperforming languages
+We performed experiments with these aggregation methods on the Diverse group , mainly because there is more performance trade - off among these languages .
+First , in Tab .
+3 we show the average BLEU over all languages , and find that Mul-tiDDS with different optimization priorities still maintains competitive average performance compared to the baseline .
+More interestingly , in Fig. 2 , we plot the BLEU score difference of High and Low compared to Regular for all 8 languages .
+The languages are ordered on the x-axis from left to right in decreasing perplexity .
+Low generally performs better on the low-performing languages on the left , while High generally achieves the best performance on the high- performing languages on the right , with results most consistent in the O2M setting .
+This indicates that MultiDDS is able to prioritize different predefined objectives .
+It is also worth noting that low-performing languages are not always low-resource languages .
+For example , Korean ( kor ) has the largest amount of training data , but its BLEU score is among the lowest .
+This is because it is typologically very different from English and the other training languages .
+Fig. 2 shows that Low is still able to focus on improving kor , which aligns with the predefined objective .
+This fact is not considered in baseline methods that only consider data size when sampling from the training datasets .
+Learned Language Distributions In Fig. 3 with the same distribution for both one- to-many and many - to - one settings , MultiDDS learns to upsample the LRLs more in the one- to - many setting , likely due to the increased importance of learning language -specific decoders in this setting .
+For the Diverse group , MultiDDS learns to decrease the usage of Korean ( kor ) the most , probably because it is very different from other languages in the group .
+Effect of Stablized Rewards Next , we study the effect of the stablized reward proposed in ?
+2 . In Fig. 4 , we plot the regular reward ( used by MultiDDS ) and the stable reward ( used by MultiDDS - S ) throughout training .
+For all settings , the reward in MultiDDS and MultiDDS -S follows the similar trend , while the stable reward used in MultiDDS -S has consistently less variance .
+MultiDDS -S also results in smaller variance in the final model performance .
+We run Multi-DDS and MultiDDS -S with 4 different random seeds , and record the mean and variance of the average BLEU score .
+Tab .
+4 shows results for the Diverse group , which indicate that the model performance achieved using MultiDDS -S has lower variance and a higher mean than MultiDDS .
+Additionally , we compare the learned language distribution of MultiDDS -S and MultiDDS in Fig. 5 .
+The learned language distribution in both plots fluctuates similarly , but MultiDDS has more drastic changes than MultiDDS -S .
+This is also likely due to the reward of MultiDDS - S having less variance than that of MultiDDS .
+Related Work
+Our work is related to the multilingual training methods in general .
+Multilingual training has a rich history ( Schultz and Waibel , 1998 ; Mimno et al. , 2009 ; Shi et al. , 2010 ; T?ckstr ? m et al. , 2013 ) , but has become particularly prominent in recent years due the ability of neural networks to easily perform multi-task learning ( Dong et al. , 2015 ; Plank et al. , 2016 ; Johnson et al. , 2016 ) .
+As stated previously , recent results have demonstrated the importance of balancing HRLs and LRLs during multilingual training ( Arivazhagan et al. , 2019 ; Conneau et al. , 2019 ) , which is largely done with heuristic sampling using a temperature term ; MultiDDS provides a more effective and less heuristic method .
+Wang and Neubig ( 2019 ) ; Lin et al. ( 2019 ) choose languages from multilingual data to improve the performance on a particular language , while our work instead aims to train a single model that handles translation between many languages .
+( Zaremoodi et al. , 2018 ; Wang et al. , , 2019a propose improvements to the model architecture to improve multilingual performance , while MultiDDS is a model- agnostic and optimizes multilingual data usage .
+Our work is also related to machine learning methods that balance multitask learning ( Chen et al. , 2018 b ; Kendall et al. , 2018 ) .
+For example , Kendall et al. ( 2018 ) proposes to weigh the training loss from a multitask model based on the uncertainty of each task .
+Our method focuses on optimizing the multilingual data usage , and is both somewhat orthogonal to and less heuristic than such loss weighting methods .
+Finally , our work is related to meta-learning , which is used in hyperpa-rameter optimization ( Baydin et al. , 2018 ) , model initialization for fast adaptation ( Finn et al. , 2017 ) , and data weighting ( Ren et al. , 2018 ) .
+Notably , Gu et al. ( 2018 ) apply meta-learning to learn an NMT model initialization for a set of languages , so that it can be quickly fine -tuned for any language .
+This is different in motivation from our method because it requires an adapted model for each of the language , while our method aims to optimize a single model to support all languages .
+To our knowledge , our work is the first to apply meta-learning to optimize data usage for multilingual objectives .
+Conclusion
+In this paper , we propose MultiDDS , an algorithm that learns a language scorer to optimize multilingual data usage to achieve good performance on many different languages .
+We extend and improve over previous work on DDS ( Wang et al. , 2019 b ) , with a more efficient algorithmic instantiation tailored for the multilingual training problem and a stable reward to optimize multiple objectives .
+Mul-tiDDS not only outperforms prior methods in terms of overall performance on all languages , but also provides a flexible framework to prioritize different multilingual objectives .
+Notably , MultiDDS is not limited to NMT , and future work may consider applications to other multilingual tasks .
+In addition , there are other conceivable multilingual optimization objectives than those we explored in ? 6.4 . Figure 1 : 1 Figure 1 : An illustration of the MultiDDS algorithm .
+Solid lines represent updates for ? , and dashed lines represent updates for ?.
+The scorer defines the distribution over n training languages , from which training data is sampled to train the model .
+The scorer is updated to favor the datasets with similar gradients as the gradient of the aggregated dev sets .

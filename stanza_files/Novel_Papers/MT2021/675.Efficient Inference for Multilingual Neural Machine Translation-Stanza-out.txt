@@ -1,0 +1,369 @@
+title
+Efficient Inference for Multilingual Neural Machine Translation
+abstract
+Multilingual NMT has become an attractive solution for MT deployment in production .
+But to match bilingual quality , it comes at the cost of larger and slower models .
+In this work , we consider several ways to make multilingual NMT faster at inference without degrading its quality .
+We experiment with several " light decoder " architectures in two 20 language multi-parallel settings : small-scale on TED Talks and large-scale on ParaCrawl .
+Our experiments demonstrate that combining a shallow decoder with vocabulary filtering leads to more than ?2 faster inference with no loss in translation quality .
+We validate our findings with BLEU and chrF ( on 380 language pairs ) , robustness evaluation and human evaluation .
+Introduction Multilingual machine translation ( Johnson et al. , 2017 ; Aharoni et al. , 2019 ; Zhang et al. , 2020 ; Fan et al. , 2020 ; Lyu et al. , 2020 ) has made a lot of progress in the last years .
+It is attractive because it allows handling multiple language directions within a single model , thus significantly reducing training and maintenance costs .
+However , to preserve good performance across all the language pairs , both the vocabulary size and model size have to be increased compared to bilingual NMT , which hurts inference speed .
+For example , the recently released M2M - 100 ( Fan et al. , 2020 ) has 15B parameters and needs multiple GPUs for inference .
+The problem of inference speed has been well studied in bilingual settings ( Kasai et al. , 2021a , b ; Chen et al. , 2018 ; Hsu et al. , 2020 ; Kim et al. , 2019 ; Li et al. , 2020 ; Shi and Knight , 2017 ) .
+One line of work consists in using lighter decoder architectures ( e.g. , shallow decoder : Kasai et al. , 2021a , RNN decoder : Chen et al. , 2018 Kim et al. , 2019 ; Lei , 2021 ) .
+These works demonstrate that it is possible to significantly speed up inference with almost no loss in translation quality as measured by BLEU .
+Figure 1 compares the inference time spent in each NMT component by bilingual and multilingual models of the same architecture but with different vocabulary sizes .
+The decoder is also the bottleneck in the multilingual model which suggests that we can expect similar speed gains with a lighter decoder .
+It also indicates that some speed gain could be obtained by reducing vocabulary size ( which impacts both beam search and softmax ) .
+However , it is not so obvious that lighter decoder architectures would preserve translation quality in multilingual settings , where the decoder may need more capacity to deal with multiple languages .
+Therefore , the goal of this work is to benchmark different architectures in terms of inference speed / translation quality trade - off and to identify the best combination for multilingual NMT .
+The contributions of this paper are : ?
+A benchmark of two popular " light decoder " NMT architectures ( deep encoder / shallow decoder , Kasai et al. , 2021a ; and RNN decoder , Chen et al. , 2018 ) on two multilingual datasets ( TED Talks and ParaCrawl ) in both Englishcentric and multi-parallel settings .
+It demonstrates that the previous findings transfer to multilingual models .
+?
+A combination of shallow decoder with perlanguage vocabulary filtering for further speed gains ( achieving a global 2 to 3 ?
+speed - up over the baseline ) with no loss in translation quality .
+?
+Experiments with separate language-specific shallow decoders , which trade memory for higher BLEU performance , with comparable speed as the single - decoder approach . ?
+A validation of these findings through extensive analysis , including robustness evaluation and human evaluation .
+Related work Lightweight decoder .
+As shown in Figure 1 , more than half of the inference time is devoted to the decoder and 30 ?
+more time is spent in the decoder than in the encoder ( due to the autoregressive nature of the models ) .
+This explains why many efficient NMT works focus on lightweight alternatives to the Transformer decoder .
+Kim et al. ( 2019 ) perform an extensive study of various lightweight RNN architectures and obtain a 4 ? gain in inference speed .
+Kasai et al. ( 2021a ) show that , in bilingual settings , Transformer models with a deep encoder and shallow decoder ( e.g. , 10 - 2 ) can achieve similar BLEU performance as baseline 6 - 6 Transformers , while being much faster at inference time ( on a par with current non-autoregressive MT approaches ) .
+Behnke and Heafield ( 2020 ) show that it is possible to prune up to 75 % of the attention heads in a Transformer , thus increasing inference speed by 50 % .
+Similarly , Hsu et al. ( 2020 ) reduce the cost of cross-attention and self-attention by replacing it with an RNN or by pruning attention heads , obtaining up to 35 % higher speed .
+Although most of the above works report speed improvements with similar BLEU scores as Transformer baselines , it is uncertain that the same will hold in multilingual many - to - many settings , where the decoder may need more capacity to deal with multiple languages .
+In particular , Kong et al . ( 2021 ) observe that single shallow decoders degrade oneto-many MT quality and propose to train shallow language -specific decoders or decoders that are specific to a language family or group of languages .
+Modular multilingual NMT .
+Lyu et al . ( 2020 ) ; Escolano et al. ( 2021 ) propose modular MT models with jointly trained language -specific encoders and decoders .
+Such models have higher per-language capacity , increasing their performance without hurting inference speed ( contrary to the common approach of training bigger multilingual models ) .
+They are also more flexible for adding new languages .
+Zhang et al. ( 2021 ) study how languagespecific and language - independent parameters naturally emerge in multilingual NMT .
+Their findings indicate that language - independent parameters can be distributed within the encoder and decoder and benefit final NMT performance .
+3 Inference speed- up methods
+Deep encoder , shallow decoder First , we analyze how deep encoder / shallow decoder models Kasai et al . ( 2021a ) behave in multilingual settings ( many - to- many English -centric and multi-parallel ) .
+Our initial experiments in bilingual settings showed that a 12 - 2 architecture gives the best BLEU / speed trade- off ( also reported by .
+We thus focus on this architecture and compare it with 6 - 6 and 6 - 2 architectures .
+We find that in some cases ( with Transformer Base on TED Talks ) , post-norm 12 - 2 models 1 fail to converge when trained from scratch .
+When this happens , we initialize the 12 - 2 model with a pretrained 6 - 6 model 's parameters , by duplicating its encoder layers and taking its bottom 2 decoder layers .
+See Table 9 in Appendix for a comparison between this approach , training from scratch , and pre-norm Transformers .
+et al. ( 2018 ) first introduced a hybrid model combining a Transformer encoder with an RNN decoder .
+Hybrid Transformer / RNN models are considered a good practical choice in production settings due to their ideal performance -speed tradeoff ( Caswell and Bowen Liang , 2020 ) .
+However , Chen et al . ( 2018 ) do not experiment with hybrid models in a multilingual setting , nor do they try shallower RNN decoders .
+We experiment with 12layer Transformer encoders combined with either 2 - layer or 3 - layer LSTM decoders ( noted Hybrid 12 - 2 / 12 - 3 ) .
+2 Because LSTMs are slower to train , we first train 12 - 2 Transformers which we fine-tune into Hybrid models ( by initializing the LSTM decoder at random ) .
+Precise architecture details are given in Appendix A.2 .
+RNN decoder
+Chen
+Target vocabulary filtering As illustrated by Figure 1 , decoding speed can also be impacted by the size of the target vocabulary , because the softmax layer 's complexity is linear with respect to the vocabulary size .
+Some solutions have been proposed to compress vocabulary in bilingual settings : vocabulary hashing or vocabulary shortlists ( Shu and Nakayama , 2017 ; Shi and Knight , 2017 ; Senellart et al. , 2018 ; Kim et al. , 2019 ) .
+Ding et al. ( 2019 ) also showed that the BPE size can be reduced drastically without hurting BLEU .
+However , reducing the BPE size too aggressively will result in longer sequences and hurt decoding speed .
+Lyu et al . ( 2020 ) train a separate smaller BPE model per language .
+However , we think that this may hurt transfer learning between languages that share words ( one of the reasons why multilingual NMT uses shared vocabularies in the first place ) .
+Therefore , we propose a solution that combines the best of both worlds : have a large shared BPE vocabulary at train time , which we decompose into smaller language -specific vocabularies at test time , based on per-language token frequencies .
+More precisely , we train a shared BPE model of size 64 k , then for each language : 1 . We tokenize its training data and count the wordpiece and character occurrences .
+2 . We build a vocabulary containing only tokens whose frequency is above threshold K and only the N most frequent wordpieces .
+3 . At test time , we can filter the model 's target vocabulary and embeddings to only contain these tokens , resulting in a model with a single shared source embedding matrix and several smaller per-language target embedding matrices .
+We call this approach " test- time BPE filtering " ( with parameters N test and K test ) .
+Appendix Tables 16 & 17 give the incurring parameter cost .
+4 . We also try combining this approach with " traintime BPE filtering " ( with parameters N train and K train ) .
+For target - side training sentences in this language , we force the shared BPE model to only generate wordpieces that belong to this language 's filtered vocabulary .
+3 3 By using subword- nmt 's -- vocabulary - 3.4
+Shared encoder , language -specific decoders Lyu et al . ( 2020 ) show that one can significantly increase the capacity ( and thus performance ) of a multilingual model without hurting decoding speed by training language -specific encoders and decoders ( i.e. , trading away memory for speed ) .
+We take the approach of a deeper shared encoder and multiple language -specific shallow decoders ( similar to Kong et al. , 2021 ) .
+This approach keeps the memory usage to a reasonable value , 4 and can maximize transfer learning on the encoder side .
+Contrary to Lyu et al . ( 2020 ) and Kong et al . ( 2021 ) , to save computation time , we first train shared multilingual MT models , which we use as initialization to our multi-decoder models ( i.e. , the same 2 - layer decoder is copied ) .
+We use languagespecific target embeddings that are initialized with the shared embeddings obtained with the " traintime BPE filtering " technique described in the previous section .
+We refer to the models with shallow language -specific decoders as " multi- decoder models . "
+Incremental multilingual training Incremental training consists in adding new languages to the model without having to retrain it on the existing languages .
+We measure the incremental - training ability of our single shallow decoder and language -specific shallow decoders , by applying the same technique as Berard ( 2021 ) .
+For a new source language , we only train a new source embedding matrix while freezing all the model 's parameters .
+Because we substitute the shared vocabulary with a new monolingual vocabulary and keep the initial embeddings for known languages , performance on those is preserved .
+When adding a new target language , we train a new shallow decoder and target embeddings for this language , while freezing the encoder parameters ( similar to Lyu et al. , 2020 ) .
+We initialize the new decoder 's parameters with those of the single decoder , or closest language -specific decoder in the multi-decoder case ( e.g. , Russian is initialized with Bulgarian and Latvian with Lithuanian ) .
+Contrary to Lyu et al . ( 2020 ) , all our models ( including the multi- decoder ones ) have source -side language codes .
+So , we also train a new language code for the new target language by appending it to the source vocabulary and training its embedding while freezing all the other embeddings .
+The new source and target embedding matrices are obtained by training a monolingual BPE model of size 8 k on the new language , and initializing the embeddings of the known tokens with those from the pre-trained model 's embedding matrix .
+Summary of notations ?
+Base / Big 6-6/12 -2 correspond respectively to Transformer Base / Big with 6 encoder layers and 6 decoder layers ( resp. 12 and 2 layers ) .
+?
+By default , models are trained on Englishcentric data ( i.e. , data in all languages paired with English , in both directions ) .
+?
+Multi-parallel models are fine-tuned on data in all language directions ( not just paired with English ) .
+?
+Some models use test- time BPE filtering ( N test or K test ) while others use both train-time and test -time filtering ( N train or K train ) . ?
+Hybrid models have a Transformer encoder and LSTM decoder and are fine-tuned from Englishcentric Transformers with multi-parallel data .
+?
+Multi-decoder models have language-specific shallow decoders and are fine-tuned from English-centric models with multi-parallel data .
+TED Talks Experiments
+Data and hyper-parameters
+We experiment with the TED Talks corpus ( Qi et al. , 2018 ) with the same set of 20 languages as Philip et al . ( 2020 ) .
+5
+This corpus is multi-parallel , i.e. , it has training data for all 380 ( 20? 19 ) language pairs ( see Table 8 in Appendix for detailed statistics ) .
+It also includes official valid and test splits for all these language pairs .
+We train the English-centric models for 120 epochs ( ? 1.8 M updates ) .
+The Base 12 - 2 Englishcentric model is initialized from Base 6 - 6 at epoch 60 and trained for another 60 epochs , using the procedure described in Section 3.1 .
+These models are then fine-tuned with multi-parallel data for another 10 epochs ( ? 1.4 M updates ) 6 into single- decoder Transformers or Hybrid models or multi-decoder Transformers .
+We create a shared BPE model with 64 k merge operations ( vocabulary size 70 k ) and with inline casing ( Berard et al. , 2019 ) .
+More hyperparameters are given in Appendix A.2 .
+Evaluation settings
+The TED Talks models are evaluated on the provided multi-parallel validation and test sets .
+Since those are already word-tokenized , we run Sacre - BLEU with the -- tok none option .
+7
+We report average test BLEU scores into English ( ? EN , 19 directions ) , from English ( ? EN , 19 directions ) and outside of English ( / EN , 342 directions ) .
+We also compute the decoding speed in Words Per Second ( WPS ) 8 when translating the concatenated ?EN valid sets on a V100 with batch size 64 and beam size 5 ( averages over 3 runs ) .
+Additional speed benchmarks with other decoding settings and time spent in each component are given in Appendix Table 18 .
+We also report chrF scores and results on more models in Appendix Table 21 .
+Position of the language code
+The prevalent approach in multilingual NMT for choosing the target language is to prefix the source sequence with a language code ( Johnson et al. , 2017 ) .
+However , it is also possible , like Tang et al . ( 2020 ) , to put this code on the target side .
+Table 7 in Appendix analyzes the impact of the position of this language code on BLEU performance .
+Like observed by Wu et al . ( 2021 ) , decoder-side language codes result in very low zero-shot performance in the English-centric setting .
+They also degrade the performance of the Base 12 - 2 models in all translation directions .
+For this reason , all our experiments use source -side language codes .
+BLEU results
+Table 1 evaluates the techniques we proposed in Section 3 on TED Talks .
+First , we see that the Base 12 - 2 models ( 3 , 6 ) perform as well or better as the Base 6 - 6 models ( 2 , 5 ) in all language directions , with a 1.7 ?
+speed boost .
+Multi-parallel fine-tuning ( 5 , 6 ) significantly increases translation quality between non-English languages and incurs no drop in performance in the ?EN directions .
+Test - time filtering of the vocabulary with K test = 10 ( see Section 3.3 ) does not degrade BLEU but increases decoding speed by 30 % ( 7 ) .
+More aggressive filtering with N test = 4 k results in a drop in BLEU ( 8 ) .
+9
+The latter leads to slightly longer outputs ( in terms of BPE units ) , which explains why it is not faster .
+When training with N train = 4 k , we can get the same speed boost ( 9 , 10 ) , without any drop in BLEU compared to models without BPE filtering ( 5 , 6 ) .
+Then , we observe that Hybrid models ( 11 , 12 ) are slightly worse than Transformers in terms of BLEU , but are also much faster at decoding .
+Hybrid 12 - 2 ( 11 ) is 3 ? faster than Base 6 - 6 ( with - 0.2 BLEU on average ) and 1.7 ? faster than Base 12 - 2 ( with - 0.3 BLEU ) .
+Hybrid 12 - 3 ( 12 ) is slower than Hybrid 12 - 2 and not clearly better in terms of BLEU ( + 0.1 BLEU ) .
+Finally , we see that fine-tuning the Englishcentric 12 - 2 model into 20 language -specific shallow decoders with the multi-parallel data ( 14 ) results in the highest BLEU scores overall , with the same speed benefits as with a single shallow decoder ( 10 ) .
+A Base 6 - 6 model can also be finetuned into multiple 2 - layer language -specific decoders ( 13 ) and get the same performance as the single Base 6 - 6 or Base 12 - 2 models ( 9 , 10 ) .
+This is convenient if one wants to quickly improve the decoding speed of existing 6 - 6 models .
+Lastly , we do a similar set of experiments within a different framework and observe the same trends ( see Table 20 in Appendix ) .
+ParaCrawl Experiments
+Data and hyper-parameters
+We scale our experiments to a more realistic setting , with the same number of languages as before , but larger amounts of training data and larger models .
+We download ParaCrawl v7.1 ( Ba?n et al. , 2020 ) in the 19 highest - resource languages paired with English .
+10 Then , like Freitag and Firat ( 2020 ) , we build a multi-parallel corpus by aligning all pairs of languages through their English side .
+See Table 10 in Appendix for training data statistics .
+We train a shared BPE model with 64 k merge operations and inline casing by sampling from this data with temperature 5 ( final vocabulary size : 69k ) .
+We train the English-centric models for 1 M steps and fine-tune them with multi-parallel data for 200k more steps .
+Hybrid and Multi-decoder models are also fine-tuned for 200k steps from the Englishcentric models with multi-parallel data .
+Big 6 - 6 bilingual baselines are trained with the same hyperparameters for 120k steps , with joint BPE vocabularies of size 16 k .
+More hyper-parameters are given in Appendix A.2 .
+The Big 6 - 6 and Big 12 - 2 English-centric models took each around 17 days to train on 4 A100s .
+The multi-parallel fine-tuning stages ( single / multidecoder and hybrid ) took ?4.5 days on 2 A100s each .
+Evaluation settings
+The ParaCrawl models are evaluated on our own valid and test splits from TED2020 ( Reimers and Gurevych , 2020 ) .
+11
+We shuffle the parallel corpus for each translation direction and take 3000 line pairs for the validation set and 3000 for the test set .
+12
+To compare against the state of the art , we also provide scores on standard test sets from WMT for some language pairs .
+In both cases , we use SacreBLEU with its default options .
+13 Like in Section 4 , we compute average ?EN , ?EN and / EN test BLEU scores and WPS on ?EN TED2020 valid .
+Table 22 in Appendix reports TED2020 test chrF ( Popovi ? , 2015 ) , as well as spBLEU scores on FLORES devtest ( Goyal et al. , 2021 ) .
+BLEU results
+Table 2 shows that , like in the TED Talks experiments , the 12 - 2 architecture ( 17 , 20 ) Figure 2 shows the ?EN BLEU difference between our multilingual models and the ParaCrawl bilingual baselines on a subset of 8 languages .
+We see the same trend as in the literature : multilingual training hurts performance on high- resource languages and helps on lower - resource languages .
+We also see that Transformer Big 12 - 2 consistently outperforms Big 6 - 6 and that multi-parallel training consistently hurts ?EN performance .
+Figure 6 in Appendix shows similar scores for the ?EN and / EN directions
+Incremental training Table 4 evaluates the ability of our models to be incrementally trained with a new source or target language .
+We see that both the single-shallowdecoder and multi-decoder models can be incrementally trained on source or target languages to reach the same or better performance as bilingual baselines .
+The models are incrementally trained with English-centric data only ( e.g. , LV ?EN data for adding the LV source language ) and yet manage to generalize to other directions ( " / EN " scores ) and match the pivot-translation baseline .
+We can also combine new X source embeddings with new Y decoder ( trained separately ) to translate from X to Y and beat the pivot baseline .
+which may help with incremental training .
+Similar experiments by Berard ( 2021 ) on Chinese and Arabic ( not close to any known language ) led to worse results than the baseline in the ?EN direction .
+20 ) .
+Although BLEU and WPS values are a bit different , we observe the same trends .
+This confirms that our TED Talks experiments can be reproduced in a completely different framework with the same observations .
+Impact of framework
+Impact of sequence length
+When reducing the depth of the decoder , one could expect that it would have trouble generating long sequences .
+Figure 3 reports BLEU scores for different length buckets .
+We observe no abnormal patterns in any of the proposed architectures .
+We first note that Big 12 - 2 ( 24 ) performs consistently better than Big 6 - 6 ( 23 ) across all sentence lengths .
+The performance of the Hybrid 12 - 2 model ( 25 ) is also consistent ( slightly lower than Transformers ) .
+Figure 7 in Appendix shows scores by length in the ?EN direction and with greedy decoding .
+Robustness analysis Even if different decoder architectures reach similar BLEU performance , some architectures might be more brittle to noise than others .
+To test each model 's robustness , we introduce synthetic noise by either adding an unknown character ( unk ) randomly at the beginning , middle , or end of the sentence ; or by applying 3 random char-level operations ( del , ins , swap , or sub ) ( char ) .
+11 ) .
+Human evaluation
+We conduct a human evaluation to compare the English-centric Big 6 - 6 and Big 12 - 2 models .
+It is done by certified professionals who are proficient in both the source and target language .
+We use bilingual direct assessment ( DA ) , where raters have to evaluate the adequacy and fluency of each translation on a 0 - 5 scale given the source sentence .
+We stest2014 for FR-EN / EN - FR .
+18
+For each translation direction , 3 raters are shown all the source sentences and their translations by both systems in random order .
+Biao Zhang , Philip Williams , Ivan Titov , and Rico Sennrich .
+2020 .
+Improving massively multilingual neural machine translation and zero-shot translation .
+In Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics , pages 1628 - 1639 , Online .
+Association for Computational Linguistics .
+A Appendix A.1 Position of the language code Table 7 analyzes the impact of the language code position on BLEU performance .
+With the Base 6 - 6 architecture , decoder-side codes perform approximately as well as encoder-side codes ( except for zeroshot translation ) .
+However , with the Base 12 - 2 architecture , decoder-side codes result in a noticeable drop in performance in most directions .
+Indeed , when the lang code is on the source side , the deep encoder knows the target language and can start " translating . "
+When it is on the target side , the encoder has no way of knowing which language to start translating into .
+So it outputs a universal representation that is harder to transform into a target - language sentence by the limited - capacity shallow decoder .
+Note that ?EN performance in the English-centric setting is not affected .
+We believe this is because the encoder can easily guess that the target language is English by detecting the language of the input .
+We believe this is also the reason for the low zero-shot performance : the encoder starts translating all non-English inputs into English , and the decoder receives a representation that it cannot translate into other languages than English .
+Lang 2020 ) , we implement decoder-side lang codes by replacing BOS ( i.e. , the first embedding input to the decoder ) with the lang code .
+A.2 Framework and hyper-parameters
+We do our experiments in the fairseq v0.10.2 framework ( Ott et al. , 2019 ) , which we modify to implement on - the-fly pre-processing and sampling from multilingual corpora .
+We randomly sample language pairs with p k = D 1/ T k D 1/ T i where D k is the number of sentence pairs for language pair k and T is the temperature ( Arivazhagan et al. , 2019 ) .
+Tables 8 and 10 give the resulting sampling probabilities by target language .
+We build heterogeneous batches using this sampling strategy ( i.e. , containing any mixture of languages ) , by sampling 100k sentence pairs at a time and sorting them by length into batches .
+Language -specific decoders are trained with homogeneous batches with respect to the target language ( we increase the " buffer size " to 1 M and group sentence pairs by target language before batching ) .
+Tables 12 and 13 give the fairseq hyperparameters of our TED Talks and ParaCrawl Transformer models .
+Tables 14 and 15 give the training details of the fine-tuned models .
+Our Hybrid models use a variant of the hybrid RNMT + architecture proposed by Chen et al . ( 2018 ) .
+Contrary to them , we use single - head additive attention ( Bahdanau et al. , 2015 ) ; sum the attention and LSTM output before the vocabulary projection ; and apply layer normalization on the input of the LSTMs ( rather than on the gates ) .
+We apply the same amounts of dropout as in the Transformer but on both the LSTM outputs ( except for the first LSTM ) and the target embeddings .
+28 , 16 , 24 , 25 , 15 ) compared to pivot translation through English with bilingual Big 6 - 6 baselines .
+The " non- English " score for language X is the average of test scores from all the other languages ( except English ) into X .
+The languages are sorted from highest - resource to lowest- resource ( in terms of English-centric data amounts ) . ( 2 ) @ 120 no 0.1 TED - ALL 10 Base 12 - 2 Multi-parallel ( 6 , 10 ) ( 3 ) @ 60 no 0.1 TED - ALL 10 Hybrid 12 ) ( 3 ) @ 60 yes ( 0.0003 ) 0.1 TED -ALL 10 Base 12 - 2 Multi-decoder ( 14 ) ( 3 ) @ 60 yes ( 0.0001 ) 0.1 / 0.3 TED -ALL 10 framework show that our results are reproducible .
+The first number in each cell is the value obtained with fairseq and the second number is obtained with our internal Ten-sorFlow implementation .
+Both implementations share the same hyper-parameters , with one notable exception : in the TensorFlow implementation , source / target embeddings are not shared .
+Additionally , the Hybrid models trained with fairseq use train- time BPE filtering , while the TensorFlow models do not . [ 10,20 ) [ 20,30 ) [ 30,40 ) [ 40,50 ) [ 10,20 ) [ 20,30 ) [ 30,40 ) [ 40,50 ) [ 50,60 ) >=60
+All
+< 10 Figure 1 : 1 Figure 1 : Decoding time spent in different components of bilingual ( vocab size 16 k ) vs multilingual ( vocab size 69 k ) Transformer Big 6 - 6 models on TED2020 valid EN - DE ( average over 10 runs ) .
+Recent work by Narang et al. ( 2021 ) suggest that the implementation framework can change the conclusions one makes about Transformer - based architectures .
+In addition to a PyTorch - based framework ( fairseq , Ott et al. , 2019 ) , we conduct TED Talks experiments with an in- house TensorFlow implementation , whose results are shown in Appendix ( Table
+Figure 3 : 3 Figure 3 : BLEU scores on ?EN TED2020 test by the ParaCrawl models ( 23 , 24 , 25 , 28 ) according to sentence length .
+Figure 5 : 5 Figure 5 : Training progress of English-centric and multi-parallel models trained on ParaCrawl ( without BPE filtering ) .
+The names in the legend are sorted from highest to lowest BLEU score .
+The pre-trained 12 - 2 model was initialized with the 6 - 6 model 's checkpoint at step 1 M and fine-tuned for 1 M more steps .
+Figure 6 : 6 Figure6 : BLEU deltas on TED2020 test ( in a subset of 8 languages ) by our multilingual ParaCrawl models ( 17 , 28 , 16 , 24 , 25 , 15 ) compared to pivot translation through English with bilingual Big 6 - 6 baselines .
+The " non- English " score for language X is the average of test scores from all the other languages ( except English ) into X .
+The languages are sorted from highest - resource to lowest- resource ( in terms of English-centric data amounts ) .
+Figure 7 : 7 Figure 7 : BLEU scores on ?EN TED2020 test by the ParaCrawl models with beam search or greedy search ( 23 , 24 , 25 , 28 ) according to sentence length .
+Top : beam search .
+Bottom : greedy search .
+Left : ?EN translation .
+Right : ?EN translation .
+speed by 30 % .
+However , N test = 8 k leads to a large drop in BLEU ( 22 ) without any adddional speed benefit .
+14 Indeed , in this setting 1.5 % of the tokens that would have been generated by the nonfiltered model become out-of- vocabulary .
+15
+This means that the filtered model has to settle for tokens that are possibly further from the true data distribution , accentuating the exposure bias ( and possibly leading to degenerate outputs ) .
+Like with TED Talks , this issue is solved when training with BPE filtering ( 24 ) .
+N train = 8 k leads to vocabu- Translation from English Model DE-EN EN -DE DE-FR 2 Shi et al. ( 2020 ) 40.7 42.6 35.4 Big 12 - 2 Bilingual Big 6-6 42.3 42.0 34.9 0 Big 12 - 2 Multi-decoder Big 6 - 6 Mul. Big 6 - 6 ( 23 ) Mul. Big 12 - 2 ( 24 ) 38.1 38.4 36.7 37.2 32.4 32.6 - 2 Big 12 - 2 Multi-parallel Table 3 : Comparison of our multi-parallel ( N train = 8 k ) ParaCrawl models with bilingual baselines and -4 Hybrid 12 - 2 Multi-parallel with the state of the art on newstest2019 .
+Shi et al. ( 2020 ) is the top-ranking submission at WMT20 in Base 6 - 6 those languages .
+We report their baseline scores ( i.e. , -6 FR DE CS EL FI HU BG LT without back- translation , ensembling , etc. )
+Pivot trans-lation with bilingual models ( resp. with Big 12 - 2 Figure 2 : BLEU deltas on ?EN TED2020 test ( in a English-centric ) gives 34.2 BLEU ( resp. 32.0 BLEU ) subset of 8 languages ) by our multilingual ParaCrawl on DE - FR. models ( 17 , 28 , 16 , 24 , 25 , 15 ) compared to bilin- gual Big 6 - 6 baselines .
+The languages are sorted from highest - resource to lowest- resource .
+laries of size 8 405 on average at the cost of 4.2 % longer target sequences .
+16
+The multi-parallel Big 12 - 2 model with train- time BPE filtering ( 24 ) also performs better than its Big 6 - 6 counterpart ( 24 ) and is almost twice faster .
+It outperforms the latter in 370 out of 380 translation directions according to BLEU , and in 377 directions according to chrF .
+It also gets the same ?EN performance as the English-centric Big 6 - 6 model ( 16 ) .
+Interestingly , pivot translation with an English-centric model is a strong baseline on / EN ( 18 ) , slightly better than direct translation with the models fine-tuned on multi-parallel data ( but also twice slower ) .
+Like gets as good or better BLEU scores than the standard 6 - 6 Trans -former ( 16 , 19 ) and is 70 % faster .
+It outperforms the Big 6 - 6 baseline in all 38 English-centric direc-tions , both according to BLEU and chrF .
+Test - time BPE filtering with N test = 16 k ( see Section 3.3 ) does not degrade BLEU ( 21 ) and improves decod- on TED Talks , the Hybrid 12 - 2 model ( 25 ) pro-vides a very good BLEU / speed tradeoff , matching the quality of a similar Transformer Big 6 - 6 model ( 23 ) at 2.6 ?
+the speed .
+The Big 12 - 2 multi-decoder model ( 28 ) slightly outperforms the single- decoder model in all directions ( 24 ) , matching the ?EN performance of the best English-centric model .
+12
+These splits are available for download on : https://europe.naverlabs.com/ research/natural-language-processing / efficient-multilingual-machine-translation 13 SacreBLEU signature : BLEU+c.mixed+#.1+s.exp+tok.13a+v.1.5.1 8569 ing
+Table 3 3 compares our multi-parallel models with bilingual Big 6 - 6 baselines and with reported numbers in the literature .
+It shows that bilingual models trained on ParaCrawl -only can reach similar performance as well - trained WMT baselines .
+Table 4 : 4 Note that both Latvian and Russian are close to languages known to the initial model ( resp. Lithuanian and Bulgarian ) , TED2020 test BLEU scores when incrementally adding new languages to ParaCrawl models .
+Model LV ?EN RU LV ?/ EN RU Baseline 20.1 19.6 16.8 16.1 Multi-par. ( 24 ) 22.5 20.4 18.0 16.8 Multi-dec. ( 28 ) 21.9 20.5 17.8 16.9 Model EN ?
+LV RU / EN ? LV RU Baseline 26.6 23.7 18.5 16.3 Multi-par . ( 24 ) 28.1 23.6 18.6 16.3 Multi-dec. ( 28 ) 28.6 24.2 19.4 16.9 Model LV?RU RU?LV Baseline 15.5 14.2 Multi-par. ( 24 ) 16.9 15.9 Multi-dec. ( 28 ) 16.8 15.7
+Top : new source language ( Latvian or Russian ) by training a new source embedding matrix .
+Middle : new target language by training a new shallow decoder .
+Bottom : both new source and target languages by test-time combination of source and target incrementally - trained parameters .
+Baseline : bilingual Big 6 - 6 models ( " EN " columns ) , or pivot translation with bilingual and multilingual models .
+Table 5 5 reports
+Table 5 : 5 Robustness evaluation with average BLEU consistency ( Niu et al. , 2020 ) on ?EN test sets by the multi-parallel ParaCrawl models .
+Model Cy BLEU unk Cy BLEU char 19 Big 6-6 73.3 54.2 20 Big 12-2 76.4 56.1 21 Big 12 -2 ( N test = 16 k ) 75.9 56.0 23 Big 6 - 6 ( N train = 8 k ) 74.4 54.5 24 Big 12 - 2 ( N train = 8 k ) 73.7 55.5 25 Hybrid 12-2 75.0 55.3 28 Big 12 -2 Multi-decoder 76.1 55.4 Model 12-2 > 6-6 12-2 = 6-6 12-2 < 6-6 EN?FR 26 % 51 % 23 % FR?EN 25 % 51 % 24 % EN?DE 31 % 44 % 25 % DE?EN 24 % 50 % 26 % select a random subset of 200 sentences from newstest2019 for DE-EN / EN - DE and from new -
+Table 6 : 6 Human evaluation on English-centric ParaCrawl models ( 16 and 17 ) .
+Table 6 6 reports relative results averaged across the 3 raters .
+Big 12 - 2 outperforms
+Big 6 - 6 in 3 out of 4 language directions .
+Contrary to Kong et al. ( 2021 ) and according to both hu- man evaluation and automatic metrics , our single - shallow - decoder model performs at least as well as the baseline model .
+19 6 Conclusion
+On one hand , multilingual NMT saves training and deployment costs .
+On the other hand , larger ar- chitectures ( required to keep performance on a par with bilingual MT ) and large shared vocabularies penalize inference speed and user latency .
+In this work , we study various approaches to improve the speed of multilingual models without degrading translation quality .
+We find that Transformers with a deep encoder and a shallow decoder can outper - form a baseline Transformer at a much faster decod - ing speed .
+This can be combined with per-language vocabulary filtering to reach a global 2 ?
+speed-up
+Table 7 : 7 Test BLEU scores of TED Talks models with encoder-side or decoder-side language codes .
+Like Tang et al . ( code position Model ?EN ?EN / EN English-centric 2 Encoder Base 6-6 31.8 24.2 13.5 29 Decoder Base 6-6 32.0 23.9 5.43 3 Encoder Base 12-2 33.6 24.3 14.1 30 Decoder Base 12-2 33.5 22.8 0.74 Multi-parallel + BPE filtering ( N train = 4 k ) 9 Encoder Base 6-6 32.9 24.2 16.3 31 Decoder Base 6-6 32.7 23.9 16.2 10 Encoder Base 12-2 33.3 24.3 16.3 32 Decoder Base 12-2 32.5 23.0 15.7
+Table 8 : 8 Size of the Top 20 TED Talks corpus .
+English has 253,292 unique lines .
+The average English sentence length is 21.1 words and 26.7 wordpieces .
+Model ?EN ?EN / EN English-centric 2 Base 6 - 6 post-norm 32.1 24.5 13.6 3 Base 12 - 2 post-norm pre-trained 33.7 24.5 14.1 33 Base 12 - 2 pre-norm 33.5 24.3 12.6 34 Base 12 - 2 enc pre-norm 33.3 24.1 13.1 35 Base 18 - 1 enc pre-norm 31.6 22.8 12.1
+Table 9 : 9 Valid BLEU scores of English-centric TED
+Talks models with deep encoders , depending on the training strategy used . : this model was stopped before the end ( after 60 epochs ) .
+0 20 40 60 80 100 120 Epochs
+Table 10 : 10 Size of the Top 20 ParaCrawl corpus and target language sampling probabilities in its English-centric setting and its multi-parallel setting .
+T = sampling temperature .
+English has 271,851,754 unique lines . : all languages use the latin script , except for Greek ( Greek alphabet ) and Bulgarian / Russian ( Cyrillic ) .
+The average English sentence length is 19.0 words and 30.4 wordpieces .
+Model BLEU unk BLEU Consistency unk BLEU char BLEU Consistency char 19 Big 6-6 24.2 73.3 19.5 54.2 20 Big 12-2 26.0 76.4 21.1 56.1 21 Big 12 -2 ( N test = 16 k ) 26.0 75.9 21.0 56.0 23 Big 6 - 6 ( N train = 8 k ) 24.4 74.4 19.6 54.5 24 Big 12 - 2 ( N train = 8 k ) 25.6 73.7 20.9 55.5 25 Hybrid 12 - 2 ( N train = 8 k ) 24.8 75.0 20.4 55.3 26 Hybrid 12 - 3 ( N train = 8 k ) 25.1 76.5 20.2 55.0
+Table 11 : 11 Robustness evaluation on ?EN test sets of the multi-parallel ParaCrawl models .
+" Unk " adds one unknown symbol at a random position in each test sentence and " char " does 3 random character - level operations per sentence .
+" BLEU consistency " by Niu et al . ( 2020 ) is a BLEU score between the translations of the clean and noisy versions of the same test set by a given model .
+Parameter name Parameter value share_all_embeddings
+True arch transformer lr_scheduler inverse_sqrt optimizer adam adam_betas
+0.9,0.999 fp16
+True clip_norm 0.0 lr 0.0005 warmup_updates 4000 warmup_init_lr 1e-07 criterion label_smoothed _cross_entropy label_smoothing 0.1 dropout 0.3 max_tokens 4000 max_epoch 120 save- interval 1 validate- interval 1 keep- last-epochs 1 update_freq 4 ? lang_temperature 5 decoder_dropout 0.3
+Table 12 : 12 fairseq hyper-parameters of the Base 6 - 6 TED Talks models . ? : we normalize this value by the number of GPUs to have a constant batch size .
+For instance , models trained on 4 GPUs use update_freq =1 . : as shown in Table14 , the fine-tuned models use different values for these parameters .
+The Small 6 - 6 models use the transformer_iwslt_de_en architecture .
+max_source_positions 256 max_target_positions 256 share_all_embeddings
+True arch transformer_vaswani_wmt_en_de_big lr_scheduler inverse_sqrt optimizer adam adam_betas
+0.9,0.98 fp16
+True clip_norm 1.0 lr 0.0005 warmup_updates 4000 warmup_init_lr 1e-07 criterion label_smoothed _cross_entropy label_smoothing 0.1 dropout 0.1 max_tokens 8000 max_update 1000000 save_interval_updates 20000 validate_interval_updates 20000 update_freq 32 ? lang_temperature 5 ?
+Table 13 : 13 Models Initialized with LR reset Dropout Data Epochs Base 6 - 6 ( 2 ) - - 0.3 TED-EN 120 Base 6 - 2 ( 36 ) - - 0.3 TED-EN 120 Base 12 - 2 ( 3 ) ( 2 ) @ 60 yes ( 0.0005 ) 0.3 TED -EN 60 Base 6 - 6 Multi-parallel ( 5 , 9 ) fairseq hyper-parameters of the Big 6 - 6 ParaCrawl models . ? : we normalize this value by the number of GPUs to have a constant batch size .
+For instance , models trained on 4 GPUs use update_freq =8 . ? : we use a temperature of 2 in the multi-parallel ( or multi- decoder ) finetuning stage . : as shown in Table15 , the fine-tuned models use different values for these parameters .
+Table 14 : 14
+Details about multi-stage training of TED Talks models .
+: different dropout values in the encoder and decoders .
+Models Initialized with LR reset Data Updates Big 6 - 6 ( 16 ) - - Para-EN 1M Big 6 - 2 ( 37 ) - - Para-EN 1M Big 12 - 2 ( 17 ) - - Para-EN 1M Big 6 - 6 Multi-parallel ( 19 , 23 ) ( 16 ) @1 M no Para-ALL 200k Big 12 -2 Multi-parallel ( 20 , 24 ) ( 17 ) @1 M no Para-ALL 200k Hybrid Multi-parallel ( 25 , 26 ) ( 17 ) @1 M yes ( 0.0005 ) Para-ALL 200k Big 12 -2 Multi-decoder ( 28 ) ( 17 ) @1 M yes ( 0.0005 ) Para-ALL 200k
+Table 15 : 15 Details about multi-stage training of ParaCrawl models .
+English-centric Multi-parallel ( N train = 4 k ) Time ( s ) Parameters Base 6 - 6 Base 6 - 2 Base 12 - 2 Base 12 - 2 Hybrid 12 - 2 ( 2 ) - ( 3 ) ( 10 ) ( 11 ) beam =1 bs =1 18259 8455 9177 8483 5227 Total beam=5 bs =1 beam =1 bs =64 34216 1364 18215 555 18861 551 15351 622 10617 273 2330 1334 1329 1050 691 Encoder 15 15 29 30 29 Decoder 1435 554 545 548 234 Self-attn / RNN beam=5 bs =64 477 162 159 168 71 Cross-attn 399 133 132 139 60 Softmax 49 48 48 21 21 Beam top-k 350 341 334 38 38
+Table 18 : 18
+Time benchmark across different TED
+Talks model sizes and decoding settings .
+Time in seconds spent decoding the concatenation of all X?EN TED valid sets ( averages over 3 runs ) .
+Note that to mimic a true online setting , no sorting by length is applied ( i.e. , buffer_size=batch_size ) .
+We modify fairseq 's code to avoid the slow beam search code when beam=1 ( which unnecessarily computes and stores log probabilities ) .
+We see that in this setting , vocabulary size has a minor impact on speed .
+English-centric Multi-parallel ( N train = 8 k ) Time ( s ) Parameters Big 6 - 6 Big 6 - 2 Big 12 - 2 Big 12 -2 Hybrid 12 - 2 ( 16 ) ( 37 ) ( 17 ) ( 24 ) ( 25 ) beam =1 bs =1 14464 6131 6535 6544 3519 Total beam=5 bs =1 beam =1 bs =64 23990 912 12646 375 13264 402 10873 397 7034 195 1492 854 902 708 495 Encoder 21 21 41 41 41 Decoder 899 350 364 343 155 Self-attn / RNN beam=5 bs =64 296 101 105 105 44 Cross-attn 257 85 89 88 42 Softmax 39 38 39 19 20 Beam top-k 207 204 209 40 40
+Table 19 : 19
+Time benchmark across different ParaCrawl model sizes and decoding settings .
+Time in seconds spent decoding the concatenation of all ?EN TED2020 - valid sets ( averages over 3 runs ) .
+Model ?EN ?EN / EN WPS English-centric 2 Base 6-6 31.8 / 30.5 24.2 / 23.6 13.5 / 13.2 724 / 385 3 Base 12-2 33.6 / 32.9 24.3 / 24.2 14.1 / 14.1 1321 / 765 + Multi-parallel 5 Base 6-6 32.8 / 31.5 24.3 / 23.4 16.3 / 15.6 760 / 390 6 Base 12-2 33.5 / 32.7 24.5 / 24.2 16.3 / 16.0 1258 / 723 11 Hybrid 12-2 32.8 / 31.7 23.5 / 23.6 16.1 / 15.6 2546 / 1403 12 Hybrid 12-3 32.9 / 31.6 23.7 / 23.6 16.1 / 15.6 2279 / 1338
+Table 20 : 20 TED
+Talks experiments on another MT
+We prefer post-norm
+Transformers , as show that when they do converge , they often lead to better performance than pre-norm .2 Hybrid 12 - 3 has a similar amount of parameters as Transformer 12 - 2 .
+threshold option .4
+As shown in Appendix ( Table17 ) a 20 - language Big 12 - 2 multi-decoder model has 823 M parameters in total , while a Big 6 - 6 or Big 12 - 2 multi-encoder + multi-decoder model would have ?20?
+180 M = 3.6B parameters .
+{en , ar , he , ru , ko , it , ja , zh_cn , es , fr , pt_br , nl , tr , ro , pl , bg , vi , de , fa , hu} 6 Note that an " epoch " when using multi-parallel data corresponds to approximately 9 English -centric epochs in terms of updates .
+SacreBLEU signature : BLEU+c.mixed+#.1+s.exp+tok.none+v.1.5.18
+Not BPE tokens per second , as we do not want the speed measurement to depend on the BPE tokenization used .
+Note that when N = 4 k , we also apply a frequency threshold of K = 10 on BPE tokens and characters .
+10 { fr , de , es , it , pt , nl , nb , cs , pl , sv , da , el , fi , hr , hu , bg , ro , sk , lt }
+TED2020 is a different crawl from TED than that of the " TED Talks " corpus .
+It is more recent , it has more data and languages and it is not word-tokenized .
+Note that when Ntrain or Ntest is set , we additionally apply a frequency threshold of K = 100 on BPE tokens and characters .
+15 Average number on the ?EN TED2020 valid outputs of the Big 12 - 2 multi-parallel model .
+16
+Average number on the training data .
+BLEU consistency measures the similarity between the translations by the same model of the clean sentence and its noised version .
+We ensure that the source sentences are original text in the corresponding language to avoid biased evaluation results due to Translationese .
+19
+Note that our human evaluation results are only on highresource languages , but Kong et al . ( 2021 ) observed the largest BLEU drop on high- resource languages .
+Maximiliana Behnke and Kenneth Heafield .
+2020 .
+Losing heads in the lottery : Pruning transformer attention in neural machine translation .
+In Proceedings of 20 https://europe.naverlabs.com/ research/natural-language-processing / efficient-multilingual-machine-translation

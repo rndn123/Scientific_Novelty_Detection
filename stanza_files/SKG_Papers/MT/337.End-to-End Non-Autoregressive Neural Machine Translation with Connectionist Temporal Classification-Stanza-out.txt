@@ -1,0 +1,128 @@
+title
+End-to- End Non-Autoregressive Neural Machine Translation with Connectionist Temporal Classification
+abstract
+Autoregressive decoding is the only part of sequence - to-sequence models that prevents them from massive parallelization at inference time .
+Non-autoregressive models enable the decoder to generate all output symbols independently in parallel .
+We present a novel nonautoregressive architecture based on connectionist temporal classification and evaluate it on the task of neural machine translation .
+Unlike other non-autoregressive methods which operate in several steps , our model can be trained end-to-end .
+We conduct experiments on the WMT English -Romanian and English - German datasets .
+Our models achieve a significant speedup over the autoregressive models , keeping the translation quality comparable to other non-autoregressive models .
+Introduction Parallelization is the key ingredient for making deep learning models computationally tractable .
+While the advantages of parallelization are exploited on many levels during training and inference , autoregressive decoders require sequential execution .
+Training and inference algorithms in sequenceto-sequence tasks with recurrent neural networks ( RNNs ) such as neural machine translation ( NMT ) have linear time complexity w.r.t. the target sequence length , even when parallelized ( Sutskever et al. , 2014 ; Bahdanau et al. , 2014 ) .
+Recent approaches such as convolutional sequence - to-sequence learning ( Gehring et al. , 2017 ) or self-attentive networks a.k.a. the Transformer ( Vaswani et al. , 2017 ) replace RNNs with parallelizable components in order to reduce the time complexity of the training .
+In these models , the decoding is still sequential , because the probability of emitting a symbol is conditioned on the previously decoded symbols .
+In non-autoregressive decoders , the inference algorithm can be parallelized because the decoder does not depend on its previous outputs .
+The apparent advantage of this approach is the nearconstant time complexity achieved by the parallelization .
+On the other hand , the drawback is that the model needs to explicitly determine the target sentence length and reorder the state sequence before it starts generating the output .
+In the current research contributions on this topic , these parts are trained separately and the inference is done in several steps .
+In this paper , we propose an end-to - end nonautoregressive model for NMT using Connectionist Temporal Classification ( CTC ; Graves et al. 2006 ) .
+The proposed technique achieves promising results on translation between English-Romanian and English - German on the WMT News task datasets .
+The paper is organized as follows .
+In Section 2 , we summarize the related work on nonautoregressive NMT .
+Section 3 describes the architecture of our proposed model .
+Section 4 presents details of the conducted experiments .
+The results are discussed in Section 5 .
+We conclude and present ideas for future work in Section 6 .
+Non-Autoregressive NMT
+In this section , we describe two methods for nonautoregressive decoding in NMT .
+Both of them are based on the Transformer architecture ( Vaswani et al. , 2017 ) , with the encoder part unchanged .
+Gu et al. ( 2017 ) use a latent fertility model to copy the sequence of source embeddings which is then used for the target sentence generation .
+The fertility ( i.e. the number of target words for each source word ) is estimated using a softmax on the encoder states .
+In the decoder , the input embeddings are repeated based on their fertility .
+The decoder has the same architecture as the encoder plus the encoder attention .
+The best results were achieved by sampling fertilities from the model and then rescoring the output sentences using an autoregressive model .
+The reported inference speed of this method is 2 - 15 times faster than of a comparable autoregressive model , depending on the number of fertility samples .
+Lee et al. ( 2018 ) propose an architecture with two decoders .
+The first decoder generates a candidate translation from a source sentence padded to an estimated target length .
+The explicit length estimate is done with a softmax over possible sentence lengths ( up to a fixed maximum ) .
+The output of the first decoder is then fed as an input to the second decoder .
+The second decoder is used as a denoising auto-encoder and can be applied iteratively .
+Both decoders have the same architecture as in Gu et al . ( 2017 ) .
+They achieved a speedup of 16 times over the autoregressive model with a single denoising iteration .
+They report the best result in terms of BLEU ( Papineni et al. , 2002 ) after 20 iterations with almost no inference speedup compared to their autoregressive baseline .
+Proposed Architecture Similar to the previous work ( Gu et al. , 2017 ; Lee et al. , 2018 ) , our models are based on the Transformer architecture as described by Vaswani et al . ( 2017 ) , keeping the encoder part unchanged .
+Figure 1 illustrates our method and highlights the differences from the Transformer model .
+In order to generate output words in parallel , we formulate the translation as a sequence labeling problem .
+Neural architectures used for encoding input in NLP tasks usually generate sequences of hidden states of the same or shorter length as the input sequence .
+For this reason , we cannot apply the sequence labeling directly over the states because the target sentence might be longer than the source sentence .
+To enable the labeler to generate sentences that are longer than the source sentence , we project the encoder output states h into a k-times longer sequence s , such that : words , after a linear projection , each state is sliced to k vectors , creating a sequence of length kT x . s ci+b = W spl h c + b spl bd : ( b+ 1 ) d ( In the next step , we process the sequence s with a decoder .
+Unlike the Transformer architecture , our decoder does not use the temporal mask in the self-attention step .
+Finally , the decoder states are labeled either with an output token or a null symbol .
+The number of combinations of the possible positions of the null symbols in the output sequence given reference sequence length T y is kTx Ty .
+Because there is no prior alignment between the input and output symbols , we consider all output sequences that yield the correct output in the loss function .
+Because summing the exponential number of combinations directly is not tractable , we we use the CTC loss ( Graves et al. , 2006 ) which employs dynamic programming to compute the negative loglikelihood of the output sequence , summed over all the combinations .
+The loss can be computed using a linear algorithm similar to training Hidden Markov Models ( Rabiner , 1989 ) .
+The algorithm computes and stores partial log-probabilities sums for all prefixes and suffixes of the output symbol sequence using dynamic programming .
+The table of precomputed log-probablities allows us to compute the probability of being a part of a correct output sequence by combining the log-probabilities of its prefix and suffix .
+An appealing property of training using the CTC loss is that the models support left-to - right beam search decoding by recombining prefixes that yield the same output .
+Unlike the greedy decoding this can no longer be done in parallel .
+However , the linear computation is in theory still faster than autoregressive decoding .
+Experiments
+We experiment with three variants of this architecture .
+All of them have the same total number of layers .
+First , the deep encoder uses a stack of selfattentive layers only .
+We apply the state splitting and the labeler on the output of the last encoder layer .
+In contrast to Figure 1 , this variant omits the decoder part .
+Second , the encoder-decoder consists of two stacks of self-attentive layers - encoder and decoder .
+The outputs of the encoder are transformed using Equation 1 and processed by the decoder .
+In each layer , the decoder part attends to the encoder output .
+Third , we extend the encoder-decoder variant with positional encoding ( Vaswani et al. , 2017 ) .
+The positional encoding vectors are added to the decoder input s .
+In all the experiments , we used the same hyperparameters .
+We set the model dimension to 512 and the feed -forward layer dimension to 4096 .
+We use multi-head attention with 16 heads .
+In the deep encoder setup , we use 12 layers in the encoder , in the encoder- decoder setup , we use 6 layers for the encoder and 6 layers for the decoder .
+We set the split factor k to 3 , so the encoder states are projected to vectors of 1536 units .
+We conduct our experiments on English -Romanian and English - German translation .
+These language pairs were selected by the authors of the previous work because the training datasets for these language pairs are of considerably different sizes .
+We follow these choices in order to present comparable results .
+For English -Romanian experiments , we used the WMT16 ( Bojar et al. , 2016 ) news dataset .
+The training data consists of 613 k sentence pairs , validation 2 k and test 2k .
+We used a shared vocabulary of 38 k wordpieces ( Wu et al. , 2016 ; Johnson et al. , 2017 ) .
+The English - German dataset consists of 4.6 M training sentence pairs from WMT competitions .
+As a validation set , we used the test set from WMT13 ( Bojar et al. , 2013 ) , which contains 3 k sentence pairs .
+To enable comparison to other non-autoregressive approaches , we evaluate our models on the test sets from WMT14 ( Bojar et al. , 2014 ) with 3 k sentence pairs and WMT15 ( Bojar et al. , 2015 ) with 2.1 k sentence pairs .
+As in the previous case , we used shared vocabulary for both languages which contained 41 k wordpieces .
+The experiments were conducted using Neural Monkey 1 ( Helcl and Libovick ? , 2017 ) .
+We evaluate the models using BLEU score ( Papineni et al. , 2002 ) as implemented in SacreBLEU , 2 originally a part of the Sockeye toolkit ( Hieber et al. , 2017 ) .
+Results Quantitative results are tabulated in Table 1 .
+In general , our models achieve a similar performance to other non-autoregressive models .
+In case of English - German , our results in both directions are comparable on the WMT 14 test set and slightly better on the WMT 15 test set .
+This might be given by the fact that our autoregressive baseline performs better for this language pair than for English -Romanian .
+The encoder-decoder setup outperforms the deep encoder setup .
+Including positional encoding seems beneficial when translating into German .
+Weight averaging from the 5 models with the highest validation score during the training improves the performance consistently .
+We performed a manual evaluation on 100 randomly sampled sentences from the English - German test sets in both directions .
+The results of the analysis are summarized in Table 2 .
+Non-autoregressive translations of sentences that had errors in the autoregressive translation were often incomprehensible .
+In general , less than a quarter of the sentences was completely correct and over two thirds ( one half in the de?en direction ) were comprehensible .
+The most frequent errors include omitting verbs at the end of German sentences and corruption of named entities and infrequent words that are represented by more wordpieces .
+Most of these errors can be attributed to insufficient language -modeling capabilities of the model .
+The results suggest that integrating an external language model into an efficient beam search implementation could boost the translation quality while preserving the speedup over the auto-regressive models .
+We also evaluated the translations using sentence - level BLEU score ( Chen and Cherry , WMT 16 WMT 14 WMT 15 en-ro ro-en en-de de-en en-de de 2014 ) and measure the Pearson correlation with the length of the source sentence and the number of null symbols generated in the output .
+With a growing sentence length , the scores degrade more in the non-autoregressive model ( r = ?0.42 ) than in its autoregressive counterpart ( r = ?0.39 ) .
+The relation between sentence - level BLEU and the source length is plotted in Figure 2 .
+The sentence - level score is mildly correlated with the number of null symbols in the non-autoregressive output ( r = 0.15 ) .
+This suggests that increasing the splitting factor k in Equation 1 might improve the model performance .
+However , it also reduces the efficiency in terms of GPU memory usage .
+Figure 3 shows the comparison of the decod- ing time by autoregressive and non-autoregressive models .
+The average times of decoding a single sentence are shown in Table 3 .
+We suspect that the small difference between CPU and GPU times in the non-autoregressive setup is caused by the CPU -only implementation of the CTC decoder in TensorFlow ( Abadi et al. , 2015 ) .
+Conclusions
+In this work , we presented a novel method for training a non-autoregressive model end-to - end using connectionist temporal classification .
+We evaluated the proposed method on neural machine translation in two language pairs and compared the results to the previous work .
+In general , the results match the translation quality of equivalent variants of the models presented in the previous work .
+The BLEU score is usually around 80 - 90 % of the score of the autoregressive baselines .
+We measured a 4 - times speedup compared to our autoregressive baseline , which is a smaller gain than reported by the authors of the previous work .
+We suspect this might be due to a larger overhead with data loading and processing in Neural Monkey compared to Ten-sor2Tensor ( Vaswani et al. , 2018 ) used by others .
+As a future work , we can try to improve the performance of the model by iterative denoising as done by Lee et al . ( 2018 ) while keeping the nonautoregressive nature of the decoder .
+Another direction of improving the model might be efficient implementation of beam search which can contain rescoring using an external language model as often done in speech recognition ( Graves et al. , 2013 ) .
+The non-autoregressive model would play a role a of the translation model in the traditional statistical MT problem decomposition .
+Figure 1 : Scheme of the proposed architecture .
+The part between the encoder and the decoder is expressed by Equation 1 .
+Figure 2 : 2 Figure 2 : Comparison of the sentence- level BLEU of our English - to - German autoregresssive ( AR ) and nonautoregressive ( NAR ) models given the length of the source sentence .
+Figure 3 : 3 Figure 3 : Comparison of CPU decoding time by our autoregressive ( AR ) and non-autoregressive ( NAR ) models based on the source sentence length .
+Table 1 : 1 Quantitative results in terms of BLEU score of the proposed methods compared to other nonautoregressive models .
+Note that our method uses only a single pass through the network and should be compared with greedy decoding by Gu et al . ( 2017 ) and 1 model iteration by Lee et al . ( 2018 ) . -en
+https://github.com/ufal/neuralmonkey 2 https://github.com/mjpost/sacreBLEU

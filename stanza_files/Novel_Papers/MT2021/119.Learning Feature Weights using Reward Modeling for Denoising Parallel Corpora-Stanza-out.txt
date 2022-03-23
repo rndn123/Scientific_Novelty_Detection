@@ -1,0 +1,179 @@
+title
+Learning Feature Weights using Reward Modeling for Denoising Parallel Corpora
+abstract
+Large web-crawled corpora represent an excellent resource for improving the performance of Neural Machine Translation ( NMT ) systems across several language pairs .
+However , since these corpora are typically extremely noisy , their use is fairly limited .
+Current approaches to deal with this problem mainly focus on filtering using heuristics or single features such as language model scores or bilingual similarity .
+This work presents an alternative approach which learns weights for multiple sentence - level features .
+These feature weights which are optimized directly for the task of improving translation performance , are used to score and filter sentences in the noisy corpora more effectively .
+We provide results of applying this technique to building NMT systems using the Paracrawl corpus for Estonian - English and show that it beats strong single feature baselines and hand designed combinations .
+Additionally , we analyze the sensitivity of this method to different types of noise and explore if the learned weights generalize to other language pairs using the Maltese - English Paracrawl corpus .
+Introduction
+Large parallel corpora such as Paracrawl ( Ba?n et al. , 2020 ) which have been crawled from online resources hold the potential to drastically improve performance of neural machine translation systems across both low and high resource language pairs .
+However , since these extraction efforts mostly rely on automatic language identification and document / sentence alignment methods , the resulting corpora are extremely noisy .
+The most frequent noise types encountered are sentence alignment errors , wrong language in source or target , and untranslated sentences .
+As outlined by Khayrallah and Koehn ( 2018 ) , training algorithms for neural machine translation systems are particularly vulnerable to these noise types .
+As such , these web-crawled corpora have seen limited use in training large NMT systems .
+This paper proposes a method for denoising and filtering noisy corpora which explores and searches over weighted combinations of features .
+During NMT training , we score sentences and create batches using random weight vectors .
+These batches are use to train the system and measure improvement over the validation set ( reward ) .
+Finally , by modeling the weight- reward function , we learn the set of weights which maximize reward and are used to score and filter the noisy dataset .
+At a high level , this method ( i ) allows the use of multiple sentence level features , ( ii ) learns a set of interpolation weights for the features which directly maximize translation performance , ( iii ) requires no prior knowledge about which features are informative or even if they are mutually redundant , and ( iv ) trains within the NMT pipeline and does not require any special infrastructure .
+We include experiments which apply this method to building NMT systems for the noisy Estonian - English Paracrawl dataset and show that it beats strong single feature filtering - baselines and hand -designed feature interpolation .
+Additionally , we analyze the robustness of this method in the presence of specific kinds of noise ( Khayrallah and Koehn , 2018 ) via a controlled experiment on the Europarl datasets .
+Finally , we look at the impact of transferring the learned weights from one language pair ( Estonian - English ) to a noisy dataset of another language pair ( Maltese - English Paracrawl ) .
+We present related work in Section 2 .
+Section 3 describes the procedure we use to model and search over the weight - feature - reward space to estimate feature weights which maximize translation performance .
+Our experiment design , datasets and features , appear in Section 4 .
+Section 5 includes our primary results where we compare the performance of the proposed method to strong single feature filtering baselines and hand -design feature weights .
+We conclude in section 6 with an analysis of this method 's performance at filtering specific kinds of noise and the application of learned weights to a different language pair .
+Related Work Existing efforts towards filtering and denoising noisy corpora focus on pre-filtering using handcrafted rules and by using sentence pair scoring and filtering methods .
+Deterministic hand -crafted rules ( Hangya and Fraser , 2018 ; Kurfal ?
+and ?stling , 2019 ) remove sentence pairs with extreme lengths , unusual sentence length ratios and exact sourcetarget copies , and are extremely effective in removing most of the obvious automatic extraction errors .
+Automatic sentence pair scoring functions have been used successfully to filter noisy corpora as well .
+This includes the use of language models ( Rossenbach et al. , 2018 ) , neural language models trained on trusted data ( Junczys - Dowmunt , 2018 ) and lexical translation scores ( Gonz?lez-Rubio , 2019 ) .
+Chaudhary et al. ( 2019 ) propose the use of cross-lingual sentence embeddings for determining sentence pair quality while several efforts ( Kurfal ?
+and ?stling , 2019 ; Soares and Costajuss ? , 2019 ; Bernier -Colborne and Lo , 2019 ) have focused on the use of monolingual word embeddings .
+Parcheta et al. ( 2019 ) use a machine translation system trained on clean data to translate the source sentences of the noisy corpus and evaluate the translation against the original target sentences using BLEU scores .
+Erdmann and Gwinnup ( 2019 ) and Sen et al . ( 2019 ) propose similar methods using METEOR scores and Levenshtein distance respectively .
+Rarrick et al. ( 2011 ) , Venugopal et al. ( 2011 and Antonova and Misyurev ( 2011 ) present techniques for detecting machine translated sentence pairs in corpora .
+Tools such as LASER Douze , 2017 ) , BiCleaner ( S?nchez - Cartagena et al. , 2018 ) and Zipporah ( Xu and Koehn , 2017 ) have been used ( Chaudhary et al. , 2019 ) for noisy corpus filtering .
+Curriculum learning has been used to obtain policies for data selection which can expose the model to noisy samples less often during training ( Wang et al. , 2018 ; Kumar et al. , 2019 ) .
+More recently , ElNokrashy et al. ( 2020 ) and Espl ?
+have used classifier based approaches to filtering noisy parallel data .
+Method
+The proposed method centres around finding weights for combining sentence - level features , which are then used to compute sentence - level scores and filter the noisy corpus .
+While the choice of features can be arbitrary , this method 's performance will eventually depend on their quality , and we would ideally want them to be informative and decorrelated .
+Figure 1 provides an overview of the proposed method .
+We first train a number of candidate neural machine translation ( NMT ) systems .
+During training for each candidate system , we repeatedly ( i ) generate a random weight vector , ( ii ) sample a batch of sentences from the noisy corpus based on sentence - level scores computed using this weight vector , ( iii ) update NMT system parameters using this batch , and ( iv ) measure the improvement in translation quality on a validation set following this update .
+The weight vector w , the average feature vector ? of the batch , and the improvement R on the validation set ( reward ) are recorded for each batch t during the training of each candidate NMT system i , and w i , t , ? i , t , R i, t becomes a sample in new data set D , called the tuning data set 1 , for learning feature weights to maximize reward .
+Hence , even though the parameters of the candidate systems are not used directly , they are used to gather noisy candidate evaluations of the latent weightfeature - reward function .
+Once we have D , we use a feed-forward network to learn the weight vector that maximizes the reward .
+The learned weight vector w * is then used to compute sentence - level scores and filter the noisy data set .
+The final NMT system is trained using this clean data set .
+Some subtleties in normalizing the observed rewards and learning weights are explained below .
+Candidate NMT runs
+Note from the bottom of Figure 1 that the learned weight vector w * is used to sort all the sentences in the noisy training data , and the top-scoring ones are used for final NMT training .
+The purpose of the candidate NMT training runs is to generate the tuning data set D from which w * is learned .
+Therefore , the setup for the candidate runs mimics typical NMT training , but for the following differences .
+1 . Selecting batches :
+For selecting sentences to constitute a batch , we first sample a random weight vector w of dimension |?| , the number of sentence - level features , uniformly 2 from [?2.5 , 2.5 ] |?| .
+Ideally , we would score all sentences in the noisy data set and then filter the top sentences to create a batch .
+However , this is prohibitively slow to do for every batch .
+Hence , we randomly sample twice the number of sentences required to constitute the batch , score them , and select the top half .
+For the i th sentence , the score s i is a dot product 1 Not to be confused with the validation set which contains sentence pairs , this dataset is solely used to model the weightreward function and contains no sentence identity beyond feature vectors .
+2
+The range of the uniform distribution represents the plausible range of weights given the features .
+of its feature vectors with the weight vector : s i = |?|
+i=1 w i ? i ( 1 )
+The selected sentences are removed from the training pool for this epoch .
+This method of batch selection ensures that the sampled weight vector determines which sentences are selected and that their average feature vector is significantly different from one obtained using unbiased / random selection .
+Reward computation :
+The reward must represent how the choice of w ( through the sentences selected to form the batch ) impacts translation performance .
+This is approximated by computing the perplexity of a validation set following a parameter update with the selected batch .
+However , since perplexity naturally decays in standard NMT training , batches at the beginning of the training will naturally receive larger rewards , obscuring the impact of sentence selection .
+We mitigate this effect by using delta-perplexity , i.e. the change in perplexity of the validation set over a window of updates .
+3 . Accumulating training samples :
+For each batch t of candidate run i , we collect the random weight vector w i , t , the batch feature vector ?
+i.t , defined as the average of the feature vectors of all sentences in the batch , and the reward R i , t .
+These triples are gathered from all batches during training , across all candidate training runs , to form the data set D for learning the feature weights .
+Reward Normalization
+As a further way to make the rewards time - invariant with respect to NMT training , the observed rewards R i.t are normalized with respect to an expected reward estimated from a set of baseline NMT runs .
+Specifically , at each time step t , we compute the rewards R b j ,t of j = 1 , . . . , J concurrent training runs- whose batches selected in the standard manner- and , for each of the candidate NMT runs , we set R i , t = R i , t ? 1 J J j=1 R b j , t , ( 2 ) where J is the number of baseline systems used .
+Going forward , we do not need to track the identity of the update which led to a training sample , t , or the candidate system c i which produced it .
+Learning Feature Weights
+The i th sample w i , ? i , R i in D may be viewed as a ( noisy ) evaluation of an unknown function R ( w | ? ) .
+This function maps a vector w to final NMT quality , given a fixed sentence - level feature function ? and the stipulation that sentences are selected for training based on a weighted combination of their feature values using weights w .
+Furthermore , if we learn this function using D , we may use the w * that maximizes the learned function R N N ( w| ? ) for our final denoising and NMT training .
+Specifically , we propose to use w * = arg max w R ( w| ? ) ? arg max w R N N ( w| ? ) ( 3 ) We propose learning R N N ( w| ? ) via a simple feedforward neural network that maps the weights w i to the observed reward R i .
+We consider two ways of providing input to this neural network , one that uses only the w i , and another that modulates w i with batch quality , represented by ?
+i .
+1 . Weight - based :
+We use a feed-forward network with the weight vectors w i as input and learn to predict the observed reward R i .
+Since the weight vectors interact directly with the feature vectors to determine which sentences are sampled to create a batch , we hypothesize that maximizing this weight - reward function will produce feature weights which will lead to better sentence sampling .
+2 . Feature- based :
+Since the tuning samples are noisy evaluations of the function R ( w | ? ) , we often encounter samples where weight vectors are close in weight space but have different rewards .
+To counter this problem , when using a feed-forward network to learn R N N ( w| ? ) , we scale the weight vector input w i by the sum of the corresponding feature vector ? i .
+This has the effect of keeping weight vectors which have similar feature vectors close in input space and moving apart those with significantly different feature vectors .
+Once this neural network is learned from D , we perform a grid search over its input space , as defined in Section 3.1 , to find the maximizer of ( 3 ) .
+Re-sampling and training
+The weight vector w * learned from the previous section is used to score all sentences from the original noisy data set .
+We sort the sentences by these scores and sample the top candidates to form the clean training data set and use it to train a standard NMT system .
+Experiment Setup
+We use Fairseq ( Ott et al. , 2019 ) for our neural machine translation systems configured to be identical to the systems described in Ng et al . ( 2019 ) .
+The feed -forward network used to tune weights has two 512 - dimensional layers and is trained using standard SGD using a learning rate of 0.1 .
+The grid search for the weights was done on the range [?2.5 , 2.5 ] with 5000 points uniformly distributed per dimension .
+The number of samples used for reward normalization was 3 and the window for computing the delta-perplexity reward was set to 3 .
+Corpora
+We use the Paracrawl Benchmarks ( Ba?n et al. , 2020 ) data set in Estonian - English for all our experiments .
+These consist of documents where sentences were aligned using Vecalign ( Thompson and Koehn , 2019 ) and then de-duplicated so that each sentence pair only occurs once in the data set .
+Features
+We use five sentence - level features for all our filtering experiments .
+They are , ( i ) IBM Model 1 alignment scores ( Brown et al. , 1993 ) , ( ii and iii ) source and target language model scores , ( iv ) dual conditional cross entropy ( Junczys - Dowmunt , 2018 ) and ( v ) sentence length ratio .
+We experimented with aggregate features such as Zipporah ( Xu and Koehn , 2017 ) , BiCleaner ( S?nchez - Cartagena et al. , 2018 ) and bilingual features such as LASER ( Schwenk and Douze , 2017 ) and these were used to replicate the baselines from Ba?n et al . ( 2020 ) for our dataset .
+The IBM Model 1 scores were obtained using the Moses ( Koehn et al. , 2007 ) pipeline .
+The Estonian and English language models were trained on their respective NewsCrawl data sets 3 .
+The clean machine translation model for computing the conditional dual-cross entropy scores is trained on the Europarlv8 data set 4 .
+All features are gaussianized using the Yeo - Johnson power transformation and then normalized to have zero mean and unit variance .
+Results
+For our experiments , we scored all sentences in the noisy corpus , sorted and sampled the top parallel sentences to form subsets with 10 , 15 and 20 million English words .
+These filtered data sets were used to train standard NMT systems and performance was evaluated on the test set described in the previous section .
+The results of these filtering experiments appear in Table 2 . First , we evaluate the efficacy of all the features we use for our interpolation task by filtering the data set on these features alone .
+Additionally , to include some strong baselines , we use three out - of - the -box , scoring features which provided strong results in the WMT 2020 parallel corpus filtering task 5 ( Ba? n et al. , 2020 ; Chaudhary et al. , 2019 ) .
+These are BiCleaner , Zipporah and LASER .
+Of these , LASER provides the strongest filtering and translation results beating the other two by 0.3 to 0.9 BLEU points .
+Of the five features we use for our experiments , dual cross-entropy ( Junczys - Dowmunt , 2018 ) is the strongest feature and matches the performance of LASER .
+Using source or target language model scores in isolation leads to the weakest translation performance while IBM Model 1 scores perform only slightly better than them .
+Surprisingly , the simple sentence length ratio feature beats all other features except dual cross-entropy by 1.4 to 1.6 BLEU points .
+This is a strong indicator of the type of noise in the data set and that bilingual features ( even simple ones ) perform better than monolingual features such as language model scores .
+Next , we look at interpolation of features using weights learned using the proposed method .
+As a baseline , we also include an experiment which filters based on a uniform interpolation of the five features we use .
+This baseline performs worse than the strongest single feature filtering experiments by 0.5 to 1 BLEU points .
+For both the weight - based and feature - based methods of learning interpolation weights for the features , a significant number of candidate runs are required before adequate performance is achieved .
+This is not surprising , since we are searching for an optimal weight vector in a fairly large weight space and we need a large number of samples before a good representation of the weight - reward function can be learned .
+Figure 2 shows the improvement in BLEU scores for the weight - based approach as data from more candidate runs in added to the tuning stage for learning weights and filtering the data set .
+The performance of the final NMT system steadily improves as more data from more systems is added and eventually converges .
+Our strongest result was achieved with 14 candidate runs for the weight - based approach for the 10 , 15 and 20 m setting respectively .
+This beat the uniform weight baseline by 1.5 to 2 BLEU points and the strongest single feature ( LASER ) baseline by 1 BLEU point .
+The feature based approach performed slightly better with 15 candidate runs and beat the strongest single feature baseline ( LASER ) by 1.3 BLEU points .
+Analysis
+The following sections examine the learned weights , the effect of transferring them to noisy corpora of a different language pair and the method 's performance when exposed to specific kinds of noise .
+Learned Weights
+Table 3 shows the weights learned using the tuning network , normalized to sum to one .
+Unsurprisingly , the strongest feature ( dual cross-entropy ) has the highest weight , with the sentence length ratio and IBM Model 1 ( weak multi-lingual features ) drawn for the next place while source and target LM have relatively low weights .
+Feature Weight
+Weight Transfer
+Since the feature functions we use for our experiments are reasonably language - independent , a reasonable experiment is to see if the feature weights learned on one language - pair can be transferred to a noisy corpus of another another language pair .
+However , we hypothesize that unless the feature distributions ( proxy for noise profile of the dataset ) of the datasets are similar , this transfer will have limited success .
+We test this hypothesis using the Maltese -English Paracrawl corpus .
+The training corpus contains 26.9 million sentence pairs and was sentence aligned using Vecalign and de-duplicated in a manner similar to our primary experiments .
+The validation and the test sets for these experiments are from the EUbookshop 6 dataset and contain 3 k and 2.2 k sentences respectively .
+The sentence level features were computed using the procedure described in section 4.2 and we use the DGT corpus 7 ( about 1.6 million parallel sentences ) to the train the clean translation models , the source and the target language models .
+The results of these experiments appear in Table 4 .
+Even though filtering with the transferred weights beats the simpler single feature baselines , it fails to beat the strongest one , dual cross-entropy .
+It is worth noting that the reason filtering with the learned weights does this well is because the dual cross-entropy feature has the highest weight from our previous experiments .
+These experiments suggest that some form of feature distribution matching across corpora is required before weight transfer becomes viable .
+Sensitivity to Noise Types Inspired by Khayrallah and Koehn ( 2018 ) , we look at how the most common noisy types in the Paracrawl data set affect the performance of the proposed method .
+For the purpose of these experiments , we use the Europarl v8 8 Estonian - English data set .
+The training data set consists of about 651 k parallel sentences , 11.2 m source and 15.7 m target tokens .
+We only use the feature - based method for this analysis and each experiment tunes weights based on 5 candidate runs .
+We add synthetic noise to this data set by replacing 50 % of the sentences in the data set to contain a specific kind of noise .
+The noise types we looked at and their perturbation methods are described below :
+For each type of noise , we perform the following experiment : perturb 50 % of the clean data with the chosen noise type , compute feature values for the sentences in the full data set , learn feature weights using the weight - based method described in section 3 , filter out the top 50 % of the data set and measure the percentage of clean ( non- perturbed ) sentences which were retained .
+9
+The results of this analysis appears in Table 5 .
+The method performs significantly better than chance in all noise categories , but given our choice of features , it is better at filtering out misaligned sentences and sentences with tokens in the wrong language and is slightly less effective at dealing with misordered and untranslated words .
+Future Work
+The validation set based delta-perplexity is expensive to compute per update and replacing it with a more stable or time invariant reward ( Wang et al. , 2019 ) may help improve the performance of this method .
+Additionally , we plan to replace grid search with a more granular search procedure over the weight space with respect to the weight - featurereward function .
+The tuning network can also be modified to include sentence -quality modulated loss functions ( via feature values ) .
+An alternative to searching for feature weights is to instead search for the prototypical feature vector which maximizes translation performance and then use it to filter the closest sentence pairs from the noisy dataset .
+Finally , as discussed in Section 6.2 , transferring learned weights has the potential to dramatically reduce the cost of applying to this method to new language pairs and may help with performance on low-resource language pairs where good feature weights cannot be learned .
+Conclusion
+We present a method for denoising and filtering noisy parallel data for improving the performance of neural machine translation systems .
+We learn interpolation weights for sentence - level features by modeling and searching over the weight - reward space .
+These are used to score and filter sentences in the noisy corpora .
+Our experiments with Estonian - English Paracrawl show gains of over a BLEU point over the strongest single feature filtering and uniform weight baselines .
+Analysis also shows that this method is effective at addressing the most common noise types in web-crawled corpora .
+Figure 1 : 1 Figure 1 : Overview of the proposed method for learning weights for sentence - level features to filter noisy parallel data and improve translation performance .

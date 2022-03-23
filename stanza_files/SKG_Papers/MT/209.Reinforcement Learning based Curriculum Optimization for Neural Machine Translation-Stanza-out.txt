@@ -1,0 +1,137 @@
+title
+Reinforcement Learning based Curriculum Optimization for Neural Machine Translation
+abstract
+We consider the problem of making efficient use of heterogeneous training data in neural machine translation ( NMT ) .
+Specifically , given a training dataset with a sentence - level feature such as noise , we seek an optimal curriculum , or order for presenting examples to the system during training .
+Our curriculum framework allows examples to appear an arbitrary number of times , and thus generalizes data weighting , filtering , and finetuning schemes .
+Rather than relying on prior knowledge to design a curriculum , we use reinforcement learning to learn one automatically , jointly with the NMT system , in the course of a single training run .
+We show that this approach can beat uniform baselines on Paracrawl and WMT English - to - French datasets by + 3.4 and + 1.3 BLEU respectively .
+Additionally , we match the performance of strong filtering baselines and hand- designed , state - of - the - art curricula .
+Introduction Machine Translation training data is typically heterogeneous : it may vary in characteristics such as domain , translation quality , and degree of difficulty .
+Many approaches have been proposed to cope with heterogeneity , such as filtering ( Duh et al. , 2013 ) or down- weighting ( Wang et al. , 2017 ) examples that are likely to be noisy or out of domain .
+A powerful technique is to control the curriculum - the order in which examples are presented to the system - as is done in fine-tuning ( Freitag and Al - Onaizan , 2016 ) , where training occurs first on general data , and then on more valuable in - domain data .
+Curriculum based approaches generalize data filtering and weighting 1 by allowing examples to be visited multiple times 1 Assuming integer weights .
+or not at all ; and they additionally potentially enable steering the training trajectory toward a better global optimum than might be attainable with a static attribute - weighting scheme .
+Devising a good curriculum is a challenging task that is typically carried out manually using prior knowledge of the data and its attributes .
+Although powerful heuristics like fine-tuning are helpful , setting hyper-parameters to specify a curriculum is usually a matter of extensive trial and error .
+Automating this process with meta-learning is thus an attractive proposition .
+However , it comes with many potential pitfalls such as failing to match a human-designed curriculum , or significantly increasing training time .
+In this paper we present an initial study on meta-learning an NMT curriculum .
+Starting from scratch , we attempt to match the performance of a successful non-trivial reference curriculum proposed by , in which training gradually focuses on increasingly cleaner data , as measured by an external scoring function .
+Inspired by , we use a reinforcement - learning ( RL ) approach involving a learned agent whose task is to choose a corpus bin , representing a given noise level , at each NMT training step .
+A challenging aspect of this task is that choosing only the cleanest bin is sub-optimal ; the reference curriculum uses all the data in the early stages of training , and only gradually anneals toward the cleanest .
+Furthermore , we impose the condition that the agent must learn its curriculum in the course of a single NMT training run .
+We demonstrate that our RL agent can learn a curriculum that works as well as the reference , obtaining a similar quality improvement over a random-curriculum baseline .
+Interestingly , it does so using a different strategy from the reference .
+This result opens the door to learning more sophisticated curricula that exploit multiple data at- tributes and work with arbitrary corpora .
+Related Work Among the very extensive work on handling heterogeneous data in NMT , the closest to ours are techniques that re-weight or re-order examples to deal with domain mismatch ( van der Wees et al. , 2017 ; Sajjad et al. , 2017 ) or noise .
+The idea of a curriculum was popularized by Bengio et al . ( 2009 ) , who viewed it as a way to improve convergence by presenting heuristicallyidentified easy examples first .
+Several recent papers ( Kocmi and Bojar , 2017 ; Zhang et al. , 2019 ; Platanios et al. , 2019 ) explore similar ideas for NMT , and verify that this strategy can reduce training time and improve quality .
+Work on meta-learning a curriculum originated with Tsvetkov et al . ( 2016 ) , who used Bayesian optimization to learn a linear model for ranking examples in a word-embedding task .
+This approach requires a large number of complete training runs , and is thus impractical for NMT .
+More recent work has explored bandit optimization for scheduling tasks in a multi-task problem ( Graves et al. , 2017 ) , and reinforcement learning for selecting examples in a co-trained classifier .
+Finally , Liu et al. ( 2018 ) apply imitation learning to actively select monolingual training sentences for labeling in NMT , and show that the learned strategy can be transferred to a related language pair .
+Methods
+The attribute we choose to learn a curriculum over is noise .
+To determine a per-sentence noise score , we use the contrastive data selection ( CDS ) method defined in .
+Given the parameters ?
+n of an NMT model trained on a noisy corpus , and parameters ?
+c of the same model finetuned on a very small trusted corpus , the score s(e , f ) for a translation pair e , f is defined as : show that this correlates very well with human judgments of data quality .
+They use the CDS score in a heuristic , online schedule that slowly anneals from sampling mini-batches from all the training data to sampling only from the highest- scoring ( cleanest ) data .
+Our goal is to replace this heuristic curriculum with a learned one .
+s( e , f ) = log p ?c ( f |e ) ? log p ?n ( f |e ) ( 1 )
+Q-learning for NMT Curricula
+Our agent uses deep Q-learning ( DQN ) ( Mnih et al. , 2015 ) which is a model- free reinforcement learning procedure .
+The agent receives an observation from the environment and conditions on it to produce an action which is executed upon the environment .
+It then receives a reward representing the goodness of the executed action .
+The agent chooses actions according to a state-action value ( Q ) function , and attempts to learn the Q-function so as to maximize expected total rewards .
+In our setup , the environment is the NMT system and its training data , as illustrated in Figure 1 .
+We divide the training data into a small number of equal-sized bins according to CDS scores .
+At each step , the agent selects a bin ( action ) from which a mini-batch is sampled to train the NMT system .
+Our RL agent must balance exploration ( choosing an action at random ) versus exploitation ( choosing the action which maximizes the Qfunction ) .
+In our setup , this is done using a linearly - decaying - greedy exploration strategy ( Figure 2 ) .
+This strategy has three phases : ( 1 )
+The warmup period where we always explore ; ( 2 ) the decay period where the probability of exploration decreases and exploitation increases ; ( 3 ) the floor where we almost always exploit .
+Since we do not want to exploit an uninformed Q-function , the duration of exploration needs to be set carefully .
+In our experiments , we found that longer decays were useful and the best performance was achieved when the decay was set to about 50 % of the expected NMT training steps .
+Observation Engineering
+The observation is meant to be a summary of the state of the environment .
+The NMT parameters are too numerous to use as a sensible observation at each time step .
+Inspired by , we propose an observation type which is a function of the NMT system 's current performance at various levels of noise .
+We first create a prototype batch by sampling a fixed number of prototypical sentences from each bin of the training data .
+At each time step , the observation is the vector containing sentence - level log-likelihoods produced by the NMT system for this prototype batch .
+Since the observations are based on likelihood , a metric which aggressively decays at the beginning of NMT training , we use an NMT warmup period to exclude this period from RL training .
+Otherwise , the initial observations would be unlike any that occur later .
+Reward Engineering
+Our objective is to find a curriculum which maximizes the likelihood of the NMT system on a development set .
+The RL reward that directly corresponds to this goal would be the highest likelihood value reached during an NMT training run .
+However , as we use only one NMT training run , having a single reward per run is infeasible .
+To provide a denser signal to the RL agent , we define the reward at a step to be the change in likelihood since the most recent previous step for which development - set likelihood is available .
+This has the desired property that the sum of per-step rewards maximized by the RL agent is equal to the NMT maximum -likelihood objective ( on development data ) .
+We rely on the WMT warmup period described in the previous section to eliminate spuriously large rewards at the beginning of training .
+Experimental Setup Our NMT model is similar to RNMT + ( Chen et al. , 2018 ) , but with only four layers in both encoder and decoder .
+Rewards ( dev-set loglikelihood ) are provided approximately every 10 training steps by an asynchronous process .
+We use the DQN agent implementation in Dopamine , 2 which includes an experience replay buffer to remove temporal correlations from the observations , among other DQN best practices .
+Due to the sparse and asynchronous nature of our rewards , we store observation , action transitions in a temporary buffer until a new reward arrives .
+At this point , transitions are moved from the temporary buffer to the DQN agent 's replay buffer .
+The RL agent is trained after each NMT training step by sampling an RL mini-batch from the replay buffer .
+Our RL hyper-parameter settings are listed in the appendix .
+Following , we use the Paracrawl and WMT English - French corpora for our experiments .
+These contain 290M and 36 M training sentences respectively .
+WMT is relatively clean , while a large majority of Paracrawl sentence pairs contain noise .
+We process both corpora with BPE , using a vocabulary size of 32 k .
+Both corpora are split into 6 equal-sized bins according to their noise level , as provided by CDS score .
+In both settings , the WMT newstest 2010 - 2011 corpus is used as trusted data for CDS scores , which are computed using the models and procedure described in .
+For the prototype batch used to generate observations , we extracted the 32 sentences whose CDS scores are closest to the mean in each bin , giving a total of 192 sentences .
+We use WMT 2012 - 2013 for development and WMT 2014 for test , and report tokenized , naturally - cased BLEU scores from the test checkpoint closest to the highest - BLEU dev checkpoint .
+To combat variance caused by sampling different batches per bin ( which produces somewhat different results even when bins are visited in fixed order ) , all models were run twice with different random seeds , and the model with the best score on the dev set was chosen .
+Results
+Our results are presented in Table 1 . Uniform baselines consist of : ? Uniform ( bookends ) - as Uniform ( 6 - bins ) but uniformly sampling over just the best and worst bin .
+Surprisingly , 6 - bins performs better than the standard NMT baseline .
+We hypothesize that this can be attributed to more homogeneous mini-batches .
+Heuristic baselines are : ?
+Filtered - train only on the highest-quality data as determined by CDS scores : top 20 % of the data for Paracrawl , top 33 % for WMT .
+?
+Fixed - schedule - we use the - decay strategy of our best RL experiment , but always choose the cleanest bin when we exploit .
+?
+Online - the online schedule from adapted to the 6 - bin setting .
+We verified experimentally that our performance matched the original schedule , which did not use hard binning .
+Learned curricula were trained over 2 bookend ( worst and best ) bins and all 6 bins .
+On the Paracrawl dataset , in the 2 - bin setting , the learned curriculum beats all uniform baselines and almost matches the optimized filtering baseline .
+3 With 6 - bins , it beats all uniform baselines by up to 2.5 BLEU and matches the hand-designed online baseline of .
+On WMT , with 2 bins , the learned curriculum beats the 2 - bin baseline , but not the uniform baseline over all data .
+Reward Observation Default Fixed Default 37.5 37.5 Fixed 32.5 - With 6 bins , the learned curriculum beats the uniform baseline by 1.5 BLEU , and matches the filtered baseline , which in this case outperforms the online curriculum by 0.6 BLEU .
+Our exploration strategy for Q-learning ( see Figure 2 ) forces the agent to visit all bins during initial training , and only gradually rely on its learned policy .
+This mimics the gradual annealing of the online curriculum , so one possibility is that the agent is simply choosing the cleanest bin whenever it can , and its good performance comes from the enforced period of exploration .
+However , the fact that the agent beats the fixed - schedule ( see Table 1 ) described above on both corpora makes this unlikely .
+Analysis Task-specific reward and observation engineering is critical when building an RL model .
+We performed ablation experiments to determine if the rewards and observations we have chosen contain information which aids us in the curriculum learning task .
+Table 2 shows the results of our experiments .
+The fixed reward experiments were conducted by replacing the default delta-perplexity based reward with a static reward which returns a reward of one when the cleanest bin was selected and zero otherwise .
+The fixed observation experiments used a static vector of zeroes as input at all time steps .
+Using fixed observations matches the performance of dynamic observations , from which we can draw two conclusions .
+First , the agent 's good performance is due to associating higher rewards with better bins , but it learns to do so slowly ( partly modulated by its - greedy schedule ) so that it avoids the sub-optimal strategy of choosing only the best bin .
+Second , its ability to distinguish among bins is not impeded by the use of an observation vector that slowly evolves through time and never returns to previous states .
+6.1
+What did the agent learn ?
+Figure 3 shows a coarse visualization of the handoptimized policy of , adapted to our 6 - bin scenario , compared to the Q-learning policy on the same scenario .
+The former , by design , telescopes towards the clean bins .
+Note that the latter policy is masked by the agent 's exploration schedule , which slowly anneals toward nearly complete policy control , beginning at step 30,000 .
+After this point , the learned policy takes over and continues to evolve .
+This learned policy has little in common with the hand-designed one .
+Instead of focusing on a mixture of the clean bins , it focuses on the cleanest bin and the secondto-noisiest .
+We hypothesize that returning to the noisy bin acts as a form of regularization , though this requires further study .
+Conclusion
+We have presented a method to learn a curriculum for presenting training samples to an NMT system .
+Using reinforcement learning , approach learns the curriculum jointly with the NMT system during the course of a single NMT training run .
+Empirical analysis on the Paracrawl and WMT English - French corpora shows that this approach beats the uniform sampling and filtering baselines .
+In addition , we were able to match a state - of - theart hand designed curriculum on Paracrawl and beat it on WMT .
+We see this a first step toward enabling NMT systems to manage their own training data .
+In the future , we intend to improve our approach by eliminating the static exploration schedule and binning strategy , and extend it to handle additional data attributes such as domain , style , and grammatical complexity .
+?
+Update period ( how often the online Qnetwork is trained ) : 4 steps ?
+Target update period ( how often the target Qnetwork is trained ) : 100 steps ?
+The window for the delta-perplexity reward was 1 .
+Each column in the figures represents the relative proportion of actions taken ( bins selected ) averaged over a thousand steps and the actions go from noisy to clean on the y-axis .
+Each policy starts from a uniform distribution over actions .
+Some salient aspects of the learned policies are listed below .

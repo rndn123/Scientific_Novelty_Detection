@@ -1,0 +1,246 @@
+title
+A Reinforced Generation of Adversarial Examples for Neural Machine Translation
+abstract
+Neural machine translation systems tend to fail on less decent inputs despite its significant efficacy , which may significantly harm the credibility of these systems - fathoming how and when neural - based systems fail in such cases is critical for industrial maintenance .
+Instead of collecting and analyzing bad cases using limited handcrafted error features , here we investigate this issue by generating adversarial examples via a new paradigm based on reinforcement learning .
+Our paradigm could expose pitfalls for a given performance metric , e.g. , BLEU , and could target any given neural machine translation architecture .
+We conduct experiments of adversarial attacks on two mainstream neural machine translation architectures , RNN - search , and Transformer .
+The results show that our method efficiently produces stable attacks with meaning - preserving adversarial examples .
+We also present a qualitative and quantitative analysis for the preference pattern of the attack , demonstrating its capability of pitfall exposure .
+Introduction Neural machine translation ( NMT ) based on the encoder-decoder framework , such as RNN - Search ( Bahdanau et al. , 2014 ; Luong et al. , 2015 , RNNSearch ) or Transformer ( Vaswani et al. , 2017 , Transformer ) , has achieved remarkable progress and become a de-facto in various machine translation applications .
+However , there are still pitfalls for a well - trained neural translation system , especially when applied to less decent real-world inputs compared to training data ( Belinkov and Bisk , 2017 ) .
+For example , typos may severely deteriorate system outputs ( Table 1 ) .
+Moreover , recent studies show that a neural machine translation system can also be broken by noisy synthetic inputs ( Belinkov and Bisk , 2017 ; Lee et al. , 2018 ) .
+Due to the black - box nature of a neural system , it has in ? ? ? ? ? ? out suicide bombing in jerusalem in ? ? ? out eastern jerusalem explores a case of eastern europe Table 1 : Fragility of neural machine translation .
+A typo leaving out a Chinese character " ? " leads to significant errors ( noted by italics ) in English translation .
+Both " ? " and " ? " mean " bombing " in English .
+been a challenge to fathom when and how the system tends to fail .
+Intuitively , researchers seek to apprehend such failures by the analysis of handcrafted error indicating features ( Zhao et al. , 2018 ; Karpukhin et al. , 2019 ) .
+This strategy is costly because it requires expert knowledge for both linguistics and the target neural architecture .
+Such features are also less applicable because some common errors in deep learning systems are hard to formulate , or very specific to certain architectures .
+Instead of designing error features , recent researchers adopt ideas from adversarial learning ( Goodfellow et al. , 2014 ) to generate adversarial examples for mining pitfalls of NLP systems ( Cheng et al. , 2018a ; Ebrahimi et al. , 2018 ; Zhao et al. , 2017 ) .
+Adversarial examples are minor perturbed inputs that keep the semantic meaning , yet yield degraded outputs .
+The generation of valid adversarial examples provides tools for error analysis that is interpretable for ordinary users , which can contribute to system maintenance .
+Though it has achieved success concerning continuous input , e.g. , images , there are following major issues for NLP tasks .
+First , it is non-trivial to generate valid discrete tokens for natural language , e.g. , words or characters .
+Cheng et al. ( 2018a ) follow Goodfellow et al. ( 2014 ) to learn noised representation then sample tokens accordingly .
+However , there is no guaranteed correspondence between arbitrary representation and valid tokens .
+Therefore , it may gen-in
+Two man are playing on the street corner .
+perturbed in Two man are playing frisbee in the park .
+out Zwei M?nner spielen an einer Stra?enecke .
+perturbed out Zwei M?nner spielen frisbee im park .
+Table 2 : Example of undesirable perturbation in adversarial examples for machine translation in ( Zhao et al. , 2017 ) , though it yields very different output compare to the origin , it does not indicate system malfunction .
+erate tokens departing from learned representation , which undermines the generation .
+Ebrahimi et al. ( 2018 ) turns to a search paradigm by a bruteforce search for direct perturbations on the token level .
+To lead the search , a gradient - based surrogate loss must be designed upon every token modification by given target annotations .
+However , this paradigm is inefficient due to the formidable computation for gradients .
+Furthermore , surrogate losses defined upon each token by targets requires high-quality targets , and risks being invalidated by any perturbation that changes tokenization .
+Another issue is to keep the semantics of original inputs .
+Different from the fact that minor noises on images do not change the semantics , sampling discrete tokens from arbitrary perturbed representation ( Cheng et al. , 2018a ) may generate tokens with different semantics and lead to ill-perturbed samples ( Table 2 ) .
+Searching for the perturbed input also requires a semantic constraint of the search space , for which handcrafted constraints are employed ( Ebrahimi et al. , 2018 ) .
+Though constraints can also be introduced by multitask modeling with additional annotations ( Zhao et al. , 2017 ) , this is still not sufficient for tasks requiring strict semantic equivalence , such as machine translation .
+In this paper , we adopt a novel paradigm that generates more reasonable tokens and secures semantic constraints as much as possible .
+We summarize our contributions as the following : ?
+We introduce a reinforcement learning ( Sutton and Barto , 2018 , RL ) paradigm with a discriminator as the terminal signal in its environment to further constrain semantics .
+This paradigm learns to apply discrete perturbations on the token level , aiming for direct translation metric degradation .
+Experiments show that our approach not only achieves semantically constrained adversarial examples but also leads to effective attacks for machine translation .
+?
+Our paradigm can achieve the adversarial example generation with outclassed efficiency by only given source data .
+Since our method is model- agnostic and free of handcrafted error feature targeting architectures , it is also viable among different machine translation models .
+?
+We also present some analysis upon the stateof - the- art Transformer based on its attack , showing our method 's competence in system pitfall exposure .
+Preliminaries
+Neural Machine Translation
+The most popular architectures for neural machine translation are RNN - search ( Bahdanau et al. , 2014 ) and Transformer ( Vaswani et al. , 2017 ) .
+They share the paradigm to learn the condi- tional probability P ( Y | X ) of a target translation Y = [y 1 , y 2 , ... , y m ] given a source input X = [ x 1 , x 2 , ... , x n ] .
+A typical NMT architecture consists of an encoder , a decoder and attention networks .
+The encoder encodes the source embedding X emb = [ emb 1 , emb 2 , ... emb n ] into hidden representation H = [ h 1 , h 2 , ... , h n ] .
+Then a decoder f dec with attention network attentively accesses H for an auto-regressive generation of each y i until the end of sequence symbol ( EOS ) is generated : P ( y i |y < i , X ) = softmax ( f dec ( y i?1 , s t , c t ; ? dec ) ) ( 1 ) where c t is the attentive result for current decoder state s t given H .
+Actor-Critic for Reinforcement Learning Reinforcement learning ( Sutton and Barto , 2018 , RL ) is a widely used machine learning technique following the paradigm of explore and exploit , which is apt for unsupervised policy learning in many challenging tasks ( e.g. , games ( Mnih et al. , 2015 ) ) .
+It is also used for direct optimization for non-differentiable learning objectives Bahdanau et al. , 2016 ) in NLP .
+Actor-critic ( Konda and Tsitsiklis , 2000 ) is one of the most popular RL architectures where the agent consists of a separate policy and value networks called actor and critic .
+They both take in environment state s t at each time step as input , while actor determines an action a t among possible action set A and critic yields value estimation V t ( s t ) .
+In general , the agent is trained to maximize discounted rewards R t = ? i=0 ?
+i r t+i for each state , where ? ? ( 0 , 1 ] is the discount factor .
+Such goal can be further derived as individual losses applied to actor and critic .
+Thus the actor policy loss L ? on step t is : L ? t ( ? ? ) = log P ( a t |s t ) A t ( s t , a t ) ; a t ? A ( 2 ) where ? ? denotes actor parameters , A t ( s t , a t ) denotes general advantage function ( Schulman et al. , 2015 ) on state s t for action a t given by k?1 i=0 ? i r t+ i + ? k V ( s t+k ) ? V ( s t ) , which can be further derived as : A t ( s t , a t ) = ?A t+1 ( s t+ 1 , a t+1 ) + r t +?V t+1 ( s t + 1 ) ?
+V t ( s t ) ( 3 )
+Meanwhile , critic learns to estimate R t via minimizing a temporal difference loss L v on each step t : L v t ( ?
+v ) = 1 2 ( r t + ?R t+1 ? V t ( s t ) ) 2 ( 4 ) where ?
+v denotes critic parameter .
+Usually , the training is regularized by maximizing policy entropy H ? to avoid exploration failure before exploiting optimum policy ( Ziebart , 2010 ) .
+Thus the total loss becomes : L ( ? ) = t ( ?
+L v t ? L ? t ? ?H ? ( ?|s t ) ) ( 5 ) where ? and ? are hyperparameters for value loss and entropy coefficients .
+adversarial examples in NLP
+A general adversarial example generation can be described as the learning process to find a perturbation ? on input X that maximize system degradation L adv within a certain constraint C ( ? ) : argmax ? L adv ( X + ? ) ? ?C ( ? ) ( 6 ) where ? denotes the constraint coefficient , L adv is determined by the goal of the attack .
+However , currently effective adversarial generation for NLP is to search by maximizing a surrogate gradientbased loss : argmax 1 ?i? n , x ?vocab L adv ( x 0 , x 1 , ...x i ...x n ) ( 7 ) where L adv is a differentiable function indicating the adversarial object .
+Due to its formidable search space , this paradigm simply perturbs on a small ratio of token positions and greedy search by brute force among candidates .
+Note that adversarial example generation is fundamentally different from noised hidden representation in adversarial training ( Cheng et al. , 2019 ; Sano et al. , 2019 ) , which is not to be concerned in this work .
+Approach
+In this section , we will describe our reinforced learning and generation of adversarial examples ( Figure 1 ) in detail .
+Overall , the victim model is a part of the environment ( denoted as Env ) , which yields rewards indicating overall degradation based on modified inputs .
+A reinforced agent learns to modify every source position from left to right sequentially .
+Meanwhile , a discriminator in Env provides every-step survival signals by determining whether SRC is ill-perturbed .
+Environment
+We encapsulate the victim translation model with a discriminative reward process as an Env for a reinforced agent to interact .
+Environment State
+The state of the Env is described as s t = ( SRC , t ) , where SRC = [ src 0 , src1 , ... , src N ] are N sequences processed by victim model 's vocabulary and tokenization .
+Each sequence src i = [ x 1 , x 2 , ... , x n ] is concatenated with BOS , EOS , which indicate the begin and end of the sequence , then padded to same length .
+Time step t ? [ 1 , n] also indicates the token position to be perturbed by the agent .
+Env will consecutively loop for all token positions and update s t based on the agent 's modification .
+Env also yields reward signals until the end or intermediately terminated .
+That is , all sequences in SRC are determined by D as ill-perturbed during the reward process .
+Once the Env terminates , it finishes the current episode and reset its state with a new batch of sequences as SRC .
+Reward Process with Discriminator
+The reward process is only used during training .
+It consists of a survival reward r s on every step and a final degradation r d concerning an overall metric if the agent survives till the end .
+Overall , we have : r t = ? ? ? ? ? ?1 , terminated 1 N N a ?
+r s , survive & t ? [ 1 , n ) 1 N N ( a ? r s + b ? r d ) , survive & t = n ( 8 ) where a , b are hyper parameters that keeps the overall r s and r d within similar magnitude .
+Instead of direct optimization of the constrained adversarial loss in Eq.6 , we model discriminator D's output as survival rewards similar to that in gaming ( Mnih et al. , 2015 ) .
+That is , the agent must survive for its goal by also fooling D , which attempts to terminate ill-perturbed modifications .
+We define an ill-perturbed source by determining whether it still matches the original target tgt .
+Discriminator
+As it is shown in Figure 1 ( b ) , discriminator D consists of bi-directional GRU encoders for both source and target sequence .
+Their corresponding representation is averaged and concatenated before passed to a feedforward layer with dropout .
+Finally , the output distribution is calculated by a softmax layer .
+Once D determines the pair as positive , its corresponding possibility is regarded as the reward , otherwise 0 : r s = P ( positive |( src , tgt ) ; ? d ) , positive 0 , otherwise ( 9 ) As long as the environment survives , it yields averaged reward among samples from SRC ( Eq.8 ) to mitigate rewards ' fluctuation that destabilize training .
+Discriminator Training Similar to GAN training , the environment 's D must update as the agent updates .
+During its training , the agent 's parameter is freezed to provide training samples .
+For every D's training epoch , we randomly choose half of the batch and perturb its source using the current agent as negative samples .
+During D's updates , we randomly generate a new batch of pairs from parallel data likewise to test its accuracy .
+D is updated at most step D epochs , or until its test accuracy reaches acc bound .
+Env only 1 yields - 1 as overall terminal rewards when all sequences in SRC are intermediately terminated .
+For samples classified as negative during survival , their follow - up rewards and actions are masked as 0 .
+If the agent survives until the end , Env yields additional averaged r d as final rewards for an episode .
+We follow Michel et al. ( 2019 ) to adopt relative degradation : r d = score(y , ref s ) ? score(y , ref s ) score(y , ref s ) ( 10 ) where y and y denote original and perturbed output , ref s are references , and score is a translation metric .
+If score(y , ref s ) is zero , we return zero as r d .
+To calculate score we retokenize perturbed SRC by victim models vocabulary and tokenizer before translation .
+Agent
+As it is shown in Figure 1 ( c ) , the agent 's actor and critic share the same input layers and encoder , but later processed by individual feedforward layers and output layers .
+Actor takes in SRC and current token with its surrounding ( x t?1 , x t , x t +1 ) , then yields a binary distribution to determine whether to attack a token on step t , while critic emits a value V ( s t ) for every state .
+Once the actor decides to perturb a specific token , this token will be replaced by another token in its candidate set .
+Candidate Set
+We collect at most K candidates for each token in the victim 's vocabulary within a distance of . is the averaged Euclidean distance of K-nearest embedding for all tokens in victim vocabulary .
+We note that there shall always be candidates for a token in test scenarios that are beyond victim 's vocabulary , for those without a nearby candidate , we assign UNK as its candidate .
+Once the agent chooses to replace a token with UNK , we follow Michel et al . ( 2019 ) to present a valid token that is also UNK to the victim 's vocabulary .
+Agent Training
+The agent is trained by algorithm in appendix A. Since the agent is required to explore with stochastic policy during training , it will first sample based on its actor 's output distribution on whether to perturb the current position , then randomly choose among its candidates .
+The agent and discriminator take turns to update .
+We assume the training is converged when test accuracy for D does not reach over a certain value within certain continuous learning rounds of agent and discriminator .
+Agent Inference
+To generate adversarial examples , the agent will take in source sequences and perturb on each position based on the actor 's output from left to right , then choose the nearest candidate .
+As the agent 's critic learns to estimate expected future rewards for a step , only when it yields positive value will agent perturb , otherwise it indicates an undesirable perturbation ; thus , the agent is muted .
+Experiments
+Data Sets
+We test our adversarial example generations on Zh?En , En?Fr , and En? De translation tasks , which provide relatively strong baselines for victim models and mass test samples .
+We train our agent using only parallel data that is used for victims ' training .
+we train on LDC Zh?En 2 ( 1.3 M pairs ) , WMT14 En?De 3 ( 4.5 M pairs ) and WMT15 En? Fr 4 ( 2.2 M pairs ) for victim models respectively .
+For subword level translation , we apply byte pair encoding ( Sennrich et al. , 2015 , BPE ) for both source and target languages with the vocabulary size of 37k .
+We also use join - BPE for En-De and En- Fr experiments with 34 k and 33 k vocabulary size , respectively .
+For word- level translation , we use NLPIR-ICTCLAS and Moses tokenizer for Chinese and English tokenization , respectively .
+We adopt 30 k as vocabulary size for both source and target language .
+We adopt NIST test sets 5 for Zh?En and WMT test sets for En?De and En?Fr , then generate adversarial examples for these sources for analysis .
+Victim Models
+We choose the state- of- the- art RNN - search and Transformer as victim translation models .
+For RNN - search , we train subword level models and strictly follow the architecture in Bahdanau et al . ( 2014 ) .
+As for Transformer , we train both word-level and subword - level model for Zh?En and only subword - level models for En?De and En? Fr with the architecture and the base parameter settings by Vaswani et al . ( 2017 ) .
+For the above models , we apply the same batch scheme and Adam optimizer following Vaswani et al . ( 2017 ) .
+We choose MT03 , newsdiscuss 2015 and new-stest2013 for Zh?En , En?Fr , En?De as validation set respectively .
+Metrics
+We first report attack results both in terms of charlevel BLEU ( chrBLEU ) of perturbed source by the origin to indicate modification rate , and relative decrease in target BLEU ( RD ) : RD = BLEU(y , ref s ) ? BLEU(y , ref s ) ( 1 ? chrBLEU ( x , x ) ) ? BLEU(y , ref s ) ( 11 )
+We adopt sacreBLEU ( Post , 2018 ) As Michel et al. ( 2019 ) suggest , there is a tradeoff between achieving high RD and maintaining semantic .
+One can achieve rather high RD by testing with mismatched references , making degradation less meaningful .
+Therefore , we also test source semantic similarity with human evaluation ( HE ) ranging from 0 to 5 used by Michel et al . ( 2019 ) by randomly sampling 10 % of total sequences mixed with baselines for a double - blind test .
+Results
+We implement state - of- the - art adversarial example generation by gradient search ( Michel et al. , 2019 ) ( GS ) as a baseline , which can be currently applied to various translation models .
+We also implemented random synthetic noise injection ( Karpukhin et al. , 2019 ) ( RSNI ) as an unconstrained contrast .
+Both baselines are required to provide a ratio for the amount of tokens to perturb during an attack , where we present the best results .
+Unlike our paradigm can generate on monolingual data , GS also requires target annotations , where we use one of the references to provide a strong baseline .
+Note that RSNI can significantly break semantics with distinctly lower HE to achieve rather high RD , which we do not consider as legit adversarial example generation and noted with " * " for exclusion .
+As it is shown in Table 3 and 4
+Case Study
+As it is shown in Table 5 , our method is less likely to perturb some easily - modified semantics ( e.g. numbers are edited to other " forms " , but not different numbers ) , while search tends to generate semantically different tokens to achieve degradation .
+Thus our agent can lead to more insightful and plausible analyses for neural machine translation than search by gradient .
+Analysis
+Efficiency
+As it is shown in Figure 2 , given the same amount of memory cost , our method is significantly more a origin in ? 4000 ?16 ?
+origin out 40 million voters throughout the country will elect the seventh president of the fifth republic of france among the 16 candidates references 40 million voters in the nation will elect the 7th president for the french fifth republic from 16 candidates .
+there are 40 million voters and they have to pick the fifth republic france 's seventh president amongst the sixteen candidates .
+forty million voters across the country are expected to choose the 7th president of the 5th republic of france from among 16 candidates .
+40 million voters around france are to elect the 7th president of the 5 republic of france from 16 candidates . GS ( 0.4 ) in ? ? ? ? 4000 ? ? ? 6 ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? GS ( 0.4 ) out of the 6 candidates , 40 million people will elect the seventh foreign minister of the five countries .
+ours in ? ? ?4000?16 ? ? ?5?7 ?
+ours out among the 16 candidates , 40 million voters will elect five presidents of France and seven presidents of the republic of France .
+b origin in ? origin out the persons involved in the case are currently detained by the yemeni authorities .
+references the perpetrator is currently in the custody of the yemeni authorities .
+yemeni authority apprehended the suspect .
+the suspect is now in custody of yemeni authorities . the ones involed in this case were also detained by the authority .
+GS ( 0.4 ) in ? ? ? ? ? GS ( 0.4 ) out the person involved in the case is now detained by the authorities !
+ours in ? ? ? ? ours out the victim is currently detained by the yemeni authorities .
+Table 5 : ( a ) an example of perturbed number and quantifier severely damaging outputs in Zh?
+En translation , where we highlight the changes . " ? " is the character for 5 and " ? " for 7 , " ? " and " ? " are both commonly used quantifiers for people .
+However , search - based attack achieves degradation by some significant changes of semantics , where number " 16 " is changed to " 6 " , and " ? " means " foreign minister " . ( b ) an example of changed suffix which breaks the result . " ? " and " ? " are common suffixes ( K ) sharing same meaning used for people .
+Our model spots that victim model 's fragility upon such perturb , while search does not .
+efficient compared to the search paradigm .
+Gradient computation concerning every modified source sequence can cost considerably in time or space for a state - of - the - art system , which could be even worse for systems with recurrent units .
+When it comes to mass production of adversarial examples for a victim translation system , our method can also generate by given only monolingual inputs .
+In contrast , search methods must be provided the same amount of well - informed targets .
+Attack Patterns NMT systems may have different robustness over different parts of the inputs , thus some researchers implement input preprocessing targeting certain empirically weak parts , e.g. , named entities .
+Since the agent 's policy is to attack without handcrafted error features , we can further investigate vulnerability by its attack preferences of different parts of speech .
+We choose Chinese , for example , and adopt LTP POS tagger 6 to label NIST test sets , then check the modification rate for each POS .
+To ensure the reliability of our analysis , we run three rounds of experiments on both baselines and our agent with similar modification rate targeting state - of- the - art Transformer with BPE , and collect overall results .
+We also present random synthetic noise injection ( Karpukhin et al. , 2019 ) ( RSNI ) , which is not intended for any preference as an additional baseline .
+As it is shown in Figure 3 , our reinforced paradigm shows distinct preference upon certain POS tags , indicating pitfalls of a victim translation system .
+At the same time , RSNI distributed almost evenly upon different POS tags .
+Though the search paradigm ( GS ) does expose some types of pitfall , our method can further expose those omitted by the search .
+Note that unlike existing work relying on feature engineering to indicate errors , we have no such features implemented for an agent .
+However , our agent can still spot error patterns by favoring some of the POS , such as Our agent shows a significant preference for some POS ( e.g. , Ni , Nh , Nz , I ) , which are commonly regarded as hard - to- translate phrases among industrial implementations , while some ( e.g. , K ) are less noticed .
+Preference among different choices .
+( - 10.25 )
+Table 6 : Attacks targeting different architecture from the trained one .
+We note agent with the architecture that is trained with ( e.g. , agent - RNN stands for agent trained by targeting RNN - search ) .
+Ni ( organization name ) , Nh ( person name ) , Nl ( location name ) , M ( numbers ) , which are commonly accepted as hard- to-translate parts .
+Moreover , the agent also tends to favor K ( suffix ) more , which is less noticed .
+Attack Generalization
+We additionally test agents by attacking different model architecture from the one that it 's trained .
+As it is shown in Table 6 , we perturb the inputs by agents trained to attack a different architecture , then test for degradation .
+The results show that our agent trained by targeting Transformer architecture can still achieve degradation on RNN - search , and vice-versa . ( - 0.46 ) .
+The improvement on the IWSLT test also indicates the adversarial tuning contributes to not only defending the agent 's attack , but also overall robustness .
+Reinforced Examples for Machine translation
+We additionally switched the episodic rewards in the environment , then ignored all modifications that induce UNK tokens to train an agent , hoping to generate minor perturbed samples that can improve the translation metric .
+Though we failed to achieve overall improvements , we do succeed for quite a portion of samples , as shown in 8 : Example of minor perturbed samples that improves machine translation for Zh?En Transformer - BPE model .
+The " ? " in first sample is modified to " - " , then model yields the omitted " ?
+( qian qi chen ) " .
+The " ? " in second sample is modified to " ? " , where they both mean " parking " , then comes the omitted " in southern district " for " ? " .
+for defense or strict text correction before the test phase .
+Reinforced examples are still noisy and can be directly applied for a test without any model updates to achieve improvements , which to our best knowledge is less investigated by researchers .
+Since we discovered that not all perturbed inputs are harmful , such an issue can be a good hint and alternative for better adversarial defense in NLP and should be further considered .
+6 Related Work Cheng et al. ( 2018a ) and Cheng et al . ( 2018 b ) applied continuous perturbation learning on token 's embedding and then manage a lexical representation out of a perturbed embedding .
+Zhao et al. ( 2017 ) learned such perturbation on the encoded representation of a sequence , and then decode it back as an adversarial example .
+These methods are applicable for simple NLP classification tasks , while failing machine translation which requires higher semantic constraints .
+Zhao et al. ( 2017 ) further attempted to constrain semantic in such paradigm by introducing multi-task modeling with accessory annotation , which further limits applicability .
+On the other hand , Ebrahimi et al . ( 2018 ) , Chaturvedi et al. ( 2019 ) and Cheng et al . ( 2019 ) regarded it as a search problem by maximizing surrogate gradient losses .
+Due to the formidable gradient computation , such methods are less viable to more complex neural architectures .
+Cheng et al. ( 2019 ) introduced a learned language model to constrain generation .
+However , a learned language model is not apt for common typos or UNK .
+Another pitfall of this paradigm is that surrogate losses defined by a fixed tokenization for noncharacter level systems , risks being invalidated once the attack changes tokenization .
+Therefore , Ebrahimi et al . ( 2018 ) simply focused on charlevel systems , while Michel et al . ( 2019 ) specially noted to exclude scenarios where attack changes tokenization in their paradigm .
+Other works turn to more sophisticated generation paradigms , e.g. , Vidnerov ? and Neruda ( 2016 ) adopts a genetic algorithm for an evolutionary generation targeting simple machine learning models .
+Zang et al. ( 2019 ) consider adversarial generation as a word substitution - based combinatorial optimization problem tackled by particle swarm algorithm .
+Our paradigm shares some common ideology with Miao et al . ( 2019 ) and Xiao et al . ( 2018 ) , which iteratively edit inputs constrained by generative adversarial learning .
+Conclusion
+We propose a new paradigm to generate adversarial examples for neural machine translation , which is capable of exposing translation pitfalls without handcrafted error features .
+Experiments show that our method achieves stable degradation with meaning preserving adversarial examples over different victim models .
+It is noticeable that our method can generate adversarial examples efficiently from monolingual data .
+As a result , the mass production of adversarial examples for the victim model 's analysis and further improvement of robustness become convenient .
+Furthermore , we notice some exceptional cases which we call as " reinforced samples " , which we leave as the future work .
+The a and b in Eq.8 are set to 0.5 and 10 .
+The dimension of feedforward layers in the agent 's actorcritic and discriminator are all 256 .
+We initialize the embedding of both agent and discriminator by the victim 's embedding .
+For reinforcement learning , we adopt asynchronous learning with an additional global agent with an additional set of parameter ? ? , we set discount factor ? to 0.99 , ? and ? in Eq.5 to 0.5 and 0.05 respectively .
+As for the stop criterion , we set patience round to 15 with convergence boundary for acc D to 0.52 .
+We adopt Adafactor ( Shazeer and Stern , 2018 ) for training , which is a memoryefficient Adam .
+The learning rate for agent 's optimizer is initiated as 0.001 and scheduled by rsqrt with 100 steps of warmup .
+The K for the candidate set is 12 .
+Our agent takes around 30 hours to converge on a single Nvidia 1080 ti .
+Note that higher acc bound and lower convergence boundary for D indicates higher semantic constraints , which will increase training time .

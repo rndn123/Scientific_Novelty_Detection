@@ -1,0 +1,122 @@
+title
+LIT Team 's System Description for Japanese - Chinese Machine Translation Task in IWSLT 2020
+abstract
+This paper describes the LIT Team 's submission to the IWSLT2020 open domain translation task , focusing primarily on Japanese - to - Chinese translation direction .
+Our system is based on the organizers ' baseline system , but we do more works on improving the Transformer baseline system by elaborate data preprocessing .
+We manage to obtain significant improvements , and this paper aims to share some data processing experiences in this translation task .
+Large-scale back -translation on monolingual corpus is also investigated .
+In addition , we also try shared and exclusive word embeddings , compare different granularity of tokens like sub-word level .
+Our Japanese- to - Chinese translation system achieves a performance of BLEU=34.0 and ranks 2nd among all participating systems .
+Introduction
+In recent years , the neural machine translation ( NMT ) ( Sun et al. , 2019 ; Wu et al. , 2016 ; Sennrich et al. , 2015 ) has made great progress based on encoder-decoder architecture .
+We participate in the IWSLT 2020 open domain translation task : Japanese- to - Chinese .
+This paper describes the NMT systems for the IWSLT 2020 Japanese - to - Chinese machine translation task ( Ansari et al. , 2020 ) .
+Our main efforts are data pre-processing , specifically parallel data filter and sentence alignment .
+By elaborate data processing , we successfully improve the quality of the training set and thus boost the performance of our translation system .
+The backtranslation mechanism ( Edunov et al. , 2018 ) is also investigated to extend the training corpus , we translate Chinese to Japanese to get the Japanese - to - Chinese training corpus , it is an effective approach to exploit the corresponding monolingual data sets .
+The transformer model ( Vaswani et al. , 2017 ) based on multi-head attention has achieved excellent performance in a variety of neural machine translation tasks in the last three years .
+This kind of NMT model surpasses the performance of the traditional statistical machine translation and the NMT performs particularly well especially with rich resource corpus .
+In our system , we adopt bigger transformer architecture , since the performance of the Transformer relies on model capacity , ex . the number of dimensions of the feed -forward network .
+To improve performance , we adopted the Relative Position Attention ( Shaw et al. , 2018 ) .
+Also , we conduct experiments to compare the shared source and target word embeddings and exclusive word embeddings , and whether to adopt the shared embeddings relates to the translation direction .
+The Chinese-to - Japanese direction achieves higher scores when adopting shared word embeddings , however , the Japanese - to - Chinese direction produces opposite results .
+The paper is structured as follows :
+Section 2 will present a detailed description of our data preprocessing , back - translation is introduced in Section 3 , the model of our system will be introduced in Section 4 , the main results of our experiment will be shown in Section 5 .
+Section 6 will draw a brief conclusion of our work for the IWSLT 2020 open domain translation task .
+Data and Pre-processing
+On the whole , our system follows the standard Transformer - based translation pipeline , and our system implementation is based on the official baseline 1 . Most of our efforts in this competition are focused on data pre-processing and back -translation .
+We adopt the same strategies as the official baseline if we do n't point out explicitly .
+Datasets In Japanese - Chinese bidirectional machine translation competition ( Ansari et al. , 2020 ) , the organizers provide a large , noisy set of Japanese - Chinese segment pairs built from web data .
+There are four parts : Part A A small but relatively clean Japanese - Chinese parallel corpus , which is obtained from curating existing Japanese - Chinese parallel datasets .
+Part B
+A pre-filtered dataset of the sentences that the organizers obtained from crawling the Web , aligning , and filtering .
+Part C
+An unfiltered parallel web crawled corpus which is much noisier than previous datasets .
+Part D
+A huge file of the unaligned scraped web pages with the document boundaries .
+The following subsections detail how we handle these four parts of web data respectively .
+Besides , we conduct data augmentation by back -translation using extra monolingual data , which will be discussed in Section 3 .
+Table 1 shows the statistics of the training data .
+Parallel Data Filter
+Although the organizers have filtered parts of the data , there are still many mismatched sentence pairs , i.e. the target sentence is not the corresponding translation of the source sentence .
+For the three aligned datasets , we re-filter them by the following rules .
+?
+Remove empty or duplicated sentences .
+?
+Remove sentence pairs when the source sentence and the target sentence are same .
+?
+Convert all Chinese characters into simplified Chinese .
+?
+Remove sentence pairs when there is no common Chinese character ( Chu et al. , 2014 ) between source sentence and target sentence .
+?
+Remove sentences in which the number of non-English and non-punctuation characters is less than half of the length of the whole sentence .
+?
+The maximum length ratio of sentence pairs is 1.8 . ? Japanese ( Chinese ) sentence should be recognized as Japanese ( Chinese ) by fasttext 's language identification model ( Joulin et al. , 2016 b , a ) .
+After that , we have a pre-processed bilingual training data consisting of 22.3 million parallel sentences .
+Note that we adjust filter rules many times , and finally adopt the above relatively strict rules , resulting in the training data is reduced significantly .
+Besides , the fast align 2 toolkit is popular for computing the alignment score for parallel sentences , but the models trained on the training data filtered by fast align become worse .
+We suspect that its scores may be highly related to the length of the sentences , this results in qualified long sentences are discarded .
+So we did n't use fast align in this paper .
+Web Crawled Sentence Alignment
+The organizers provide us a huge corpus of more than 15 million unaligned bilingual document pairs .
+To extract the parallel sentences , we consider each sentence of a document as an element and adopt the longest common sub-sequence algorithm to find Ja - Zh sentence pairs with the highest character F1 similarity .
+Algorithm 1 shows the alignment process , in which we define the alignment score score ( C i , J j ) between two sentences by the F1 value of their character overlap .
+Unfortunately , this part of data is highly duplicated .
+After performing Algorithm 1 and filter algorithm mentioned in Section 2.2 , we successfully obtained about 50 million parallel sentences pairs .
+But only 2.7 million sentence pairs are remained after deduplicating .
+Something is better than nothing , we still add the 2.7 million data into our training set .
+Back-translation
+In recent works , the back - translation mechanism ( Edunov et al. , 2018 ) has been proved as an effective method to improve machine translation systems by utilizing large-scale monolingual corpus .
+111 Algorithm 1 Align bilingual sentences from two documents .
+Require : Chinese sentences C 1 , C 2 , ? ? ? , C N ; Japanese sentences
+J 1 , J 2 , ? ? ? , J M ; Ensure : Aligned sentence pairs set A 1 : Initialize all auxiliary variables s to zero ; 2 : for i = 1 ? N do 3 : for j = 1 ? M do 4 : if s i?1 , j ? s i , j then 5 : s i , j ? s i?1 , j , trace ( i , j ) ? 0 6 : end if 7 : if s i , j?1 ? s i , j then 8 : s i , j ? s i , j?1 , trace ( i , j ) ? 1 9 : end if 10 : if s i?1 , j?1 ? s i , j then 11 : s i , j ? s i?1 , j?1 , trace ( i , j ) ? 2 12 : end if 13 : if s i?1 , j?1 + score ( C i , J j ) > s i , j then 14 : s i , j ? s i?1 , j?1 + score ( C i , J j ) 15 : trace ( i , j ) ? 3 16 : end if 17 : end for 18 : end for 19 : i ? N , j ? M 20 : while i > 0 and j > 0 do 21 : if trace ( i , j ) = 0 then 22 : i ? i ? 1 23 : else if j ) = 1 then 24 : j ? j ? 1 25 : else if trace ( i , j ) = 2 then 26 : i ? i ?
+1 , j ? j ? 1 27 : else if trace ( i , j ) = 3 then 28 : add sentence pair ( C i , J j ) to set A 29 : i ? i ?
+1 , j ? j ? 1 30 : end if 31 : end while
+In this paper , we follow the successful experiences in Edunov et al . ( 2018 ) to further extend our training data .
+Chinese monolingual data is extracted from the unaligned scraped web pages ( Part D ) , and we select 200 million sentences to reduce training time .
+Chinese-to- Japanese Translation
+In order to generate a synthetic bilingual corpus , we trained a Chinese- to - Japanese transformer on the filtered parallel data mentioned in Section 2.2 .
+Different from the Japanese- to - Chinese translation , we find that sharing BPE ( Sennrich et al. , 2015 ) tokens between Chinese and Japanese can produce Table 2 shows the comparison of different vocabulary strategy .
+The number of BPE merge operations is 30k .
+In truncated version , the vocabulary is truncated to 40 K BPE tokens .
+Constructing Augmented Training Data Following the work of Edunov et al . ( 2018 ) , noise is added to the back -translation data .
+We delete a word with probability 10 % , replace a word by a placeholder token with probability 10 % , and swap words no further than three positions apart .
+Besides , we use bilingual data upsampling factor 4 to make the model pay more attention to the high-quality parallel data .
+Model
+We think the Transformer model is a strong model with excellent performance .
+So , we only take some small tricks on this model .
+In this section , we describe two different methods to enhance our model performance in this competition .
+All of them come from previous work ( Sun et al. , 2019 ; Shaw et al. , 2018 ) and all of these methods help us to improve the baseline model .
+In the subsection , we will describe these methods briefly .
+Bigger Transformer
+In the work of ( Sun et al. , 2019 ) , they proposed a method that increases the model capacity on the translation model and gets progress .
+Thus , we can think about if the model becomes wider , the performance may be better .
+We implement to increase the inner dimension of the feed -forward network in a big transformer model , from 4096 to 8192 .
+Also , thinking about the overfitting problem , we increase the relu dropout value from 0.1 to 0.3 .
+Relative Position Representation Recent empirical work shows that in the selfattention mechanism , it is better to use relative Filtered " denotes all training data filtered by the organizers , " Re - Filtered " denotes our re-filter method , " BT " is the abbreviation of back - translation , and " RP " means relative position .
+( * denotes our submitted system ) position ( Shaw et al. , 2018 ) to reflect the sequential relationship of words .
+In original ways , the Transformer only uses absolute position information in word embeddings .
+With the relative position feature , we compare the result and find it has better performance .
+5 Submission to IWSLT 2020
+Experiment
+We compare the performance of our system on different data sets to show the effectiveness of data processing .
+In general , we adopt the default hyperparameters of transformer relative big in tensor2tensor 3 . Except that we set the inner dimension of the feed -forward network to 8192 , and set relu dropout to 0.3 .
+We conduct our experiments on a machine with 8 Nvidia P40 GPUs .
+The model is updated 500 K times in 9 days .
+Model parameters are saved every 1000 steps , and the last three checkpoints are averaged to obtain the final model .
+In decoding , we search the best decoding configuration on the released development set and fix the beam size as 6 , alpha as 0.8 .
+It is regretful that because of limited computational resources , we only trained a single model and did n't conduct model ensemble experiments .
+As for post-processing , we process the decoding results by removing " UNK " token and Japanese kana characters from translated Chinese texts .
+Japanese-to- Chinese Translation Results
+Table 3 lists results obtained by using different training data .
+We use the official baseline system to test the effects of data processing .
+In the table , data size increases from the left columns to the right columns , and the performance is also improved .
+This shows the importance of extending training data in this task and validates the necessity of data pre-processing in boosting translation system accuracy .
+Also , the submitted system adopts a larger inner dimension and relative position , which shows the highest BLEU score in our systems .
+Conclusion
+We participated in the Japanese- to - Chinese translation direction in the IWSLT 2020 open domain translation task .
+We focus on improving the Transformer baseline system by doing elaborate data pre-processing , and we manage to obtain significant improvements .
+Experiments also show that increasing model capacity is beneficial on large training data .
+Finally , our submission of Japanese- to - Chinese translation achieves the 2nd highest BLEU score among all the submissions .
+Table 3 : 3 Results obtained by different data pre-processing methods and combinations .
+" Clean " denotes the data of Part A , " Bigger + RP * ? ? ? ? ? ? ? ? ? ? ? ? ? ? 20.0 26.9 28.6 29.6 30.3 22.0 ---34.0

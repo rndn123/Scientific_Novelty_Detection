@@ -1,0 +1,262 @@
+title
+Improving Zero - Shot Translation by Disentangling Positional Information
+abstract
+Multilingual neural machine translation has shown the capability of directly translating between language pairs unseen in training , i.e. zero-shot translation .
+Despite being conceptually attractive , it often suffers from low output quality .
+The difficulty of generalizing to new translation directions suggests the model representations are highly specific to those language pairs seen in training .
+We demonstrate that a main factor causing the language -specific representations is the positional correspondence to input tokens .
+We show that this can be easily alleviated by removing residual connections in an encoder layer .
+With this modification , we gain up to 18.5 BLEU points on zero-shot translation while retaining quality on supervised directions .
+The improvements are particularly prominent between related languages , where our proposed model outperforms pivot-based translation .
+Moreover , our approach allows easy integration of new languages , which substantially expands translation coverage .
+By thorough inspections of the hidden layer outputs , we show that our approach indeed leads to more languageindependent representations .
+1
+Introduction Multilingual neural machine translation ( NMT ) system encapsulates several translation directions in a single model ( Firat et al. , 2017 ; Johnson et al. , 2017 ) .
+These multilingual models have been shown to be capable of directly translating between language pairs unseen in training ( Johnson et al. , 2017 ; Ha et al. , 2016 ) .
+Zero-shot translation as such is attractive both practically and theoretically .
+Compared to pivoting via an intermediate language , the direct translation halves inference - time computa-encoder a big cat encoder un gato grande h 1 h 2 h 3 h 1 h 3 h 2 Figure 1 : An example of language -specific encoder outputs as a results of the strong positional correspondence to input tokens ( even assuming the word embeddings are cross-lingually mapped ) .
+tion and circumvents error propagation .
+Considering data collection , zero-shot translation does not require parallel data for a potentially quadratic number of language pairs , which is sometimes impractical to acquire especially between low-resource languages .
+Using less supervised data in turn reduces training time .
+From a modeling perspective , zero-shot translation calls for language - agnostic representations , which are likely more robust and can benefit low-resource translation directions .
+Despite the potential benefits , achieving highquality zero-shot translation is a challenging task .
+Prior works ( Arivazhagan et al. , 2019 ; Zhang et al. , 2020a ; Rios et al. , 2020 ) have shown that standard systems tend to generate poor outputs , sometimes in an incorrect target language .
+It has been further shown that the encoder-decoder model captures spurious correlations between language pairs with supervised data ( Gu et al. , 2019 ) .
+During training , the model only learns to encode the inputs in a form that facilitates translating the supervised directions .
+The decoder , when prompted for zero-shot translation to a different target language , has to handle inputs distributed differently from what was seen in training , which inevitably degrades performance .
+Ideally , the decoder could translate into any target language it was trained on given an encoded representation independent of input languages .
+In practice , however , achieving a language - agnostic encoder is not straightforward .
+In a typical Transformer encoder ( Vaswani et al. , 2017 ) , the output has a strong positional correspondence to input tokens .
+For example in the English sentence in Figure 1 , encoder outputs h 1,2,3 correspond to " a " , " big " , " cat " respectively .
+While this property is essential for tasks such as sequence tagging , it hinders the creation of languageindependent representations .
+Even assuming that the input embeddings were fully mapped on a lexical level ( e.g. " cat " and " gato " have the same embedding vector ) , the resulting encoder outputs are still language -specific due to the word order differences .
+In this light , we propose to relax this structural constraint and offer the model some freedom of word reordering in the encoder already .
+Our contributions are as follow : ?
+We show that the positional correspondence to input tokens hinders zero-shot translation .
+We achieve considerable gains on zero-shot translation quality by only removing residual connections once in a middle encoder layer .
+?
+Our proposed model allows easy integration of new languages , which enables zero-shot translation between the new language and all other languages previously trained on .
+?
+Based on a detailed analysis of the model 's intermediate outputs , we show that our approach creates more language - independent representations both on the token and sentence level .
+Disentangling Positional Information Zero-shot inference relies on a model 's generalizability to conditions unseen in training .
+In the context of zero-shot translation , the input should ideally be encoded into an language - agnostic representation , based on which the decoder can translate into any target language required , similar to the notion of an interlingua .
+Nevertheless , the ideal of " any input language , same representation " cannot be easily fulfilled with a standard encoder , as we have shown in the motivating example in Figure 1 .
+We observe that the encoder output has a positional correspondence to input tokens .
+Formally , given input token embeddings ( x 1 , . . . , x n ) , in the encoder output ( h 1 , . . . , h n ) , the i-th hidden state h i mostly contains information about x i .
+While this structure is prevalent and is indeed necessary in many tasks such as contextual embedding and sequence tagging , it is less suitable when considering language - agnostic representations .
+As a sentence and feed forward ( FF ) layer we apply layer normalization , which is not visualized here for brevity .
+in different languages are likely of varying lengths and word orders , the same semantic meaning will get encoded into different hidden state sequences .
+There are two potential causes of this positional correspondence : residual connections and encoder self-attention alignment .
+We further hypothesize that , by modifying these two components accordingly , we can alleviate the positional correspondence .
+Specifically , we set one encoder layer free from these constraints , so that it could create its own output ordering instead of always following a one - to - one mapping with its input .
+Modifying Residual Connections
+In the original Transformer architecture from Vaswani et al . ( 2017 ) , residual connections ( He et al. , 2016 ) are applied in every layer , for both the multihead attention and the feed -forward layer .
+By adding the input embeddings to the layer outputs , the residual connections are devised to facilitate gradient flow to bottom layers of the network .
+However , since the residual connections are present throughout all layers , they strictly impose a one-toone alignment between the inputs and outputs .
+For the encoder , this causes the outputs to be positionally corresponding to the input tokens .
+We propose to relax this condition , such that the encoder outputs becomes less position - and hence language -specific .
+Meanwhile , to minimize the impact on the model architecture and ensure gradient flow , we limit this change to only one encoder layer , and only its multihead attention layer .
+Figure 2 ( b ) gives a visualization of this change in comparison to the original encoder in Figure 2 ( a ) .
+Position - Based Self-Attention Query
+Besides the residual connections , another potential reason for the positional correspondence is the encoder self-attention alignment .
+Via the selfattention transform , each position is a weighted sum from all input positions .
+While the weights theoretically can distribute over all input positions , they are often concentrated locally , particularly with output position i focusing on input position i. Previous works on various sequence tasks ( Yang et al. , 2020 ; Zhang et al. , 2020 b ) have shown heavy weights on the diagonal of the encoder selfattention matrices .
+In this light , the motivation of our method starts with the formation of the self-attention weight matrix : score ( Q , K ) = QK T , where Q and K and the query and key matrices .
+This n ?
+n matrix encapsulates dot product at each position against all n positions .
+Since the dot product is used as a similarity measure , we hypothesize that when Q and K are similar , the matrix will have heavy weights on the diagonal , thereby causing the positional correspondence .
+Indeed , Q and K are likely similar since they are projections from the same input .
+We therefore propose to reduce this similarity by replacing the projection base of the self-attention query by a set of sinusoidal positional encodings .
+Moreover , to avoid possible interaction with positional information retained in K , we use a wave length for this set of sinusoidal encodings that is different from what is added onto encoder input embeddings .
+Figure 2 ( c ) contrasts our position - based attention query with the original model in Figure 2 ( a ) , where the key , query , value are all projected from the input to the self-attention layer .
+Experimental Setup
+Our experiments cover high - and low-resource languages and different data conditions .
+We choose an English-centered setup , where we train on X ?
+en parallel data , and test the zero-shot translation between all non-English languages .
+This scenario is particularly difficult for zero-shot translation , as half of the target - side training data is in English .
+Indeed , recent works ( Fan et al. , 2020 ; Rios et al. , 2020 ) have outlined downsides of the Englishcentered configuration .
+Nevertheless , intrigued by the potential of covering N 2 translation directions by training on 2N directions , we still explore this scenario .
+Datasets
+Our datasets originate from three sources : IWSLT 2017 ( Cettolo et al. , 2017 ) , Europarl v7 ( Koehn , 2005 ) , and PMIndia ( Haddow and Kirefu , 2020 ) .
+The IWSLT and Europarl data are taken from the MMCR4NLP corpus ( Dabre and Kurohashi , 2017 ) .
+An overview of the datasets is in Table 1 .
+To investigate the role of training data diversity , we construct two conditions for Europarl , where one is fully multiway aligned , and the other has no multiway alignment at all .
+Both are subsets of the full dataset with 1 M parallel sentences per direction .
+Moreover , we study the challenging case of PMIndia with little training data , distinct writing systems , and a large number of agglutinate languages that are specially difficult to translate into .
+( Gal and Ghahramani , 2016 ) as a comparison since it was used in a previous work on zero-shot translation ( Pham et al. , 2019 ) instead of the standard element -wise dropout .
+With variational dropout , all timesteps in a layer output share the same mask .
+This differs from the standard dropout , where each element in each timestep is dropped according to the same dropout rate .
+We hypothesize that this technique helps reduce the positional correspondence with input tokens by preventing the model from relying on specific word orders .
+We train for 64 epochs and average the weights of the 5 best checkpoints ordered by dev loss .
+By default , we only include the supervised translation directions in the dev set .
+The only exception is the Europarl - full case , where we also include the zero-shot directions in dev set for early stopping .
+When analyzing model hidden representations through classification performance ( Subsection 5.1 and 5.2 ) , we freeze the trained encoder-decoder weights and train the classifier for 5 epochs .
+The classifier is a linear projection from the encoder hidden dimension to the number of classes , followed by softmax activation .
+As the classification task is lightweight and convergence is fast , we reduce the warmup steps to 400 while keeping the learning rate schedule unchanged .
+Proposed Models
+As motivated in Section 2 , we modify the residual connections and the self-attention layer in a middle encoder layer .
+Specifically , we choose the 3 - rd and 5 - th layer of the 5 and 8 - layer models respectively .
+We use " Residual " to indicate residual removal and " Query " the position - based attention query .
+For the projection basis of the attention query , we use positional encoding with wave length 100 .
+Zero - Shot vs.
+Pivoting
+We compare the zeroshot translation performance with pivoting , i.e. directly translating the unseen direction X ? Y vs. using English as an intermediate step , as in X ? English ?
+Y .
+The pivoting is done by the baseline multilingual model , which we expect to have similar performance to separately trained bilingual models .
+For a fair comparison , in the Europarlfull case , pivoting is done by a baseline model trained till convergence with only supervised dev data rather than the early - stopped one .
+Preprocessing and Evaluation
+For the languages with Latin script , we first apply the Moses tokenizer and truecaser , and then learn byte pair encoding ( BPE ) using subword - nmt ( Sennrich et al. , 2016 ) .
+For the Indian languages , we use the IndicNLP library 3 and SentencePiece ( Kudo and Richardson , 2018 ) for tokenization and BPE respectively .
+We choose 40 K merge operations and only use tokens with minimum frequency of 50 in the training set .
+For IWSLT , we use the official tst2017 set .
+For PMIndia , as the corpus does not come with dev and test sets , we partition the dataset ourselves by taking a multiway subset of all languages , resulting in 1,695 sentences in the dev and test set each .
+For Europarl , we use the test sets in the MMCR4NLP corpus ( Dabre and Kurohashi , 2017 ) .
+The outputs are evaluated by sacreBLEU 4 ( Post , 2018 ) .
+Adaptation Procedure
+To simulate the case of later adding a new language , we learn a new BPE model for the new language and keep the previous model unchanged .
+Due to the increased number of unique tokens , the vocabulary Table 3 : BLEU 5 scores on supervised and zero-shot directions .
+On IWSLT and Europarl ( Row ( 1 ) -( 4 ) ) , removing residual connections once substantially improves zero-shot translation while retaining performance on supervised directions .
+On PMIndia ( Row 5 ) , our approach can be improved further by additional regularization ( Table 5 ) . 2 ) and ( 3 ) from Table 3 ) .
+Our approach outperforms pivoting via English .
+of the previously - trained model is expanded .
+In this case , for the model weights related to the word lookup table size , we initialize them as the average of existing embedding perturbed by random noise .
+Results
+Our approach substantially improves zero-shot translation quality , as summarized in Table 3 .
+The first observation is that modification in residual connections is essential for zero-shot performance 6 .
+We gain 6.9 and up to 18.5 BLEU points over the baseline on IWSLT and Europarl ( Row 1 to 4 ) respectively .
+When inspecting the model outputs , we see that the baseline often generates off-target translation in English , in line with observations from prior works ( Arivazhagan et al. , 2019 ; Zhang et al. , 2020a ) .
+Our proposed models are not only consistent in generating the required target languages in zero-shot conditions , but also show competitive performance to pivoting via English .
+The effects are particularly prominent between related languages .
+As shown in Table 4 , on Europarl , zero-shot outperforms the pivoting when translating between languages from the same families .
+This is an attractive property especially when the computation resource is limited at inference time .
+In the very challenging case of PMIndia ( Row 5 ) , while removing residual does improve the zeroshot performance , the score of 2.3 indicates that the outputs are still far from being useful .
+Nonetheless , we are able to remedy this by further regularization as we will present in Subsection 4.1 .
+Contrary to the large gains by removing residual connections , the attention query modification is not effective when combined with residual removal .
+This suggests that the primary source of positionspecific representation is the residual connections .
+Moreover , by contrasting Row 2 and 3 of Table 3 , we show the effect of training data diversity .
+In real-life , the parallel data from different language pairs are often to some degree multiway .
+Multiway data could provide an implicit bridging that facilitates zero-shot translation .
+With non-overlapping data , gains can come from training with a larger variety of sentences .
+Given these two opposing hypotheses , our results suggest that the diverse training data is more important for both supervised and zero-shot performance .
+With non-overlapping data , we first obverse improved supervised translation performance by around 1.5 points for all three model configurations ( Baseline , Residual , Resid-ual + Query ) .
+Meanwhile , the zero-shot score also increases from 26.1 to 26.7 points with our model ( Residual ) .
+The baseline , on the contrary , loses from 11.3 to 8.2 points .
+This suggests that our model can better utilize the diverse training data than the baseline under zero-shot conditions .
+Effect of Additional Regularization In Subsection 3.2 , we hypothesized that variational dropout helps reduce position -specific representation .
+Table 5 shows the outcome of replacing the standard dropout by this technique .
+First , vari-ational dropout also improves zero-shot performance over the baseline , yet not as strongly as residual removal .
+On IWSLT and Europarl , there is no additive gain by combining both techniques .
+On PMIndia , however , combining our model and variational dropout is essential for achieving reasonable zero-shot performance , as shown by the increase from 2.4 to 14.3 points .
+Why is the picture different on PMIndia ?
+We identify two potential reasons : 1 ) the low lexical overlap 7 among the languages ( 8 different scripts in the 9 Indian languages ) ; 2 ) the extreme low-resource condition ( 30 K sentences per translation direction on average ) .
+To understand this phenomenon , we create an artificial setup based on IWSLT with 1 ) no lexical overlap by appending a language tag before each token ; 2 ) extremely low resource by taking a subset of 30 K sentences per translation direction .
+The scores in Table 6 show the increasing benefit of variational dropout given very low amount of training data and shared lexicon .
+We interpret this through the lens of generalizable representations :
+With low data amount or lexical overlap , the model tends to represent its input in a highly languagespecific way , hence hurting zero-shot performance .
+7
+We also tried mapping the 9 Indian languages into the Devanagari script , but got worse zero-shot performance compared to the current setup .
+Adaptation to Unseen Language
+So far our model has shown promising zero-shot performance .
+Here we extend the challenge of zero-shot translation by integrating a new language .
+Specifically , we finetune a trained English-centered many - to - many system with a new language using a small amount of X new ?
+English parallel data .
+At test time , we perform zero-shot translation between X new and all non-English languages previously involved in training .
+This practically simulates the scenario of later acquiring parallel data between a low-resource language and the central bridging language in an existing system .
+After finetuning with the new data , we can potentially increase translation coverage by 2N directions , with N being the number of languages originally in training .
+We finetune a trained system on IWSLT ( Row 1 in Table 3 ) using a minimal amount of de ?
+en data with 14 K sentences .
+When finetuning we include the original X old ?
+en training data , as otherwise the model would heavily overfit .
+This procedure is relatively lightweight , since the model has already converged on the original training data .
+In Table 7 , our model outperforms the baseline on zero-shot translation , especially when translating from the new language ( X new ? ) .
+When inspecting the outputs , we see the baseline almost always translate into the wrong language ( English ) , causing the low score of 1.8 .
+We hypothesize that the baseline overfits more on the supervised direction ( X new ? en ) , where it achieves the higher score of 18.5 .
+In contrast , our model is less susceptible to this issue and consistently stronger under zero-shot conditions .
+Discussions and Analyses
+To see beyond BLEU scores , we first analyze how much position - and language -specific information is retained in the encoder hidden representations before and after applying our approaches .
+We then study circumstances where zero-shot translation tends to outperform its pivoting - based counterpart .
+Lastly , we discuss the robustness of our approach to the impact of different implementation choices .
+Inspecting Positional Correspondence
+To validate whether the improvements in zero-shot performance indeed stem from less positional correspondence to input tokens , we assess the difficulty of recovering input positional information before and after applying our proposed method .
+Specifically , we train a classifier to predict the input token ID 's ( which word it is ) or position ID 's ( the word 's absolute position in a sentence ) based on encoder outputs .
+Such prediction tasks have been used to analyze linguistic properties of encoded representation ( Adi et al. , 2017 ) .
+Our classifier operates on each timestep and uses a linear projection from the embedding dimension to the number of classes , i.e. number of unique tokens in the vocabulary or number of maximum timesteps .
+Table 8 compares the classification accuracy of the baseline and our model .
+First , the baseline encoder output has an exact one - to - one correspondence to the input tokens , as evidenced by the nearly perfect accuracy when recovering token ID's .
+This task becomes much more difficult under our model .
+We see a similar picture when recovering the position ID's .
+We also try to recover the position ID 's based on the outputs from each layer .
+As shown in Figure 3 , the accuracy drops sharply at the third layer , where the residual connection is removed .
+This shows that the devised transition point at a middle encoder layer is effective .
+Inspecting Language Independence
+To test whether our model leads to more languageindependent representations , we assess the similarity of encoder outputs on the sentence and token level using the two following methods : SVCCA
+The singular vector canonical correlation analysis ( SVCCA ; Raghu et al. , 2017 ) measures similarity of neural network outputs , and has been used to assess representational similarity in NMT ( Kudugunta et al. , 2019 ) .
+As SVCCA operates on fixed - size inputs , we meanpool the encoder outputs and measure similarity on a sentence level .
+Language Classification Accuracy
+Since more similar representations are more difficult to distinguish , poor performance of a language classifier indicates high similarity .
+Based on a trained model , we learn a token - level linear projection from the encoder outputs to the number of classes ( languages ) .
+Findings
+As shown in Table 9 , our model consistently achieves higher SVCCA scores and lower classification accuracy than the baseline , indicating more language - independent representations .
+When zooming into the difficulty of classifying the languages , we further notice much higher confusion ( therefore similarity ) between related languages .
+For instance , Figure 4 shows the confusion matrix when classifying the 8 source languages in Europarl .
+After residual removal , the similarity is much higher within the Germanic and Romance family .
+This also corresponds to cases where our model outperforms pivoting ( Table 4 ) .
+Moreover , we compare the SVCCA scores after each encoder layer , as shown in Figure 5 .
+Confirming our hypotheses , the model outputs are much more similar after the transition layer , as shown by the sharp increase at layer 3 .
+This contrasts the baseline , where similarity increases nearly linearly .
+Figure 5 : Average SVCCA scores after each encoder layer between all language pairs in IWSLT ( { it , nl , ro , en} ) .
+Scores are reported additive to scores between random vectors .
+Similarity significantly increases after the 3rd layer where we apply residual removal .
+Given these findings and previous analyses in Subsection 5.1 , we conclude that our devised changes in a middle encoder layer allows higher cross-lingual generalizability in top layers while retaining the language -specific bottom layers .
+Understanding Gains of Zero-Shot Translation Between Related Languages
+In Subsection 4 we have shown that between related languages zero-shot translation surpasses pivoting performance .
+Here we manually inspect some pivoting translation outputs ( nl?en?de ) and compare them to zero-shot outputs ( de?en ) .
+In general , we observe that the translations without pivoting are much more similar to the original sentences .
+For instance in Table 4 , when pivoting , the Dutch sentence " geven het voorbeeld ( give the example ) " is first translated to " set the example " , then to " setzen das Beispiel ( set the example ) " in German , which is incorrect as the verb " setzen ( set ) " cannot go together with the noun " Beispiel ( example ) " .
+The zero-shot outputs , on the other hand , directly translates " geven ( give ; Dutch ) " to " geben ( give ; German ) " , resulting in a more natural pairing with " Beispiel ( example ) " .
+With this example , we intend to showcase the potential of bypassing the pivoting step and better exploiting language similarity .
+Input ( nl ) ... geven in dit verband het verkeerde voorbeeld , maar anderen helaas ook .
+Pivot- in ( nl?en ) ... are setting the wrong example here , but others are unfortunately also .
+Pivot-out ( en?de ) ... setzen hier das falsche Beispiel ein , andere sind leider auch .
+Zero-shot ( nl?de ) ... geben in diesem Zusammenhang das falsche Beispiel , aber leider auch andere .
+Table 10 : An example of pivoting ( nl?en?de ) vs zero-shot ( nl?de ) .
+Pivoting via English leads to the incorrect verb-noun pairing of " setzen das Beispiel ( set the example ) " in German , while zero-shot output utilizes language similarity to get higher output quality .
+Where to Remove Residual Connections
+In our main experiments , all proposed modifications take place in a middle encoder layer .
+After comparing the effects of residual removal in each of the encoder layers , our first observation is that the bottom encoder layer should remain fully positionaware .
+Removing the residual connections in the first encoder layer degrades zero-shot performance by 2.8 BLEU on average on IWSLT .
+Secondly , leaving out residual connections in top encoder layers ( fourth or fifth layer of the five layers ) slows down convergence .
+When keeping the number of training epochs unchanged from our main experiments , it comes with a loss of 0.4 BLEU on the supervised directions .
+This is likely due to the weaker gradient flow to the bottom layers .
+The two observations together support our choice of using the middle encoder layer as a transition point .
+Learned or Fixed Positional Embedding
+While we use fixed trigonometric positional encodings in our main experiments , we also validate our findings with learned positional embeddings on the IWSLT dataset .
+First , the baseline still suffers from off-target zero-shot translation ( average BLEU scores on supervised directions : 29.6 ; zeroshot : 4.8 ) .
+Second , removing the residual connection in a middle layer is also effective in this case ( supervised : 29.1 ; zero-shot : 17.1 ) .
+These findings suggest that our approach is robust to the form of positional embedding .
+Although learned positional embeddings are likely more language - agnostic by seeing more languages , as we still present source sentences as a sequence of tokens , the residual connections , when present in all layers , would still enforce a one - to - one mapping to the input tokens .
+This condition allows our motivation and approach to remain applicable .
+Related Work Initial works on multilingual translation systems already showed some zero-shot capability ( Johnson et al. , 2017 ; Ha et al. , 2016 ) .
+Since then , several works improved zero-shot translation performance by controlling or learning the level of parameter sharing between languages ( Lu et al. , 2018 ; Platanios et al. , 2018 ) .
+Recently , models with full parameter sharing have gained popularity , with massively multilingual systems showing encouraging results Zhang et al. , 2020a ; Fan et al. , 2020 ) .
+Besides advantages such as compactness and ease of deployment , the tightly - coupled model components also open up new questions .
+One question is how to form language - agnostic representations at a suitable abstraction level .
+In this context , one approach is to introduce auxiliary training objectives to encourage similarity between the representations of different languages ( Arivazhagan et al. , 2019 ; Pham et al. , 2019 ) .
+In this work we took a different perspective : Instead of introducing additional objectives , we relax some of the pre-defined structure to facilitate language - independent representations .
+Another line of work on improving zero-shot translation utilizes monolingual pretraining ( Gu et al. , 2019 ; Ji et al. , 2020 ) or synthetic data for the zero-shot directions by generated by backtranslation ( Gu et al. , 2019 ; Zhang et al. , 2020a ) .
+With both approaches , the zero-shot directions must be known upfront in order to train on the corresponding languages .
+In comparison , our adaptation procedure offers more flexibility , as the first training step remains unchanged regardless of which new language is later finetuned on .
+This could be suitable to the practical scenario of later acquiring data for the new language .
+Our work is also related to adaptation to new languages .
+While the existing literature mostly focused on adapting to one or multiple supervised training directions ( Zoph et al. , 2016 ; Neubig and Hu , 2018 ; Zhou et al. , 2019 ; Murthy et al. , 2019 ; , our focus in this work is to rapidly expand translation coverage via zero-shot translation .
+While our work concentrates on an Englishcentered data scenario , another promising direction to combat zero-shot conditions is to enrich available training data by mining parallel data between non-English languages ( Fan et al. , 2020 ; Freitag and Firat , 2020 ) .
+On a broader scope of sequenceto-sequence tasks , Dalmia et al . ( 2019 ) enforced encoder-decoder modularity for speech recognition .
+The goal of modular encoders and decoders is analogous to our motivation for zero-shot translation .
+Conclusion
+In this work , we show that the positional correspondence to input tokens hinders zero-shot translation .
+Specifically , we demonstrate that : 1 ) the encoder outputs retain word orders of source languages ; 2 ) this positional information reduces cross-lingual generalizability and therefore zero-shot translation quality ; 3 ) the problems above can be easily alleviated by removing the residual connections in one middle encoder layer .
+With this simple modification , we achieve improvements up to 18.5 BLEU points on zero-shot translation .
+The gain is especially prominent in related languages , where our proposed model outperforms pivot-based translation .
+Our approach also enables integration of new languages with little parallel data .
+Similar to interlingua- based models , by adding two translation directions , we can increase the translation coverage by 2N language pairs , where N is the original number of languages .
+In terms of model representation , we show that the encoder outputs under our proposed model are more languageindependent both on a sentence and token level .

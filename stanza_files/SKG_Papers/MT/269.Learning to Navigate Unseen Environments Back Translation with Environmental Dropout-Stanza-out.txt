@@ -1,0 +1,236 @@
+title
+Learning to Navigate Unseen Environments : Back Translation with Environmental Dropout
+abstract
+A grand goal in AI is to build a robot that can accurately navigate based on natural language instructions , which requires the agent to perceive the scene , understand and ground language , and act in the real-world environment .
+One key challenge here is to learn to navigate in new environments that are unseen during training .
+Most of the existing approaches perform dramatically worse in unseen environments as compared to seen ones .
+In this paper , we present a generalizable navigational agent .
+Our agent is trained in two stages .
+The first stage is training via mixed imitation and reinforcement learning , combining the benefits from both off-policy and on-policy optimization .
+The second stage is fine- tuning via newly - introduced ' unseen ' triplets ( environment , path , instruction ) .
+To generate these unseen triplets , we propose a simple but effective ' environmental dropout ' method to mimic unseen environments , which overcomes the problem of limited seen environment variability .
+Next , we apply semi-supervised learning ( via back - translation ) on these droppedout environments to generate new paths and instructions .
+Empirically , we show that our agent is substantially better at generalizability when fine-tuned with these triplets , outperforming the state - of - art approaches by a large margin on the private unseen test set of the Room-to - Room task , and achieving the top rank on the leaderboard .
+1
+Introduction
+One of the important goals in AI is to develop a robot / agent that can understand instructions from humans and perform actions in complex environments .
+In order to do so , such a robot is required to perceive the surrounding scene , understand our spoken language , and act in a real-world 1 Our code , data , and models publicly available at : https://github.com/airsplay/R2R-EnvDrop ! " #$ Figure 1 : Room-to-Room Task .
+The agent is given an instruction , then starts its navigation from some staring viewpoint inside the given environment .
+At time t , the agent selects one view ( highlighted as red dotted bounding boxes ) from a set of its surrounding panoramic views to step into , as an action a t . house .
+Recent years have witnessed various types of embodied action based NLP tasks being proposed ( Correa et al. , 2010 ; Walters et al. , 2007 ; Hayashi et al. , 2007 ; Zhu et al. , 2017 b ; Das et al. , 2018 ; Anderson et al. , 2018 b ) .
+In this paper , we address the task of instructionguided navigation , where the agent seeks a route from a start viewpoint to an end viewpoint based on a given natural language instruction in a given environment , as shown in Fig.
+1 .
+The navigation simulator we use is the recent Room-to-Room ( R2R ) simulator ( Anderson et al. , 2018 b ) , which uses real images from the Matterport3D ( Chang et al. , 2017 ) indoor home environments and collects complex navigable human-spoken instructions inside the environments , hence connecting problems in vision , language , and robotics .
+The instruction in Fig. 1 is " Walk past the piano through an archway directly in front .
+Go through the hallway when you see the window door .
+Turn right to the hanged pictures ... " .
+At each position ( viewpoint ) , the agent perceives panoramic views ( a set of surrounding images ) and selects one of them to step into .
+In this challenging task , the agent is required to understand each piece of the instruction and localize key views ( " piano " , " hallway " , " door " , etc. ) for making actions at each time step .
+Another crucial challenge is to generalize the agent 's navigation understanding capability to unseen test room environments , considering that the R2R task has substantially different unseen ( test ) rooms as compared to seen ( trained ) ones .
+Such generalization ability is important for developing a practical navigational robot that can operate in the wild .
+Recent works ( Fried et al. , 2018 ; Wang et al. , 2019
+Wang et al. , , 2018a Ma et al. , 2019 ) have shown promising progress on this R2R task , based on speakerfollower , reinforcement learning , imitation learning , cross-modal , and look - ahead models .
+However , the primary issue in this task is that most models perform substantially worse in unseen environments than in seen ones , due to the lack of generalizability .
+Hence , in our paper , we focus on improving the agent 's generalizability in unseen environments .
+For this , we propose a twostage training approach .
+The first stage is training the agent via mixed imitation learning ( IL ) and reinforcement learning ( RL ) which combines off-policy and on-policy optimization ; this significantly outperforms using IL or RL alone .
+The second , more important stage is semisupervised learning with generalization - focused ' environmental dropout ' .
+Here , the model is finetuned using additional training data generated via back - translation .
+This is usually done based on a neural speaker model ( Fried et al. , 2018 ) that synthesizes new instructions for additional routes in the existing environments .
+However , we found that the bottleneck for this semi-supervised learning method is the limited variability of given ( seen ) environments .
+Therefore , to overcome this , we propose to generate novel and diverse environments via a simple but effective ' environmental dropout ' method based on view - and viewpointconsistent masking of the visual features .
+Next , the new navigational routes are collected from these new environments , and lastly the new instructions are generated by a neural speaker on these routes , and these triplets are employed to fine - tune the model training .
+Overall , our fine-tuned model based on backtranslation with environmental dropout substantially outperforms the previous state - of - the - art models , and achieves the most recent rank - 1 on the Vision and Language Navigation ( VLN ) R2R challenge leaderboard 's private test data , outperforming all other entries in success rate under all evaluation setups ( single run , beam search , and pre-exploration ) .
+2
+We also present detailed ablation and analysis studies to explain the effectiveness of our generalization method .
+Related Work Embodied Vision- and -Language Recent years are witnessing a resurgence of active vision .
+For example , Levine et al. ( 2016 ) used an end-toend learned model to predict robotic actions from raw pixel data , learned to navigate via mapping and planning , Sadeghi and Levine ( 2017 ) trained an agent to fly in simulation and show its performance in the real world , and Gandhi et al . ( 2017 ) trained a selfsupervised agent to fly from examples of drones crashing .
+Meanwhile , in the intersection of active perception and language understanding , several tasks have been proposed , including instructionbased navigation ( Chaplot et al. , 2018 ; Anderson et al. , 2018 b ) , target- driven navigation ( Zhu et al. , 2017 b ; , embodied question answering ( Das et al. , 2018 ) , interactive question answering ( Gordon et al. , 2018 ) , and task planning ( Zhu et al. , 2017a ) .
+While these tasks are driven by different goals , they all require agents that can perceive their surroundings , understand the goal ( either presented visually or in language instructions ) , and act in a virtual environment .
+Instruction - based Navigation
+For instructionbased navigation task , an agent is required to navigate from start viewpoint to end viewpoint according to some given instruction in an environment .
+This task has been studied by many works ( Tellex et al. , 2011 ; Chen and Mooney , 2011 ; Artzi and Zettlemoyer , 2013 ; Andreas and Klein , 2015 ; Mei et al. , 2016 ; Misra et al. , 2017 ) in recent years .
+Among them , ( Anderson et al. , 2018 b ) differs from the others as it introduced a photo-realistic dataset - Room-to-Room ( R2 R ) , where all images are real ones taken by Matterport3D ( Chang et al. , 2017 ) and the instructions are also natural .
+In R2R environments , the agent 's ability to perceive realworld images and understanding natural language becomes even more crucial .
+To solve this challenging task , a lot of works ( Fried et al. , 2018 ; Wang et al. , 2018a
+Wang et al. , , 2019 Ma et al. , 2019 ) have been proposed and shown some potential .
+The most relevant work to us is Fried et al . ( 2018 ) , which proposed to use a speaker to synthesize new instructions and implement pragmatic reasoning .
+However , we observe there is some performance gap between seen and unseen environments .
+In this paper , we focus on improving the agent 's generalizability in unseen environment .
+Back-translation Back translation ( Sennrich et al. , 2016 ) , a popular semi-supervised learning method , has been well studied in neural machine translation ( Hoang et al. , 2018 ; Wang et al. , 2018 b ; Edunov et al. , 2018 ; Prabhumoye et al. , 2018 ) .
+Given paired data of source and target sentences , the model first learns two translators - a forward translator from source to target and a backward translator from target to source .
+Next , it generates more source sentences using the back translator on an external target - language corpus .
+The generated pairs are then incorporated into the training data for fine-tuning the forward translator , which proves to improve the translation performance .
+Recently , this approach ( also known as data augmentation ) was applied to the task of instructionbased navigation ( Fried et al. , 2018 ) , where the source and target sentences are replaced with instructions and routes .
+Method
+Problem Setup Navigation in the Room-to- Room task ( Anderson et al. , 2018 b ) requires an agent to find a route R ( a sequence of viewpoints ) from the start viewpoint S to the target viewpoint T according to the given instruction I .
+The agent is put in a photorealistic environment E .
+At each time step t , the agent 's observation consists of a panoramic view and navigable viewpoints .
+The panoramic view o t is discretized into 36 single views { o t , i } 36 i=1 .
+Each single view o t, i is an RGB image v t, i accompanied with its orientation ( ?
+t , i , ? t , i ) , where ?
+t , i and ?
+t , i are the angles of heading and elevation , respectively .
+The navigable viewpoints { l t , k } Nt k=1 are the N t reachable and visible locations from the current viewpoint .
+Each navigable viewpoint l t , k is represented by the orientation ( ?t , k , ?t , k ) from current viewpoint to the next viewpoints .
+The agent needs to select the moving action a t from the list of navigable viewpoints {l t , k } according to the given instruction I , history / current panoramic views { o ? } t ? = 1 , and history actions { a ? } t?1 ? =1 . Following Fried et al. ( 2018 ) , we concatenate the ResNet ( He et al. , 2016 ) feature of the RGB image and the orientation as the view feature f t, i : f t , i = [ ResNet ( v t , i ) ; ( cos ? t , i , sin ?
+t , i , cos ?
+t , i , sin ? t , i ) ] ( 1 )
+The navigable viewpoint feature g t , k is extracted in the same way .
+Base Agent Model
+For our base instruction - to -navigation translation agent , we implement an encoder-decoder model similar to Fried et al . ( 2018 ) .
+The encoder is a bidirectional LSTM - RNN with an embedding layer : ?j = embedding ( w j ) ( 2 ) u 1 , u 2 , ? ? ? , u L = Bi-LSTM ( ?1 , ? ? ? , ?L ) ( 3 ) where u j is the j-th word in the instruction with a length of L .
+The decoder of the agent is an attentive LSTM - RNN .
+At each decoding step t , the agent first attends to the view features {f t , i } computing the attentive visual feature ft : ?
+t , i = softmax i ( f t , i W F ht ?1 ) ( 4 ) ft = i ?
+t , i f t , i ( 5 )
+The input of the decoder is the concatenation of the attentive visual feature ft and the embedding of the previous action ?t?1 .
+The hidden output h t of the LSTM is combined with the attentive instruction feature ?t to form the instruction - aware hidden output ht .
+The probability of moving to the k-th navigable viewpoint p t ( a t , k ) is calculated as softmax of the alignment between the navigable viewpoint feature g t , k and the instruction - aware hidden output ht .
+Different from Fried et al. ( 2018 ) , we take the instruction - aware hidden vector ht ?1 as the hidden input of the decoder instead of h t?1 .
+Thus , the information about which parts of the instruction have been attended to is accessible to the agent .
+h t = LSTM [ ft ; ?t?1 ] , ht ?1 ( 6 ) ? t , j = softmax j u j W U h t ( 7 ) ?t = j ? t , j u j ( 8 ) ht = tanh ( W [ ? t ; h t ] ) ( 9 ) p t ( a t , k ) = softmax k g t , k W G ht ( 10 )
+Supervised Learning : Mixture of Imitation + Reinforcement Learning
+We discuss our IL + RL supervised learning method in this section .
+3 Imitation Learning ( IL ) In IL , an agent learns to imitate the behavior of a teacher .
+The teacher demonstrates a teacher action a * t at each time step t.
+In the task of navigation , a teacher action a * t selects the next navigable viewpoint which is on the shortest route from the current viewpoint to the target T .
+The off-policy 4 agent learns from this weak supervision by minimizing the negative log probability of the teacher 's action a * t .
+The loss of IL is as follows : L IL = t L IL t = t - log p t ( a * t ) ( 11 )
+For exploration , we follow the IL method of Behavioral Cloning ( Bojarski et al. , 2016 ) , where the agent moves to the viewpoint following the teacher 's action a * t at time step t. Reinforcement Learning ( RL )
+Although the route induced by the teacher 's actions in IL is the shortest , this selected route is not guaranteed to satisfy the instruction .
+Thus , the agent using IL is biased towards the teacher 's actions instead of finding the correct route indicated by the instruction .
+To overcome these misleading actions , the on-policy reinforcement learning method Advantage Actor-Critic ( Mnih et al. , 2016 ) is applied , where the agent takes a sampled action from the distribution { p t ( a t , k ) } and learns from rewards .
+If the agent stops within 3 m around the target viewpoint T , a positive reward + 3 is assigned at the final step .
+Otherwise , a negative reward ?3 is assigned .
+We also apply reward shaping ( Wu et al. , 2018 ) : the direct reward at each non-stop step t is the change of the distance to the target viewpoint .
+IL +RL Mixture
+To take the advantage of both off-policy and on-policy learners , we use a method to mix IL and RL .
+The IL and RL agents share weights , take actions separately , and navigate two independent routes ( see Fig. 2 ) .
+The mixed loss is the weighted sum of L IL and L RL : L MIX = L RL + ? IL L IL ( 12 ) IL can be viewed as a language model on action sequences , which regularizes the RL training .
+5 3.4 Semi-Supervised Learning : Back Translation with Environmental Dropout
+Back Translation
+Suppose the primary task is to learn the mapping of X Y with paired data { ( X , Y ) } and unpaired data { Y }.
+In this case , the back translation method first trains a forward model P X Y and a backward model P Y X , using paired data { ( X , Y ) } .
+Next , it generates additional datum X from the unpaired Y using the backward model P Y X .
+Finally , ( X , Y ) are paired to further fine - tune the forward model P X Y as additional training data ( also known as ' data augmentation ' ) .
+Back translation was introduced to the task of navigation in Fried et al . ( 2018 ) .
+The forward model is a navigational agent P E , I R ( Sec. 3.2 ) , which navigates inside an environment E , trying to find the correct route R according to the given instruction I .
+The backward model is a speaker P E , R I , which generates an instruction I from a given route R inside an environment E. Our speaker model ( details in Sec. 3.4.3 ) is an enhanced version of Fried et al . ( 2018 ) , where we use a stacked bidirectional LSTM - RNN encoder with attention flow .
+For back translation , the Room-to - Room dataset labels around 7 % routes { R} in the training environments 6 , so the rest of the routes { R } are unlabeled .
+Hence , we generate additional instructions I using P E , R I ( E , R ) , so to obtain the new triplets ( E , R , I ) .
+The agent is then finetuned with this new data using the IL + RL method described in Sec. 3.3 .
+However , note that the environment E in the new triplet ( E , R , I ) for semisupervised learning is still selected from the seen training environments .
+We demonstrate that the limited amount of environments { E} is actually the bottleneck of the agent performance in Sec. 7.1 and Sec. 7.2 .
+Thus , we introduce our environmental dropout method to mimic the " new " environment E , as described next in Sec. 3.4.2 .
+Environmental Dropout Failure of Feature Dropout Different from dropout on neurons to regularize neural networks , we drop raw feature dimensions ( see Fig. 4a ) to mimic the removal of random objects from an RGB image ( see Fig. 3a ) .
+This traditional feature dropout ( with dropout rate p ) is implemented as an element -wise multiplication of the feature f and the dropout mask ?
+f . Each element ?
+f e in the dropout mask ?
+f is a sample of a random variable which obeys an independent and identical Bernoulli distribution multiplied by 1 / ( 1 ? p ) .
+And for different features , the distributions of dropout masks are independent as well .
+dropout p ( f ) =f ? f ( 13 ) ? f e ? 1 1 ? p Ber ( 1 ? p ) ( 14 )
+Because of this independence among dropout masks , the traditional feature dropout fails in augmenting the existing environments because the ' removal ' is inconsistent in different views at the same viewpoint , and in different viewpoints .
+To illustrate this idea , we take the four RGB views in Fig. 3a as an example , where the chairs are randomly dropped from the views .
+The removal of the left chair ( marked with a red polygon ) from view o t,2 is inconsistent because it also appears in view o t,1 .
+Thus , the speaker could still refer to it and the agent is aware of the existence of the chair .
+Moreover , another chair ( marked with a yellow polygon ) is completely removed from viewpoint observation o t , but the views in next viewpoint o t+1 provides conflicting information which would confuse the speaker and the agent .
+Therefore , in order to make generated environments consistent , we propose our environmental dropout method , described next .
+Environmental Dropout
+We create a new environment E by applying environmental dropout on an existing environment E. E = envdrop p ( E ) ( 15 )
+The view feature f t, i observed from the new environment E is calculated as an element -wise multiplication of the original feature f t, i and the environmental dropout mask ?
+E ( see Fig. 4 b ) : f t, i = f t , i ? E ( 16 ) ? E e ? 1 1 ? p Ber ( 1 ? p ) ( 17 )
+To maintain the spatial structure of viewpoints , only the image feature ResNet ( v t , i ) is dropped while the orientation feature ( cos ( ?
+t , i ) , sin ( ? t , i ) , cos ( ? t , i ) , sin ( ? t , i ) ) is fixed .
+As illustrated in Fig. 3 b , the idea behind environmental dropout is to mimic new environments by removing one specific class of object ( e.g. , the chair ) .
+We demonstrate our idea by running environmental dropout on the ground -truth semantic views in Sec. 7.3 , which is proved to be far more effective than traditional feature dropout .
+In practice , we perform the environmental dropout on image 's visual feature where certain structures / parts are dropped instead of object instances , but the effect is similar .
+We apply the environmental dropout to the back translation model as mentioned in Sec. 3.4.1 .
+Note the environmental dropout method still preserves the connectivity of the viewpoints , thus we use the same way ( Fried et al. , 2018 ) to collect extra unlabeled routes { R }.
+We take speaker to generate an additional instruction I =P E , R I ( E , R ) in the new environment E .
+At last , we use IL + RL ( in Sec. 3.3 ) to fine - tune the model with this new triplet ( E , R , I ) .
+Improvements on Speaker
+Our speaker model is an enhanced version of the encoder-decoder model of Fried et al . ( 2018 ) , with improvements on the visual encoder : we stack two bi-directional LSTM encoders : a route encoder and a context encoder .
+The route encoder takes features of ground truth actions { a * t } T t=1 from the route as inputs .
+Each hidden state r t then attends to surrounding views {f t , i } 36 i=1 at each viewpoint .
+The context encoder then reads the attended features and outputs final visual encoder representations : r 1 , ... , r T = Bi-LSTM RTE ( g 1 , a * 1 , ... , g T , a * T ) ( 18 ) ?
+t , i = softmax i ( f t , i W R r t ) ( 19 ) ft = i ?
+t , i f t , i ( 20 ) c 1 , ... , c T = Bi-LSTM CTX ( f1 , ... , fT ) ( 21 )
+The decoder is a regular attentive LSTM - RNN , which is discussed in Sec. 3.2 .
+Empirically , our enhanced speaker model improves the BLEU - 4 score by around 3 points .
+Experimental Setup Dataset and Simulator
+We evaluate our agent on the Matterport3D simulator ( Anderson et al. , 2018 b ) .
+Navigation instructions in the dataset are collected via Amazon Mechanical Turk by showing them the routes in the Matterport3D environment ( Chang et al. , 2017 ) ( Anderson et al. , 2018 b ) 9.89 13.2 0.12 ------Seq-to-Seq ( Anderson et al. , 2018 b ) 8.13 20.4 0.18 ------ Look Before You Leap ( Wang et al. , 2018a ) 9.15 25.3 0.23 ------Speaker-Follower ( Fried et al. , 2018 ) 14.8 35.0 0.28 1257 53.5 0.01 --- Self-Monitoring ( Ma et al. , 2019 ) 18.0 48.0 0.35 373 61.0 0.02 ---Reinforced Cross-Modal ( Wang et al. , 2019 ) the distance between target viewpoint T and agent stopping position .
+Implementation Details Similar to the traditional dropout method , the environmental dropout mask is computed and applied at each training iteration .
+Thus , the amount of unlabeled semisupervised data used is not higher in our dropout method .
+We also find that sharing the environmental dropout mask in different environments inside a batch will stabilize the training .
+To avoid overfitting , the model is early -stopped according to the success rate on the unseen validation set .
+More training details in appendices .
+Results
+In this section , we compare our agent model with the models in previous works on the Vision and Language Navigation ( VLN ) leaderboard .
+The models on the leaderboard are evaluated on a private unseen test set which contains 18 new environments .
+We created three columns in Table 1 for different experimental setups : single run , beam search , and unseen environments pre-exploration .
+For the result , our model outperforms all other models in all experimental setups .
+Single Run Among all three experimental setups , single run is the most general and highly correlated to the agent performance .
+Thus , it is considered as the primary experimental setup .
+In this setup , the agent navigates the environment once and is not allowed 8 to : ( 1 ) run multiple trials , ( 2 ) explore nor map the test environments before starting .
+Our result is 3.5 % and 9 % higher than the second-best in Success Rate and SPL , resp .
+Beam Search
+In the beam search experimental setup , an agent navigates the environment , col -8 According to the Vision and Language Navigation ( VLN ) challenge submission guidelines lects multiple routes , re-ranks them , and selects the route with the highest score as the prediction .
+Besides showing an upper bound , beam search is usable when the environment is explored and saved in the agent 's memory but the agent does not have enough computational capacity to finetune its navigational model .
+We use the same beam-search algorithm , state factored Dijkstra algorithm , to navigate the unseen test environment .
+Success
+Rate of our model is 5.9 % higher than the second best .
+SPL metric generally fails in evaluating beam-search models because of the long Navigation Length ( range of SPL is 0.01-0.02 ) .
+Pre-Exploration
+The agent pre-explores the test environment before navigating and updates its agent model with the extra information .
+When executing the instruction in the environment , the experimental setup is still " single run " .
+The " preexploration " agent mimics the domestic robots ( e.g. , robot vacuum ) which only needs to navigate the seen environment most of the time .
+For submitting to the leaderboard , we simply train our agent via back translation with environmental dropout on test unseen environments ( see Sec.7.2 ) .
+Our result is 3.4 % higher than Wang et al . ( 2019 ) in Success Rate and 2.0 % higher in SPL .
+9 6 Ablation Studies Supervised Learning
+We first show the effectiveness of our IL + RL method by comparing it with the baselines ( Table 2 ) .
+We implement Behavioural Cloning 10 and Advantage Actor-Critic Semi-Supervised Learning
+We then fine- tune our best supervised model ( i.e. , IL + RL ) with back translation .
+Besides providing a warm - up , IL + RL is also used to learn the new generated data triplets in back translation .
+As shown in Table 2 , back translation with environmental dropout improves the best supervised model by 5.7 % , where the improvement is 3 times more than the back translation without new environments .
+We then show the results of the alternatives to environmental dropout .
+The performance with feature dropout is almost the same to the original back translation , which is 3.8 % lower than the environmental dropout .
+We also prove that the improvement from the environmental dropout method does not only come from generating diverse instructions introduced by dropout in the speaker , but also comes from using the same dropout mask in the follower agent too .
+To show this , we use two independent ( different ) environmental dropout masks for the speaker and the follower ( i.e. , no tying of the dropout mask ) , and the result drops a lot as compared to when we tie the speaker and follower dropout masks .
+Full Model Finally , we show the performance of our best agent under different experimental setups .
+The " single run " result is copied from the best semi-supervised model for comparison .
+The statefactored Dijkstra algorithm ( Fried et al. , 2018 ) is used for the beam search result .
+The method for pre-exploration is described in Sec. 7.2 , where the agent applies back translation with environmental dropout on the validation unseen environment .
+Analysis
+In this section , we present analysis experiments that first exposed the limited environments bottleneck to us , and hence inspired us to develop our environmental dropout method to break this bottleneck .
+7.1 More Environments vs . More Data
+In order to show that more environments are crucial for better performance of agents , in Fig. 5 , we present the result of Supervised Learning ( SL ) with different amounts of data selected by two different data-selection methods .
+The first method gradually uses more # environments ( see the blue line " SL with more envs " ) while the second method selects data from the whole training data with all 60 training environments ( see the red line " SL with more data " ) .
+Note that the amounts of data in the two setups are the same for each plot point
+As shown in Fig. 5 , the " more envs " selection method shows higher growth rate in success rate than the " more data " method .
+We also predict the success rates ( in dashed line ) with the prediction method in Sun et ( 2017 ) .
+The predicted result is much higher when training with more environments .
+The predicted result ( the right end of the red line ) also shows that the upper bound of Success Rate is around 52 % if all the 190K routes in the training environments is labeled by human ( instead of being generated by speaker via back translation ) , which indicates the need for " new " environments .
+Back Translation on Unseen Environments
+In this subsection , we show that back translation could significantly improve the performance when it uses new data triplets from testing environments - the unseen validation environments where the agent is evaluated in .
+Back translation ( w.o. Env Drop ) on these unseen environments achieves a success rate of 61.9 % , while the back translation on the training environments only achieves 46.5 % .
+The large margin between the two results indicates the need of " new " environments in back translation .
+Moreover , our environmental dropout on testing environments could further improve the result to 64.5 % , which means that the amount of environments in back translation is far from enough .
+Semantic Views
+To demonstrate our intuition of the success of environmental dropout ( in Sec. 3.4.2 ) , we replace the image feature ResNet ( v t , i ) with the semantic view feature .
+The semantic views ( as shown in Fig. 6 ) are rendered from the Matterport3D dataset ( Chang et al. , 2017 ) , where different colors indicate different types of objects .
+Thus , dropout on the semantic view feature would remove the object from the view .
+With the help of this additional information ( i.e. , the semantic view ) , the success rate of IL + RL is 49.5 % on the unseen validation set .
+Back translation ( without dropout ) slightly improves the result to 50.5 % .
+The result with feature dropout is 50.2 % while the environmental dropout could boost the result to 52.0 % , which supports our claim in Sec. 3.4.2 .
+Conclusion
+We presented a navigational agent which better generalizes to unseen environments .
+The agent is supervised with a mixture of imitation learning and reinforcement learning .
+Next , it is fine-tuned with semi-supervised learning , with speaker - generated instructions .
+Here , we showed that the limited variety of environments is the bottleneck of back translation and we overcome it via ' environmental dropout ' to generate new unseen environments .
+We evaluate our model on the Room-to - Room dataset and achieve rank - 1 in the Vision and Language Navigation ( VLN ) challenge leaderboard under all experimental setups .
+?
+Walk past the piano through an archway directly in front .
+Go through the hallway when you see the window door .
+Turn right to the hanged pictures on your right ? ? ! "

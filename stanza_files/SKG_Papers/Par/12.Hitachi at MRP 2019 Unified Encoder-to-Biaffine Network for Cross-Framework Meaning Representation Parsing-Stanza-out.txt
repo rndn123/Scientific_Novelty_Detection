@@ -1,0 +1,275 @@
+title
+Hitachi at MRP 2019 : Unified Encoder-to-Biaffine Network for Cross-Framework Meaning Representation Parsing
+abstract
+This paper describes the proposed system of the Hitachi team for the Cross-Framework Meaning Representation Parsing ( MRP 2019 ) shared task .
+In this shared task , the participating systems were asked to predict nodes , edges and their attributes for five frameworks , each with different order of " abstraction " from input tokens .
+We proposed a unified encoder- to - biaffine network for all five frameworks , which effectively incorporates a shared encoder to extract rich input features , decoder networks to generate anchorless nodes in UCCA and AMR , and biaffine networks to predict edges .
+Our system was ranked fifth with the macro- averaged MRP F1 score of 0.7604 , and outperformed the baseline unified transition - based MRP .
+Furthermore , postevaluation experiments showed that we can boost the performance of the proposed system by incorporating multi-task learning , whereas the baseline could not .
+These imply efficacy of incorporating the biaffine network to the shared architecture for MRP and that learning heterogeneous meaning representations at once can boost the system performance .
+Introduction
+This paper describes the proposed system of the Hitachi team for the CoNLL 2019 Cross -Framework Meaning Representation Parsing ( MRP 2019 ) shared task .
+The goal of the task was to design a system that predicts sentence - level graph - based meaning representations in five frameworks , each with its specific linguistic assumptions .
+The task was formulated as prediction of nodes , edges and their attributes from an input sentence ( see Oepen et al . ( 2019 ) for details ) .
+The target frameworks were ( 1 ) DELPH -IN MRS Bi-Lexical Dependencies ( DM ; Flickinger , 2000 ; * Contributed equally .
+Ivanova et al. , 2012 ) , ( 2 ) Prague Semantic Dependencies ( PSD ; Haji ?
+et al. , 2012 ; , ( 3 ) Elementary Dependency Structures ( EDS ; Oepen and L?nning , 2006 ) , ( 4 ) Universal Conceptual Cognitive Annotation framework ( UCCA ; Abend and Rappoport , 2013 ; Hershcovich et al. , 2017 ) , and ( 5 ) Abstract Meaning Representation ( AMR ; Banarescu et al. , 2013 ) .
+In this work , we propose to unify graph predictions in all frameworks with a single encoder-tobiaffine network .
+This objective was derived from our expectation that it would be advantageous if a single neural network can deal with all the frameworks , because it allows all frameworks to benefit from architectural enhancements and it opens up possibility to perform multi-task learning to boost overall system performance .
+We argue that it is non-trivial to formulate different kinds of graph predictions as a single machine learning problem , since each framework has different order of " abstraction " from input tokens .
+Moreover , such formulation has hardly been explored , with few exceptions including unified transition - based MRP ( Hershcovich et al. , 2018 ) , to which we empirically show the superiority of our system ( Section 9 ) .
+We also present a multi-task variant of such system , which did not make it to the task deadline .
+Our non-multi-task system obtained the fifth position in the formal evaluation .
+We also evaluated the multi-task setup after the formal run , showing multi-task learning can yield an improvement in the performance .
+This result implies learning heterogeneous meaning representations at once can boost the system performance .
+Overview of the Proposed System
+The key challenge in unifying graph predictions with a single encoder- to - biaffine network lays in complementation of nodes , because the biaffine network can narrow down the node candidates but cannot generate new ones .
+Our strategy is that we start from input tokens , generate missing nodes ( nodes that do not have anchors to the input tokens ) and finally predict edges with the biaffine network ( Figure 1 ) .
+More concretely , the shared encoder ( Section 3.2 ) fuses together rich input features for each token including features extracted from pretrained language models , which are then fed to bidirectional long short-term memories ( biLSTMs ; Hochreiter and Schmidhuber , 1997 ; Schuster and Paliwal , 1997 ) to obtain task - independent contextualized token representations .
+The contextualized representations are fed to biaffine networks ( Dozat and Manning , 2018 ) to predict graphs for each framework along with the following framework -specific procedures : DM and PSD Contextualized representations are fed to biaffine network to predict edges and their labels .
+They are also used to predict the node property frame ( Section 4 ) .
+Hidden states of the network are fed to a biaffine network to predict edges and their labels ( Section 7 ) .
+All models are trained end-to - end using minibatch stochastic gradient decent with backpropagation ( see Appendix A.1 for the details ) .
+3 Shared Encoder
+Feature Extraction Following work by Dozat and Manning ( 2018 ) and Zhang et al . ( 2019 ) , we propose to incorporate multiple types of token representations to provide rich input features for each token .
+Specifically , the proposed system combines surface , lemma , partof-speech ( POS ) tags , named entity label , GloVe ( Pennington et al. , 2014 ) embedding , ELMo ( Peters et al. , 2018 embedding and BERT ( Devlin et al. , 2019 ) embedding as input features .
+The following descriptions explain how we acquire each input representations : Surface and lemma
+We use the lower - cased node labels and the lemma properties from the companion data , respectively .
+Surfaces and lemmas that appear less than four times are replaced by a special < UNK > token .
+We also map numerical expressions 1 to a special < NUM > token .
+POS tags
+We use Universal POS tags and English specific POS tags from node properties upos and xpos in the companion data , respectively .
+Named entity label Named entity ( NE ) recognition is applied to the input text ( see Section 7.1 ) .
+GloVe
+We use 300 - dimensional GloVe ( Pennington et al. , 2014 ) pretrained on Common Crawl 2 which are kept fixed during the training .
+Surfaces that do not appear in the pretrained GloVe are mapped to a special < UNK > token which is set to a vector whose values are randomly drawn from normal distribution with standard deviation of 1 / ? dimension of a GloVe vector .
+ELMo
+We use the pretrained " original " ELMo 3 . Following Peters et al. ( 2018 ) , we " mix " different layers of ELMo for each token ; is prepended to each input sequence .
+For GloVe , ELMo and BERT , the < ROOT > is also embedded in the similar manner as other tokens with < ROOT > as the surface for the token .
+A multilayered perceptron ( MLP ) is applied to each of GloVe , ELMo and BERT embeddings .
+sj = softmax j ( s j ) = exp( s j ) k exp( s k ) , h ELM o = N ELM o ?1 j=0 sj h ELM o j , where h ELM o j ( 0 ? j < N ELM o )
+To prevent the model from overrelying only on certain types of features , we randomly drop a group of features , where the groups are ( i ) lemma , ( ii ) POS tags and ( iii ) the rest .
+All features in the same group are randomly dropped simultaneously but independently from other groups .
+All seven features are then concatenated to form input token representation h 0 i ( where 0 ? i < L in is the index of the token ) .
+Obtaining Contextualized Token Representation
+The input token representations h 0 i are fed to the multi-layered biLSTM with N layers to obtain the contextualized token representations .
+? ? h l i = ? ? ? LSTM ( h l?1 i , ? ? h l i?1 , ? ? c l i?1 ) , ? ? h l i = ? ? ? LSTM ( h l?1 i , ? ? h l i+ 1 , ? ? c l i + 1 ) , h l i = ? ? h l i ; ? ? h l i , where h l i and c l i ( 0 < l ? N ) are the hidden states and the cell states of the l-th layer LSTM for i-th token .
+DM and PSD-specific Procedures 4.1 Biaffine Classifier DM and PSD are Flavor ( 0 ) frameworks whose nodes have one - to - one correspondence to tokens .
+We utilize biaffine networks to filter nodes , and to predict edges , edge labels and node attributes .
+For each framework fw ?
+{ dm , psd} , probability that there exists an edge ( i , j ) from the i-th node to the j-th node y edge fw , i , j is calculated for all pairs of nodes ( 0 ? i , j < L in ) . fw , i , j , c is calculated for all pairs of nodes .
+h edge from fw , i = MLP edge from ( h N i ) , h edge to fw , i = MLP edge to ( h N i ) , h label from fw , i = MLP label from ( h N i ) , h label to fw , i = MLP label to ( h N i ) , t label fw , i , j , c = Biaff label fw , c h label from fw , i , h label to fw , j , y label fw , i , j , c = softmax c t label fw , i , j , c . ( 2 ) Another form of biaffine operation for the edge label prediction Biaff label fw , c is defined as : Biaff label fw , c ( x , y ) = x U label fw , c y + W label fw , c y , where U label fw , c and W label fw , c are model parameters .
+A candidate edge ( i , j ) whose edge probability y edge fw , i , j ( 0 < i , j ) exceeds 0.5 is adopted as a valid edge .
+Edge label with the highest probability arg max c y fw , i , j , c is selected for each valid edge ( i , j ) .
+A candidate top node j whose edge probability y edge fw,0 , j ( 0 < j ) exceeds 0.5 is adopted as a top node , allowing multiple tops .
+Non-top nodes with no incoming or outgoing edge are discarded and remaining nodes are adopted as the predicted nodes .
+DM Frame Classifier
+A DM node property frame consists of a frame type and frame arguments ; e.g. named :x-c indicates the frame type is " named entity " with two possible arguments x and c .
+The proposed system utilizes the contextualized features to predict the frame types and arguments separately .
+Probability of the i-th node being c-th frame type y frame type dm , i , c is predicted by applying MLP to the contextualized features : t frame type dm , i , c = MLP frame type c ( h N i ) , y frame type dm , i , c = softmax c t frame type dm , i , c .
+The number of arguments for a frame is not fixed and the first argument can be trivially inferred from the frame type .
+Thus , we predict from the second to the fifth arguments for each node .
+Probability of j-th argument being c-th frame type y frame arg dm , i , j , c is also predicted by applying MLP to the contextualized features : t frame arg dm , i , j , c = MLP frame arg j , c ( h N i ) , y frame arg dm , i , j , c = softmax c t frame arg , j dm , i , j , c .
+Training Objective DM and PSD are trained jointly in a multitask learning setting but independently from other frameworks .
+The loss for the edge prediction edge fw is cross entropy between the predicted edge y edge i , j and the corresponding ground truth label .
+A top node j is treated as an edge ( 0 , j ) and is trained along with the edge prediction .
+The loss for the edge label prediction label fw is cross entropy between the predicted edge label y label i , j , c and ground truth label .
+The loss for the frame prediction frame dm is the sum of the frame type prediction loss frame type dm and the frame arguments prediction loss frame arg dm , both of which are cross entropy loss between the prediction and the corresponding ground truth label .
+Final multi-task loss is defined as : sdp =? label label dm + label psd + ? frame frame dm + 1 ? ? label edge dm + edge psd . ( 3 )
+Postprocessing
+We reconstruct node property frame from the predicted frame types and arguments using external resources .
+For DM , we filter out pairs of predicted frame type and arguments that do not appear in ERG SEM - I 5 or the training dataset ( e.g. a word " parse " has only two possible frames n:x and v:e-i - p ) .
+Then , we select a frame with the highest empirically scaled likelihood which is calculated by scaling predicted joint probability y frame type dm , i , c j y frame arg dm , i , j , c proportionally to the frame frequency in the corpus .
+For PSD , we use CzEngVallex 6 , which contains frequency and the required arguments of each frame , to reconstruct frames .
+We identify the frame type of a token from its lemma and POS tag .
+Then , candidate frames are filtered using the required arguments ( extracted by stripping - suffix from connected edges ) and the most frequent frame is chosen as the node frame .
+Token lemma is used for the node label , except for the special node labels in PSD ( e.g. # Bracket and # PersPron ) that are looked - up from a hand-crafted dictionary using the surface and POS tag as a key .
+EDS - specific Procedure DM graphs are constructed by lossy conversion from EDS graphs , both of which are derived from English Resource Semantics ( ERS ; .
+Making use of such relationship , we developed heuristic inverse conversion from DM to EDS graphs by carefully studying EDS - to - DM conversion rules described in the ERG SEM - I corpus .
+Specifically , our system generates EDS in three steps ; the system ( i ) convert all DM nodes to EDS surface nodes 7 with simple rules , ( ii ) generate abstract nodes , and ( iii ) predict anchors for the abstract nodes .
+We explain the generation of abstract nodes ( ii ) in details using an example in Figure 2 : 1 . Some abstract nodes ( e.g. and c ) and their node labels are generated with rules .
+2 . Presence of an abstract node on a node or an edge is detected with rules ( e.g. and c implies presence of q node ) or with binary logistic regression ( e.g. udef q on chicken n 1 ) .
+3 . The system predicts labels of the nodes generated in 2 using multi-class logistic regression .
+4 . The system predicts labels of edges from / to the generated nodes using multi-class logistic regression .
+POS tags , predicted DM frames and edge labels of adjacent nodes are used as features for the logistic regression .
+We employ another neural network that utilize the contextualized features from the encoder to predict the anchors for the generated abstract nodes ( iii ) .
+For each abstract node ( indexed i ) , let T i be a subset of token indices S ? { 0 , . . . , L in ?
+1 } each of which is selected as a DM node and the corresponding EDS surface node has the abstract node i as an ancestor .
+First , we create an input feature x eds i , j ( j ? S ) which is set as the label of node i if j ?
+T i or < UNK > otherwise .
+Then , we embed x eds i , j to obtain trainable vector e eds i , j and feed them to a biLSTM to obtain a contextualized representation h eds i , j .
+Finally , we predict a span in input tokens [ argmax j y eds from i , j , argmax j y eds to i , j ] for the i-th abstract node , y eds from i , j = softmax j ( h eds i , j ) ?
+MLP eds from ( h N j ) , y eds to i , j = softmax j ( h eds i , j ) ?
+MLP eds to ( h N j ) .
+The loss for the anchor prediction eds is the sum of cross entropy between the predicted span ( y eds from i , j , y eds to i , j ) and the corresponding ground truth span .
+UCCA -specific Procedure
+A UCCA graph consists of terminal nodes which represent words , non-terminal nodes which represent internal structure , and labeled edges ( e.g. , participant ( A ) , center ( C ) , linker ( L ) , process ( P ) and punctuation ( U ) ) which represent connections between the nodes .
+Motivated by the recent advances in constituency parsing , we predict spans of each terminal nodes at once without using any complicated mechanism as seen in transition - based ( Hershcovich and Arviv , 2019 ) and greedy bottomup ( Yu and Sagae , 2019 ) systems .
+Our proposed UCCA parser ( Figure 3 ) consists of ( i ) a pointer network ( Vinyals et al. , 2015 ) which generates non-terminal nodes from the contextualized token representations of the encoder , ( ii ) an additional biLSTM that encodes context of both the terminal and generated non-terminal nodes , and ( iii ) a biaffine network which predicts edges .
+Preprocessing
+We treat the generation of non-terminal nodes as a " pointing " problem .
+Specifically , the system has to point the starting position of a span which has terminal or non-terminal children .
+For example , upper part of Figure 3 shows a graph with two nonterminal nodes ?.
+The right non-terminal node has a span of gave everything up , and our system points at the starting position of the span gave .
+By taking such strategy , we can serialize the graph in a consistent , straightforward manner ; i.e. by inserting the non-terminal nodes to the left of the corresponding span .
+The system also has to predict an anchor of a proper noun or a compound expression to merge constituent tokens into a single node .
+For example , no feathers in stock !!!!
+is tokenized as " ( no ) , ( feathers ) , ( in ) , ( stock ) , ( ! ) , ( ! ) , ( ! ) , ( ! ) " according to the companion data , but the UCCA parser is expected to output " ( no ) , ( feathers ) , ( in ) , ( stock ) , ( !!!! ) " .
+To solve the problem , we formulate the mergence of tokens as edge prediction ; e.g. we assume that there exist virtual edges CT from leftmost constituent token to each subsequent token within a compound expression : and CT is predicted by the system along with the other edges .
+There still exists tokenization discrepancy between the companion data and the graphs from EWT and Wiki .
+The graphs with such discrepancy are simply discarded from the training data .
+Generating Non-terminal Nodes with Pointer Network
+Our system generates non-terminal nodes by pointing where to insert non-terminal nodes as described in Section 6.1 .
+To point a terminal node , we employ a pointer network , which is a decoder that uses attention mechanism to produce probability distribution over the input tokens .
+Given hidden states of the encoder h N j , hidden states of the decoder are initialized by the last states of the shared encoder : h ucca dec ?1 = ? ? h N ?K:N L in ; ? ? h N ?K:N 0 , c ucca dec ?1 = ? ? c N ?K:N L in ; ? ? c N ?K:N 0 , where K is the stacking number of the biLSTMs in the shared encoder .
+We then obtain the hidden states of the decoder h ucca dec i as : h ucca dec i = LSTM dec ( x ucca dec i , h ucca dec i?1 , c ucca dec i ? 1 ) .
+Attention distribution ? i , j over the input tokens is calculated as : a i , j = v tanh W ucca dec [ h ucca dec i ; h N j ] , ?i , j = softmax j ( a i , j ) , where W ucca dec and v are parameters of the pointer network .
+The successive input to the decoder x ucca dec i+ 1 is the encoder states of the pointed token h N argmax j ? i , j . x ucca dec i is chosen from the gold ? i , j when training .
+The decoder terminates its generation when it finally points the < ROOT >.
+We obtain new hidden states h ucca ptr i ( 0 ? i ?
+L ucca ) by inserting pointer representations h ? before the pointed token .
+For example , John gave everything up ( discussed above ) will have hidden states h N < ROOT > , h ? , h N John , h ? , h N gave , h N everything , h N up .
+The pointer representation is defined as h ? = MLP ? ( r ) , where r is a randomly initialized constant vector .
+We note that the generated non-terminal nodes h ? lack positional information because all h ? have the same values .
+To remedy this problem , a positional encoding Vaswani et al . ( 2017 ) is concatenated to each of h ucca ptr i to obtain position - aware h ucca ptr ' i .
+Furthermore , we feed h ucca ptr ' i to an additional biLSTM and obtain h ucca i in order to further encode the order information .
+Edge Prediction with Biaffine Network
+Now that we have contextualized representations for all candidate terminal and non-terminal nodes , the system can simply predict the edges and their labels in the exact same way as Flavor ( 0 ) graphs ( Section 4.1 ) .
+Following Equation ( 1 ) and Equation ( 2 ) , we obtain probabilities if there exists an edge ( i , j ) , y edge ucca , i , j , and its label being c , y label ucca , i , j , c , with the input being h ucca i instead of h N i .
+We treat the remote edges 8 independently but in the same way as the primary edges to predict y remote ucca , i , j .
+The loss for the edge prediction edge ucca , the edge label prediction label ucca , the remote edge prediction remote ucca and the pointer prediction dec ucca are defined as cross entropy between the prediction y edge ucca , i , j , y label ucca , i , j , c , y remote ucca , i , j and ?i , j with the corresponding ground truth labels , respectively .
+Thus , we arrive at the multi-task objective defined as :
+AMR -specific Procedures
+Because AMR graphs do not have clear alignment between input tokens and nodes , the nodes have to be identified in prior to predicting edges .
+Following Zhang et al. ( 2019 ) , we incorporate a pointergenerator network ( i.e. a decoder with copy mechanisms ) for the node generation and a biaffine network for the edge prediction .
+There are two key preconditions in using a pointer- generator network ; i.e. ( i ) node labels and input tokens share fair amount of vocabulary to allow copying a node from input tokens , and ( ii ) graphs are serialized in a consistent , straightforward manner for it to be easily predicted by sequence generation .
+To this end , we apply preprocessing to raw AMR graphs , train model to generate preprocessed graphs , and reconstruct final AMR graphs with postprocessing .
+Preprocessing
+We modify the input tokens the node labels to account for the precondition ( i ) .
+A node labeled with .
+* - entity or a subgraph connected with name edge is replaced with a node whose label is an anonymized entity label such as PERSON.0 ( Konstas et al. , 2017 ) .
+Then , for each entity node , a corresponding span of tokens is identified by rules similar to Flanigan et al . ( 2014 ) ; i.e. a span of tokens with the longest common prefix between the token surfaces and the node attribute ( e.g. for date-entity whose attribute month is 11 , we search for " November " and " Nov " in the token surfaces ) .
+Unlike Zhang et al. ( 2019 ) which has replaced input token surfaces with anonymized entity labels , we add them as an additional input feature as described in Section 3.1 to avoid hurting the performance of other frameworks .
+At the prediction , we first identify NE tags in input tokens with Illinois NER tagger ( Ratinov and Roth , 2009 ) .
+Then we map them to anonymized entity labels with frequency - based mapping constructed from the training dataset .
+For non-entity nodes , we strip sense indices ( e.g. - 01 ) from node labels ( Lyu and Titov , 2018 ) , which will then share fair amount of vocabulary with the input token lemmas .
+Nodes with labels that still do not appear as lemmas after preprocessing are subject to normal generation from decoder vocabulary .
+Directly serializing an AMR graph , which is a directed acyclic graph ( DAG ) , may result in a complex conversion , which do not fulfill the precondition ( ii ) .
+Therefore , we convert DAG to a spanning tree by replicating nodes with reentrancies ( i.e. nodes with more than one incoming edge ) for each incoming edge and serialize the graph with simple pre-order traversal over the tree .
+Extended Pointer-Generator Network
+We employ an extended pointer - generator network .
+It automatically switches between three generation strategies ; i.e. ( 1 ) source - side copy , ( 2 ) decoder - side copy that copies nodes that have been already generated , and ( 3 ) normal generation from decoder vocabulary .
+More formally , it uses attention mechanism to calculate probability distribution p i over input tokens , generated nodes and node vocabulary .
+Given contextualized token representation of the encoder H enc l = {h l 0 , . . . , h l L in ?1 } , we obtain hidden states of the decoder h amr i and p i as : h amr i , p i = Decoder amr ( h enc ' i , h amr i?1 , p i?1 , H enc N ) , h enc ' i = Encoder amr ( p i , h amr 0 . . . h amr i?1 , H enc 0 ) , h enc ' 0 , h amr ?1 = MLP amr ? ? h N L in ; ? ? h N 0 ; ? ? c N L in ; ? ? c N 0 . Encoder amr treats a node as if it is a token , and utilizes the encoder ( Section 3 ) with shared model parameters to obtain representation of ( i ? 1 ) th generated nodes h enc ' i .
+Concretely , Encoder amr combines lemma ( corresponds to the node label ) , POS tags ( only when copied from a token ) and GloVe ( from the node label ) of a node , embeds each of them to a feature vector using the encoder and concatenates feature vectors to obtain h enc ' i .
+Edge Prediction with Biaffine Network
+Now that we have representations h amr i for all nodes , the system can simply predict the edges and their labels in the same way as Flavor ( 0 ) graphs ( Section 4.1 ) .
+Following Equation ( 1 ) and Equation ( 2 ) , we obtain probabilities that there exists an edge ( i , j ) , y edge amr , i , j , and its label being c , y label amr , i , j , c , with the input being h amr i instead of h N i .
+Note that we do not predict the top nodes for AMR , because the first generated node is always the top node in our formalism .
+The loss for the edge prediction edge amr , the edge label prediction label amr , and the decoder prediction dec amr are cross entropy between the prediction y edge amr , i , j , y label amr , i , j , c and p i with the corresponding ground truth labels , respectively .
+Thus , we arrive at the multi-task loss for AMR defined as : where cov amr is coverage loss ( Zhang et al. , 2019 ) .
+For node prediction , we adopt beam search with search width of five .
+For edge prediction , we apply Chu-Liu-Edmonds algorithm to find the maximum spanning tree .
+Postprocessing , which includes inverse transformation of the preprocessing , is applied to reconstruct final AMR graphs .
+Multi-task Variant
+We developed multi-task variant after the formal run .
+Multi-task variant is trained to minimize following multi-task loss , ( 4 ) All training data is simply merged and losses for frameworks that are missing in an input data are set to zero .
+For example , if an input sentence has reference graphs for DM , PSD and AMR , losses for UCCA ( label ucca , edge ucca , dec ucca and remote ucca ) are set to zero and sum of other losses are used to update the model parameters .
+Then , the training data ( sentences ) are shuffled at the start of each epoch and are fed sequentially to update the model parameters as in normal mini-batch training .
+No under - / over-sampling was done to scale the losses of frameworks , each with different number of reference graphs , but we instead applied early stopping for each framework separately ( see Appendix A for the details ) .
+For EDS , we do not train EDS anchor prediction jointly even in multi-task setting but apply transfer learning ; the encoder of the EDS anchor prediction network is initialized from trained multi-task model .
+We also experimented with a fine-tuned multitask variant .
+For each target framework , we take the multi-task variant as a pretrained model ( whose training data also includes the target framework ) and train the model on the target framework independently to the other frameworks ( except for DM and PSD , which are always trained together ) .
+Experiments
+Method Experiments were carried out on the evaluation split of the dataset .
+We applied hyperparameter tuning and ensembling to our system , which are detailed in Appendix A along with other training details .
+BERT was excluded for the formal run since it did not make it to the task deadline .
+We experimented with enhanced models with BERT after the formal run .
+For these models , we adopted the best hyperparameters chosen by the submitted model without re-running the hyperparameter tuning .
+All models were implemented using Chainer ( Tokui et al. , 2015 ; Akiba et al. , 2017 ) .
+Results
+The official results are shown in Table 1 and Table 2 .
+Our system obtained macro-averaged MRP F1 score of 0.7604 and was ranked fifth amongst all submissions .
+Our system outperformed conventional unified architecture for MRP ( TUPA baselines ; Hershcovich and Arviv , 2019 ) in all frameworks but AMR .
+This indicates the efficacy SFL : single- framework learning , MTL : multi-task learning , FT : fine-tuning , ensemble : with ensembles , NT : random seed is not tuned , ? formal run of using the biaffine network as a shared architecture for MRP .
+Our system obtained relatively better ( second ) position in PSD .
+This was due to relatively good performance on the node label prediction where we carefully constructed postprocessing rule for special nodes ' labels ( Section 4.4 ) instead of just using lemmas .
+Our system obtained significantly worse result in AMR ( difference of 0.2952 MRP F1 score to the best performing system ) , even though our system incorporates the state - of - the - art AMR parser ( Zhang et al. , 2019 ) .
+One reason is that Zhang et al . ( 2019 ) was obtaining a large score boost from the Wikification task , which was not part of the MRP 2019 shared task .
+Another reason could be that we may have missed out important implementation details for the pointer - generator network , since the implementation of Zhang et al . ( 2019 ) was not yet released at the time of our system development .
+Table 3 shows the performance of other variants of the proposed system .
+The singleframework learning variant ( SFL ) without BERT ( SFL ) performed better than SFL with BERT ( BERT + SFL ( NT ) ) , which suggests that impact of hyperparameter tuning was larger than that of incorporating BERT .
+The multi-task learning variant ( MTL ) with fine-tuning ( BERT + MTL + FT ( NT ) ) outperformed the SFL in the comparable condition ( BERT + SFL ( NT ) ) .
+This result implies learning heterogeneous meaning representations at once can boost the system performance .
+Conclusions
+In this paper , we described our proposed system for the CoNLL 2019 Cross -Framework Meaning Representation Parsing ( MRP 2019 ) shared task .
+Our system was the unified encoder- to - biaffine network for all five frameworks .
+The system was ranked fifth in the formal run of the task , and outperformed the baseline unified transitionbased MRP .
+Furthermore , post-evaluation experiments showed that we can boost the performance of the proposed system by incorporating multitask learning .
+These imply efficacy of incorporating the biaffine network to the shared architecture for MRP and that learning heterogeneous meaning representations at once can boost the system performance .
+While our architecture successfully unified graph predictions in the five frameworks , it is nontrivial to extend the architecture to another framework .
+It is because there could be a more suitable node generation scheme for a different framework and naively applying the pointer network for partial nodes complementation ( or extended pointergenerator network for full nodes generation ) may result in a poor performance .
+Thus , it is our future work to design a more universal method for the node generation .
+125
+A Training Details
+We split dataset into training dataset which was used to update model parameters , validation dataset ( i ) which was used for early stopping , and validation dataset ( ii ) which was used for hyperparameter tuning and construction of ensembles .
+For AMR and UCCA , we selected sentences that appear in more than one framework to populate the training dataset , and extracted 500 ( 300 ) and 1500 ( 700 ) data from the rest as validation dataset ( i ) and ( ii ) for AMR ( UCCA ) , respectively .
+For DM , PSD and EDS , we selected data that appear in AMR or UCCA to populate the training dataset , and extracted 500 and 1500 data from the rest as validation dataset ( i ) and ( ii ) , respectively .
+A.1 Model Training
+All models are trained using mini-batch stochastic gradient decent with backpropagation .
+We use Adam optimizer ( Kingma and Ba , 2014 ) with gradient clipping .
+For the non-multi-task variant , early stopping is applied for each framework with SDP labeled dependency F1 score ( for DM , PSD and UCCA ) or validation loss ( for EDS and AMR ) as the objective .
+Note that early stopping is applied separately to each framework for the joint training of DM and PSD .
+Concretely , for the joint training of DM and PSD , we train the model with respect to the joint loss sdp in Equation ( 3 ) but we use a model at a training epoch whose DM -specific ( or PSD - specific ) SDP labeled dependency F1 score is highest for DM ( or PSD ) prediction .
+For the multi-task variants , we employ a slightly different strategy for early stopping .
+For the multitask variant without fine-tuning , we apply early stopping separately to each framework with respect to the framework -specific validation loss .
+For example , we train the multi-task model with respect to mtl in Equation ( 4 ) but we use a model at a training epoch whose PSD - specific validation loss ?
+label label psd + 1 ? ? label edge psd is lowest for PSD prediction .
+For each framework in the fine-tuned multi-task variant , we adopt the multitask pretrained model at a training epoch whose framework -specific validation loss is lowest and fine-tune on the model in the same manner as the non-multi-task variant .
+Note that , for DM and PSD , which are fine-tuned together even in the fine-tuned multi-task variant , we adopt the multi-task pretrained model at a training epoch whose multi-task validation loss mtl is lowest .
+Dropout ( Srivastava et al. , 2014 ) is applied to ( a ) the input to each layer of the shared encoder , ( b ) the input to the biaffine networks , and ( c ) the input to each layer of the UCCA and AMR decoders .
+A.2 Hyperparameter Tuning
+We random searched subset of hyperparameters for DM , PSD , UCCA and AMR .
+See Table 4 for hyperparameter search space and the list of hyperparameters chosen by the best performing model in each framework .
+We tried 20 hyperparameter sets for DM / PSD , 50 for UCCA , and 25 for AMR .
+We did not tune the hyperparameters of the multi-task variants .
+We adopted the best hyperparameters chosen in the non-multi-task variants ( Table 4 ) and hand - tuned the hyperparameters by examining learning curves over few runs .
+For the fine-tuning , we adopted the best hyperparameters chosen in the non-multi-task variants ( Table 4 ) .
+See Table 5 for the list of hyperparameters used in the multi-task variants .
+A.3 Ensembling
+We formed ensembles from the models trained in the hyperparameter tuning .
+Models are added to the ensemble in descending order of MRP F1 score on validation dataset ( II ) until MRP F1 score of the ensemble no longer improves .
+For DM and PSD , we simply averaged edge predictions y edge fw , i , j and label predictions y label fw , i , j , c , respectively .
+On the other hand , the simple average ensembling cannot be applied to UCCA , because number of nodes maybe distinct to each model due to the non-terminal node generation .
+Hence , we propose to use a two-step voting ensemble for UCCA ; for each input sentence , ( 1 ) the most popular pointer sequence is chosen , and ( 2 ) edge and label predictions from the models that outputted the chosen sequence are averaged in the same way as DM and PSD .
+For EDS , we do not explicitly use ensemble learning , but utilize DM graphs from ensembled DM models to reconstruct EDS graphs .
+For AMR , we do not use ensembles .
+Figure 1 : 1 Figure 1 : The overview of the proposed unified encoder- to - biaffine network for cross -framework meaning representation parsing .
+where ? is an element-wise sigmoid function .
+Biaffine operation Biaff edge is defined as : Biaff edge fw ( x , y ) = x U edge fw y+W edge fw [ x ; y] +b parameters .
+Probability of an edge ( i , j ) being the cth edge label y label
+Figure 2 : 2 Figure 2 : Generation of abstract nodes and their edges from I like chicken , pork and beef .
+Figure 3 : 3 Figure 3 : Illustration of UCCA parsing with pointer network and biaffine classifier .
+is the hidden state of the j-th layer of ELMo , h ELM o 0 is the features from character - level CNN of ELMo , and s j are trainable parameters .
+h ELM o j are fixed in the training by truncating backpropaga - tion to h ELM o j .
+BERT
+We use the pretrained BERT - Large , Un- cased ( Original ) 4 . Since BERT takes subword units as input , a BERT embedding for a token is generated as the average of its subword BERT embeddings as in Zhang et al . ( 2019 ) .
+The surface , lemma , POS tags and NE label of a token are each embedded as a vector .
+The vec- tors are randomly initialized and updated during training .
+To allow prediction of the top nodes for DM , PSD and UCCA , a special < ROOT > token 1 Surfaces or lemmas that can successfully be converted to numerics with float operation on Python 3.6 2 http://nlp.stanford.edu/data/glove.
+840B.300d.zip 3 https://s3-us-west-2.amazonaws.com/ allennlp/models/elmo/2x4096_512_2048cnn_
+2xhighway/elmo_2x4096_512_2048cnn_
+2xhighway_weights.hdf5 and elmo_2x4096 _ 512_2048cnn_2xhighway_options.json.
+4 https://s3.amazonaws.com/ models.huggingface.co/bert / bert-large-uncased-pytorch_model.bin , which is converted from the whitelisted BERT model in https://github.com/google-research/bert
+Table 1 : 1 MRP F1 scores for the formal run ( shown as " score / rank " ) Team Mean DM PSD EDS UCCA AMR HIT-SCIR .8620/1 .9508/2 .9055/4 .9075/2 .8167/1 .7294/2 SJTU -NICT .8527/2 .9550/1 .9119/3 .8990/3 .7780/3 .7197/3 SUDA -Alibaba .8396/3 .9226/7 .8556/8 .9185/1 .7843/2 .7172/5 Saarland .8187/4 .9469/4 .9128/1 .8910/4 .6755/6 .6672/6 Hitachi ( ours ) .7604/5 .9102/8 .9121/2 .8374/6 .7036/5 .4386/8 ?FAL MRPipe .7474/6 .8495/9 .7627/9 .6745/7 .7322/4 .7183/4 ShanghaiTech .6697/7 .9488/3 .8949/6 .8690/5 - .6359/7 Amazon .5132/8 .9326/6 .8998/5 - - .7338/1 JBNU .4652/9 .9401/5 .8788/7 - .5069/7 - SJTU .4303/10 .4315/11 .4761/11 .5321/8 .3266/9 .3851/9 ?FAL -Oslo .3442/11 .8051/10 .6092/10 .3064/9 - - HKUST .2450/12 .3699/12 .3529/12 - .5021/8 - Bocharov .0655/13 - - - - .3273/10 TUPA ? single .5770 .5554 .5176 .8100 .2756 .4473 TUPA ? multi .4534 .4270 .5265 .7395 .2365 .3375 ? baseline ( Hershcovich and Arviv , 2019 )
+Table 2 : 2 MRP and framework specific scores ( shown as " score / rank " ) .
+Gray background indicates that it is the score on LPPS subset .
+MRP Framework
+Table 3 : 3 MRP F1 scores for the variants of the proposed system ( shown as " score / rank " where the rank is calculated by assuming that it was the submitted model ) .
+Variant Average DM PSD EDS UCCA AMR SFL 0.7575/5 0.9071/9 0.9064/3 0.8339/7 0.7014/6 0.4386/8 SFL ( ensemble ) ?
+0.7604/5 0.9102/9
+0.9121/2 0.8374/7 0.7036/6 0.4386/8 BERT +SFL ( NT ) 0.7450/6 0.9038/9 0.9069/3 0.8301/7 0.6945/6 0.3896/8 BERT +MTL ( NT ) 0.7144/6 0.8726/9 0.8791/7 0.7987/7 0.6422/6 0.3794/9 BERT +MTL +FT ( NT ) 0.7507/5 0.9045/9 0.9054/4 0.8304/7 0.7126/6 0.4008/8
+http://svn.delph-in.net/erg/tags/ 1214 /etc 6 http://hdl.handle.net/11234/1-1512
+For ease of explanation , we adopt a definition that " the EDS surface nodes are the nodes that appear in DM and the abstract nodes are those that do not " which results in slight inconsistence with the original definition .
+Edges for implicit relations and arguments .
+They were annotated as unlabeled edges each with an attribute remote in MRP .

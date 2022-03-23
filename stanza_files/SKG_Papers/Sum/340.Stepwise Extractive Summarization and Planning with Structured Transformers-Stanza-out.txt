@@ -1,0 +1,231 @@
+title
+Stepwise Extractive Summarization and Planning with Structured Transformers
+abstract
+We propose encoder-centric stepwise models for extractive summarization using structured transformers - HiBERT Extended Transformers ( Ainslie et al. , 2020 ) .
+We enable stepwise summarization by injecting the previously generated summary into the structured transformer as an auxiliary sub-structure .
+Our models are not only efficient in modeling the structure of long inputs , but they also do not rely on task -specific redundancy - aware modeling , making them a general purpose extractive content planner for different tasks .
+When evaluated on CNN / DailyMail extractive summarization , stepwise models achieve state - of - the - art performance in terms of Rouge without any redundancy aware modeling or sentence filtering .
+This also holds true for Rotowire tableto - text generation , where our models surpass previously reported metrics for content selection , planning and ordering , highlighting the strength of stepwise modeling .
+Amongst the two structured transformers we test , stepwise Extended Transformers provides the best performance across both datasets and sets a new standard for these challenges .
+1 * Equal contribution .
+1 The code and data are available at https://github.
+com/ google-research / google-research / tree / master / etcsum .
+Introduction Extractive document summarization is the task of creating a summary by identifying ( and subsequently concatenating ) the most important sentences in a document ( Erkan and Radev , 2004 ; Nenkova and McKeown , 2011 ) .
+In recent years this task has matured significantly , mostly thanks to advances in deep neural networks .
+Cheng and Lapata ( 2016 ) conceptualize extractive summarization as a sequence labeling task in which first a hierarchical long short - term memory network ( LSTM ; Hochreiter and Schmidhuber , 1997 ) is used to encode a document and then another LSTM is used to predict for each sentence whether it should be included in the summary .
+This architecture was later adopted by Nallapati et al . ( 2016 a ) , Nallapati et al. ( 2017 ) , Narayan et al. ( 2018 b ) , Zhang et al. ( 2018 ) and Dong et al . ( 2018 ) .
+Following the success of pre-trained transformerbased architectures for many tasks ( Vaswani et al. , 2017 ; Devlin et al. , 2019 ) , the current state - of - theart approach to extractive summarization uses transformers to learn sentence representations and to rank sentences by their saliency ( Liu , 2019 ; Liu and Lapata , 2019 b ; Zhong et al. , 2019a ; Bi et al. , 2020 ) .
+The top scoring sentences are then assembled to produce an extract of the document .
+Summaries built in this fashion ( Cheng and Lapata , 2016 ; Narayan et al. , 2018a ; Zhang et al. , 2018 ; Dong et al. , 2018 ) are prone to contain redundant information .
+Several recent approaches have explored mechanisms to better handle redundancy , such as heuristic - based Trigram Blocking ( TriBlk ; Liu and Lapata , 2019 b ; , handcrafted feature - driven models ( Ren et al. , 2017 ) and redundancy aware neural sequence models ( Zhou et al. , 2018 ; Bi et al. , 2020 ) .
+One common problem with these models is that their focus is limited to content overlap and to respecting length budgets .
+However , these are but a small subset of the dimensions necessary to produce informative and coherent summaries .
+Ideally , models would utilize enriched document and summary representations in order to implicitly learn better extractive plans for producing summaries Mendes et al. , 2019 ) .
+One such method is stepwise summarization , where a summary is constructed incrementally by choosing new content conditioned on previously planned content .
+In this paper , we propose encoder-centric stepwise models for extractive summarization using structured transformers .
+Structured transformers are transformer - based architectures that have the flexibility to model some form of structure of the input , e.g. , hierarchical document structure .
+In this paper , we specifically study two such architectures - HiBERT and Extended Transformers Construction ( ETC ; Ainslie et al. , 2020 ) .
+Details of these are given in Sections 4 and 5 .
+We enable stepwise summarization by injecting the previously planned summary content into the structured transformer as an auxiliary sub-structure .
+The model then can holistically learn any documentlevel coherence properties , such as saliency , redundancy , and ordering , embodied in the gold summaries .
+This differs from other methods which are either task specific ( e.g. , redundancy aware modeling in Bi et al. , 2020 ) or not holistic ( e.g. , manually curated features in ) .
+An added advantage of structured encoders is that they break the quadratic attention mechanism of transformers ( Devlin et al. , 2019 ) , making them more efficient and able to process longer inputs , instead of truncating the inputs to 512 tokens ( Liu and Lapata , 2019 b ; Bi et al. , 2020 ) , which is critical for long inputs and outputs which require non-trivial planning .
+When evaluated on the CNN / DailyMail summarization dataset ( Hermann et al. , 2015 ) , we achieve stateof - the - art performance in terms of Rouge ( Lin and Hovy , 2003 ) without any redundancy ( Zhou et al. , 2018 ; Bi et al. , 2020 ) or sentence selection mechanisms ( Liu and Lapata , 2019 b ) .
+Our model 's task - agnostic approach allows it to implicitly learn and leverage content plans directly from the data .
+Moreover , structured transformers form the basis of our model , which are flexible in terms of content type ( e.g. , text or tables ) that can be modeled .
+We demonstrate this by learning intricate extractive content plan for the Rotowire table - to - text generation task ( Wiseman et al. , 2017 ) .
+This task requires the generation of long summaries from large score tables detailing the the specifics of a sports match , which often necessitates dedicated content selection and planning models to generate a high-quality summary ( Wiseman et al. , 2017 ; Puduppully et al. , 2019a ) .
+We show that our stepwise framework achieves higher content selection , planning and ordering scores relative to prior work with task -specific planning mechanisms .
+The contributions of the paper are as follows : 1 ) this is first study to use ETC ( Ainslie et al. , 2020 ) for summarization for its ability and flexibility to better model long and structured inputs ; 2 ) we pro-pose augmentions of two structured transformers , HiBERT and ETC , in order to enable stepwise models for extractive planning ; 3 ) we demonstrate empirically that our models are general purpose and can be adapted as an extractive document summarizer or as a content planner for table - to - text generation ; 4 ) Our experiments highlight the effectiveness of stepwise modeling , specifically stepwise ETC , which sets a new standard for both tasks .
+Related Work Redundancy .
+Summarization models often use a dedicated sentence selection step after sentence scoring to address redundancy .
+Maximal Marginal Relevance ( Carbonell and Goldstein , 1998 ) based methods select the content that has the maximal score and is minimally redundant with the previously constructed partial summary .
+Others treated sentence selection as an optimization problem under some constraints such as summary length ( Mc - Donald , 2007 ; Lin and Bilmes , 2011 ) . Liu and Lapata ( 2019 b ) and Wang et al . ( 2020 ) used heuristicbased Trigram Blocking ( TriBlk ) for redundancy elimination .
+Ren et al. ( 2017 ) trained two neural networks with handcrafted features ; one is used to rank sentences , and the other one is used to model redundancy during sentence selection .
+Zhou et al . ( 2018 ) and Bi et al . ( 2020 ) proposed redundancy - aware models by modeling redundancy and saliency jointly during the scoring process using neural sequence models .
+In contrast to these approaches , our models are not redundancy - aware .
+Instead , they implicitly model redundancy by injecting previously generated summary representations .
+By virtue of this our models are not text-specific and can be applied to other tasks ( see Section 7 ) .
+Partial Summary Representations .
+Ultilizing representations of partially generated summaries is relatively less studied in summarization .
+Mendes et al. ( 2019 ) proposed to dynamically model the generated summary using an LSTM to iteratively increment summaries based on previously extracted information .
+used a feedforward neural network driven by hand -curated features capturing the prevalence of domain subtopics in the source and the summary .
+To the best of our knowledge , our models are first to use summary representations with structured transformers for summarization .
+Our models learn to make summary - informed next-sentence predictions without any hand -curated features .
+Long-form Summarization .
+It is well known that a better content selection benefits abstractive summarizers to generate summaries that are not only fluent but also informative ( Gehrmann et al. , 2018 ; Hsu et al. , 2018 ; Xiao et al. , 2020 ) .
+It can be particularly important when generating long abstractive summaries ( Liu et al. , 2018 ; Liu and Lapata , 2019a ) or summarizing multiple documents ( Yasunaga et al. , 2017 ) .
+Earlier multi-document summarization methods have addressed the issue of long form input by graph - based representations of sentences or passages ( Erkan and Radev , 2004 ; Christensen et al. , 2013 ) .
+Recently , Yasunaga et al. ( 2017 ) proposed a neural version of this framework using graph convolutional networks ( Kipf and Welling , 2017 ) .
+Liu and Lapata ( 2019a ) used cross-document attention mechanism to share information as opposed to simply concatenating text spans using hierarchical transformers .
+Similar to this motivation , we also explore better encoding of long inputs with structured transformers .
+2017 ) introduced the Rotowire dataset , which requires multi-sentence summaries of large tables .
+Several works found that the key to generate fluent and informative summaries for this task is to have dedicated content planning and realization steps ( Puduppully et al. , 2019 a , c ; Miculicich et al. , 2019 ) . Miculicich et al. ( 2019 ) and Gong et al . ( 2019 b ) used a transformer encoder , and , Gong et al . ( 2019a ) used multi-dimensional hierarchical LSTM encoders to compute better table entry representations .
+Following these lines of work , we evaluate our models to generate long content plans for this task using structured transformers .
+Problem : Stepwise Content Extraction
+We define a general paradigm for stepwise content extraction that can be easily tailored to both extractive summarization and table - to - text generation .
+Given an input D = {s 1 , s 2 , . . . , s n } with n content units , the goal is to learn an extractive content plan , i.e. , S m = {s j | 1 ? j ? m , s j ? ( D ? {?} ) } , of length m ; s m is an empty unit ( ? ) denoting the end of the plan .
+We formulate this as an iterative ranking problem Bi et al. , 2020 ) where at each k-th step ( 1 ? k ? m ) given the input D and the previously selected plan S k?1 , we select s k ? ( D ? {?} ) with a probability p(s k | S k?1 , D ; ? ) with model parameters ?.
+The selected content is then added to S k?1 to construct S k .
+The best plan ? can be defined as : ? = arg max S m , ? m m k=1 P ( s k | S k?1 , D ; ? ) .
+For extractive document summarization , let D = {s 1 , s 2 , . . . , s n } be a document with n sentences .
+Our goal is to learn an extractive plan ( or summary in this case ) ? which best summarizes D. For table - to - text generation , we represent a table with n records as D = {s 1 , s 2 , . . . , s n }.
+We aim to generate a plan S m that can be used by a text generator to generate a meaningful and coherent summary .
+For exposition , we use the extractive document summarization setup to introduce our stepwise models with HiBERT and ETC ( Ainslie et al. , 2020 ) in the following sections .
+Specifically , we use ' sentence ' as a content unit and ' previously ' or ' partially generated summary ' for a previously selected content plan .
+Stepwise HiBERT
+Hierarchical encodings have been used to model input structure with LSTMs ( Nallapati et al. , 2016 b ; Cheng and Lapata , 2016 ; Narayan et al. , 2018 b ) . proposed HiBERT with two stacked Transformer encoders ( Vaswani et al. , 2017 ) for extractive summarization ( see the middle diagram in Figure 1 ) : a sentence encoder that independently builds representations for each sentence in the document ; and a document encoder that operates over sentence encodings to build contextual representations for all sentences .
+These contextual sentence representations are then ingested by a classifier to predict the salience score of each sentence in the document .
+As in standard transformers , both encoders have multiple layers with each layer composed of a multi-head self-attention layer followed by a feed-forward sub-layer with residual connections ( He et al. , 2015 ) and layer normalizations ( Ba et al. , 2016 ) .
+For Stepwise HiBERT , at time step k , we modify the document encoder with the content plan S k?1 , which is the previously selected sentences in the summary .
+This is depicted in Figure 2 ( left ) and allows the model to implicitly select new sentences relative to the previously generated summary .
+Sentence and Document Encoders .
+Let D = {s 1 , s 2 , . . . , s n } be a document , where s i = {w i 1 , w ( Devlin et al. , 2019 ) , HiBERT and ETC ( Ainslie et al. , 2020 ) . and positional embeddings of token w i j , respectively .
+Our Transformer - based sentence encoder then transforms E s i into a list of hidden representations {h i 1 , h i 2 , . . . , h i |s i | } , where h i j is the hidden representation for w i j .
+Following the standard practice ( Devlin et al. , 2019 ; Liu and Lapata , 2019 b ) , we take the first hidden representation h i 1 as the representation for the sentence s i .
+Stepwise Modeling .
+At step k , let S k?1 = {s 1 , s 2 , . . . , s k?1 } be the partial summary with ( k ? 1 ) previously extracted sentences .
+In addition to ?D , our document encoder takes the summary representation ?S k?1 = {x 1 , x2 , . . . , xk?1 } , where xi = h i 1 + p sum i .
+h i 1 is the representation from the sentence encoder for sentence s i and p sum i is the positional embedding for sentence s i in S k?1 .
+At each layer , the document encoder employs three levels of nested multi-headed attentions ( Vaswani et al. , 2017 ) to build summary - informed contextual sentence representations {d 1 , d 2 , . . . , d n } : document self-attention , summary self-attention and document-summary attention ( see Figure 2 , left ) .
+The first two operate in parallel , followed by the document-summary attention .
+While document self-attention learns the contextual hidden representation h doc? doc s i of each sentence in the document D , summary selfattention learns the contextual hidden representation h sum?sum s i of each sentence in S k?1 .
+We share the parameters of the document and summary selfattention layers .
+The document-summary attention then builds the contextual hidden representation as key and values ( Vaswani et al. , 2017 ) .
+In addition to the introduction of stepwise mechanism to HiBERT , our positional embeddings , p token j , p doc j and p sum j , are not shared to better model individual sentences , the document and the different styles of summary .
+shared their token ( p token j ) and sentence ( p sent j ) positional embeddings .
+But we both use the absolute position encodings used in the original BERT model ( Devlin et al. , 2019 ) .
+Stepwise ETCSum
+There has been growing interest in addressing the limitation of the transformer architecture used in BERT ( Devlin et al. , 2019 ) where memory usage scales quadratically with the size of the input Ye et al. , 2019 ; Child et al. , 2019 ; Rae et al. , 2020 ; Beltagy et al. , 2020 ; Roy et al. , 2020 ) .
+HiBERT alleviates this problem by modeling each sentence independently ; the memory usage in HiBERT scales with the square of the number of sentences , and the square of the maximum length of any sentence .
+However , the main disadvantage of this approach is that token - level attention across sentences is prohibited and long range attention only happens indirectly at the second-stage encoder ( see the middle diagram in Figure 1 ) .
+Recently , Extended Transformer Construction ( ETC ; Ainslie et al. , 2020 ) provides an alternative .
+It alleviates the quadratic memory growth by introducing sparsity to the attention mechanism via its novel global - local attention mechanism ( see the rightmost diagram in Figure 1 ) .
+This not only permits encoding of long inputs , 2 but also enables a mechanism to model structure directly through nodes in the global attention layer .
+Global -Local Attention .
+The ETC model architecture receives two inputs : a long input , which in most cases corresponds to the text to be encoded ; and an auxiliary global input , which serves as inductive bias features .
+First , the model builds an attention map , called long- to-long , across the long input with a sparse local attention of fixed length , this bypasses the quadratic memory complexity and allows to scale input lengths to the thousands of tokens , but limits the attention span of tokens to their nearest neighbors .
+To overcome this limitation , the global-local attention defines three other attention parts : globalto- global , global - to -long and long- to - global , all with unrestricted attention .
+This allows tokens arbitrarily far apart to attend to each other with at most one hop through the global input tokens .
+We refer the reader to Ainslie et al . ( 2020 ) for more details .
+The right parts of Figures 1 and 2 illustrate these four types of attentions and the sparsity diagrams where each cell in a row i and column j is different than white input token w i can attend to input token w j , same relative position embeddings are indicated by using the same color .
+Stepwise Modeling .
+Given the document D and its partial summary S k?1 at step k , we construct an input I = D S k?1 = {w 1 , . . . , w |D S k?1 | } by concatenating the document D and the partial summary S k?1 . ETC replaces absolute position encodings with relative position encodings ( Shaw et al. , 2018 ) to easily adapt to greater input lengths than seen during pretraining .
+In addition to modeling relative positions in an input sequence , relative position encodings in ETC are also used to model arbitrary pairwise token relations useful for structured inputs .
+We used the auxiliary global input to represent sentence structure .
+Specifically , following ( Ainslie et al. , 2020 ) , we placed one auxiliary token in the global input per each sentence in the input I .
+We linked the global tokens with the input tokens by using relative position labels to represent whether each token belongs to that sentence .
+Global-toglobal attention is left unrestricted , allowing all sentences to attend to each other .
+This result is summary - informed contextualized input token representations via attention through the global nodes .
+In the rest of the paper we refer to this summarizer by Stepwise ETCSum .
+Similar to HiBERT , we take the first token hidden representation h i 1 as the representation for the sentence s i .
+Finally , sentence embeddings are passed to the softmax layer for salience scoring .
+Both HiBERT and ETCSum are then trained with the cross entropy loss .
+6 Extractive Document Summarization 6.1 Experimental Setup Dataset .
+We evaluate our models on the CNN and DailyMail news highlights datasets ( Hermann et al. , 2015 ) .
+We used standard splits ( 287,227/13,368/11,490 documents ) for training , validation , and testing .
+We did not anonymize entities or lower case tokens as in ( Narayan et al. , 2018 b ; Zhou et al. , 2018 ; Liu and Lapata , 2019 b ) .
+The documents in the CNN / DailyMail dataset are long ; the average lengths are 760.5 words ( 34 sentences ) for CNN and 653.3 words ( 29.3 sentences ) , for DailyMail .
+The human written abstracts have 46 and 55 words for CNN and DailyMail , respectively .
+We evaluated summarization quality using F 1 Rouge .
+3 Baselines .
+We compared our Stepwise HiBERT and ETCSum models to Lead and Oracle baselines .
+Lead selects the first 3 sentences to form the summary , while Oracle baselines creates a summary by selecting the best possible set of sentences in the document that gives the highest average of Rouge -1 , Rouge - 2 and Rouge -L F1 scores with respect to the human written summary .
+The Oracle ( 512 ) truncates the input document to 512 tokens .
+We further compared our models against several redundancyaware models ( NeuSum ; Zhou et al. , 2018 and ARedSum ; Bi et al. , 2020 ) and models that uses Trigram Blocking ( TriBlk ; Liu and Lapata , 2019 b ) for redundancy elimination during sentence selection ( see the second block in Table 1 ) .
+To understand the importance of modeling long documents for extractive summarization , we also trained BERTSum , similar to Liu and Lapata ( 2019 b ) , with a receptive capacity of 512 tokens initialized with the BERT checkpoint .
+Our BERT - Sum differs slightly from Liu and Lapata ( 2019 b ) , in that we do n't use segment embeddings .
+We also report on RoBERTa initialized version of BERTSum ( RoBERTaSum ) .
+We also trained non-stepwise variants of HiB-ERT and ETCSum models ( the third block in Table 1 ) .
+In this setting , HiBERT and ETC do not take partial summaries as input .
+Instead , they simply take the input document and generate salient scores ( using a sigmoid layer ) for each sentence in the document ; the top three sentences are then assembled to generate the summary .
+Our implementation of HiBERT differs from .
+For example , we do n't pretrain HiBERT from scratch for document modeling as in .
+Instead , we initialize our HiBERT models with publicly available RoBERTa checkpoints following the superior performance of ( Zhang et al. , 2018 ) 41.05 18.77 37.54 Refresh ( Narayan et al. , 2018 b ) 41.00 18.80 37.70 BanditSum ( Dong et al. , 2018 ) 41.50 18.70 37.60 NeuSUM ( Zhou et al. , 2018 ) 41.59 19.01 37.98 ExConSum ( Mendes et al. , 2019 ) 41.70 18.60 37.80 JECS ( Xu and Durrett , 2019 ) 41.70 18.50 37.90 LSTM +PN ( Zhong et al. , 2019 b ) 41.85 18.93 38.13 HER ( Luo et al. , 2019 ) 42.30 18.90 37.60 HiBERT 42.37 19.95 38.83 PNBERT ( Zhong et al. , 2019a ) 42.69 19.60 38.85 BERTSum ( Liu and Lapata , 2019 b ) 42.61 19.99 39.09 BERTSum + TriBlk 43.25 20.24 39.63 ARedSum-CTX ( Bi et al. , 2020 ) 43.43 20.44 39.83 HSG 42 RoBERTaSum over BERTSum .
+We use different number of layers in the document encoder ( L doc = 3 ) and in the sentence encoder ( L sent = 9 ) , as opposed to equal number of layers ( L = 6 ) in both encoders of .
+The layers in the document and sentence encoders were initialized with the top and the bottom layers of RoBERTa , respectively .
+All ETCSum models were initialized with the uncased version of ETC pretrained checkpoints ( Ainslie et al. , 2020 ) pretrained using the standard masked language model task and the contrastive predictive coding ( van den Oord et al. , 2018 ) . 4
+We also report on the effect of TriBLK with all our models .
+We only experiment with the basesized models and therefore have 12 layers , a hidden size of 768 , filter size of 3072 , and 12 attention heads .
+For comparison , we report results from BERTSum Large ( Liu and Lapata , 2019 b ) which uses 24 layers .
+Finally , we employ a beam decoding to predict summaries using our stepwise models ; we use a beam size of 3 for a maximum of 4 steps .
+We do n't allow repeated sentences , though this is not a requirement .
+We refer the reader to the supplementary material for implementation and reproducibility details .
+Generating Extractive Oracles .
+Following Narayan et al. ( 2018 b ) , we train models to predict all sentences in Oracle ( Full ) for non-stepwise training .
+Stepwise training learns to do this gradually : at each step , we train model to predict the next sentence in Oracle ( Full ) using the earlier predicted sentences and the document .
+During testing , human written abstracts are used as reference summaries to evaluate our models .
+Results Long form Summarization .
+In our experiments , ETCSum appears to be far more superior than HiB - ERT when modeling long documents for extractive summarization ; ETCSum outperformed HiBERT in all cases including stepwise or non-stepwise predictions , and , with or without trigram blocking .
+The downside of HiBERT where token - level attention across sentences is not possible , is not optimal for modeling documents .
+Both ETCSum and ETCSum + TriBlk performed better than BERTSum and BERTSum + TriBlk , respectively .
+These results suggest the importance of modeling the whole document with ETCSum , rather than truncating it to only 512 tokens to fit BERTSum .
+However , the improvement may not be attributed solely to ETC - Sum 's ability to model long inputs , but also to its better initialization with ETC checkpoints ( Ainslie et al. , 2020 ) , specially when the improvement diminishes when compared against RoBERTaSum .
+5 Stepwise vs Non-stepwise models .
+First of all , trigram filtering seems to be the key in addressing redundancy in generated summaries in nonstepwise models .
+It helps almost all models including our HiBERT and ETCSum ( except for the single case of RoBERTaSum on Rouge - 2 ) .
+Interestingly , we do n't observe the same pattern for our stepwise models .
+We observe that our stepwise models ( both HiBERT and ETCSum , without TriBlk ) consistently improve over their nonstepwise counterparts .
+But when stepwise is applied with TriBlk , we do n't always see improvements .
+We conjecture that our stepwise models themselves are inherently better at avoiding redundancy in generated summaries due to the knowledge of previously generated summary at each prediction step , and improvements with TriBlk are not always complementary .
+The same is also demonstrated in Figure 3 ; density curves show that Stepwise ETCSum ( avg :76.96 , std :24.77 ) follows the human distribution ( avg :58.3 , std :24.8 ) better than ETCSum ( avg:85.84 , std :19.06 ) .
+With Stepwise ETCSum + TriBlk ( avg:73.92 , std:24.76 ) , we do n't see significant improvement over Stepwise ETC - Sum .
+We also report on Stepwise RoBERTaSum baselines and performance dropped compared to corresponding non-stepwise models .
+Perhaps without any structure in the transformer , simple summary concatenation is not a good method for Stepwise RoBERTaSum to distinguish the document from the summary .
+There might be better ways ( than the vanilla concatenation ) , but with Stepwise ETCSum or HiBERT , it is very natural .
+Stepwise RoBER - TaSum also loses access to the end of the input as the partial summary grows for documents that are already close to 512 tokens in length .
+Finally , our Stepwise ETCSum model without any explicit redundancy or sentence selection mechanisms , achieved comparable performance to the state of the art on the CNN / DailyMail 5
+One may consider to access the modeling of long inputs in ETCSum against the truncated inputs in BERTSum and RoBERTaSum , by initializing ETCSum with BERT or RoBERTa checkpoints , and not ETC checkpoint .
+However , this is not fair to ETCSum as BERT or RoBERTa uses absolute position embeddings ( Devlin et al. , 2019 ) , whereas , ETC uses relative position embeddings ( Shaw et al. , 2018 ) 1 are computed with a confidence interval of 95 % .
+As such , Stepwise ETCSu m ( + TriBlk ) is significantly better than BERTSu m ( + TriBlk ) , all variants of HierBERT , ETCSum and Stepwise RoBERTaSum ( + TriBlk ) .
+For other models , such as RoBERTaSum ( + TriBlk ) and ETCSum + TriBlk , this confidence interval is not a deciding factor , hence we performed One - way ANOVA with posthoc Tukey - HSD tests ( p < 0.01 ) .
+Our best model Stepwise ETCSum performs significantly better than RoBERTaSum ( + TriBlk ) , ETC - Sum + TriBlk and Stepwise ETCSum + TriBlk , on the average of ROUGE scores .
+Table-to- Text Generation
+Task .
+We further explore our model 's ability to learn content plans for the Rotowire data- to - text generation task ( Wiseman et al. , 2017 ) .
+6
+The task is to generate a summary of an NBA game from its box score ( a table of statistics detailing the performance of the two teams and of each player ) .
+The dataset consists of 4853 pairs of box scores and summaries of NBA games played from 2014 to 2017 .
+The data is split into 3398 train , 727 validation and 728 test examples .
+On average there are 628 records in a box score per game .
+The average summary has 337.1 words and 13.49 sentences .
+Similar to Puduppully et al . ( 2019a ) we decompose the problem into two sub-problems , which we solve independently : content planning , which consists of selecting which records in the table should be mentioned in the summary , in what order , and how they should be organized into sentences ; and realization , which uses the content plan to create a human-readable summary .
+We refer the reader to the supplementary material for an example .
+Our main focus in this paper is to demonstrate our models ' ability to model long and structured Rotowire input tables , and generate long meaningful content plans .
+For realization , we simply use a RoBERTa initialized sequence - to-sequence transformer model ( Rothe et al. , 2020 ) , trained to emit the realization sentence by sentence .
+We train our stepwise models to take a score table and the partially generated content plan , and predict the next element in the content plan .
+This can be either one of the entries in the score table , a sentence break or a token marking the end of the plan .
+Unlike extractive summarization , here an optimal extractive content plan can have repeated entries from the input table ( e.g. team names ) to better preserve and generate discourse relations among sentences in the target summary ( Puduppully et al. , 2019 b ) , making it a challenging task for other iterative models that prohibit redundancy , e.g. , ( Bi et al. , 2020 ) .
+For details about model implementation , realization , and the induction of oracle content plans for training , we refer the reader to the supplementary material .
+We report typical Rotowire metrics ( Wiseman et al. , 2017 ) , using the standard information extraction system described by Puduppully et al . ( 2019a ) to extract the box score table relations mentioned in the generated ( G ) and in the target ( T ) summary .
+The metrics measure : text quality ( BLEU score between G and T ) ; relation generation quality ( the precision of the relations extracted from G against the box score table ) ; content selection quality ( the precision and recall of the relations extracted from G against those extracted from T ) ; and content ordering quality ( the complement of the normalized Damerau - Levenshtein distance on the sequences of relations extracted from G and T ) .
+We also conducted human evaluation of Rotowire summaries .
+Results .
+We focus on evaluating our Stepwise HiBERT and ETCSum models .
+7
+Our results are presented in Table 2 .
+The " realized " scores assess the quality of our realized summaries and are comparable to systems in the first block in Table 2 .
+We found both Stepwise HiBERT and Stepwise ETC - Sum do content selection particularly well .
+Their very high precision scores ( 41.49 % and 45.79 % , respectively ) combined with good recall ( 53.86 % and 58.49 % , respectively ) outperform Puduppully et al . ( 2019a ) and other recent models on F1 score .
+In terms of content ordering and BLEU score , Stepwise HiBERT ( 14.79 BLEU , 18.10 % DLD ) performs worse than Puduppully et al . ( 2019 a ) ( 16.50 BLEU , 18 .58 % DLD ) , while Stepwise ETCSum performs significantly better ( 17.56 BLEU , 25.08 % DLD ) .
+It 's possible that a higher BLEU score could be achieved by improving our simple sentence - bysentence realization method .
+We also report content selection scores for the output of the content planning modules ( see " planning only " models in Table 2 ) .
+We drop name , city and date entries from our content plans before computing the metrics in order to make them comparable with others in Table 2 .
+We see the roundtrip of realization and subsequent information extraction decreases CS quality slightly for both models ( the absolute drop of F1 score is 1.68 % for Stepwise HiBERT , and 1.74 % for Stepwise ETCSum ) .
+Human Evaluation .
+Participants were shown two summaries of an NBA game and asked to compare them with respect to informativeness ( Does a summary present a better selection of the rele - Stepwise ETC , and Gold , respectively .
+We also included truncated summaries from Stepwise Hi-BERT and Stepwise ETC to match the number of sentences in corresponding Gold summaries .
+We elicited judgements from three different annotators for each pair .
+We report the Best ( 1 ) - Worst ( - 1 ) Scaling scores ( Louviere and Woodworth , 1991 ; Louviere et al. , 2015 ) .
+Results are presented in Table 3 . Overall , Stepwise ETC summaries were ranked most informative , but they performed worst on readability .
+The off - the-shelf sentence - level realizer ( see the supplementary material ) favors the statistics - dense sentences of the baseline summaries , as it tends to hallucinate on less dense plans .
+Future work will aim to address this limitation .
+For informativeness , Stepwise ETC summaries are significantly better than Gold , Stepwise ETC truncated and Stepwise HiBERT truncated summaries .
+Stepwise HiBERT summaries are significantly better than both truncated variants .
+All other differences are not significant ( p < 0.05 ) .
+For readability , baseline summaries are significantly better than both ETC variants and Stepwise HiB-ERT .
+All other differences are not significant .
+Conclusion
+The stepwise structured transformer paradigm , exemplified by HiBERT and ETCSum , can be easily adapted both to extractive document summarization or content planning for table - to - text generation .
+Stepwise ETCSum , in particular , sets a new standard for both tasks .
+Future work will focus on extending our models to generate extractive plans for better abstractive summarization of long or multiple documents ( Liu et al. , 2018 ) .

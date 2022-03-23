@@ -1,0 +1,131 @@
+title
+Insertion Position Selection Model for Flexible Non-Terminals in Dependency Tree-to- Tree Machine Translation
+abstract
+Dependency tree- to- tree translation models are powerful because they can naturally handle long range reorderings which is important for distant language pairs .
+The translation process is easy if it can be accomplished only by replacing non-terminals in translation rules with other rules .
+However it is sometimes necessary to adjoin translation rules .
+Flexible non-terminals have been proposed as a promising solution for this problem .
+A flexible non-terminal provides several insertion position candidates for the rules to be adjoined , but it increases the computational cost of decoding .
+In this paper we propose a neural network based insertion position selection model to reduce the computational cost by selecting the appropriate insertion positions .
+The experimental results show the proposed model can select the appropriate insertion position with a high accuracy .
+It reduces the decoding time and improves the translation quality owing to reduced search space .
+Introduction
+Tree-to - tree machine translation models currently receive limited attention .
+However , we believe that using target - side syntax is important to achieve highquality translations between distant language pairs which require long range reorderings .
+Especially , using dependency trees on both source and target sides is promising for this purpose ( Menezes and Quirk , 2007 ; Nakazawa and Kurohashi , 2010 ; Richardson et al. , 2014 ) .
+Tree- based translation models naturally realize word reorderings using the non-terminals or anchors for the attachment in the translation rules : therefore they do not need a re-ordering model which string - based models require .
+For example , suppose we have a translation rule with the word alignment shown in Figure 1 , it is easy to translate a new input sentence which has " ? ( library ) " instead of " ? ( park ) " because we can accomplish it by simply substituting " library " for the target word " park " without considering the reordering .
+In this case , the source word " ? " and target word " park " work as the non-terminals .
+On the other hand , it is problematic when we need to adjoin a subtree which is not presented in training sentences , which we call floating subtree in this paper .
+The floating subtrees are not necessarily adjuncts , but any words or phrases .
+For example , suppose the Japanese input sentence in Figure 1 has " ? ( suddenly ) " , but the training corpus provides only a translation rule without the word .
+In this case we cannot directly use the rule for the translation because it does not know where to insert the translation of the floating word in the output .
+As another example , there is no context information available for the children of the OOV word in the input sentence , so we need some special process to translate them .
+Previous work deals with this problem by using glue rules ( Chiang , 2005 ) or limiting the dependency structures to be well - formed ( Shen et al. , 2008 ) . Richardson et al. ( 2016 ) introduces the concept of flexible non-terminals .
+It provides multiple possible insertion positions for the floating subtree rather than fixed insertion positions .
+A possible insertion position must satisfy the following conditions : ? it must be a child of the aligned word of the parent of the floating subtree ?
+it must not violate the projectivity of the dependency tree For example , possible insertion positions for the floating word " ? " are shown in gray arrows in Figure 1 . Since " ? " is a child of " ? " , and the translation of " ? " is " called " , insertion positions must be a child of " called " .
+Also , insertion positions do not violate the projectivity of the target tree .
+Flexible non-terminals are analogous to the auxiliary tree of the tree adjoining grammars ( TAG ) ( Joshi , 1985 ) , which is successfully adopted in machine translation ( DeNeefe and Knight , 2009 ) .
+The difference is that TAG is defined on the constituency trees rather than the dependency trees .
+Flexible non-terminals are powerful to handle floating subtrees and it achieve better translation quality .
+However the computational cost of decoding becomes high even though they are compactly represented in the lattice form ( Cromieres and Kurohashi , 2014 ) .
+In our experiments , using flexible nonterminals causes the decoding to be 3 to 6 times slower than when they are not used .
+Flexible nonterminals increase the number of translation rules because the insertion positions are selected during the decoding .
+However , we think it is possible to restrict possible insertion positions or even select only one insertion position by looking at the tree structures on both sides .
+In this paper , we propose a method to select the appropriate insertion position before decoding .
+This can not only reduce the decoding time but also improve the translation quality because of reduced search space .
+Insertion Position Selection
+We assume that correct insertion positions can be determined before decoding , using the word to be inserted ( I ) with the context on the source side and the context of the insertion positions on the target side .
+On the source side , we use the parent of I ( P s ) and the distance of I from P s ( D s ) .
+On the target side , we use the previous ( S p ) and next ( S n ) sibling of the insertion position , the parent of the insertion position ( P t ) and the distance of the insertion position from P t ( D t ) .
+The distances are calculated on the siblings rather than the words in the sentence , and it is a positive or negative value if the insertion position is to the left or to the right of the parent respectively .
+Taking the insertion position between " park " and " yesterday " in Figure 1 as an example , I = " ? " , P s = " ? " , D s = + 2 , S p = " park " , S n = " yesterday " , P t = " called " and D t = - 3 .
+In cases where S p or S n is empty , we use special words " [ [ LEFT - START ] ] " , " [ [ LEFT - END ] ] " , " [ [ RIGHT - START ] ] " and " [ [ RIGHT - END ] ] " .
+In the case of " yesterday " in Figure 1 , S p = " in " and S n = " [ [ RIGHT - END ] ] " .
+These clues are fed into the neural network model to solve the insertion position selection problem .
+Neural Network Model Figure 2 shows the neural network model for the insertion position selection .
+Given an insertion position candidate with an index k , the words ( I , P s , S k p , S k n , P t ) are first converted into vector representations through the same three embedding layers : surface form embedding ( 200 dimensions . ) , partof-speech embedding ( 10 dimensions ) and dependency type ( or phrase category ) embedding ( 10 dimensions ) , and they are concatenated to create the 220 - dimension vectors .
+The word embedding is a randomly initialized transformation from an one-hot vector to a 200 or 10 - dimensional vector , and it is learned during the whole network training .
+Using these words and the distances , we create source and target context vectors c k s and c k t which represent the information of source and target sides , respectively .
+The distances ( integer values ) are directly inputted to the network .
+Then the context vec- tor of the given insertion position c k i is created using c k s and c k t .
+Finally we get the score of the given insertion position s k from c k i .
+These vectors are calculated as follows : c k s = tanh ( W cs [ I ; P s ; D s ] ) c k t = tanh ( W ct [ S p ; S n ; P t ; D k t ] ) c k i = tanh ( W c i [ c k s ; c k t ] ) s k = W s c k i where " ; " means concatenation of the vectors .
+The size of c k s , c k t and c k i is 100 in our experiments .
+The same network is applied to all the other insertion positions and get their scores .
+Finally the scores are normalized by the softmax function , and the loss is calculated by the softmax cross-entropy as the loss function .
+All the links between layers are fully -connected .
+We use dropout ( 50 % ) to avoid overfitting .
+Training Data Generation
+The data for training the neural network model can be automatically generated from the word-aligned parallel corpus with dependency parses in both sides by Algorithm 1 .
+The ALIGNMENT function returns the aligned word in the target tree for the given source word 1 , and the ISPARENTCHILD function returns TRUE if P t is the parent of C t .
+The GENERATEDATA function generates one instance of training data to predict the position of C t from P s , C s and P t with their contexts by removing C t in the target tree .
+The position where C t exists is regarded as the correct insertion position , and others as incorrect insertion positions .
+Note that C s corresponds to I in Figure 2 .
+Insertion Position Selection in Translation
+Once the neural network model is trained , it can be applied to select the most appropriate insertion positions in the translation rules for the given floating subtree by looking at the score of each insertion position .
+Translation rules only contain part of the original parallel sentence in most of the cases .
+This means that the context used for selecting the insertion position is different from that in the training data for the neural network .
+For example , if the input sentence does not have " ? ? ( in the park ) " in Figure 1 , the number of possible insertion positions is 6 and we do not use " in " as the context .
+However , this is not so problematic because similar or same context may appear in the different part of the corpus .
+Experiments
+We conducted two kinds of experiments : the insertion position selection and translation .
+We used ASPEC ( Nakazawa et al. , 2016 ) as the dataset and the numbers of the sentences of the corpus are shown in Table 1 .
+The Japanese morphological analyzer and dependency parser sentences .
+English sentences are first parsed by nlparser ( Charniak and Johnson , 2005 ) and then converted into word dependency trees using Collins ' head percolation table ( Collins , 1999 ) .
+We used Chinese word segmenter KKN ( Shen et al. , 2014 ) and dependency parser SKP ( Shen et al. , 2012 ) for Chinese sentences .
+The supervised word alignment Nile ( Riesa et al. , 2011 ) was used .
+We used a state - of - the - art dependency tree - to - tree decoder ( Richardson et al. , 2014 ) with the default settings .
+The neural network is constructed and trained using the Chainer ( Tokui et al. , 2015 ) .
+Insertion Position Selection
+The training , development and test data for the neural network is automatically generated by the procedure explained in Section 2.2 .
+The size of the generated data from the ASPEC and the average number of insertion positions for each floating subtree are shown in Table 2 .
+We trained the model for 100 epochs and used the best model on the development data for testing .
+The vocabulary size for the surface form was 50,000 .
+For comparison , we also tried the logistic regression to predict the correct insertion positions .
+Because our training data is huge , we used Multi-core LIBLINEAR 2 with L2 - regularized logistic regression ( primal ) solver .
+The format of training instances are : one-hot ( binary ) vectors for surface form , POS and dependency type , and distances scaled to [ 0 , 1 ] .
+We first find the best value for the C parameter , then train the model .
+The best insertion position is selected using the estimated probabilities for each insertion position .
+The experimental results are also shown in Table 2 .
+We evaluated the results by the mean loss of the model and the accuracy on the test data .
+The result shows that our model can select the correct insertion position with very high accuracy for every language pair while the classical logistic regression model cannot .
+This supports our claim stated in the beginning of Section 2 .
+X ?
+Ja is easier and achieved slightly better accuracy than the reverse direction because Japanese is a head-final language and all children are generally put on the left of their parents .
+There are some cases judged as incorrect but acceptable insertion positions , and hence the true accuracies are higher than the ones reported above .
+We also investigated the top - 2 accuracy and found that it is above 99.0 % for Ja ?
+X and 99.5 % for X ? Ja.
+Table 3 shows the detailed result of Ja rightarrow En experiment .
+The number of insertion-position is at least 2 ( left / right of the parent ) and it is easy to solve ( more than 99 % accuracy ) .
+3 is a situation where the parent has one child , and it is still not so difficult ( 97 - 98 % accuracy ) .
+About 70 % of the test data have only 2 or 3 insertion -positions .
+Difficult cases are the sentences which have many adjuncts as in Figure 1 , but we used the scientific paper corpora , where not so many adjuncts appear .
+Translation
+We conducted translation experiment using the AS - PEC in 3 settings : ?
+No Flexible : not using the flexible nonterminals and using simple glue rules as in the baseline model of ( Richardson et al. , 2016 ) 3 ? Baseline : using the flexible non-terminals without the insertion position selection ?
+Proposed : using only the most appropriate insertion position for the flexible non-terminals
+We also report the translation quality of conventional models for comparison : phrase - based SMT ( PBSMT ) and hierarchical phrase - based SMT ( Hiero ) .
+We used the default settings of Moses except - distortion - limit=20 for PBSMT .
+( Isozaki et al. , 2010 ) with the significance testing by bootstrap resampling ( Koehn , 2004 ) .
+RIBES is more sensitive to word order than BLEU , so we expect an improvement in RIBES .
+We also investigated relative decoding time compared to the No Flexible setting .
+Note that we used the word " decoding " for only exploring the search space , and it does not include constructing the search space ( as the table lookup in Phrase - based SMT ) .
+Our whole translation process is :
+2002 ) and RIBES 1 . translation rule extraction 2 . insertion-position selection 3 . decoding
+At the time of the second step , we have all the translation rules applicable to the input sentence .
+The computation time for each step is 3 ? 1 ? 2 so we only focus on the time for step 3 in the experiments ( the computation time for step 2 is negligibly small ) .
+The results are shown in Table 4 .
+The Proposed method achieved significantly better automatic evaluation scores than the Baseline for all the language pairs except the BLEU score of En ? Ja direction .
+Also , the decoding time is reduced by about 60 % relative to that of the Baseline .
+Our tree - based model is better than the conventional models except C ? J , where the accuracy of Chinese parsing for the input sentences has a bad effect .
+Conclusion
+In this paper we have proposed a neural network based insertion position selection model to reduce the computational cost of the decoding for dependency tree - to - tree translation with flexible nonterminals .
+The model successfully finds the appropriate insertion position from the candidates and it leads to faster translation speed and better translation quality due to the reduced search space .
+Currently , we use only words as the context but it seems promising to use subtrees as well .
+For example , using the information of the subtree " in the park " is more informative than using only " in " in Figure 1 .
+This is especially important for Japanese as the target language because children of verbs are often case markers and they do not provide enough information when selecting the appropriate insertion position .
+It is possible to adopt existing models of creating vector representation of dependency subtrees such as the model using recursive neural networks ( Liu et al. , 2015 ) and convolutional neural networks ( Mou et al. , 2015 ) . Figure 1 : 1 Figure 1 : Example of an input sentence and a translation rule .
+We want to insert " ? ( suddenly ) " which is not in the translation rule .
+The possible insertion positions in the target sentence are shown in gray arrows .

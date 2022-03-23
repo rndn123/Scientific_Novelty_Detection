@@ -1,0 +1,229 @@
+title
+MSˆ2 : A Dataset for Multi-Document Summarization of Medical Studies
+abstract
+To assess the effectiveness of any medical intervention , researchers must conduct a timeintensive and manual literature review .
+NLP systems can help to automate or assist in parts of this expensive process .
+In support of this goal , we release MS?2 ( Multi-Document Summarization of Medical Studies ) , a dataset of over 470k documents and 20 K summaries derived from the scientific literature .
+This dataset facilitates the development of systems that can assess and aggregate contradictory evidence across multiple studies , and is the first large-scale , publicly available multi-document summarization dataset in the biomedical domain .
+We experiment with a summarization system based on BART , with promising early results , though significant work remains to achieve higher summarization quality .
+We formulate our summarization inputs and targets in both free text and structured forms and modify a recently proposed metric to assess the quality of our system 's generated summaries .
+Data and models are available at https : // github.com/allenai/ms2 .
+Introduction Multi-document summarization ( MDS ) is a challenging task , with relatively limited resources and modeling techniques .
+Existing datasets are either in the general domain , such as WikiSum and Multi-News ( Fabbri et al. , 2019 ) , or very small such as DUC 1 or TAC 2011 ( Owczarzak and Dang , 2011 ) .
+In this work , we add to this burgeoning area by developing a dataset for summarizing biomedical findings .
+We derive documents and summaries from systematic literature reviews , a type of biomedical paper that synthesizes results across many other studies .
+Our aim in introducing MS?2 is to : ( 1 ) expand MDS to the biomedical domain , ( 2 ) investigate fundamentally challenging issues in NLP over scientific text , such as summarization over contradictory information and assessing summary quality via a structured intermediate form , and ( 3 ) aid in distilling large amounts of biomedical literature by supporting automated generation of literature review summaries .
+Systematic reviews synthesize knowledge across many studies ( Khan et al. , 2003 ) , and they are so called for the systematic ( and expensive ) process of creating a review ; each taking 1 - 2 years to complete ( Michelson and Reuter , 2019 ) .
+2
+As we note in Fig. 2 , a delay of around 8 years is observed between reviews and the studies they cite !
+The time and cost of creating and updating reviews has inspired efforts at automation ( Tsafnat et al. , 2014 ; Marshall et al. , 2016 ; Beller et al. , 2018 ; Marshall and Wallace , 2019 ) , and the constant deluge of studies 3 has only increased this need .
+To move the needle on these challenges and support further work on literature review automation , we present MS? 2 , a multi-document summarization dataset in the biomedical domain .
+Our contributions in this paper are as follows : ?
+We introduce MS?2 , a dataset of 20 K reviews and 470 k studies summarized by these reviews .
+?
+We define a texts - to- text MDS task ( Fig. 1 ) based on MS?2 , by identifying target summaries in each review and using study abstracts as input documents .
+We develop a BART - based model for this task , which produces fluent summaries that agree with the evidence direction stated in gold summaries around 50 % of the time .
+?
+In order to expose more granular representations to users , we define a structured form of our data to support a table - to - table task ( ? 4.2 ) .
+We leverage existing biomedical information extraction systems ( Nye et al. , 2018 ; DeYoung et al. , 2020 ) ( ?3.3.1 , ?3.3.2 ) to evaluate agreement between target and generated summaries .
+Background Systematic reviews aim to synthesize results over all relevant studies on a topic , providing high quality evidence for biomedical and public health decisions .
+They are a fixture in the biomedical literature , with many established protocol around their registration , production , and publication ( Chalmers et al. , 2002 ; Starr et al. , 2009 ; Booth et al. , 2012 ) .
+Each systematic review addresses one or several research questions , and results are extracted from relevant studies and summarized .
+For example , a review investigating the effectiveness of Vitamin B12 supplementation in older adults ( Andr ? s et al. , 2010 ) synthesizes results from 9 studies .
+The research questions in systematic reviews can be described using the PICO framework ( Zakowski et al. , 2004 ) . PICO ( which stands for Population : who is studied ?
+Intervention : what intervention was studied ?
+Comparator : what was the intervention compared against ?
+Outcome : what was measured ? ) defines the main facets of biomedical research questions , and allows the person ( s ) conducting a review to identify relevant studies ( studies included in a review generally have the same or similar PICO elements as the review ) .
+A medical systematic review is one which reports results for applying any kind of medical or social intervention to a group of people .
+Interventions are wideranging , including yoga , vaccination , team training , education , vitamins , mobile reminders , and more .
+Recent work on evidence inference ( DeYoung et al. , 2020 ; Nye et al. , 2020 ) goes beyond identifying PICO elements , and aims to group and identify overall findings in reviews .
+MS ?2 is a natural extension of these paths : we create a dataset and build a system with both natural summarization targets from input studies , while also incorporating the inherent structure studied in previous work .
+In this work , we use the term review when describing literature review papers , which provide our summary targets .
+We use the term study to describe the documents that are cited and summarized by each review .
+There are various study designs which offer differing levels of evidence , e.g. clinical trials , cohort studies , observational studies , case studies , and more ( Concato et al. , 2000 ) .
+Of these study types , randomized controlled trials ( RCTs ) offer the highest quality of evidence ( Meldrum , 2000 ) .
+Dataset
+We construct MS ?2 from papers in the Semantic Scholar literature corpus ( Ammar et al. , 2018 ) .
+First , we create a corpus of reviews and studies based on the suitability criteria defined in ?3.1 .
+For each review , we classify individual sentences in the abstract to identify summarization targets ( ?3.2 ) .
+We augment all reviews and studies with PICO span labels and evidence inference classes as described in ?3.3.1 and ?3.3.2 .
+As a final step in data preparation , we cluster reviews by topic and form train , development , and test sets from these clusters ( ?3.4 ) .
+Identifying suitable reviews and studies
+To identify suitable reviews , we apply ( i ) a highrecall heuristic keyword filter , ( ii ) PubMed filter , ( iii ) study - type filter , and ( iv ) suitability classifier , in series .
+The keyword filter looks for the phrase " systematic review " in the title and abstracts of all papers in Semantic Scholar , which yields 220 K matches .
+The PubMed filter , yielding 170K matches , limits search results to papers that have been indexed in the PubMed database , which restricts reviews to those in the biomedical , clinical , psychological , and associated domains .
+We then use citations and Medical Subject Headings ( MeSH ) to identify input studies via their document types and further refine the remaining reviews , see App .
+A for details on the full filtering process .
+Finally , we train a suitability classifier as the final filtering step , using SciBERT , a BERT ( Devlin et al. , 2019 ) based language model trained on scientific text .
+Details on classifier training and performance are provided in Appendix C.
+Applying this classifier to the remaining reviews leaves us with 20 K candidate reviews .
+Background and target identification
+For each review , we identify two sections : 1 ) the BACKGROUND statement , which describes the research question , and 2 ) the overall effect or findings statement as the TARGET of the MDS task ( Fig. 1 ) .
+We frame this as a sequential sentence classification task : given the sentences in the review abstract , classify them as BACKGROUND , TARGET , or OTHER .
+All BACKGROUND sentences are aggregated and used as input in modeling .
+All TARGET sentences are aggregated and form the summary target for that review .
+Sentences classified as OTHER may describe the methods used to conduct the review , detailed findings such as the number of included studies or numerical results , as well as recommendations for practice .
+OTHER sentences are not suitable for modeling because they ( Andr ? s et al. , 2010 ) . either contain information specific to the review , as in methods ; too much detail , in the case of results ; or contain guidance on how medicine should be practiced , which is both outside the scope of our task definition and ill-advised to generate .
+Five annotators with undergraduate or graduate level biomedical background labeled 3000 sentences from 220 review abstracts .
+During annotation , we asked annotators to label sentences into 9 classes ( which we collapse into the 3 above ; see App. D for detailed info on other classes ) .
+Two annotators then reviewed all annotations and corrected mistakes .
+The corrections yield a Cohen's ? ( Cohen , 1960 ) of 0.912 .
+Though we retain only BACKGROUND and TARGET sentences for modeling , we provide labels to all 9 classes in our dataset .
+Using SciBERT , we train a sequential sentence classifier .
+We prepend each sentence with a [ SEP ] token and use a linear layer followed by a softmax to classify each sentence .
+A detailed breakdown of the classifier scores is available in Tab. 9 , App. D .
+While the classifier performs well ( 94.1 F1 ) at identifying BACKGROUND sentences , it only achieves 77.4 F1 for TARGET sentences .
+The most common error for TARGET sentences is confusing them for results from individual studies or detailed statistical analysis .
+Tab .
+1 shows example sentences with predicted labels .
+Due to the size of the dataset , we cannot manually annotate sentence labels for all reviews , so we use the sentence classifier output as silver labels in the training set .
+To ensure the highest degree of accuracy for the summary targets in our test set , we manually review all 4519 TARGET sentences in the 2K reviews of the test set , correcting 1109 sentences .
+Any re-views without TARGET sentences are considered unsuitable and are removed from the final dataset .
+Structured form
+As discussed in ?2 , the key findings of studies and reviews can be succinctly captured in a structured representation .
+The structure consists of PICO elements ( Nye et al. , 2018 ) that define what is being studied , in addition to the effectiveness of the intervention as inferred through Evidence Inference ( ?3.3.2 ) .
+In addition to the textual form of our task , we construct this structured form and release it with MS ? 2 to facilitate investigation of consistency between input studies and reviews , and to provide additional information for interpreting the findings reported in each document .
+Adding PICO tags The Populations , Interventions , and Outcomes of interest are a common way of representing clinical knowledge ( Huang et al. , 2006 ) .
+Recent work ( Nye et al. , 2020 ) has found that the Comparator is rarely mentioned explicitly , so we exclude it from our dataset .
+Previous summarization work has shown that tagging salient entities , especially PIO elements ( Wallace et al. , 2020 ) , can improve summarization performance ( Nallapati et al. , 2016 a , b ) , so we mark PIO elements with special tokens added to our model vocabulary : < pop > , </ pop > , < int > , </ int > , < out > , and </ out >.
+Using the EBM - NLP corpus ( Nye et al. , 2018 ) , a crowd-sourced collection of PIO tags , 4 we train a token classification model ( Wolf et al. , 2020 ) to identify these spans in our study and review documents .
+These span sets are denoted P = { P 1 , P 2 , ... , P P } , I = { I 1 , I 2 , ... , I ? } and O = { O 1 , O 2 , ... , O ?}.
+At the level of each review , we perform a simple aggregation over these elements .
+Any P , I , or O span fully contained within any other span of the same type is removed from these sets ( though they remain tagged in the text ) .
+Removing these contained elements reduces the number of duplicates in our structured representation .
+Our dataset has an average of 3.0 P , 3.5 I , and 5.4 O spans per review .
+Adding Evidence Inference
+We predict the direction of evidence associated with every Intervention - Outcome ( I/O ) pair found in the review abstract .
+Taking the product of each I i and O j in the sets I and O yields all possible I/O pairs , and each I/O pair is associated with an evidence direction d ij , which can take on one of the values in { increases , no_change , decreases }.
+For each I/O pair , we also derive a sentence s ij from the document supporting the d ij classification .
+Each review can therefore be represented as a set of tuples T of the form ( I i , O j , s ij , d ij ) and cardinality ? ? ?. See Tab .
+2 for examples .
+For modeling , as in PICO tagging , we surround supporting sentences with special tokens < evidence > and </ evidence > ; and append the direction class with a < sep > token .
+We adapt the Evidence Inference ( EI ) dataset and models ( DeYoung et al. , 2020 ) for labeling .
+The EI dataset is a collection of RCTs , tagged PICO elements , evidence sentences , and overall evidence direction labels increases , no_change , or decreases .
+The EI models are composed of 1 ) an evidence identification module which identifies an evidence sentence , and 2 ) an evidence classification module for classifying the direction of effectiveness .
+The former is a binary classifier on top of SciBERT , whereas the latter is a softmax distribution over effectiveness directions .
+Using the same parameters as DeYoung et al . ( 2020 ) , we modify these two modules to function solely over I and O spans .
+5
+The resulting 354 k EI classifications for our reviews are 13.4 % decreases , 57.0 % no_change , and 29.6 % increases .
+Of the 907 k classifications over input studies , 15.7 % are decreases , 60.7 % no_change , and 23.6 % increases .
+Only 53.8 % of study classifications match review classifications , highlighting the prevalence and challenges of contradictory data .
+Clustering and train / test split Reviews addressing overlapping research questions or providing updates to previous reviews may share input studies and results in common , e.g. , a review studying the effect of Vitamin B12 supplementation on B12 levels in older adults and a review studying the effect of B12 supplementation on heart disease risk will cite similar studies .
+To avoid the phenomenon of learning from test data , we cluster reviews before splitting into train , validation , and test sets .
+We compute SPECTER paper embeddings ( Owczarzak and Dang , 2011 ) , WikiSum , and Multi-News ( Fabbri et al. , 2019 ) .
+Note : WikiSum only provides ranges , not exact size .
+abstract of each review , and perform agglomerative hierarchical clustering using the scikit-learn library ( Buitinck et al. , 2013 ) .
+This results in 200 clusters , which we randomly partition into 80/10 / 10 train / development / test sets .
+Dataset statistics
+The final dataset consists of 20 K reviews and 470k studies .
+Each review in the dataset summarizes an average of 23 studies , ranging between 1-401 studies .
+See Tab .
+3 for statistics , and Tab .
+4 for a comparison to other datasets .
+The median review has 6.7 K input tokens from its input studies , while the average has 9.4 K tokens ( a few reviews have lots of studies ) .
+We restrict the input size when modeling to 25 studies , which reduces the average input to 6.6 K tokens without altering the median .
+Fig. 2 shows the temporal distribution of reviews and input studies in MS ?2 .
+We observe that though reviews in our dataset have a median publication year of 2016 , the studies cited by these reviews are largely from before 2010 , with a median of 2007 and peak in 2009 .
+This citation delay has been observed in prior work ( Shojania et al. , 2007 ; Beller et al. , 2013 ) , and further illustrates the need for automated or assisted reviews .
+Experiments
+We experiment with a texts - to - text task formulation ( Fig. 1 ) .
+The model input consists of the BACK - Figure 3 : Two input encoding configurations .
+Above : LongformerEncoderDecoder ( LED ) , where all input studies are appended to the BACKGROUND and encoded together .
+Below :
+In the BART configuration , each input study is encoded independently with the review BACKGROUND .
+These are concatenated to form the input encoding .
+GROUND statement and study abstracts ; the output is the TARGET statement .
+We also investigate the use of the structured form described in ?3.3.2 for a supplementary table - to - table task , where given inputs of I/O pairs from the review ; the model tries to predict the evidence direction .
+We provide initial results for the table - to - table task , although we consider this an area in need of active research .
+Texts - to- text task
+Our approach leverages BART ( Lewis et al. , 2020 b ) , a seq2seq autoencoder .
+Using BART , we encode the BACKGROUND and input studies as in Fig. 3 , and pass these representations to a decoder .
+Training follows a standard auto-regressive paradigm used for building summarization models .
+In addition to PICO tags ( ?3.3.1 ) , we augment the inputs by surrounding the background and each input study with special tokens < background > , </ background > , and < study > , </ study >.
+For representing multiple inputs , we experiment with two configurations : one leveraging BART with independent encodings of each input , and LongformerEncoderDecoder ( LED ) which can encode long inputs of up to 16 K tokens .
+For the BART configuration , each study abstract is appended to the BACKGROUND statement and encoded independently .
+These representations are concatenated together to form the input to the decoder layer .
+In the BART configuration , interactions happen only in the decoder .
+For the LED configuration , the input sequence starts with the BACK - GROUND statement followed by a concatenation of all input study abstracts .
+The BACKGROUND representation is shared among all input studies ; global attention allows interactions between studies , and a sliding attention window of 512 tokens allows each token to attend to its neighbors .
+We train a BART - base model , with hyperparameters described in App. F .
+We report experimental results in Tab .
+5 . In addition to ROUGE ( Lin , 2004 ) , we also report two metrics derived from evidence inference : ?EI and F1 .
+We describe the intuition and computation of the ?EI metric in Section 4.3 ; because it is a distance metric , lower ?EI is better .
+For F1 , we use the EI classification module to identify evidence directions for both the generated and target summaries .
+Using these classifications , we report a macro-averaged F1 over the class agreement between the generated and target summaries ( Buitinck et al. , 2013 ) .
+For example generations , see Tab. 13 in App. G.
+Table - to- table task
+An end user of a review summarization system may be interested in specific results from input studies ( including whether they agree or contradict ) rather than the high level conclusions available in TAR - GET statements .
+Therefore , we further experiment with structured input and output representations that attempt to capture results from individual studies .
+As described in ?3.3.2 , the structured representation of each review or study is a tuple of the form ( I i , O j , s ij , d ij ) .
+It is important to note that we use the same set of Is and Os from the review to predict evidence direction from all input studies .
+Borrowing from the ideas of ( Raffel et al. , 2020 ) , we formulate our classification task as a text generation task , and train the models described in Section 4.1 to generate one of the classes in { increases , no_change , decreases }. Using the EI classifications from 3.3.2 , we compute an F-score macroaveraged over the effect classes ( Tab. 6 ) .
+We retain all hyperparameter settings other than reducing the maximum generation length to 10 .
+We stress that this is a preliminary effort to demonstrate feasibility rather than completenessour results in Tab .
+6 are promising but the underlying technologies for building the structured data : PICO tagging , co-reference resolution , and PICO relation extraction , are currently weak ( Nye et al. , 2020 ) .
+Resorting to using the full cross-product of Interventions and Outcomes results in duplicated I/O pairs as well as potentially spurious pairs that do not correspond to actual I/O pairs in the review .
+?EI metric Recent work in summarization evaluation has highlighted the weaknesses of ROUGE for capturing factuality of generated summaries , and has focused on developing automated metrics more closely correlated with human-assessed factuality and quality ( Zhang * et al. , 2020 ; Falke et al. , 2019 ) .
+In this vein , we modify a recently proposed metric based on EI classification distributions ( Wallace et al. , 2020 ) , intending to capture the agreement of Is , Os , and EI directions between input studies and the generated summary .
+For each I/O tuple ( I i , O j ) , the predicted direction d ij is actually a distribution of probabilities over the three direction classes P ij = ( p increases , p decreases , p no_change ) .
+If we consider this distribution for the gold summary ( P ij ) and the generated summary ( Q ij ) , we can compute the Jensen-Shannon Distance ( JSD ) ( Lin , 1991 ) , a bounded score between [ 0 , 1 ] , between these distributions .
+For each review , we can then compute a summary JSD metric , which we call ?EI , as an average over the JSD of each I/O tuple in that review : ? i=1 J j=1 JSD ( P ij , Q ij ) ( 1 ) Different from Wallace et al. ( 2020 ) , ?EI is an average over all outputs , attempting to capture an overall picture of system performance , 6 and our metric retains the directionality of increases and decreases , as opposed to collapsing them together .
+To facilitate interpretation of the ?EI metric , we offer a degenerate example .
+Given the case where all direction classifications are certain , and the probability distributions P ij and Q ij exist in the space of ( 1 , 0 , 0 ) , ( 0 , 1 , 0 ) , or ( 0 , 0 , 1 ) , ?EI takes on the following values at various levels of consistency between P ij and Q ij for the input studies : 100 % consistent ?EI = 0.0 50 % consistent ?EI = 0.42 0 % consistent ?EI = 0.83
+In other words , in both the standard BART and LED setting , the evidence directions predicted in relation to the generated summary are slightly less than 50 % consistent with the direction predictions produced relative to the gold summary .
+Human evaluation & error analysis
+We randomly sample 150 reviews from the test set for manual evaluation .
+For each generated and gold summary , we annotate the primary effectiveness direction in the summary to the following classes : ( i ) increases : intervention has a positive effect on the outcome ; ( ii ) no_change : no effect , or no difference between the intervention and the comparator ; ( iii ) decreases : intervention has a negative effect on the outcome ; ( iv ) insufficient : insufficient evidence is available ; ( v ) skip : the summary is disfluent , off topic , or does not contain information on efficacy .
+Here , increases , no_change , and decreases correspond to the EI classes , while we introduce insufficient to describe cases where insufficient evidence is available on efficacy , and skip to describe data or generation failures .
+Two annotators provide labels , and agreement is computed over 50 reviews ( agreement : 86 % , Cohen 's ? : 0.76 ) .
+Of these , 17 gold summaries lack an efficacy statement , and are excluded from analysis .
+Tab .
+7 shows the confusion matrix for the sample .
+Around 50 % ( 67/133 ) of generated summaries have the same evidence direction as the gold summary .
+Most confusions happen between increases , no_change , and insufficient .
+Tab .
+8 shows how individual studies can provide contradictory information , some supporting a positive effect for an intervention and some observing no or negative effects .
+EI may be able to capture some of the differences between these input studies .
+From observations on limited data : while studies
+No effect or negative effect
+No survival benefit for CAP vs no-treatment control was found in this study .
+Therefore , adjuvant therapy with CAP should not be recommended for patients with resected early - stage non-small cell lung cancer .
+On the basis of this trial , adjuvant therapy with CAP should not be recommended for patients with resected stage I lung cancer .
+Table 8 : Text from the input studies to Petrelli and Barni ( 2013 ) , a review investigating the effectiveness of cisplatin-based ( CAP ) chemotherapy for non-small cell lung cancer ( NSCLC ) .
+Input studies vary in their results , with some stating a positive effect for adjuvant chemotherapy , and some stating no survival benefit .
+with positive effect tend to have more EI predictions that were increases or decreases , those with no or negative effect tended to have predictions that were mostly no_change .
+However , more work is needed to better understand how to capture these directional relations and how to aggregate them into a coherent summary .
+Related Work NLP for scientific text has been gaining interest recently with work spanning the whole NLP pipeline : datasets ( S2ORC , CORD -19 ( Wang et al. , 2020 b ) ) , pretrained transformer models ( SciBERT , BioBERT , ClinicalBERT ( Huang et al. , 2019 ) , SPECTER ) , NLP tasks like NER ( Nye et al. , 2018 ; Li et al. , 2016 ) , relation extraction ( Jain et al. , 2020 ; Luan et al. , 2018 ; Kringelum et al. , 2016 ) , QA ( Abacha et al. , 2019 ) , NLI ( Romanov and Shivade , 2018 ; Khot et al. , 2018 ) , summarization ( Cachola et al. , 2020 ; Chandrasekaran et al. , 2019 ) , claim verification ( Wadden et al. , 2020 ) , and more .
+MS ?2 adds a MDS dataset to the scientific document NLP literature .
+A small number of MDS datasets are available for other domains , including MultiNews ( Fabbri et al. , 2019 ) , WikiSum , and Wikipedia Current Events ( Gholipour Ghalandari et al. , 2020 ) .
+Most similar to MS?2 is MultiNews , where multiple news articles about the same event are summarized into one short paragraph .
+Aside from being in a different textual domain ( scientific vs. newswire ) , one unique characteristic of MS?2 compared to existing datasets is that MS ?2 input documents have contradicting evidence .
+Modeling in other domains has typically focused on straightforward applications of single-document summarization to the multi-document setting ( Lebanoff et al. , 2018 ; Zhang et al. , 2018 ) , although some methods explicitly model multi-document structure using semantic graph approaches ( Baumel et al. , 2018 ; Liu and Lapata , 2019 ; .
+In the systematic review domain , work has typically focused on information retrieval ( Boudin et al. , 2010 ; Ho et al. , 2016 ; Znaidi et al. , 2015 ; Schoot et al. , 2020 ) , extracting findings ( Lehman et al. , 2019 ; DeYoung et al. , 2020 ; Nye et al. , 2020 ) , and quality assessment ( Marshall et al. , 2015 ( Marshall et al. , , 2016 . Only recently in Wallace et al . ( 2020 ) and this work has consideration been made for approaching the entire system as a whole .
+We refer the reader to App .
+I for more context regarding the systematic review process .
+Discussion
+Though MDS has been explored in the general domain , biomedical text poses unique challenges such as the need for domain-specific vocabulary and background knowledge .
+To support development of biomedical MDS systems , we release the MS?2 dataset .
+MS ?2 contains summaries and documents derived from biomedical literature , and can be used to study literature review automation , a pressing real-world application of MDS .
+We define a seq2seq modeling task over this dataset , as well as a structured task that incorporates prior work on modeling biomedical text ( Nye et al. , 2018 ; DeYoung et al. , 2020 ) .
+We show that although generated summaries tend to be fluent and on-topic , they only agree with the evidence direction in gold summaries around half the time , leaving plenty of room for improvement .
+This observation holds both through our ?EI metric and through human evaluation of a small sample of generated summaries .
+Given that only 54 % of study evidence directions agree with the evidence directions of their review , modeling contradiction in source documents may be key to improving upon existing summarization methods .
+Limitations
+Challenges in co-reference resolution and PICO extraction limit our ability to generate accurate PICO labels at the document level .
+Errors compound at each stage : PICO tagging , taking the product of Is and Os at the document level , and predicting EI direction .
+Pipeline improvements are needed to bolster overall system performance and increase our ability to automatically assess performance via automated metrics like ?EI .
+Relatedly , automated metrics for summarization evaluation can be difficult to interpret , as the intuition for each metric must be built up through experience .
+Though we attempt to facilitate understanding of ?EI by offering a degenerate example , more exploration is needed to understand how a practically useful system would perform on such a metric .
+Future work
+Though we demonstrate that seq2seq approaches are capable of producing fluent and on-topic review summaries , there are significant opportunities for improvement .
+Data improvements include improving the quality of summary targets and intermediate structured representations ( PICO tags and EI direction ) .
+Another opportunity lies in linking to structured data in external sources such as various clinical trial databases 7,8,9 rather than relying solely on PICO tagging .
+For modeling , we are interested in pursuing joint retrieval and summarization approaches .
+We also hope to explicitly model the types of contradictions observed in Tab. 8 , such that generated summaries can capture nuanced claims made by individual studies .
+Conclusion Given increasing rates of publication , multidocument summarization , or the creation of literature reviews , has emerged as an important NLP task in science .
+The urgency for automation technologies has been magnified by the COVID -19 pandemic , which has led to both an accelerated speed of publication ( Horbach , 2020 ) as well as proliferation of non-peer-reviewed preprints which may be of lower quality ( Lachapelle , 2020 ) .
+By releasing MS?2 , we provide a MDS dataset that can help to address these challenges .
+Though we demonstrate that our MDS models can produce fluent text , our results show that there are significant outstanding challenges that remain unsolved , such as PICO tuple extraction , co-reference resolution , and evaluation of summary quality and faithfulness in the multi-document setting .
+We encourage others to use this dataset to better understand the challenges specific to MDS in the domain of biomedical text , and to push the boundaries on the real world task of systematic review automation .

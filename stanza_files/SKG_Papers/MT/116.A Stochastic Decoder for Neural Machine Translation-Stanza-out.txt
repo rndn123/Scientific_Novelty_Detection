@@ -1,0 +1,266 @@
+title
+A Stochastic Decoder for Neural Machine Translation *
+abstract
+The process of translation is ambiguous , in that there are typically many valid translations for a given sentence .
+This gives rise to significant variation in parallel corpora , however , most current models of machine translation do not account for this variation , instead treating the problem as a deterministic process .
+To this end , we present a deep generative model of machine translation which incorporates a chain of latent variables , in order to account for local lexical and syntactic variation in parallel corpora .
+We provide an indepth analysis of the pitfalls encountered in variational inference for training deep generative models .
+Experiments on several different language pairs demonstrate that the model consistently improves over strong baselines .
+* Code and a workflow that reproduces the experiments are available at https://github.com/philschulz/ stochastic-decoder . ?
+Work done prior to joining Amazon .
+Introduction Neural architectures have taken the field of machine translation by storm and are in the process of replacing phrase - based systems .
+Based on the encoder-decoder framework increasingly complex neural systems are being developed at the moment .
+These systems find new ways of extracting information from the source sentence and the target sentence prefix for example by using convolutions ( Gehring et al. , 2017 ) or stacked self-attention layers ( Vaswani et al. , 2017 ) .
+These architectural changes have led to great performance improvements over classical RNN - based neural translation systems ( Bahdanau et al. , 2014 ) .
+Surprisingly , there have been almost no efforts to change the probabilistic model wich is used to train the neural architectures .
+A notable exception is the work of Zhang et al . ( 2016 ) who introduce a sentence - level latent Gaussian variable .
+In this work , we propose a more expressive latent variable model that extends the attentionbased architecture of Bahdanau et al . ( 2014 ) .
+Our model is motivated by the following observation : translations by professional translators vary across translators but also within a single translator ( the same translator may produce different translations on different days , depending on his state of health , concentration etc . ) .
+Neural machine translation ( NMT ) models are incapable of capturing this variation , however .
+This is because their likelihood function incorporates the statistical assumption that there is one ( and only one ) output 1 for a given source sentence , i.e. , P ( y n 1 |x m 1 ) = n ?
+i=1 P ( y i |x m 1 , y < i ) . ( 1 ) Our proposal is to augment this model with latent sources of variation that are able to represent more of the variation present in the training data .
+The noise sources are modelled as Gaussian random variables .
+The contributions of this work are : ?
+The introduction of an NMT system that is capable of capturing word- level variation in translation data . ?
+A thorough discussions of issues encountered when training this model .
+In particular , we motivate the use of KL scaling as introduced by Bowman et al . ( 2016 ) theoretically .
+1 Notice that from a statistical perspective the output of an NMT system is a distribution over target sentences and not any particular sentence .
+The mapping from the output distribution to a sentence is performed by a decision rule ( e.g. argmax decoding ) which can be chosen independently of the NMT system . ?
+An empirical demonstration of the improvements achievable with the proposed model .
+Neural Machine Translation
+The NMT system upon which we base our experiments is based on the work of Bahdanau et al . ( 2014 ) .
+The likelihood of the model is given in Equation ( 1 ) .
+We briefly describe its architecture .
+Let x m 1 = ( x 1 , . . . , x m ) be the source sentence and y n 1 the target sentence .
+Let RNN ( ? ) be any function computed by a recurrent neural network ( we use a bi-LSTM for the encoder and an LSTM for the decoder ) .
+We call the decoder state at the ith target position t i ; 1 ? i ? n. The computation performed by the baseline system is summarised below .
+[ h 1 , . . . , h m ] = RNN ( x m 1 ) ( 2a ) ti = RNN ( t i?1 , y i?1 ) ( 2 b ) e ij = v ? a tanh ( W a [ ti , h j ] ? + b a ) ( 2 c ) ? ij = exp ( e ij ) ? m j=1 exp ( e ij ) ( 2d ) c i = m ? j=1 ? ij h j ( 2e ) t i = W t [ ti , c i ] ? + b t ( 2 f ) ?
+i = softmax ( W o t i + b o ) ( 2 g )
+The parameters { W a , W t , W o , b a , b t , b o , v a } ? ? are learned during training .
+The model is trained using maximum likelihood estimation .
+This means that we employ a cross-entropy loss whose input is the probability vector returned by the softmax .
+Stochastic Decoder
+This section introduces our stochastic decoder model for capturing word-level variation in translation data .
+Motivation Imagine an idealised translator whose translations are always perfectly accurate and fluent .
+If an MT system was provided with training data from such a translator , it would still encounter variation in that data .
+After all , there are several perfectly accurate and fluent translations for each source sentence .
+These can be highly different in both their lexical as well as their syntactic realisations .
+In practice , of course , human translators ' performance varies according to their level of education , their experience on the job , their familiarity with the textual domain and myriads of other factors .
+Even within a single translator variation may occur due to level of stress , tiredness or status of health .
+That translation corpora contain variation is acknowledged by the machine translation community in the design of their evaluation metrics which are geared towards comparing one machinegenerated translation against several human translations ( see e.g. Papineni et al. , 2002 ) .
+Prior to our work , the only attempt at modelling the latent variation underlying these different translations was made by Zhang et al . ( 2016 ) who introduced a sentence level Gaussian variable .
+Intuitively , however , there is more to latent variation than a unimodal density can capture , for example , there may be several highly likely clusters of plausible variations .
+A cluster may e.g. consist of identical syntactic structures that differ in word choice , another may consist of different syntactic constructs such as active or passive constructions .
+Multimodal modelling of these variations is thus called for-and our results confirm this intuition .
+An example of variation comes from free word order and agreement phenomena in morphologically rich languages .
+An English sentence with rigid word order may be translated into several orderings in German .
+However , all orderings need to respect the agreement relationship between the main verb and the subject ( indicated by underlining ) as well as the dative case of the direct object ( dashes ) and the accusative of the indirect object ( dots ) .
+The agreement requirements are fixed and independent of word order .
+Stochastically encoding the word order variation allows the model to learn the same agreement phenomenon from different translation variants as it does not need to encode the word order and agreement relationships jointly in the decoder state .
+Further examples of VP and NP variation from an actual translation corpus are shown in Figure 1 .
+We aim to address these word-level variation phenomena with a stochastic decoder model .
+?
+VOM19981105_0700_0262
+The hearing is expected to last two days .
+The hearing will last two days .
+The hearings are expected to last two days .
+It is expected that the hearing will go on for two days .
+?15 ?
+VOM19981230_0700_0515
+However , the Republican complainant in the House wanted to summon 15 people including Lewinsky to testify in court .
+The prosecutor of Republican Party in House of Representative hoped to summons more than 15 persons , including Lewinsky , to court .
+The House of Representatives republican prosecution hopes to summon over fifteen witnesses including Monica Lewinsky to appear in court .
+Figure 1 : Examples from the multiple-translation Chinese corpus ( LDC2002T01 ) , where the translations come from different translators .
+These demonstrate the lexical variation of the verb and variation between passive and raising structures ( top ) , and lexical variation on the agent NP ( bottom ) .
+Both examples also exhibit appreciable length variation .
+Model formulation
+The model contains a latent Gaussian variable for each target position .
+This variable depends on the previous latent states and the decoder state .
+Through the use of recurrent networks , the conditioning context does not need to be restricted and the likelihood factorises exactly .
+P ( y n 1 |x m 1 ) = ? dz n 0 p( z 0 |x m 1 ) ?
+n ? i=1 p( z i |z < i , y < i , x m 1 ) P ( y i | z i 1 , y < i , x m 1 ) ( 3 )
+As can be seen from Equation ( 3 ) , the model also contains a 0th latent variable that is meant to initialise the chain of latent variables based solely on the source sentence .
+Contrast this with the model of Zhang et al . ( 2016 ) which uses only that 0th variable .
+A graphical representation of the stochastic decoder model is given in Figure 2a .
+Its generative story is as follows Z 0 |x m 1 ? N (? 0 , ? 2 0 ) ( 4a ) Z i |z < i , y < i , x m 1 ? N (? i , ? 2 i ) ( 4 b ) Y i |z i 0 , y < i , x m 1 ? Cat ( ? i ) ( 4 c ) where i = 1 , . . . , n and both the Gaussian and the Categorical parameters are predicted by neural network architectures whose inputs vary per time step .
+This probabilistic formulation can be implemented with a multitude of different architectures .
+We present ours in the next section .
+Neural Architecture
+Since the model contains latent variables and is parametrised by a neural network , it falls into the class of deep generative models ( DGMs ) .
+We use a reparametrisation of the Gaussian variables ( Kingma and Welling , 2014 ; Rezende et al. , 2014 ; Titsias and L?zaro- Gredilla , 2014 ) to enable backpropagation inside a stochastic computation graph ( Schulman et al. , 2015 ) .
+In order to sample ddimensional Gaussian variable z ?
+R d with mean ? and variance ?
+2 , we first sample from a standard Gaussian distribution and then transform the sample , z = ? + ? ? ? ? ? N ( 0 , I ) . ( 5 ) Here ? , ? ?
+R d and ? denotes element- wise multiplication ( also known as Hadamard product ) .
+See the supplement for details on the Gaussian reparametrisation .
+We use neural networks with one hidden layer with a tanh activation to compute the mean and standard deviation of each Gaussian distribution .
+A softplus transformation is applied to the output of the standard deviation 's network to ensure positivity .
+Let us denote the functions that these networks compute by f .
+For the initial latent state z 0 we compute the mean and standard deviation as ?
+0 = f ? 0 ( h m ) ?
+0 = f ? 0 ( h m ) . ( 6 ) . . x l 1 . z 0 . y 1 . z 1 . y 2 . z 2 . y 3 . z 3 ( a ) . .
+The parameters of all other latent distributions are computed by functions f ? and f ? whose inputs vary per target position .
+z i?1 . z i . y i?1 . y i . y i +1 . . . . . . . . ( b ) ? i = f ? ( t i?1 , z i?1 ) ? i = f ? ( t i?1 , z i?1 ) ( 7 ) Using these values , each latent variable is sampled according to Equation ( 5 ) .
+The sampled latent variables are then used to modify the update of the decoder hidden state ( Equation ( 2 b ) ) as follows : ti = RNN ( t i?1 , y i?1 , z i ) ( 8 )
+The remaining computations stay unchanged .
+Notice that the latent values are used directly in updating the decoder state .
+This makes the decoder state a function of a random variable and thus the decoder state is itself random .
+Applying this argument recursively shows that also the attention mechanism is random , making the decoder entirely stochastic .
+Inference and Training We use variational inference ( see e.g. Blei et al. , 2017 ) to train the model .
+In variational inference , we employ a variational distribution q(z ) that approximates the true posterior p( z| x ) over the latent variables .
+The distribution q(z ) has its own set of parameters ? that is disjoint from the set of model parameters ?.
+It is used to maximise the evidence lower bound ( ELBO ) which is a lower bound on the marginal likelihood p ( x ) .
+The ELBO is maximised with respect to both the model parameters ? and the variational parameters ?.
+Most NLP models that use DGMs only use one latent variable ( e.g. Bowman et al. , 2016 ) .
+Models that use several variables usually employ a mean field approximation under which all latent variables are independent .
+This turns the ELBO into a sum of expectations ( e.g. Zhou and Neubig , 2017 ) .
+For our stochastic decoder we design a more flexible approximation posterior family which respects the dependencies between the latent variables , q( z n 0 ) = q( z 0 ) n ? i=1 q( z i |z < i ) . ( 9 ) Our stochastic decoder can be viewed as a stack of conditional DGMs ( Sohn et al. , 2015 ) in which the latent variables depend on one another .
+The ELBO thus consists of nested positional ELBOs , ELBO 0 + E q( z 0 ) [ ELBO 1 +E q( z 1 ) [ ELBO 2 + . . . ] ] , ( 10 ) where for a given target position i the ELBO is ELBO i = E q( z i ) [ log p(y i |x m 1 , y < i , z < i , z i ) ] ? KL ( q( z i ) || p( z i |x m 1 , y < i , z < i ) ) . ( 11 )
+The first term is often called reconstruction or likelihood term whereas the second term is called the KL term .
+Since the KL term is a function of two Gaussian distributions , and the Gaussian is an exponential family , we can compute it analytically ( Michalowicz et al. , 2014 ) , without the need for sampling .
+This is very similar to the hierarchical latent variable model of Rezende et al . ( 2014 ) .
+Following common practice in DGM research , we employ a neural network to compute the variational distributions .
+To discriminate it from the generative model , we call this neural net the inference model .
+At training time both the source and target sentence are observed .
+We exploit this by endowing our inference model with a " lookahead " mechanism .
+Concretely , samples from the inference network condition on the information available to the generation network ( Section 3.3 ) and also on the target words that are yet to be processed by the generative decoder .
+This allows the latent distribution to not only encode information about the currently modelled word but also about the target words that follow it .
+The conditioning of the inference network is illustrated graphically in Figure 2 b .
+The inference network produces additional representations of the target sentence .
+One representation encodes the target sentence bidirectionally ( 12 a ) , in analogy to the source sentence encoding .
+The second representation is built by encoding the target sentence in reverse ( 12 b ) .
+This reverse encoding can be used to provide information about future context to the decoder .
+We use the symbols b and r for the bidirectional and reverse target encodings , respectively .
+In our experiments , we again use LSTMs to compute these encodings .
+[ b 1 , . . . , b n ] = RNN ( y n 1 ) ( 12a ) [ r 1 , . . . , r n ] = RNN ( y n 1 ) ( 12 b )
+In analogy to the generative model ( Section 3.3 ) , the inference network uses single hidden layer networks to compute the mean and standard deviations of the latent variable distributions .
+We denote these functions g and again employ different functions for the initial latent state and all other latent states .
+?
+0 = g ? 0 ( h m , b n ) ( 13a ) ?
+0 = g ? 0 ( h m , b n ) ( 13 b ) ? i = g ? ( t i?1 , z i?1 , r i , y i ) ( 13 c ) ?
+i = g ? ( t i?1 , z i?1 , r i , y i ) ( 13d )
+As before , we use Equation ( 5 ) to sample from the variational distribution .
+During training , all samples are obtained from the inference network .
+Only at test time do we sample from the generator .
+Notice that since the inference network conditions on representations produced by the generator network , a na?ve application of backpropagation would update parts of the generator network with gradients computed for the inference network .
+We prevent this by blocking gradient flow from the inference net into the generator .
+Analysis of the Training Procedure
+The training procedure as outlined above does not work well empirically .
+This is because our model uses a strong generator .
+By this we mean that the generation model ( that is the baseline NMT model ) is a very good density model in and by itself and does not need to rely on latent information to achieve acceptable likelihood values during training .
+DGMs with strong generators have a tendency to not make use of latent information ( Bowman et al. , 2016 ) .
+This problem went initially unnoticed because early DGMs ( Kingma and Welling , 2014 ; Rezende et al. , 2014 ) used weak generators 2 , i.e. models that made very strong independence assumptions and were not able to capture contextual information without making use of the information encoded by the latent variable .
+Why DGMs would ignore the latent information can be understood by considering the KL -term of the ELBO .
+In order for the latent variable to be informative about the observed data , we need them to have high mutual information I ( Z ; Y ) . I ( Z ; Y ) = E p( z, y ) [ log p ( Z , Y ) p ( Z ) p ( Y ) ] ( 14 )
+Observe that we can rewrite the mutual information as an expected KL divergence by applying the definition of conditional probability .
+I ( Z ; Y ) = E p(y ) [ KL ( p( Z| Y ) || p ( Z ) ) ] ( 15 ) Since we cannot compute the posterior p( z|y ) exactly , we approximate it with the variational distribution q( z|y ) ( the joint is approximated by q(z|y ) p( y ) where the latter factor is the data distribution ) .
+To the extent that the variational distribution recovers the true posterior , the mutual information can be computed this way .
+In fact , if we take the learned prior p ( z ) to be an approximation of the marginal ? q( z|y ) p( y ) dy it can easily be shown that the thus computed KL term is an upper bound on mutual information ( Alemi et al. , 2017 ) .
+The trouble is that the ELBO ( Equation ( 11 ) ) can be trivially maximised by setting the KL -term to 0 and maximising only the reconstruction term .
+This is especially likely at the beginning of training when the variational approximation does not yet encode much useful information .
+We can only hope to learn a useful variational distribution if a ) the variational approximation is allowed to move away from the prior and b ) the resulting increase in the reconstruction term is higher than the increase in the KL -term ( i.e. the ELBO increases overall ) .
+Several schemes have been proposed to enable better learning of the variational distribution ( Bowman et al. , 2016 ; Kingma et al. , 2016 ; Alemi et al. , 2017 ) .
+Here we use KL scaling and increase the scale gradually until the original objective is recovered .
+This has the following effect : during the initial learning stage , the KL - term barely contributes to the objective and thus the updates to the variational parameters are driven by the signal from the reconstruction term and hardly restricted by the prior .
+Once the scale factor approaches 1 the variational distribution will be highly informative to the generator ( assuming sufficiently slow increase of the scale factor ) .
+The KL - term can now be minimised by matching the prior to the variational distribution .
+Notice that up to this point , the prior has hardly been updated .
+Thus moving the variational approximation back to the prior would likely reduce the reconstruction term since the standard normal prior is not useful for inference purposes .
+This is in stark contrast to Bowman et al . ( 2016 ) whose prior was a fixed standard normal distribution .
+Although they used KL scaling , the KL term could only be decreased by moving the variational approximation back to the fixed prior .
+This problem disappears in our model where priors are learned .
+Moving the prior towards the variational approximation has another desirable effect .
+The prior can now learn to emulate the variational " lookahead " mechanism without having access to future contexts itself ( recall that the inference model has access to future target tokens ) .
+At test time we can thus hope to have learned latent variable distributions that encode information not only about the output at the current position but about future outputs as well .
+Experiments
+We report experiments on the IWSLT 2016 data set which contains transcriptions of TED talks and their respective translations .
+We trained models to translate from English into Arabic , Czech , French and German .
+The number of sentences for each language after preprocessing is shown in Table 1 .
+The vocabulary was split into 50,000 subword units using Google 's sentence piece 3 software in its standard settings .
+As our baseline NMT systems we use Sockeye ( Hieber et al. , 2017 ) 4 . Sockeye implements several different NMT models but here we use the standard recurrent attentional model described in Section 2 .
+We report baselines with and without dropout ( Srivastava et al. , 2014 ) .
+For dropout a retention probability of 0.5 was used .
+As a second baseline we use our own implementation of the model of Zhang et al . ( 2016 ) which contains a single sentence - level Gaussian latent variable ( SENT ) .
+Our implementation differs from theirs in three aspects .
+First , we feed the last hidden state of the bidirectional encoding into encoding of the source and target sentence into the inference network ( Zhang et al . ( 2016 ) use the average of all states ) .
+Second , the latent variable is smaller in size than the one used by ( Zhang et al. , 2016 ) . 5
+This was done to make their model and the stochastic decoder proposed here as similar as possible .
+Finally , their implementation was based on groundhog whereas ours builds on Sockeye .
+Our stochastic decoder model ( SDEC ) is also built on top of the basic Sockeye model .
+It adds the components described in Sections 3 and 4 .
+Recall that the functions that compute the means and standard deviations are implemented by neural nets with a single hidden layer with tanh activation .
+The width of that layer is twice the size of the latent variable .
+In our experiments we tested different latent variable sizes and used KL scaling ( see Section 4.1 ) .
+The scale started from 0 and was increased by 1 /20,000 after each mini-batch .
+Thus , at iteration t the scale is min( t /20,000 , 1 ) .
+All models use 1028 units for the LSTM hid- den state ( or 512 for each direction in the bidirectional LSTMs ) and 256 for the attention mechansim .
+Training is done with Adam ( Kingma and Ba , 2015 ) .
+In decoding we use a beam of size 5 and output the most likely word at each position .
+We deterministically set all latent variables to their mean values during decoding .
+Monte Carlo decoding ( Gal , 2016 ) is difficult to apply to our setting as it would require sampling entire translations .
+Results
+We show the BLEU scores for all models that we tested on the IWSLT data set in Table 2 .
+The stochastic decoder dominates the Sockeye baseline across all 4 languages , and outperforms SENT on most languages .
+Except on German , there is a trend towards smaller latent variable sizes being more helpful .
+This is in line with findings by Chung et al . ( 2015 ) and Fraccaro et al . ( 2016 ) who also used relatively small latent variables .
+This observation also implies that our model does not improve simply because it has more parameters than the baseline .
+That the margin between the SDEC and SENT models is not large was to be expected for two reasons .
+First , Chung et al. ( 2015 ) and Fraccaro et al . ( 2016 ) have shown that stochastic RNNs lead to enormous improvements in modelling continuous sequences but only modest increases in performance for discrete sequences ( such as natural language ) .
+Second , translation performance is measured in BLEU score .
+We observed that SDEC often reached better ELBO values than SENT indicating a better model fit .
+How to fully leverage the better modelling ability of stochastic RNNs when producing discrete outputs is a matter of future research .
+Qualitative Analysis
+Finally , we would like to demonstrate that our model does indeed capture variation in translation .
+To this end , we randomly picked sentences from the IWSLT test set and had our model translate them several times , however , the values of the latent variables were sampled instead of fixed .
+Contrary to the BLEU - based evaluation , beam search was not used in this evaluation in order to avoid interaction between different latent variable samples .
+See Figure 3 for examples of syntactic and lexical variation .
+It is important to note that we do not sample from the categorical output distribution .
+For each target position we pick the most likely word .
+A non-stochastic NMT system would always yield the same translation in this scenario .
+Interestingly , when we applied the sampling procedure to the SENT model it did not produce any variation at all , thus behaving like a deterministic NMT system .
+This supports our initial point that the SENT model is likely insensitive to local variation , a problem that our model was designed to address .
+Like the model of Bowman et al . ( 2016 ) , SENT presumably tends to ignore the latent variable .
+Related Work
+The stochastic decoder is strongly influenced by previous work on stochastic RNNs .
+The first such proposal was made by Bayer and Osendorfer ( 2015 ) who introduced i.i.d.
+Gaussian latent variables at each output position .
+Since their model neglects any sequential dependence of the noise sources , it underperformed on several sequence modeling tasks .
+Chung et al. ( 2015 ) made the latent variables depend on previous information by feeding the previous decoder state into the latent variable sampler .
+Their inference model did not make use of future elements in the sequence .
+Using a " look - ahead " mechanism in the inference net was proposed by Fraccaro et al . ( 2016 ) who had a separate stochastic and deterministic RNN layer which both influence the output .
+Since the stochastic layer in their model depends on the deterministic layer but not vice versa , they could first run the deterministic layer at inference time and then condition the inference net 's encoding of the future on the thus obtained features .
+Like us , they used KL scaling during training .
+More recently , Goyal et al . ( 2017 ) proposed an auxiliary loss that has the inference net predict future feature representations .
+This approach yields state - of - the - art results but is still in need of a theoretical justification .
+Within translation , Zhang et al . ( 2016 ) were the first to incorporate Gaussian variables into an NMT model .
+Their approach only uses one sentence - level latent variable ( corresponding to our z 0 ) and can thus not deal with word-level variation directly .
+Concurrently to our work , Su et al . ( 2018 ) have also proposed a recurrent latent variable model for NMT .
+Their approach differs from ours in that they do not use a 0 th latent variable nor a look - ahead mechanism during inference time .
+Furthermore , their underlying recurrent model is a GRU .
+In the wider field of NLP , deep generative mod -
+The past perfect introduces a long range dependency between the main and auxiliary verb ( underlined ) that the model handles well .
+The second example shows variation in the lexical realisation of the verb .
+The second variant uses a particle verb and we again observe a long range dependency between the main verb and its particle ( underlined ) .
+els have been applied mostly in monolingual settings such as text generation ( Bowman et al. , 2016 ; Semeniuta et al. , 2017 ) , morphological analysis ( Zhou and Neubig , 2017 ) , dialogue modelling ( Wen et al. , 2017 ) , question selection and summarisation .
+Conclusion and Future Work
+We have presented a recurrent decoder for machine translation that uses word-level Gaussian variables to model underlying sources of variation observed in translation corpora .
+Our experiments confirm our intuition that modelling variation is crucial to the success of machine translation .
+The proposed model consistently outperforms strong baselines on several language pairs .
+As this is the first work that systematically considers word-level variation in NMT , there are lots of research ideas to explore in the future .
+Here , we list the three which we believe to be most promising .
+?
+Latent factor models : our model only contains one source of variation per word .
+A latent factor model such as DARN ( Gregor et al. , 2014 ) would consider several sources simultaneously .
+This would also allow us to perform a better analysis of the model behaviour as we could correlate the factors with observed linguistic phenomena .
+?
+Richer prior and variational distributions :
+The diagonal Gaussian is likely too simple a distribution to appropriately model the variation in our data .
+Richer distributions computed by normalising flows ( Rezende and Mohamed , 2015 ; Kingma et al. , 2016 ) will likely improve our model .
+?
+Extension to other architectures :
+Introducing latent variables into non-autoregressive translation models such as the transformer ( Vaswani et al. , 2017 ) should increase their translation ability further .
+1 . I ca n't imagine you naked .
+( a) Ich kann mir . . . . dich nicht nackt vorstellen .
+( b) Ich kann . . . . . dich mir nicht nackt vorstellen .
+( c ) . . . . .
+Dich kann ich mir nicht nackt vorstellen .

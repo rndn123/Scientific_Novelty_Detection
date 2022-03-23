@@ -1,0 +1,230 @@
+title
+Detecting Word Sense Disambiguation Biases in Machine Translation for Model-Agnostic Adversarial Attacks
+abstract
+Word sense disambiguation is a well -known source of translation errors in NMT .
+We posit that some of the incorrect disambiguation choices are due to models ' over-reliance on dataset artifacts found in training data , specifically superficial word co-occurrences , rather than a deeper understanding of the source text .
+We introduce a method for the prediction of disambiguation errors based on statistical data properties , demonstrating its effectiveness across several domains and model types .
+Moreover , we develop a simple adversarial attack strategy that minimally perturbs sentences in order to elicit disambiguation errors to further probe the robustness of translation models .
+Our findings indicate that disambiguation robustness varies substantially between domains and that different models trained on the same data are vulnerable to different attacks .
+1
+Introduction Consider the sentence John met his wife in the hot spring of 1988 .
+In this context , the polysemous term spring unambiguously refers to the season of a specific year .
+Its appropriate translation into German would therefore be Fr?hling ( the season ) , rather than one of its alternative senses , such as Quelle ( the source of a stream ) .
+To contemporary machine translation systems , however , this sentence presents a non-trivial challenge , with Google Translate ( GT ) producing the following translation :
+John traf seine Frau in der hei?en Quelle von 1988 .
+Prior studies have indicated that neural machine translation ( NMT ) models rely heavily on source sentence information when resolving lexical ambiguity ( Tang et al. , 2019 ) .
+This suggests that the combined source contexts in which a specific sense of an ambiguous term occurs in the training data greatly inform the models ' disambiguation decisions .
+Thus , a stronger correlation between the English collocation hot spring and the German translation Quelle , as opposed to Fr?hling , in the training corpus may explain this disambiguation error .
+Indeed ,
+John met his wife in the spring of 1988 is translated correctly by GT .
+We propose that our motivating example is representative of a systematic pathology NMT systems have yet to overcome when performing word sense disambiguation ( WSD ) .
+Specifically , we hypothesize that translation models learn to disproportionately rely on lexical correlations observed in the training data when resolving word sense ambiguity .
+As a result , disambiguation errors are likely to arise when an ambiguous word co-occurs with words that are strongly correlated in the training corpus with a sense that differs from the reference .
+To test our hypothesis , we evaluate whether dataset artifacts are predictive of disambiguation decisions made in NMT .
+First , given an ambiguous term , we define a strategy for quantifying how much its context biases NMT models towards its different target senses , based on statistical patterns in the training data .
+We validate our approach by examining correlations between this bias measure and WSD errors made by baseline models .
+Furthermore , we investigate whether such biases can be exploited for the generation of minimally - perturbed adversarial samples that trigger disambiguation errors .
+Our method does not require access to gradient information nor the score distribution of the decoder , generates samples that do not significantly diverge from the training domain , and comes with a clearly - defined notion of attack success and failure .
+The main contributions of this study are : 1 . We present evidence for the over-reliance of NMT systems on inappropriate lexical correlations when translating polysemous words .
+2 . We propose a method for quantifying WSD biases that can predict disambiguation errors .
+3 . We leverage data artifacts for the creation of adversarial samples that facilitate WSD errors .
+2 Can WSD errors be predicted ?
+To evaluate whether WSD errors can be effectively predicted , we first propose a method for measuring the bias of sentence contexts towards different senses of polysemous words , based on lexical cooccurrence statistics of the training distribution .
+We restrict our investigation to English ?
+German , although the presented findings can be assumed to be language - agnostic .
+To bolster the robustness of our results , we conduct experiments in two domains - movie subtitles characterized by casual language use , and the more formal news domain .
+For the former , we use the OpenSubtitles 2018 ( OS18 ) ( Lison et al. , 2019 ) corpus 2 , whereas the latter is represented by data made available for the news translation task of the Fourth Conference on Machine Translation ( WMT19 ) 3 ( Barrault et al. , 2019 ) . Appendix A.1 reports detailed corpus statistics .
+Quantifying disambiguation biases
+An evaluation of cross-lingual WSD errors presupposes the availability of certain resources , including a list of ambiguous words , a lexicon containing their possible translations , and a set of parallel sentences serving as a disambiguation benchmark .
+Resource collection
+Since lexical ambiguity is a pervasive feature of natural language , we limit our study to homographs - polysemous words that share their written form but have multiple , unrelated meanings .
+We further restrict the set of English homographs to nouns that are translated as distinct German nouns , so as to confidently identify disambiguation errors , while minimizing the models ' ability to disambiguate based on syntactic cues .
+English homographs are collected from web resources 4 , excluding those that do not satisfy the above criteria .
+Refer to appendix A.2 for the full homograph list .
+We next compile a parallel lexicon of homograph translations , prioritizing a high coverage of all possible senses .
+Similar to ( Raganato et al. , 2019 ) , we obtain sense-specific translations from crosslingual BabelNet ( Navigli and Ponzetto , 2010 ) synsets .
+Since BabelNet entries vary in their granularity , we iteratively merge related synsets as long as they have at least three German translations in common or share at least one definition .
+5
+This leaves us with multiple sense clusters of semantically related German translations per homograph .
+To further improve the quality of the lexicon , we manually clean and extend each homograph entry to address the noise inherent in BabelNet and its incomplete coverage .
+6 Appendix A.7 provides examples of the final sense clusters .
+In order to identify sentence contexts specific to each homograph sense , parallel sentences containing known homographs are extracted from the training corpora in both domains .
+We lemmatize homographs , their senses , and all sentence pairs using spaCy ( Honnibal and Montani , 2017 ) to improve the extraction recall .
+Homographs are further required to be aligned with their target senses according to alignments learned with fast align ( Dyer et al. , 2013 ) .
+Each extracted pair is assigned to one homograph sense cluster based on its reference homograph translation .
+Pairs containing homograph senses assigned to multiple clusters are ignored , as disambiguation errors are impossible to detect in such cases .
+Bias measures
+It can be reasonably assumed that context words cooccurring with homographs in a corpus of natural text are more strongly associated with some of their senses than others .
+Words that are strongly correlated with a specific sense may therefore bias models towards the corresponding translation at test time .
+We refer to any source word that co-occurs with a homograph as an attractor associated with the sense cluster of the homograph 's translation .
+Similarly , we denote the degree of an attractor 's association with a sense cluster as its disambiguation bias towards that cluster .
+strong attractors towards a wrong sense .
+To test this , we collect attractors from the extracted parallel sentences , quantifying their disambiguation bias ( DB ) using two metrics : Raw co-occurrence frequency ( FREQ ) and positive point-wise mutual information ( PPMI ) between attractors and homograph senses .
+FREQ is defined in Eqn.1 , while Eqn.2 describes PPMI , with w ?
+V denoting an attractor term in the source vocabulary 7 , and sc ?
+SC denoting a sense cluster in the set of sense clusters assigned to a homograph .
+For PPMI , P ( w i , sc j ) , P ( w i ) , and P ( sc j ) are estimated via relative frequencies of ( co - ) occurrences in training pairs .
+F REQ ( w i , sc j ) = Count ( w i , sc j ) ( 1 ) P P M I ( w i , sc j ) = max ( P ( w i , sc j ) P ( w i ) P ( sc j ) , 0 ) ( 2 )
+The disambiguation bias associated with the entire context of a homograph is obtained by averaging sense-specific bias values DB ( w i , sc j ) of all attractors in the source sentence S = {w 1 , w 2 , ... , w | S| } , as formalized in Eqn.3 .
+Context words that are not known attractors of sc j are assigned a disambiguation bias value of 0 .
+DB ( S , sc j ) = 1 | S| | S | i=1 DB ( w i , sc j ) ( 3 ) As a result , sentences containing a greater number of strong attractors are assigned a higher bias score .
+Probing NMT models
+To evaluate the extent to which sentence - level disambiguation bias is predictive of WSD errors made by NMT systems , we train baseline translation models for both domains .
+The baselines include Transformer ( Vaswani et al. , 2017 ) , LSTM ( Luong et al. , 2015 ) , and convolutional Seq-to- Seq ( ConvS2S ) ( Gehring et al. , 2017 )
+Test sets for WSD error prediction are constructed by extracting parallel sentences from heldout , development , and test data ( see appendix A.1 for details ) .
+The process is identical to that described in section 2.1 , with the added exclusion of source sentences shorter than 10 tokens , as they may not provide enough context .
+For each source sentence , disambiguation bias values are computed according to equation 3 , with sc j corresponding to either the correct sense cluster ( DB ) or the incorrect sense cluster with the strongest bias ( DB ) .
+Additionally , we consider the difference DB DIFF between DB and DB which can be interpreted as the overall statistical bias in a source sentence towards an incorrect homograph translation .
+All bias scores are computed either using FREQ or PPMI .
+We examine correlations between the proposed bias measures and WSD errors produced by the indomain baseline models .
+Translations are considered to contain WSD errors if the target homograph sense does not belong to the same sense cluster as its reference translation .
+We check this by looking up target words aligned with source homographs according to fast align .
+To estimate correlation strength we employ the ranked biserial correlation ( RBC ) metric 8 ( Cureton , 1956 ) and measure statistical significance using the Mann-Whitney U ( MWU ) test ( Mann and Whitney , 1947 ) .
+In order to compute the RBC values , test sentences are divided into two groups - one containing correctly translated source sentences and another comprised of source sentences with incorrect homograph translations .
+Next , all possible pairs are constructed between the two groups , pairing together each source sentence from one group with all source sentences from the other .
+Finally , the proportion of pairs f where the DB score of the incorrectly translated sentence is greater than that of the correctly translated sentence is computed , as well as the proportion of pairs u where the opposite relation holds .
+The RBC value is then obtained according to Eqn.4 .
+RBC = f ? u ( 4 ) Statistical significance , on the other hand , is estimated by ranking all sentences in the test set according to their DB score in ascending order while resolving ties , and computing the U-value according to Eqn.5 - 7 , where R 1 denotes to the sum of ranks of sentences with incorrectly translated homographs and n 1 their total count , while R 2 denotes the sum of ranks of correctly translated sentences and n 2 their respective total count .
+U = min( U 1 , U 2 ) ( 5 ) U 1 = R 1 ? n 1 ( n 1 + 1 ) 2 ( 6 ) U 2 = R 2 ? n 2 ( n 2 + 1 ) 2 ( 7 ) To obtain the p-values , U-values are subjected to tie correction and normal approximation .
+9 Table 3 summarizes the results 10 , including correlation estimates between WSD errors and source sentence length , as a proxy for disambiguation context size .
+Statistically significant correlations are discovered for all bias estimates based on attractors ( p < 1e - 5 , two-sided ) .
+Moreover , the observed correlations exhibit a strong effect size ( McGrath 9 We use Python implementations of RBC and MWU provided by the pingouin library ( Vallat , 2018 ) .
+10 Positive values denote a positive correlation between bias measures and the presence of disambiguation errors in model translations , whereas negative values denote negative correlations .
+The magnitude of the values , meanwhile , indicates the correlations ' effect size .
+and Meyer , 2006 ) .
+See appendix A.5 for the modelspecific effect size interpretation thresholds .
+For all models and domains the strongest correlations are observed for DB DIFF derived from simple cooccurrence counts .
+Challenge set evaluation
+To establish the predictive power of the uncovered correlations , a challenge set of 3000 test pairs with the highest FREQ DIFF score is subsampled from the full WSD test pair pool in both domains .
+In addition , we create secondary sets of equal size by randomly selecting pairs from each pool .
+As Figure 1 illustrates , our translation models exhibit a significantly higher WSD error rate - by a factor of up to 6.1 - on the challenge sets as compared to the randomly chosen pairs .
+While WSD performance is up to 96 % on randomly chosen sentences , performance drops to 77 - 82 % for the best-performing model ( Transformer ) .
+This suggests that lexical association artifacts , from which the proposed disambiguation bias measure is derived , can be an effective predictor of lexical ambiguity resolution errors across model architectures and domains .
+The observed efficacy of attractor co-occurrence counts for WSD error prediction may be partially due to sense frequency effects , since more frequent senses occur in more sentence pairs , yielding more frequent attractors .
+NMT models are known to underperform on low-frequency senses of ambiguous terms ( Rios et al. , 2017 ) , prompting us to investigate if disambiguation biases capture the same information .
+For this purpose , another challenge set of 3000 pairs is constructed by prioritizing pairs assigned to the rarest among each homograph 's sense sets .
+We find that the new challenge set has a 72.63 % overlap with the disambiguation bias challenge set in the OS18 domain and 64.4 % overlap in the WMT19 domain .
+Thus , disambiguation biases appear to indeed capture some sense frequency effects , which themselves represent a dataset artifact , but also introduce novel information .
+Our experimental findings indicate that translation models leverage undesirable surface - level correlations when resolving lexical ambiguity and are prone to disambiguation errors in cases where learned statistical patterns are violated .
+Next , we use these insights for the construction of adversarial samples that cause disambiguation errors by minimally perturbing source sentences .
+Adversarial WSD attacks on NMT Adversarial attacks probe model robustness by attempting to elicit incorrect predictions with perturbed inputs ( Zhang et al. , 2020 ) .
+By crafting adversarial samples that explicitly target WSD capabilities of NMT models , we seek to provide further evidence for their susceptibility to dataset artifacts .
+Generating adversarial WSD samples
+Our proposed attack strategy is based on the assumption that introducing an attractor into a sentence can flip its inherent disambiguation bias towards the attractor 's sense cluster .
+Thus , translations of the so perturbed sentence will be more likely to contain WSD errors .
+The corresponding sample generation strategy consists of four stages : 1 . Select seed sentences containing homographs to be adversarially perturbed .
+2 . Identify attractors that are likely to yield fluent and natural samples .
+3 . Apply perturbations by introducing attractors into seed sentences .
+4 . Predict effective adversarial samples based on attractor properties .
+The targeted attack is deemed successful if a victim model accurately translates the homograph in the seed sentence , but fails to correctly disambiguate it in the adversarially perturbed sample , instead translating it as one of the senses belonging to the attractor 's sense cluster .
+This is a significantly more challenging attack success criterion than the general reduction in test BLEU typically employed for evaluating adversarial attacks on NMT systems ( Cheng et al. , 2019 ) .
+Samples are generated using homographs and attractors collected in section 2.1 , while all test sentence pairs extracted in section 2.2 form the domain-specific seed sentence pools .
+Attack success is evaluated on the same baseline translation models as used throughout section 2 .
+Seed sentence selection
+In order to generate informative and interesting adversarial samples , we focus on seed sentences that are likely to be unambiguous .
+We thus apply three filtering heuristics to seed sentence pairs : ?
+Sentences have to be at least 10 tokens long . ?
+We mask out the correct homograph sense in the reference translation and use a pre-trained German BERT model ( Devlin et al. , 2019 ) 11 to predict it .
+Pairs are rejected if the most probable sense does not belong to the correct sense cluster which suggests that the sentence context may be insufficient for correctly disambiguating the homograph .
+As a result , WSD errors observed in model- generated translations of the constructed adversarial samples are more likely to be due to the applied adversarial perturbations .
+? 10 % of pairs with the highest disambiguation bias towards incorrect sense clusters are removed from the seed pool .
+Setting the rejection threshold above 10 % can further reduce WSD errors in seed sentences .
+At the same time , it would likely render minimal perturbations ineffective , due to the sentences ' strong bias towards the correct homograph sense .
+Thus , we aim for a working compromise .
+IH During this first spring , he planted another tree that looked the same .
+RH A hot new spring will conquer the dark nights of winter .
+InH
+Come the spring , I will be invading the whole country called Frankia .
+RnH
+After a long , eternal fallow winter , spring has come again to Fredericks Manor .
+Perturbation types Naively introducing new words into sentences is expected to yield disfluent , unnatural samples .
+To counteract this , we constrain candidate attractors to adjectives , since they can usually be placed in front of English nouns without violating grammatical constraints .
+We consider four perturbation types : ?
+Insertion of the attractor adjective in front of the homograph ( IH ) ?
+Replacement of a seed adjective modifying the homograph ( RH ) ?
+Insertion of the attractor adjective in front of a non-homograph noun ( InH ) ?
+Replacement of a seed adjective modifying a non-homograph noun ( RnH ) Replacement strategies require seed sentences to contain adjectives , but can potentially have a greater impact on the sentence 's disambiguation bias by replacing attractors belonging to the correct sense cluster .
+Examples for each generation strategy are given in Table 4 , with homographs highlighted in blue and added attractors in red .
+Attractor selection Since adjectives are subject to selectional preferences of homograph senses , not every attractor will yield a semantically coherent adversarial sample .
+For instance , inserting the attractor flying in front of the homograph bat in a sentence about baseball will likely produce a nonsensical expression , whereas an attractor like huge would be more acceptable .
+We attempt to control for this type of disfluency by only considering attractors that had been previously observed to modify the homograph in its seed sentence sense .
+For non-homograph perturbations , attractors must have been observed modifying the non-homograph noun .
+This is ensured by obtaining a dependency parse for each sentence in the English half of the training data and maintaining a list of modifier adjectives for each known target homograph sense set and source noun .
+12 Lastly , to facilitate the fluency and naturalness of adversarial samples , the generation process incorporates a series of constraints : ?
+Comparative and superlative adjective forms are excluded from the attractor pool .
+?
+Attractors may not modify compound nouns due to less transparent selectional preferences .
+?
+Attractors are not allowed next to other adjectives modifying the noun , to avoid violating the canonical English adjective order .
+As all heuristics rely on POS taggers or dependency parsers , 13 they are not free of noise , occasionally yielding disfluent or unnatural samples .
+We restrict the number of insertions or replacements to one , so as to maintain a high degree of semantic similarity between adversarial samples and seed sentences .
+A single seed sentence usually yields several samples , even after applying the aforementioned constraints .
+Importantly , we generate samples using all retained attractors at this stage , without selecting for expected attack success .
+Post-generation filtering
+To further ensure the naturalness of generated samples , sentence - level perplexity is computed for each seed sentence and adversarial sample using a pretrained English GPT2 ( Radford et al. , 2019 ) language model .
+14 Samples are rejected if their perplexity exceeds that of their corresponding seed sentence by more than 20 % .
+In total , we obtain a pool of ?500 K samples for the OS18 domain and ?3.9 M samples for the WMT19 domain .
+Each sample is translated by all in- domain models .
+Identifying effective attractors
+The success of the proposed attack strategy relies on the selection of attractors that are highly likely to flip the homograph translation from the correct seed sense towards an adversarial sense belonging to the attractors ' own sense set .
+To identify such attractors , we examine correlations between attractors ' disambiguation biases and the effectiveness of adversarial samples containing them .
+The attractors ' bias values are based either on co-occurrence frequencies ( Eqn.1 ) or PPMI scores ( Eqn.2 ) with the homographs ' sense clusters .
+In particular , we examine the predictive power of an attractor 's bias towards the adversarial sense cluster ( DB ) as well as the difference between its adversarial and seed bias values ( DB DIFF ) .
+As before , RBC and MWU measures are used to estimate correlation strength , with Table 5 summarizing the results .
+Similarly to the findings reported in section 2.2 , all uncovered correlations are strong and statistically significant with p < 1e - 5 ( see appendix A.5 for effect size thresholds ) .
+Importantly , FREQ DIFF exhibits the strongest correlation in all cases .
+We are furthermore interested in establishing which of the proposed perturbation methods yields most effective attacks .
+For this purpose , we examine the percentage of attack successes per perturbation strategy in Figure 2 , finding perturbations proximate to the homograph to be most effective .
+Challenge set evaluation
+Having thus identified a strategy for selecting attractors that are likely to yield successful attacks , we construct a challenge set of 10000 adversarial samples with the highest attractor FREQ DIFF scores that had been obtained via the IH or RH perturbations .
+To enforce sample diversity , we limit the number of samples to at most 1000 per homograph .
+Additionally , we create equally - sized , secondary challenge sets by drawing samples at random from each domain 's sample pool .
+Figure 3 illustrates the attack success rate for both categories , while Table 6 shows some of the successful attacks on the OS18 transformer .
+Further successful samples are reported in Appendix A.7 .
+The success rates are modest , ranging from 4.62 % to 24.39 % , but nonetheless showcase the capacity of targeted , minimal perturbations for flipping correct homograph translations towards a specific sense set .
+Since our attacks do not require access to model gradients or predictive score distributions , fall within the same domain as the models ' training data , and have a strict notion of success , While the relative improvement in attack success rate over the random baseline is comparable in both domains , the OS18 models are more susceptible to attacks in absolute terms .
+This may be due to their lower quality , or the properties of the training data , which can suffer from noisiness ( Lison et al. , 2019 ) .
+Interestingly , the relative robustness of individual model architectures to WSD attacks also differs between domains , despite similar quality in terms of BLEU ( see Table 2 ) .
+A more thorough investigation of architecture -specific WSD vulnerabilities is left for future work .
+Sample quality analysis
+To examine whether our adversarial samples would appear trivial and innocuous to human translators , automatic and human evaluation of samples included in the challenge set is conducted .
+Following ( Morris et al. , 2020 ) , we use a grammar checker 15 to evaluate the number of cases in which adversarial perturbations introduce grammatical errors .
+In the OS18 domain , only 1.04 % of samples are less grammatical than their respective seed sentences , whereas this is the case for 2.04 % of WMT19 samples , indicating a minimal degradation .
+We additionally present two bilingual judges with 1000 samples picked at random from adversarial challenge sets in both domains and 1000 regular sentences from challenge sets constructed in section 2.2 .
+For each adversarial source sen -15 http://languagetool.org tence , annotators were asked to choose whether the homograph 's translation belongs to the correct or adversarial seed cluster .
+For each regular sentence , the choice was between the correct and randomly selected clusters .
+Across both domains , annotator error rate was 11.23 % in the adversarial setting and 11.45 % for regular sentences .
+As such , the generated samples display a similar degree of ambiguity to natural sentences that are likely to elicit WSD errors in NMT models .
+Annotator agreement was substantial ( Cohen 's kappa = 0.7 ) .
+The same judges were also asked to rate the naturalness of each sentence on a Likert scale from 1 to 5 .
+Perturbed sentences were assigned a mean score of 3.94 , whereas regular sentences scored higher at 4.18 .
+However , annotator agreement was low ( weighted Kappa = 0.17 ) .
+The observed drop in naturalness is likely due to the selection of attractors that are not fully consistent with the selectional preferences of homograph senses during sample generation .
+We attribute this to WSD errors in reference translations .
+For instance , we find that the attractor vampire is occasionally applied to seed sentences containing the homograph bat in its sporting equipment sense , which can only occur if the attractor has been observed to modify this sense cluster in the training data ( see 3.1 ) .
+Appendix A.6 replicates annotator instructions for both tasks .
+Transferability of adversarial samples
+An interesting question to consider is whether translation models trained on the same data are vulnerable to the same adversarial samples .
+We evaluate this by computing the Jaccard similarity index between successful attacks on each baseline model from the entire pool of adversarial samples described in section 3.2 .
+We find the similarity to be low , raging between 10.1 % and 18.2 % for OS18 and between 5.7 % and 9.1 % for WMT19 samples , which suggests that different model architectures appear to be sensitive to different corpus artifacts , possibly due to differences in their inductive biases .
+Considering the observed discrepancy in vulnerabilities between architectures , a natural follow - up question is whether two different instances of the same architecture are susceptible to the same set of attacks .
+We investigate this by training a second transformer model for each domain , keeping all settings constant with the initial models , but choosing a different seed for the random initialization .
+While the similarity between sets of successful adversarial samples is greater for two models of the same type , with 25.2 % in the OS18 and 12.4 % in WMT19 domain , is it still remarkably low .
+Literature review Polysemous terms represent a long-standing challenge for NMT .
+Past investigations sought to quantify the WSD capacity of translation models through challenge sets ( Rios et al. , 2017 ; Raganato et al. , 2019 ) , to understand the disambiguation process by analysing their internal representations ( Marvin and Koehn , 2018 ; Tang et al. , 2019 ) , or to improve ambiguity resolution capabilities of translation models ( Rios et al. , 2017 ; Liu et al. , 2018 ) .
+To our knowledge , no study so far has examined the interaction between training data artifacts and WSD performance in detail .
+Dataset artifacts , on the other hand , have previously been shown to enable models to make correct predictions based on incorrect or insufficient information ( McCoy et al. , 2019 ; Gururangan et al. , 2018 ) by over-relying on spurious correlations present in the training data .
+Within NMT , models were found to exhibit gender-bias , reinforcing harmful stereotypes ( Vanmassenhove et al. , 2018 ; Stanovsky et al. , 2019 ) .
+As a response , strategies have been proposed for de-biasing the training data ( Li and Vasconcelos , 2019 ; Le Bras et al. , 2020 ) , as well as for making models more robust to data biases through adversarial training ( Belinkov et al. , 2019 ) .
+Adversarial attacks have recently been extended as an effective model analysis tool from vision to language tasks ( Samanta and Mehta , 2017 ; Alzantot et al. , 2018 ; Glockner et al. , 2018 ; Zhang et al. , 2019 ) , including NMT ( Cheng et al. , 2018 ( Cheng et al. , , 2019 , where the focus so far has been on strategies requiring direct access to the victim model 's loss gradient or output distribution .
+Recent surveys suggested that state - of - the - art attacks often yield ungrammatical and meaning - destroying samples , thus diminishing their usefulness for the evaluation of model robustness ( Michel et al. , 2019 ; Morris et al. , 2020 ) .
+Targeted attacks on WSD abilities of translation models have so far remained unexplored .
+Conclusion
+We conducted an initial investigation into leveraging data artifacts for the prediction of WSD errors in machine translation and proposed a simple adversarial attack strategy based on the presented insights .
+Our results show that WSD is not yet a solved problem in NMT , and while the general performance of popular model architectures is high , we can identify or create sentences where models are more likely to fail due to data biases .
+The effectiveness of our methods owes to neural models struggling to accurately distinguish between meaningful lexical correlations and superficial ones .
+As such , the presented approach is expected to be transferable to other language pairs and translation directions , assuming that the employed translation models share this underlying weakness .
+Given the model- agnostic nature of our findings , this is likely to be the case .
+As a continuation to this work , we intend to evaluate whether multilingual translation models are more resilient to lexical disambiguation biases and , as a consequence , are less susceptible to adversarial attacks that exploit source -side homography .
+Extending model- agnostic attack strategies to incorporate other types of dataset biases and to target natural language processing tasks other than machine translation is likewise a promising avenue for future research .
+Lastly , the targeted development of models that are resistant to dataset artifacts is a promising direction that is likely to aid generalization across linguistically diverse domains .

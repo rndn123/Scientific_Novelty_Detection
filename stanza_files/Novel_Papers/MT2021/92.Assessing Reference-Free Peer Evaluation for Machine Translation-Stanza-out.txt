@@ -1,0 +1,192 @@
+title
+Assessing Reference -Free Peer Evaluation for Machine Translation
+abstract
+Reference -free evaluation has the potential to make machine translation evaluation substantially more scalable , allowing us to pivot easily to new languages or domains .
+It has been recently shown that the probabilities given by a large , multilingual model can achieve state of the art results when used as a reference -free metric .
+We experiment with various modifications to this model , and demonstrate that by scaling it up we can match the performance of BLEU .
+We analyze various potential weaknesses of the approach , and find that it is surprisingly robust and likely to offer reasonable performance across a broad spectrum of domains and different system qualities .
+Introduction Traditional automatic metrics for machine translation ( MT ) , such as BLEU ( Papineni et al. , 2002 ) , score MT output by comparing it to one or more reference translations .
+This has several disadvantages .
+First , high-quality reference translations are expensive to create .
+This means that in practice , evaluation is usually carried out with relatively small , carefully curated test corpora .
+The need for careful preparation limits the number of domains for which an MT system can be conveniently assessed , and small test-set sizes can make it difficult to draw robust conclusions ( Card et al. , 2020 ) .
+Second , enshrining ground truth in a small number of references ( usually just one ) is inherently problematic , since valid translations can vary along many dimensions ; Freitag et al. ( 2020 b ) demonstrate that different ( correct ) references for the same test set can result in different system rankings according to the same reference - based metric .
+Finally , scoring the similarity between an MT hypothesis and a reference translation involves recognizing the extent to which they are mutual paraphrases .
+When gross discrepancies exist , this is a relatively easy problem for which surface - level metrics can provide a reliable signal , but capturing the subtle errors typical of high-quality MT is more difficult , and it is not clear whether it is substantially easier than scoring the similarity between texts in different languages .
+These problems can be avoided by looking only at the source text when assessing MT output .
+There is evidence that this is the best practice for human evaluation ( Toral , 2020 ) .
+Moreover , it has recently been investigated for automatic metrics as well Lo , 2019 ; Zhao et al. , 2020 ; Ma et al. , 2019 ) .
+Such reference - free metrics are flexible and scalable , but since they are essentially performing the same task as an MT model , they raise a circularity concern : if we can reliably score MT output , why would n't we use the scoring model to produce better output ?
+One answer to this is practical : the scoring model might be too large to deploy , or it might not easily support efficient inference ( Yu et al. , 2016 ) .
+A more interesting answer is that a scoring model could be set up to provide a signal that is complementary to the systems under evaluation .
+That is , it might be capable of correctly ranking competing MT hypotheses even when its own preferred hypothesis is worse on average than those of the systems it is evaluating .
+In our experiments we find that this can indeed be the case .
+In recent work , Thompson and Post ( 2020 ) showed that a single multilingual MT model trained on 39 languages can achieve excellent paraphrase recognition when used in zero-shot mode to compare MT output with reference sentences in the same language .
+On the WMT 2019 metrics task , their method ( Prism ) beat or tied all previous reference - based metrics on all languages .
+1 Although it was not the main focus of their work , Prism achieved a new state - of - the - art as a referencefree metric , simply scoring target given source text using an MT model , in a post-competition comparison to the 2019 " Quality Estimation as a metric " shared task ( Ma et al. , 2019 ) .
+Our aim in this paper is to characterize the conditions under which the Prism approach -using one MT system to perform peer evaluation on other systems - can be successful : what properties does the evaluating system need to have , how powerful should it be , and how close can it be to the systems under evaluation ?
+We focus on system-level evaluation , which we believe is the most compelling use case for reference - free methods , targeting a broad characterization that complements the potentially more precise picture furnished by reference - based metrics for a specific test corpus .
+We first replicate the correlation with human judgment results from Thompson and Post ( 2020 ) on WMT 2019 , using the same corpora and architecture .
+Next , we examine several alternative design decisions in an attempt to improve Prism and further our understanding .
+These include the effects of varying training corpora ( domain , number of languages , use of monolingual data ) ; model capacity ( scaling up and down from the original architecture ) ; and different methods for regularizing token - level probabilities ( Monte - Carlo dropout , subword sampling ) and for combining them into system - level scores ( summary statistics over tokens , confidence thresholds over sentences ) .
+Finally , we analyze the results of our best model , measuring how its performance depends on various factors : language pair and human-judgment methodology , output quality , proximity to the systems under evaluation , and size of the test set .
+We demonstrate improvements over the original Prism metric due to model capacity and different methods for combining probabilities ; surprisingly , we find little gain from adjusting the domain or languages in the original multilingual corpus ( although we show that a competition - grade English - German system outperforms the generic multilingual system ) .
+We find that the evaluating MT system 's output quality is generally correlated with its performance as a metric , although we corroborate the surprising finding from Thompson and Post ( 2020 ) that it is not necessary to be the best- our system is middle - of- the - road or worse according to BLEU across most WMT 2019 languages .
+We measure the proximity between our system and the systems under evaluation and find no evidence that this is a source of bias .
+Despite using no references , our model achieves approximate parity with BLEU both in system-level correlation with human judgment , and when used for pairwise comparisons .
+Related Work Reference -free evaluation is widely used for many NLP tasks such as grammatical error correction ( Napoles et al. , 2016 ) , dialog ( Sinha et al. , 2020 ; Mehri and Eskenazi , 2020 ) and text generation ( Ethayarajh and Sadigh , 2020 ) .
+There has been recent interest in reference - free evaluation for MT , which was a joint track between the WMT 2019 metrics task ( Ma et al. , 2019 ) and quality estimation task ( Fonseca et al. , 2019 ) .
+Reference -free metrics competed head - to - head with standard metrics , and generally did worse .
+However , the results from the best reference - free systems , UNI + and YiSi - 2 ( Lo , 2019 ) were surprisingly close to the standard metric scores on the language pairs for which they were evaluated .
+UNI + computes word- level embeddings for source and MT output sentences using pre-trained multilingual BERT and LASER ( Artetxe and Schwenk , 2019 ) models , then feeds averaged vectors to a neural classifier trained to predict human scores from previous MT metrics tasks .
+YiSi - 2 is similar , except that it works in an unsupervised fashion , computing similarities between mBERT embeddings for aligned source and target words , and returning an F-measure statistic .
+In more recent work , Zhao et al . ( 2020 ) adopt a similar approach based on mBERT , aligning representations from multilingual embedding spaces before computing distances with MoverScore ( Zhao et al. , 2019 ) , and adding a GPT - based target - side language model .
+The current state - of - the - art in reference - free evaluation for MT is represented by the Prism approach ( Thompson and Post , 2020 ) which we extend here .
+It is worth distinguishing reference -free evaluation from two related tasks that share formal similarities .
+The first is quality or confidence estimation ( Blatz et al. , 2004 ; Specia and Shah , 2018 ; Chelba et al. , 2020 ) , which aims to score the fitness of MT output for a downstream application .
+This is typically supervised , although a recent approach ( Fomicheva et al. , 2020 ) dispenses with the need to learn from human annotations , as do most of the approaches we study in this paper .
+Quality estimation is most usefully applied at the sentence level , and it can make use of powerful " glass - box " features which capture the internals of an MT system .
+In contrast , reference - free evaluation is most naturally applied at the system ( test-set ) level , and ideally should make no assumptions about the sys - 1160 tems under evaluation .
+The second task is parallelcorpus mining ( Zhang et al. , 2020 ; , which aims to identify valid translations at various levels of granularity .
+Its scoring aspect is similar to reference - free evaluation , but it is applied to a different input distribution , attempting to identify human- generated translation pairs rather than scoring MT outputs for a given human- generated source text .
+Methods
+We aim to generate a quality score s( X , Y ) = x,y s( x , y ) for source and target texts X , Y which consist of segment ( nominally , sentence ) pairs x , y .
+We assume no document or ordering information among segments , and do not directly evaluate scores for individual segment pairs .
+All methods we consider make use of token - level logprobabilities from a standard autoregressive neural MT system : log p(y t |y <t , x ) , where y = y 1 . . . y T .
+We experimented with reverse probabilities p( x|y ) , but like Thompson and Post ( 2020 ) found these gave no advantage , and do not include them in our reported results .
+The following sections describe our model architecture , scoring techniques , and evaluation methodology .
+Model
+Our baseline NMT model uses a standard Transformer architecture identical to that of Thompson and Post ( 2020 ) ( up to toolkit differences ) , trained on the same multilingual corpus .
+To encourage language - agnostic encoder representations for zeroshot scoring , the baseline uses target - language tags at the beginning of each target sentence ( Johnson et al. , 2017 ) .
+Since we do not require such representations for reference - free evaluation , we also tried introducing the tags earlier , at the beginning of each source sentence .
+We vary training corpora and model capacity as described in section 4.1 , but otherwise make no changes to the model .
+Scoring
+We investigated various techniques for deriving segment- level scores s(x , y ) : regularization , different methods for aggregating token - level probabilities , and segment - level confidence thresholds .
+Regularization
+To obtain smoother scores , we used Monte- Carlo dropout ( Gal and Ghahramani , 2016 ) and subword regularization ( Kudo , 2018 ) .
+These involve estimates of the form : log p( y| x ) = K k=1 log p k ( y| x ) / K , where p k ( y|x ) is a probability estimate that depends on the smoothing method .
+For MC - dropout , it is obtained by dropping neural connections with probability ?.
+For subword regularization , p k ( y|x ) = p(?
+k |x k ) , where xk and ?k are randomly - sampled alternative subword segmentations of x and y.
+2 Note that MC - dropout decomposes over tokens , yielding smoother per-token probabilities ; subword regularization does not , since it does not preserve tokenization .
+Aggregating token - level log-probabilities Given a sequence of token probabilities log p(y t |y <t , x ) , t = 1 . . . T , we derive segmentlevel scores s( x , y ) using various statistics .
+Following Thompson and Post ( 2020 ) , we sum to obtain segment log-probabilities or average to obtain mean token - wise log-probabilities .
+To eliminate the effect of outliers , we tried the median instead of the mean .
+To test the opposite intuition , we also tried the minimum .
+Finally , to reflect overall consistency , we compute standard deviation .
+Confidence Thresholds Quality scores implicitly reflect the presence or absence of errors in MT output .
+In some cases , model probabilities provide strong evidence for or against the existence of errors , but in other cases the model may be agnostic .
+To capture this intuition , we used the following mapping to obtain segment scores : s( x , y ) = ? ? ? ?1 , log p( y | x ) / T < l + 1 , log p( y | x ) / T > h 0 , else
+To set the thresholds ( l , h ) we used a coarse grid search on development data .
+Evaluation
+We evaluate reference -free metric scores on data from the WMT19 metrics task ( Ma et al. , 2019 ) , consisting of outputs from different MT systems for 18 language pairs .
+For each language pair , we compute a metric score for each system , then use correlation with the provided human scores to assess the quality of our metric .
+3 Following Ma et al. ( 2019 ) we measure correlation using Pearson 's coefficient , and use Williams ' test ( Williams , 1959 ) to compute the significance of correlation differences , with a p-value < 0.05 .
+Ma et al. ( 2019 ) note that correlation scores are unrealistically high for many language pairs , and suggest using only the best k systems for small values of k .
+However , Mathur et al . ( 2020 ) show that this results in noisy and unreliable estimates .
+We adopt their suggestion to instead remove outlier systems whose scores have large deviations from the median according to the formula : |h ? h| 1.483 ? median h ( |h ? h| ) > 2.5 , where h is a system-level human score , and h is the median score across all systems for a given language pair .
+To summarize a metric 's performance across a set of language pairs , we report the weighted average of its Pearson correlations across languages .
+We first apply the Fisher Z-transformation to normalize raw language -specific correlations , then weight by the number of MT systems per language ( post outlier filtering ) , then invert the Fisher Z-transformation and take the mean ( Hedges and Olkin , 2014 ) .
+Experimental Settings
+Data
+We used four training corpora .
+Prism -39 consists of noise-filtered multi-way parallel data curated by Thompson and Post ( 2020 ) , extracted primarily from Wikimatrix , Global Voices , EuroParl , SE - Times , and United Nations , consisting of 99.8 M sentence pairs in 39 languages , including direct parallel data for 706 language pairs .
+Wiki -39 - Mono consists of monolingual data extracted from the multilingual Wikipedia corpus for the languages available in Prism - 39 .
+WMT - 15 is the parallel training data provided for the WMT 2019 News Translation Task ( Barrault et al. , 2019 ) , augmented with 5 languages from previous WMT years - Estonian ( et ) , Spanish ( es ) , Latvian ( lt ) , Hindi ( hi ) and Turkish ( tr ) .
+All language pairs are to / from English except French - German .
+Sizes range from 60 million sentence pairs for English - Czech to 10 k pairs for English - Gujarati ( Table 4 ) .
+Finally , WMT - 15 - Mono is the monolingual data provided alongside WMT - 15 .
+Test data is from the WMT 2019 Metrics Task ( Ma et al. , 2019 ) , consisting of system outputs on news - domain text for all 18 language pairs included in the task : English ( en ) to / from Czech ( cs ) , German ( de ) , Finnish ( fi ) , Gujarati ( gu ) , Kazakh ( kk ) , Lithuanian ( lt ) , Russian ( ru ) , and Chinese ( zh ) , excluding cs-en .
+There are three other language pairs not including English : de-cs , de-fr and fr-de .
+The average number of systems per language is 12 , and the average test-set size is 1,633 .
+We used the Lingvo toolkit , to train Transformer sequence - to-sequence models of various sizes as shown in Table 1 , where the baseline Prism configuration matches that of Thompson and Post ( 2020 ) .
+We use AdaFactor optimization with a learning rate of 1.0 and batch size of ?8000 samples .
+Our shared vocabulary comprises 64 k subwords .
+MT Systems
+Results
+This section presents our main results .
+All correlations in the tables below are for system-level scores , after outlier systems have been discarded for each language pair .
+For brevity , we report average correlations , normalized and weighted as described in section 3.3 ; full results are provided in Appendix B. Unless otherwise stated , all methods score system outputs using average log probabilities normalized by segment length .
+Baselines
+Table 2 shows key WMT19 baseline results for reference - based metrics ( top two lines ) , referencefree metrics ( next three lines ) , and our reimplementation of the Prism model ( bottom lines ) .
+We achieve slightly better results for source-side tagging ( Prism-src2xx ) , and on average match the original Prism results that use target - side tagging with this configuration , which we adopt for further experiments .
+The en-xx results are affected negatively by the inclusion of en-gu , which is absent from the Prism - 39 corpus and has low correlation ( 0.400 ) ; however , interestingly , results for gu-en are on par with other language pairs , presumably due to the prevalence of English in the corpus .
+Table 3 gives results for training on different corpora described in section 4.1 .
+The first four lines correspond to different multilingual training corpora , beginning with the Prism - 39 model from the previous section .
+We see no gain on average from using the provided WMT - 15 training corpora , despite possibly better domain fit and generally larger sizes for the language pairs in the test set ( Table 4 ) .
+Training data
+We speculate that this is due to preprocessing as we made no effort to clean or filter the WMT - 15 corpus .
+This hypothesis is supported by the Prism - 13 results , where we trained on the language pairs in Prism - 39 that overlapped with the WMT - 15 corpus , achieving slightly better average performance .
+Combining Prism -39 and WMT - 15 improves further , yielding a relatively small but statistically significant average gain over pure Prism - 39 , at the cost of lower performance for the en-xx language pairs .
+Inspired by improvements for low-resource languages from monolingual data ( Siddhant et al. , 2020 ) , we used the MASS denoising objective to add general- domain monolingual data ( Wiki - 39 ) to Prism -39 and in- domain data ( WMT - 15 - Mono ) to both Prism -39 and WMT - 15 ( Table 6 for a comparison on the relative sizes of the monolingual corpora ) .
+Overall , the general- domain data hurts correlation significantly , while in - domain helps significantly , but only for WMT - 15 .
+As expected , monolingual data tends to help lower - resource languages ( gu , kk , lt ) most , with a particularly large gain for xx-en with WMT - 15 + WMT - 15 - Mono .
+However , the correlation for xx-yy language - pairs degrades significantly , which we attribute to the en-centric nature of the WMT - 15 dataset .
+LP
+Bilingual Systems
+Can we use bilingual MT systems for peer evaluation ?
+We chose four representative language pairs from Prism -39 and trained " Big " models ( see Table 1 ) in eight directions , with dedicated 64 k subword vocabularies .
+Table 5 shows that for medium and high resource languages ( de , ru , and zh ) , the bilingual model performs comparably to the multilingual model .
+However , for the low resource language " lt " , the multilingual model is significantly better .
+As with the results elsewhere in this section , this suggests that correlation tends to follow the pattern one would expect if we were mainly interested in model quality .
+This is corroborated by the results in the last line of the table , where we compare a competition - grade model for en-de ( Freitag et al. , 2020a ) , similar to the winning submission from WMT19 , to our models .
+The competitiongrade model achieves a much better correlation and also improves on BLEU by a wide margin .
+Motivated by the link between correlation and model quality , we varied model capacity according to the settings in Table 1 , using the Prism - 39 training corpus .
+The results in Table 7 show a clear pattern of gains with increasing capacity .
+The Massive configuration does best overall , achieving statistical parity with BLEU on average .
+Model Capacity
+Scoring Methods
+Aggregation Method All Table 8 shows results for the scoring methods described in section 3.2 applied to the Massive configuration .
+Aggregating token probabilities using statistics other than mean gives small gains on some languages , but hurts on average .
+Regularizing with MC - dropout or subwords ( SP - norm ) leads to significant gains in some cases , with a slight overall increase over mean for SP - norm .
+We tuned confidence thresholds on WMT18 Metrics task data using a grid of 16 log-probability points in [ ?3 , 0 ] , which yielded optimal thresholds ( ? 1 , ?0.6 ) .
+This produced our best overall result , with systematic gains on en-xx pairs .
+Analysis
+In this section we analyze various aspects of metric performance , confining our attention to the Massive model with mean scoring for consistency .
+Different languages have different relations to our model , to the systems participating in the WMT task , and to the human scoring procedure used in the WMT19 data .
+Table 9 shows results for various conditions .
+Removing the language ( gu ) for which we have no training data improves average correlation substantially .
+The human evaluations for out - of - English language pairs involve comparing MT output to the source text ; the evaluations for remaining pairs involve comparing it to reference translations .
+We see no boost from the language pairs for which source - based human evaluation was used ( matching our setting ) , and in fact do somewhat worse on these pairs than the others , on average .
+Finally , we achieve better performance for lower - resource ( < 1 M parallel segments ) language pairs than higher - resource pairs ( with respect to the Prism - 39 corpora ) , but poor average performance on the pairs ( en-gu / gu-en ) for which we had no training data .
+Performance across conditions
+Pairwise comparisons Correlation statistics give an overall picture of metric performance , but do not directly reflect the frequent use case of deciding which of two systems is better .
+To measure this , we examined whether our metric agrees with human pairwise ranking decisions over all pairs of systems .
+Following ( Mathur et al. , 2020 ) , we apply the Wilcoxon ranksum test and paired t-test to detect when such decisions are significant according to human and metric scores respectively .
+Metric Human -S Human-NS C ( ? ) IC ( ? ) NS C ( ? ) IC ( ? ) NS Table 10 : WMT19 pairwise system level comparisons using the Massive configuration : Human -NS and Human-S means insignificant and significant differences according to human scores ; C and IC stands for Correct and Incorrect ranking according to metric and human scores ; NS represents insignificant differences according to the metric scores .
+Table 10 shows ranking performance for Prism compared to BLEU , categorized according to language pair grouping .
+The general pattern across all groupings is that Prism is more decisive : it makes more significant decisions than BLEU , leading to higher rates of both correct and incorrect rankings .
+Among the 885 system pairs ( across all languages ) that are considered significantly different according to human judgment , Prism correctly ranks 88 % with significantly different scores , compared to 87 % for BLEU .
+Quality of the evaluating model
+How good is our multilingual MT system compared to the systems under evaluation ?
+We generated translations of the test text for a subset of languages and compared the quality of the generated system outputs using BLEU .
+Figure 1 shows that our evaluating model achieves worse BLEU scores than many of the systems under evaluation , ranking around the median for most language pairs .
+Although Table 5 provides evidence that stronger systems produce better metrics , clearly it is not necessary to be among the top-ranked systems in order to generate a signal that is approximately as reliable as BLEU .
+4 Figure 1 : Quality across language pairs .
+Proximity Bias
+A potential pitfall in peer evaluation is bias toward one or more of the systems under evaluation .
+Clearly , the evaluating system will prefer its own output - how far from an evaluated system does it have to be in order to judge it fairly ?
+Lacking access to the systems in the WMT19 task , we measure proximity using cross - BLEU score ( using one output as hypothesis and the other one as reference translation ) between the system output and the output generated by our Prism model .
+In the presence of bias , we would expect the metric to result in higher ranking for closer systems and lower ranking for farther systems ( relative to human scores ) .
+Figure 2 shows the relative ranking of the closest and the farthest system to Prism ( relative to human ) .
+Since the model makes mistakes in both directions - ranks closest and farthest system both higher and lower than human - there is no evidence from this analysis that it exhibits a strong bias in favour of systems whose outputs are closer to its own .
+A potential explanation is that it is sufficiently far from most of the evaluated systems due to its multilingual training corpus .
+To verify this , we computed the average cross - BLEU for each evaluated system ( relative to all others ) , and compared it to the same quantity for our system .
+Figure 3 shows that we are indeed an outlier system for most language pairs .
+The systems with lower cross - BLEU than Prism are mostly online or rule- based systems .
+5
+In principle , a major advantage of reference - free evaluation is that it can make use of arbitrarily large test sets , being constrained only by the amount of source - language data in the domain of interest .
+We hypothesize that this will improve metric performance by reducing sampling error .
+To test this hypothesis in the absence of larger human-scored test sets for WMT19 , we sampled subsets of various sizes and measured average correlation .
+As shown in Table 11 , we observe a steady increase with testsize size .
+This provides persuasive , though not definitive , evidence that test sets beyond the scale of WMT19 would yield further improvements in accuracy for both metrics , a setting that would be more feasible for Prism than BLEU .
+Full curves are plotted in Figure 4 ( See Appendix C ) .
+Conclusion
+In this paper , we have shed some light on the remarkable finding by Thompson and Post ( 2020 ) that a multilingual model trained on a large ( but not enormous ) general - domain corpus can be highly effective as an MT metric when used to score the outputs of other MT systems in the absence of reference translations .
+By scaling up the model and making small adjustments to tagging and scoring , we improve over the original results and achieve approximate parity with BLEU in correlation with human judgment on WMT19 data .
+We argue that this metric is a useful complement to reference - based metrics - including ones that are significantly more powerful than BLEU - due to its flexibility ; and we provide evidence that scoring reliability can be further improved by using larger source - side-only test sets .
+We find that the major determinant of success in peer evaluation is the quality of the evaluating model .
+However , there is no hard requirement that it be better than the models under evaluation : surprisingly , it can correctly rank models that outperform it on average .
+If we abstract away from quality , performance does not appear to be highly sensitive to the domain or the multilingual versus bilingual nature of the training corpus .
+Taken together , these results have the important practical implication that a single multilingual system such as ours could be broadly applicable for evaluating systems in a large number of language pairs ( 706 in our case ) , at different quality levels , and across a wide range of domains .
+In future work , we look forward to probing these results further , and determining whether alternative architectures or loss functions might be valuable in specializing an MT model for evaluating its peers .

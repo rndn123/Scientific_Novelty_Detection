@@ -1,0 +1,203 @@
+title
+Ask what 's missing and what 's useful : Improving Clarification Question Generation using Global Knowledge
+abstract
+The ability to generate clarification questions i.e. , questions that identify useful missing information in a given context , is important in reducing ambiguity .
+Humans use previous experience with similar contexts to form a global view and compare it to the given context to ascertain what is missing and what is useful in the context .
+Inspired by this , we propose a model for clarification question generation where we first identify what is missing by taking a difference between the global and the local view and then train a model to identify what is useful and generate a question about it .
+Our model outperforms several baselines as judged by both automatic metrics and humans .
+Introduction
+An important but under-explored aspect of text understanding is the identification of missing information in a given context i.e. , information that is essential to accomplish an underlying goal but is currently missing from the text .
+Identifying such missing information can help to reduce ambiguity in a given context which can aid machine learning models in prediction and generation ( De Boni and Manandhar , 2003 ; Stoyanchev et al. , 2014 ) . Daum ?
+III ( 2018 , 2019 ) recently proposed the task of clarification question generation as a way to identify such missing information in context .
+They propose a model for this task which while successful at generating fluent and relevant questions , still falls short in terms of usefulness and identifying missing information .
+With the advent of large-scale pretrained generative models ( Radford et al. , 2019 ; Lewis et al. , 2019 ; Raffel et al. , 2019 ) , generating fluent and coherent text is within reach .
+However , generating clarification questions requires going beyond fluency and relevance .
+Doing so requires understanding what is missing , which if included could be useful to the consumer of the information .
+Humans are naturally good at identifying missing information in a given context .
+They possibly make use of global knowledge i.e. , recollecting previous similar contexts and comparing them to the current one to ascertain what information is missing and if added would be the most useful .
+Inspired by this , we propose a two -stage framework for the task of clarification question generation .
+Our model hinges on the concept of a " schema " which we define as the key pieces of information in a text .
+In the first stage , we find what 's missing by taking a difference between the global knowledge 's schema and schema of the local context ( ?3.1 ) .
+In the second stage we feed this missing schema to a fine- tuned BART ( Lewis et al. , 2019 ) model to generate a question which is further made more useful using PPLM ( Dathathri et al. , 2019 ) ( ?3.2 ) .
+1 We test our proposed model on two scenarios ( ?2 ) : community - QA , where the context is a product description from amazon.com ( McAuley and Yang , 2016 ) ( see e.g. Table 1 ) ; and dialog where the context is a dialog history from the Ubuntu Chat forum ( Lowe et al. , 2015 ) .
+We compare our model to several baselines ( ?4.2 ) and evaluate outputs using both automatic metrics and human evaluation to show that our model significantly outperforms baselines in generating useful questions that identify missing information in a given context ( ?4.4 ) . .
+We obtain a local schema from the available context for a product : description and previously asked questions .
+2 . We obtain the global schema of the category of the product .
+3 . We estimate the missing schema that is likely to guide clarification question generation .
+4 . A BART model fine-tuned on ( missing schema , question ) pairs to generate a question ( " Is it true leather ? " ) .
+5 . A PPLM model with usefulness classifier as its attribute model further tunes the generated question to make it more useful ( " Is there room to also carry a cooling pad ? " ) .
+Furthermore , our analysis reveals reasoning behind generated questions as well as robustness of our model to available contextual information . ( ?5 ) .
+Problem Setup and Scenarios Rao and Daum ? III ( 2018 ) define the task of clarification question generation as : given a context , generate a question that identifies missing information in the context .
+We consider two scenarios : Community - QA Community - driven questionanswering has become a common venue for crowdsourcing answers .
+These forums often have some initial context on which people ask clarification questions .
+We consider the Amazon questionanswer dataset ( McAuley and Yang , 2016 ) where context is a product description and the task is to generate a clarification question that helps a potential buyer better understand the product .
+Goal Oriented Dialog
+With the advent of high quality speech recognition and text generation systems , we are increasingly using dialog as a mode to interact with devices ( Clark et al. , 2019 ) .
+However , these dialog systems still struggle when faced with ambiguity and could greatly benefit from having the ability to ask clarification questions .
+We explore such a goal-oriented dialog scenario using the Ubuntu Dialog Corpus ( Lowe et al. , 2015 ) consisting of dialogs between a person facing a technical issue and another person helping them re-solve the issue .
+Given a context i.e a dialog history , the task is to generate a clarification question that would aid the resolution of the technical issue .
+Approach Figure 1 depicts our approach at a high level .
+We propose a two -stage approach for the task of clarification question generation .
+In the first stage , we identify the missing information in a given context .
+For this , we first group together all similar contexts in our data 2 to form the global schema for each high - level class .
+Next , we extract the schema of the given context to form the local schema .
+Finally , we take a difference between the local schema and the global schema ( of the class to which the context belongs ) to identify the missing schema for the given context .
+In the second stage , we train a model to generate a question about the most useful information in the missing schema .
+For this , we fine- tune a BART model ( Lewis et al. , 2019 ) on ( missing schema , question ) pairs and at test time , we use PPLM ( Dathathri et al. , 2019 ) with a usefulness classifier as the attribute model to generate a useful question about missing information .
+Identifying Missing Information Schema Definition Motivated by ( Khashabi et al. , 2017 ) who use essential terms from a question to improve performance of a Question - Answering system , we see the need of identifying important elements in a context to ask a better question .
+We define schema of sentence s as set consisting of one or more triples of the form ( key - phrase , verb , relation ) and / or one or more key -phrases .
+Schema Extraction
+Our goal is to extract a schema from a given context .
+We consider ( keyphrase , action verb , relation ) as the basic element of our schema .
+Such triples have been found to be representative of key information in previous work ( Vedula et al. , 2019 ) .
+Given a sentence from the context , we first extract bigram and unigram key-phrases using YAKE ( Yet - Another - Keyword - Extractor ) ( Campos et al. , 2020 ) and retain only those that contain at least a noun .
+We then obtain the dependency parse tree ( Qi et al. , 2020 b ) of the sentence and map the key -phrases to tree nodes .
+3 Now , to obtain the required triple , we need to associate a verb and a relation to each key - phrase .
+This procedure is described in Alg 1 .
+At a high- level , we use the path between the key - phrase and the closest verb in the dependency tree to establish a relation between the key - phrase and the verb .
+In cases where there is no path , we use only the keyphrase as our schema element .
+Figure 2 shows an example dependency tree for a sentence .
+Figure 2 : Dependency tree and paths showing how we obtain schema triples for a sentence : " Will this bag hold a gaming laptop and an iPad ? " ( from Figure 1 ) .
+Creating local schema Given a context , we extract a schema for each sentence in the context .
+The local schema of a context c is a union of schemata of each sentence s in the context .
+local _schema c = ? s?c schema s ( 2 ) 3
+In the case of bigram phrases , we merge the tree nodes .
+Creating global schema
+We define global schema at the class level where a ' class ' is a group of similar contexts .
+For Amazon , classes consist of groups of similar products and for Ubuntu , classes consist of groups of similar dialogs ( see ?4.1 for details ) .
+The global schema of a class K is a union of local schemata of all contexts c belonging to K. global _schema K = ? c? K local _schema c ( 3 ) A naive union of all local schemata can result in a global schema that has a long tail of low-frequency schema elements .
+Moreover , it may have redundancy where schema elements with similar meaning are expressed differently ( e.g. OS and operating system ) .
+We therefore use word embedding based similarity to group together similar key -phrases and retain only the most frequent elements ( see appendix ) .
+Creating a missing schema Given a context c , we first determine the class K to which the context belongs .
+We then compute its missing schema by taking the set difference between the global schema of class K and the local schema of the context c : missing _schema c = global K \ local c ( 4 )
+More specifically , we start with the elements in the global schema and remove elements that have a semantic match ( see appendix ) with any element in the local schema to obtain the missing schema .
+Generating Useful Questions
+Our goal is to generate a useful question about missing information .
+In ?3.1 , we explained how we compute the missing schema for a given context ; here we describe how we train a model to generate a useful question given the missing schema .
+BART - based generation model
+Our generation model is based on the BART ( Lewis et al. , 2019 ) encoder-decoder model , which is also a state- ofthe - art model in various generation tasks including dialog generation and summarization .
+We start with the pretrained base BART model consisting of a six layer encoder and six layer decoder .
+We finetune this model on our data where the inputs are the missing schema and the output is the question .
+The elements of the missing schema in the input are separated by a special [ SEP ] token .
+Since the elements in our input do not have any order , we use the same positional encoding for all input positions .
+We use a token type embedding layer with three types of tokens : key- phrases , verbs , and relations .
+PPLM - based decoder
+We observed during our human evaluation 4 that a BART model fine-tuned in this manner , in spite of generating questions that ask about missing information , does not always generate useful questions .
+We therefore propose to integrate the usefulness criteria into our generation model .
+We use the Plug-and- Play - Language -Model ( PPLM ) ( Dathathri et al. , 2019 ) during decoding ( at test time ) .
+The attribute model of the PPLM in our case is a usefulness classifier trained on bags - of-words of questions .
+In order to train such a classifier , we need usefulness annotations on a set of questions .
+For the Amazon dataset , we collect usefulness scores ( 0 or 1 ) on 5000 questions using human annotation whereas for the Ubuntu dataset we assume positive labels for ( true context , question ) pairs and negative labels for ( random context , question ) pairs and use 5000 such pairs to train the usefulness classifier .
+Details of negative sampling for Ubuntu dataset is in Appendix .
+Experiments
+We aim to answer the following research questions ( RQ ) : 1 . Is the model that uses missing schema better at identifying missing information compared to models that use the context directly to generate questions ?
+4 See results of BART + missinfo in Ubuntu The Ubuntu dialog corpus ( Lowe et al. , 2015 ) consists of utterances of dialog between two users on the Ubuntu chat forum .
+Given a dialog , we identify utterances that end with a question mark .
+We then create data instances of ( context , question ) where the question is the utterance ending with a question mark and the context consists of all utterances before the question .
+We consider only those contexts that have at least five utterances and at most ten utterances .
+Table 2 shows the number of data instances in the train , validation and test splits .
+Unlike the Amazon dataset , each context has only one reference question .
+A class is defined as a group of dialogs that address similar topics .
+Since such class information is not present in the dataset , we use k-means to cluster dialogs into subsequent classes .
+Each dialog was represented using a TF - IDF vector .
+After tuning the number of clusters based on sum of squared distances of dialogs to their closest cluster center , we obtain 26 classes .
+We follow a similar scheme as with Amazon for not including target questions from validation and test sets while building the global schema .
+Baselines and Ablations Retrieval
+We retrieve the question from the train set whose schema overlaps most with the missing schema of the given context .
+Human Judgment Similar to Rao and Daum ? III ( 2019 ) , we conduct a human evaluation on Amazon Mechanical Turk to evaluate model generation on the four criteria below .
+Each generated output is shown with the context and is evaluated by three annotators .
+Relevance
+We ask " Is the question relevant to the context ? " and let annotators choose between Yes ( 1 ) and No ( 0 ) .
+Fluency
+We ask " Is the question grammatically well - formed i.e. a fluent English sentence ? " and let annotators choose between Yes ( 1 ) and No ( 0 ) .
+Missing Information
+We ask " Does the question ask for new information currently not included in the context ? " and let annotators choose between Yes ( 1 ) and No ( 0 ) .
+Usefulness
+We perform a comparative study where we show annotators two model- generated questions ( in a random order ) along with the context .
+For Amazon , we ask " Choose which of the two questions is more useful to a potential buyer of the product " .
+For Ubuntu , we ask " Choose which of the two questions is more useful to the other person in the dialog " .
+Experimental Results
+Automatic Metric Results Amazon Table 3 shows automatic metric results on Amazon .
+Under BLEU -4 and METEOR , the retrieval model performs the worst suggesting that picking a random question that matches the most with the missing schema does not always yield a good question .
+produces the most diverse questions ( as also observed by Rao and Daum ? III ( 2019 ) ) since it selects among human written questions which tend to be more diverse compared to model generated ones .
+Among other baselines , transformer interestingly has the lowest diversity whereas GAN - Utility and BART come very close to each other .
+Model ablations that use missing schema produce more diverse questions further strengthening the importance of training on missing schema .
+Our model i.e. , BART + missinfo + PPLM , in spite of outperforming all baselines ( except retrieval ) , is still far from reference questions in terms of diversity , suggesting room for improvement .
+Ubuntu Table 4 shows the results of automatic metrics on Ubuntu .
+6
+The overall BLEU - 4 and ME-TEOR scores are much lower compared to Amazon since Ubuntu has only one reference per context .
+Under BLEU -4 and METEOR scores , similar to Amazon , we find that the retrieval baseline has the lowest scores .
+Transformer baseline outperforms the retrieval baseline but lags behind BART , again showing the importance of large-scale pretraining .
+The difference between the BLEU - 4 scores of BART + missinfo and our final proposed model is not significant but their METEOR score difference is significant suggesting that our model produces questions that may be lexically different from references but have more semantic overlap with the reference set .
+Under Distinct - 2 scores , we find the same trend as in Amazon , with the retrieval model being the most diverse and our final model outperforming all other baselines .
+Human Judgement Results Amazon
+Table 5 shows the human judgment results on model generations for 300 randomly sampled product descriptions from the Amazon test set .
+Under relevancy and fluency , all models score reasonably with our proposed model producing the most relevant and fluent questions .
+Under missing information , the BART model , finetuned on context instead of missing schema , has the lowest score .
+GAN - Utility outperforms BART but significantly lags behind BART + missinfo and BART + missinfo + PPLM reaffirming our finding from the automatic metric results that our idea of feeding missing schema to a learning model helps .
+We additionally observe that the human-written questions score lower than model- generated questions under ' fluency ' and ' missing information ' criteria , mirroring similar observations from Daum ?
+III , 2018 , 2019 ) .
+We believe the reason for this is that human-written questions often have typos or are written by non-native speakers ( leading to lower fluency ) .
+Moreover , humans may miss out on reading full product descriptions causing them to ask about details that are already included in the description ( leading to lower missing information scores ) .
+Figure 3a shows the results of pairwise comparison on the usefulness criteria .
+We find that our model wins over GAN - Utility by a significant margin with humans preferring our model- generated questions 77 % of the time .
+Our model also beats BART - baseline 66 % of the time further affirming the importance of using missing schema .
+Finally , our model beats BART + missinfo model 61 % of the time suggesting that the PPLM - based decoder that uses usefulness classifier is able to produce much more useful questions ( RQ3 ) .
+The annotator agreement statistics are provided in appendix .
+Ubuntu
+Table 6 shows the results of human judgments on the model generations of 150 randomly sampled dialog contexts from the Ubuntu test set .
+In terms of relevance , we find that the transformer and BART baselines produce less relevant questions .
+With the addition of missing schema ( i.e. , BART + missinfo ) , the questions become more relevant and our proposed model obtains the highest relevance score .
+The reference obtains slightly a lower relevance score which can possibly be explained by the fact that humans sometimes gress from the topic .
+Under fluency , interestingly , the transformer and BART baselines obtain high scores .
+With the addition of missing schema , fluency decreases and the score reduce further with the PPLM model .
+We suspect that the usefulness classifier trained with a negative sampling strategy ( as opposed to human labelled data , as in Amazon ) contributes to fluency issues .
+Under missing information , all models perform well which can be explained by the fact that in Ubuntu , the scope of missing information is much larger ( since dialog is much more open-ended ) than in Amazon .
+Figure 3 b shows the results of pairwise comparison on usefulness criteria .
+We find that humans choose our model- generated questions 85 % of time when compared to either transformer or BART generated questions .
+When compared to BART + missinfo , our model is selected 71 % of the time , further affirming the importance of using the PPLM - based decoder .
+Analysis Robustness to input information
+We analyze how a model is robust toward the amount of information present .
+To measure the amount of informa-tion , we look for context length ( description length for Amazon , dialog context length for Ubuntu ) and the size of global schema since these two directly control how much knowledge regarding potential missing information is available to the model .
+We measure the difference in BLEU score between two groups of data samples where context length / size of global schema is either high or low .
+Figure 5 shows that our model is the least variant toward the information available hence more robust for the Amazon dataset .
+7
+Owing to our modular approach for estimating missing information , we seek to analyze whether a question is really asking about missing information in an automatic fashion .
+This also allows us to explain the reasoning behind a particular generation as we are able to trace back to the particular missing information that is used to generate the question .
+We run a YAKE extractor on the generated questions to obtain key-phrases .
+We calculate the ratio between the number of key - phrases in the output that belong to the original missing schema and the total number of key - phrases present in the output .
+Table 8 shows that when we use our framework of estimating missing information coupled with BART , both models achieve very high missing information overlap , thus suggesting that we can obtain the reasoning behind a generated question reliably by tracing the missing information overlap , as shown in Table 9 . Question length
+We also observe in Table 9 that baseline models tend to generate short and generic questions as compared to our model that often chooses longer schema key-phrases ( e.g. bigrams ) to generate a more specific question .
+We further looked into annotated ( for usefulness ) questions from the Amazon dataset and we observed that 70 % of questions that were annotated as useful are longer than not-useful questions .
+The average length of gold useful questions is 10.76 words and 8.21 for not-useful questions .
+The average length of generated questions for BART , BART + MissInfo and BART + MissInfo + PPLM ( ours ) are 5.6 , 6.2 , 12.3 respectively .
+We also find a similar trend in the Ubuntu dataset as well .
+Dynamic expansion of global schema
+We anticipate that even if we build the global schema from the available offline dataset , it is possible that new entries may appear in a real application .
+We investigate how our framework responds to the dynamic expansion of global schema .
+We simulate a scenario where we extend the " Laptop Acces - sories " category in the Amazon dataset , with 100 new products ( those that appeared on Amazon.com after the latest entry in the dataset ) .
+We obtain key- phrases from their product descriptions and include them in the global schema for the category which amounts to a 21 % change in the existing global schema .
+For 50 random products in the test set from the same category , we found that in 28 out of 50 cases ( 56 % ) , the model picked a new schema element that is added later .
+This indicates that our framework is capable of supporting dynamic changes in the global schema and reflecting them in subsequent generations without retraining from scratch .
+Related Work Most previous work on question generation focused on generating reading comprehension style questions i.e. , questions that ask about information present in a given text ( Duan et al. , 2017 ; Zhang and Bansal , 2019 ) . Later , Daum ?
+III ( 2018 , 2019 ) introduced the task of clarification question generation in order to ask questions about missing information in a given context .
+ClarQ ( Kumar and Black , 2020 ) entails clarification questions in a question setup .
+However , unlike our work , these works still suffer from estimating the most useful missing information .
+Recent works on conversational question answering also focused on the aspect of question generation or retrieval Aliannejadi et al. , 2019 ) .
+Qi et al. ( 2020a ) especially focused on generating information -seeking questions while Majumder et al . ( 2020 ) proposed a question generation task in free-form interview-style conversations .
+In this work , in addition to improving clarification question generation in a community - QA dataset , we are the first to explore a goal-oriented dialog scenario as well .
+Representing context and associated global information in a structure format has been shown to improve performance in generation task ( Das et al. , 2019 ; Subramanian et al. , 2018 ; Khashabi et al. , 2017 ) in general and summarization ( Fan et al. , 2019 ) and story - generation ( Yao et al. , 2019 ) in particular .
+We also derive inspiration from recent works on information extraction from free- form text ( Vedula et al. , 2019 ; Stanovsky et al. , 2016 ) and develop a novel framework to estimate missing information from available natural text contexts .
+Finally , for question generation , we use BART ( Lewis et al. , 2019 ) , that is state - of - the - art for many generation tasks such as summarization , dialog generation etc .
+Furthermore , inspired from recent works that use controlled language generation during decoding ( Ghazvininejad et al. , 2017 ; Holtzman et al. , 2018 ) , we use Plug-and - Play - Language - Model ( Dathathri et al. , 2019 ) to tune generations during decoding .
+While similar approaches for controllable generation ( Keskar et al. , 2019 ; See et al. , 2019 ) have been proposed , we extend such efforts to enhance the usefulness of the generated clarification questions .
+Conclusion
+We propose a model for generating useful clarification questions based on the idea that missing information in a context can be identified by taking a difference between the global and the local view .
+We show how we can fine- tune a large-scale pretrained model such as BART on such differences to generate questions about missing information .
+Further , we show how we can tune these generations to make them more useful using PPLM with a usefulness classifier as its attribute model .
+Thorough analyses reveal that our framework works across domains , shows robustness towards information availability , and responds to the dynamic change in global knowledge .
+Although we experiment only with Amazon and Ubuntu datasets , our idea is generalizable to scenarios where it is valuable to identify missing information such as conversational recommendation , or eliciting user preferences in a chit-chat , among others .
+We do not foresee any immediate ethical concerns since we assume that our work will be restricted in domain as compared to free-form language generation .
+We still cautiously advise any developer who wishes to extend our system for their own use-case ( beyond e-commerce , goal- oriented conversations ) to be careful about curating a global pool of knowledge for data involving sensitive user information .
+Finally , since we are finetuning a pretrained generative model , we inherit the general risk of generating biased or toxic language , which should be carefully filtered .
+In general , we expect users to benefit from our system by reducing ambiguity ( when information is presented in a terse fashion , e.g. in a conversation ) and improving contextual understanding to enable them to take more informed actions ( e.g. making a purchase ) .

@@ -1,0 +1,295 @@
+title
+Towards Debugging Sentiment Lexicons
+abstract
+Central to many sentiment analysis tasks are sentiment lexicons ( SLs ) .
+SLs exhibit polarity inconsistencies .
+Previous work studied the problem of checking the consistency of an SL for the case when the entries have categorical labels ( positive , negative or neutral ) and showed that it is NPhard .
+In this paper , we address the more general problem , in which polarity tags take the form of a continuous distribution in the interval [ 0 , 1 ] .
+We show that this problem is polynomial .
+We develop a general framework for addressing the consistency problem using linear programming ( LP ) theory .
+LP tools allow us to uncover inconsistencies efficiently , paving the way to building SL debugging tools .
+We show that previous work corresponds to 0 - 1 integer programming , a particular case of LP .
+Our experimental studies show a strong correlation between polarity consistency in SLs and the accuracy of sentiment tagging in practice .
+Introduction
+Many sentiment analysis algorithms rely on sentiment lexicons ( SLs ) , where word forms or word senses 1 are tagged as conveying positive , negative or neutral sentiments .
+SLs are constructed by one of three methods ( Liu , 2012 ; Feldman , 2013 ) : ( 1 ) Manual tagging by human annotators is generally reliable , but because it is labor-intensive , slow , and costly , this method has produced small- sized SLs comprising a few thousand words , e.g. , Opinion Finder ( OF ) ( Wilson et al. , 2005 ) , Appraisal Lexicon ( AL ) ( Taboada and Grieve , 2004 ) , General Inquirer ( GI ) ( Stone et al. , 1966 ) , and Micro-WNOp ( Cerini et al. , 2007 ) . ( 2 ) Dictionary -1
+We refer to a string of letters or sounds as a word form & to a pairing of a word form with a meaning as a word sense .
+based acquisition relies on a set of seed words to expand its coverage to similar words .
+There are over thirty dictionary - based techniques ( Andreevskaia and Bergler , 2006 ; Blum et al. , 2004 ; Chen and Skiena , 2014 ; Choi and Wiebe , 2014 ; Esuli and Sebastiani , 2006 ; Feng et al. , 2013 ; Hassan and Radev , 2010 ; Kamps et al. , 2004 ; Mohammad et al. , 2009 ; Takamura et al. , 2005 ; Turney , 2002 ; Williams and Anand , 2009 ) , most of them based on WordNet ( Fellbaum , 1998 ) , such as Sen-tiWordNet ( SWN ) ( Baccianella et al. , 2010 ) and Q-WordNet ( QWN ) ( Agerri and Garc?a- Serrano , 2010 ) . ( 3 ) Corpus-based acquisition expands a set of seed words with the use of a large document corpus ( Breck et al. , 2007 ; Bross and Ehrig , 2013 ; Choi and Cardie , 2009 ; Ding et al. , 2008 ; Du et al. , 2010 ; Hatzivassiloglou and McKeown , 1997 ; Jijkoun et al. , 2010 ; Kaji and Kitsuregawa , 2007 ; Klebanov et al. , 2013 ; Lu et al. , 2011 ; Peng and Park , 2011 ; Tang et al. , 2014 ; Wu and Wen , 2010 ) .
+Method ( 1 ) generally produces the most reliable annotations , however the considerable effort required to yield substantial lexicons makes it less useful in practice .
+The appeals of ( 2 ) and ( 3 ) lie in the formalism of their models and their capability of producing large-sized SLs .
+SLs are either word or sense / synset oriented .
+We refer to the former as Sentiment Word Lexicons ( SWLs ) , e.g. , GI , OF , and AL , and to the latter as Sentiment Sense Lexions ( SSLs ) , e.g. , SWN , QWN , and Micro-WNOp .
+Besides the method of compilation , SLs may also vary with regard to sentiment annotation .
+Polarity disagreements are noted across SLs that do ( SWN , Q-WordNet ) and do not ( AL , GI ) reference WordNet .
+For instance , the adjectives panicky and terrified , have negative and positive polarities in OF , respectively .
+They each have only one synset which they share in Word - Net : " thrown into a state of intense fear or desperation " .
+Assuming that there is an intrinsic re-lationship between the sentiments of a word and its meanings , a single synset polarity assignment to this synset cannot agree with both positive and negative at the word level .
+If the information given in WordNet is accurate ( the Oxford and Cambridge dictionaries give only this meaning for both words ) then there must be an annotation inconsistency in OF , called a polarity inconsistency .
+While some inconsistencies are easy to detect , manual consistency checking of an entire SL is an impractical endeavor , primarily because of the sheer size ( SWN has over 206,000 word-sense pairs ) .
+Additionally , WordNet 's complex network structure renders manual checking virtually impossible ; an instance of a polarity inconsistency may entail an entire sub-network of words and senses .
+In this paper we develop a rigorous formal method based on linear programming ( LP ) ( Schrijver , 1986 ) for polarity consistency checking of SLs with accompanying methods to unearth mislabeled words and synsets when consistency is not satisfied .
+We translate the polarity consistency problem ( PCP ) into a form of the LP problem , suitable as the input to a standard LP solver , and utilize the functionality available in modern LP software ( e.g. , identifying an irreducible infeasible subset ) to pinpoint the sources of inconsistencies when they occur .
+In our experimentation we are able to quickly uncover numerous intra-and inter-lexicon inconsistencies in all of the input SLs tested and to suggest lexicon entries for a linguist to focus on in " debugging " the lexicon .
+Background and Previous Work Sentiment resources have taken two basic approaches to polarity annotation : discrete and fractional .
+In the discrete approach , polarity is defined to be one of the discrete values positive , negative , or neutral .
+A word or a synset takes exactly one of the three values .
+QWN , AL , GI , and OF follow the discrete polarity annotation .
+In the fractional approach , polarity is defined as a 3 - tuple of nonnegative real numbers that sum to 1 , corresponding to the positive , negative , and neutral values respectively .
+SWN , Micro-WNOp , and Hassan and Radev ( 2010 ) employ a fractional polarity annotation .
+For example , the single synset of the adjective admissible in WordNet has the sentiment tags positive in QWN and .25 , .625 , .125 in SWN , so here SWN gives a primarily negative polarity with some positive and less neutral polarity .
+We denote by PCP -D and PCP - F the polarity consistency problem for the discrete and fractional polarity annotations , respectively .
+Dragut et al. ( 2012 ) introduces the PCP for domain independent SLs and gives a solution to a particular form of the PCP -D , but that method cannot solve PCP -F .
+For example , they show that the adjectives laughable , comic , and risible ( Figure 1 ) constitute an inconsistency in the discrete case .
+AL gives positive polarity for laughable and OF gives negative for comic .
+If s 2 is not positive then laughable is not positive and if s 2 is not negative then comic is not negative , so there is no assignment of s 2 that satisfies the whole system .
+Hence there is an inconsistency .
+However , the following fractional polarity tags do satisfy the system : s 1 : 1 , 0 , 0 , s 2 : .66 , .34 , 0 , s 3 : 0 , 1 , 0 , where the meaning of the second tag , for instance , is that s 2 is .66 positive , .34 negative , and 0 neutral .
+We thus see that the discrete polarity annotation is rigid and leads to more inconsistencies , whereas the fractional annotation captures more naturally the polarity spectrum of a word or synset .
+In this paper we give a solution to the PCP -F .
+The differences between our solution and that of Dragut et al . ( 2012 ) give some insight into the general differences between the fractional and discrete problems .
+First , the discrete case is intractable , i.e. , computationally NP - complete ( Dragut et al. , 2012 ) ; we show in this paper ( Section 3.2 ) that the fractional case is tractable ( solvable in polynomial time ) .
+Second , the PCP -D is solved in Dragut et al . ( 2012 ) by translation to the Boolean satisfiability problem ( SAT ) ( Schaefer , 1978 ) ; here we recast the PCP - F in terms of LP theory .
+Third , we show that the LP framework is a natural setting for the PCP as a whole , and that the PCP -D corresponds to the 0 - 1 integer LP problem ( Section 3.2 ) , a classic NPcomplete problem ( Karp , 2010 ) .
+Our experiments ( Section 5.4 ) show that correcting even a small number of inconsistencies can greatly improve the accuracy of sentiment annotation tasks .
+We implement our algorithm as a versatile tool for debugging SLs , which helps locate the sources of error in SLs .
+We apply our algorithm to both SWLs and SSLs and demonstrate the usefulness of our approach to improving SLs .
+The main contributions of this paper are : ? solve the PCP -F ; ? show that the PCP -F is tractable ; ? show that the PCP is an instance of LP ; ? develop a technique for identifying inconsistencies in SLs of various types ; ? implement our algorithm as a prototype SL debugger ; ? show that there is a strong correlation between polarity inconsistency in SLs and the performance of sentiment tagging tools developed on them .
+Problem Definition
+In this section we give a formal characterization of the polarity assignment of words and synsets in SLs using WordNet .
+We use ? , + , 0 to denote negative , positive , and neutral polarities , respectively , throughout the paper .
+Polarity Representation
+We define the polarity of a synset or word r in WordNet to be a discrete probability distribution , called a polarity distribution : P + ( r ) , P ? ( r ) , P 0 ( r ) ? 0 with P + ( r ) + P ? ( r ) + P 0 ( r ) = 1 . P + ( r ) , P ? ( r ) and P 0 ( r ) represent the " likelihoods " that r is positive , negative or neutral , respectively .
+For instance , the WordNet synset " worthy of reliance or trust " of the adjective reliable is given the polarity distribution P + = .375 , P ? = .0 and P 0 = .625 in Senti-WordNet .
+We may drop r from the notation if the meaning is clear from context .
+The use of a polarity distribution to describe the polarity of a word or synset is shared with many previous works ( Andreevskaia and Bergler , 2006 ; Baccianella et al. , 2010 ; Kim and Hovy , 2006 ) .
+WordNet
+A word-synset network N is a 4 - tuple ( W , S , E , f ) where W is a finite set of words , S is a finite set of synsets , E ? W ?
+S and f is a function assigning a positive integer to each element in E .
+For any word w and synset s , s is a synset of w if ( w , s ) ? E. For a pair ( w , s ) ?
+E , f ( w , s ) is called the frequency of use of w in the sense given by s.
+For a word w , we let f req ( w ) denote the sum of all f ( w , s ) such that ( w , s ) ? E . We define the relative frequency of w with s by rf ( w , s ) = f ( w , s ) f req ( w ) .
+If f ( w , s ) = 0 , the frequency of each synset of w is increased by a small constant .
+We use = .1 in our prototype .
+Word Polarities
+We contend that there exists a relation between the sentiment orientation of a word and the polarities of its related senses ( synsets ) , and we make the assumption that this relation takes the form of a linear function .
+Thus , for w ?
+W and p ? {+ , ? , 0 } , the polarity distribution of w is defined as : P p ( w ) = s?Sw g( w , s ) ? P p ( s ) , ( 1 ) where P p ( s ) is the polarity value of synset s with polarity p and g( w , s ) is a rational number .
+For example , g can be the relative frequency of s with respect to w in WordNet : g( w , s ) = rf ( w , s ) ; ?w ?
+W , s ?
+S. Alternatively , for each word w we can draw g( w , ? ) from a Zipfian distribution , following the observation that the distribution of word senses roughly follows a Zipfian power-law ( Kilgarriff , 2004 ; Sanderson , 1999 ) .
+In this paper , we will assume g( w , s ) = rf ( w , s ) .
+For example , the three synsets of the adjective reliable with relative frequencies 9 11 , 1 11 , and 1 11 , respectively , are given the distributions .375 , 0 , .625 , .5 , 0 , .5 , and .625 , 0 , .375 in SentiWordNet .
+So for reliable we have P + = 9 11 0.375 + 1 11 0.5 + 1 11 0.625 ? 0.41 , P ? = 0 , and P 0 = 9 11 0.625 + 1 11 0.5 + 1 11 0.375 ? 0.59 .
+Modeling Sentiment Orientation in SLs Words and synsets have unique polarities in some SLs , e.g. , AL and OF .
+For instance , reliable has positive polarity in AL , GI , and OF .
+The question is : what does a discrete annotation of reliable tell us about its polarity distribution ?
+One might take it to mean that the polarity distribution is simply 1 , 0 , 0 .
+This contradicts the information in SWN , which gives some neutral polarity for all of the synsets of reliable .
+So a better polarity distribution would allow P 0 > 0 .
+Furthermore , given that .41 , 0 , .59 , .40 , 0 , .60 , and .45 , 0 , .55 give virtually identical information to a sentiment analyst , it seems unreasonable to expect exactly one to be the correct polarity tag for reliable and the other two incorrect .
+Therefore , instead of claiming to pinpoint an exact polarity distribution for a word , we propose to set a boundary on its variation .
+This establishes a range of values , instead of a single point , in which SLs can be said to agree .
+Thus , for a word w , we can define polarity ( w ) = + if P + > P ? ? if P ? > P + ( 2 ) which we refer to as MAX POL .
+This model is adopted either explicitly or implicitly by numerous works ( Hassan and Radev , 2010 ; Kim and Hovy , 2004 ; Kim and Hovy , 2006 ; Qiu et al. , 2009 ) .
+Another model is the majority sense model , called MAJORITY , ( Dragut et al. , 2012 ) , where polarity ( w ) = + if P + > P ? + P 0 ? if P ? > P + + P 0 ( 3 ) Another polarity model , MAX , is defined as polarity ( w ) = + if P + > P ? & P + > P 0 ? if P ? > P + & P ? > P 0 ( 4 ) For instance , reliable conveys positive polarity according to MAX POL , since P + > P ? , but neutral according to MAJORITY .
+When the condition of being neither positive nor negative can be phrased as a conjunction of linear inequalities , as is the case with MAJORITY and MAX POL , then we define neutral as not positive and not negative .
+These model definitions can be applied to synsets as well .
+Polarity Consistency Definition Instead of defining consistency for SLs dependent on a choice of model , we develop a generic definition applicable to a wide variety of models , including all of those discussed above .
+We require that the polarity of a word or synset in the network N be characterized by a set of linear inequalities ( constraints ) with rational coefficients .
+Formally , for each word w ?
+W , the knowledge that w has a discrete polarity p ? {+ , ? , 0 } is characterized by a set of linear inequalities : ?( w , p ) = { a i,0 P + + a i,1 P ? + a i,2 P 0 b i } , ( 5 ) where ? {? , <} and a i,0 , a i,1 , a i,2 , b i ?
+Q , i = 0 , 1 , . . . , m.
+For instance , if the MAX model is used , for w = worship whose polarity is positive in OF , we get the following set of inequalities : ?( w , +) = { P + ?P ? > 0 , P + ?P 0 > 0 } = {( ?1 ) P + +1P ? +0P 0 < 0 , ( ?1 ) P + +0P ? +1P 0 < 0 }. Let L be an SL .
+We denote the system of inequalities introduced by all words and synsets in L with known polarities in the network N by ? ( N , L ) .
+The variables in ?
+( N , L ) are p? {+ , ?,0 } ( r) ? 0 , ?r ? W ? S. Let ?
+( N , L ) = ?
+( N , L ) ? ? ( N , L ) .
+Example 1 . Let w 1 , w 2 , w 3 , and w 4 be the nouns perseverance , persistence , pertinacity , and tenacity , respectively , which are in OF with polarities + , 0 , ? , and + , respectively ( Figure 2 ) .
+Assuming the MAJORITY model , ?( w 1 , + ) = { P + ( w 1 ) > P ? ( w 1 ) + P 0 ( w 1 ) } = { P + ( w 1 ) > 1 ? P + ( w 1 ) } = {?P + ( w 1 ) < ? 1 2 } , and ?( w 2 , 0 ) = { P + ( w 2 ) ? P ? ( w 2 ) + P 0 ( w 2 ) , P ? ( w 2 ) ? P + ( w 2 ) + P 0 ( w 2 ) } = { P + ( w 2 ) ? 1 2 , P ? ( w 2 ) ? 1 2 }. Similarly , ?( w 3 , ? ) = {?P ? ( w 3 ) < ? 1 2 } and ?( w 4 , ? ) = {?P + ( w 4 ) < ?
+1 2 }. Definition 1 . A sentiment lexicon L is consistent if the system ? ( N , L ) is feasible , i.e. , has a solution .
+The PCP is then the problem of deciding if a given SL L is consistent .
+In general , PCP can be stated as follows : Given an assignment of polarities to the words , does there exist an assignment of polarities to the synsets that agrees with that of the words ?
+If the polarity annotation is discrete , we have the PCP -D ; if the polarity is fractional , we have PCP -F .
+Our focus is PCP - F in this paper .
+The benefits of a generic problem model are at least two -fold .
+First , different linguists may have different views about the kinds of inequalities one should use to express the probability distribution of a word with a unique polarity in some SL .
+The new model can accommodate divergent views as long as they are expressed as linear constraints .
+Second , the results proven for the generic model will hold for any particular instance of the model .
+Polarity Consistency : an LP Approach A careful analysis of the proposed formulation of the problem of SL consistency checking reveals that this can be naturally translated into an LP problem .
+The goal of LP is the optimization of a linear objective function , subject to lin-ear ( in ) equality constraints .
+LP problems are expressed in standard form as follows : minimize c T x subject to Ax ? b ( 6 ) and x ?
+0 x represents the vector of variables ( to be determined ) , c and b are vectors of ( known ) coefficients , A is a ( known ) matrix of coefficients , and ( ? )
+T is the matrix transpose .
+An LP algorithm finds a point in the feasible region where c T x has the smallest value , if such a point exists .
+The feasible region is the set of x that satisfy the constraints Ax ? b and x ? 0 .
+There are several non-trivial challenges that need to be addressed in transforming our problem ( i.e. , the system ? ( N , L ) ) into an LP problem .
+For instance , we have both strict and weak inequalities in our model , whereas standard LP does not include strict inequalities .
+We describe the steps of this transformation next .
+Translation to LP
+In our problem , x is the concatenation of all the triplets P + ( r ) , P ? ( r ) , P 0 ( r ) for all r ? W ? S. Eliminate Word Related Variables .
+For each word w ?
+L we replace P + ( w ) , P ? ( w ) and P 0 ( w ) with their corresponding expressions according to Equation 1 ; then the linear system ?
+( N , L ) has only the synset variables P + ( s ) , P ? ( s ) and P 0 ( s ) for s ? S. Example ( continued ) .
+Using the relative frequencies of Figure 2 in Equation 1 we get : ?( w 1 , + ) = {?.5 P + ( s 1 ) ? .5P + ( s 2 ) < ? 1 2 } , ?( w 2 ,0 ) = {.29P + ( s 1 )+.01P + ( s 2 ) +.7P + ( s 3 ) ? 1 2 , .29P ? ( s 1 ) + .01P ? ( s 2 ) + .7P ? ( s 3 ) ? 1 2 } , ?( w 3 , ? ) = {?P ? ( s 1 ) < ? 1 2 } , and ?( w 4 , + ) = {?P + ( s 1 ) < ?
+1 2 }. Equality .
+The system ?
+( N , L ) contains constraints of the form P + ( s ) + P ? ( s ) + P 0 ( s ) = 1 for each s ?
+S , but observe that there are no equality constraints in the standard LP form ( Equation 6 ) .
+The usual conversion procedure is to replace a given equality constraint : a T x = b , with : a T x ? b and ?a T x ? ?b.
+However , this procedure increases the number of constraints in ?
+( N , L ) linearly .
+This can have a significant computation impact since ?
+( N , L ) may have thousands of constraints ( see discussion in Section 5.3 ) .
+Instead , we can show that the system F obtained by performing the following two -step transformation is equivalent to ?
+( N , L ) , in the sense that F is feasible iff ? ( N , L ) is feasible .
+For every s ?
+S , ( Step 1 ) we convert each P + ( s ) + P ? ( s ) + P 0 ( s ) = 1 to P + ( s ) + P ? ( s ) ? 1 , and ( Step 2 ) we replace every P 0 ( s ) in ? ( N , L ) with 1 ?P + ( s ) ?P ? ( s ) .
+Strict Inequalities .
+Strict inequalities are not allowed in LP and their presence in inequality systems in general poses difficulties to inequality system solvers ( Goberna et al. , 2003 ; Goberna and Rodriguez , 2006 ; Ghaoui et al. , 1994 ) .
+Fortunately results developed by the LP community allow us to overcome this obstacle and maintain the flexibility of our proposed model .
+We introduce a new variable y ?
+0 , and for every strict constraint of the form a T x < b , we rewrite the inequality as a T x + y ? b. Let ?
+( N , L ) be this new system of constraints .
+We modify the objective function ( previously null ) to maximize y ( i.e. , minimize ?y ) .
+Denote by F the LP that maximizes y subject to ? ( N , L ) .
+We can show that ?
+( N , L ) is feasible iff F is feasible and y = 0 .
+A sketch of the proof is as follows : if y > 0 then a T x + y ?
+b implies a T x < b. Conversely , if a T x < b then ?y > 0 such that a T x + y ? b , and maximizing for y will yield a y > 0 iff one is feasible .
+This step is omitted if we have no strict constraints in ? ( N , L ) .
+Example ( continued ) .
+The formulations of ?( w 1 , + ) , ?( w 3 , ? ) , and ?( w 4 , + ) involve strict inequalities , so they are rewritten in ? ( N , L ) , e.g. , ? ( w 4 , + ) = {?P + ( s 1 ) + y ? ? 1 2 }. We denote by ?( N , L ) the standard form of ?
+( N , L ) obtained by applying the above steps .
+This is the input to an LP solver .
+Theorem 1 . Sentiment lexicon L is polarity consistent iff ?( N , L ) is feasible .
+Time Complexity
+For the network N and an SL L , the above translation algorithm converts the PCP into an LP problem on the order of O ( |E | ) , a polynomial time conversion .
+The general class of linear programming problems includes subclasses that are NP - hard , such as the integer linear programming ( ILP ) problems , as well as polynomial solvable subclasses .
+We observe that our problem is represented by a system of rational linear inequalities .
+This class of LP problems is solvable in polynomial time ( Khachiyan , 1980 ; G?cs and Lov?sz , 1981 ) .
+This ( informally ) proves that the PCP - F is solvable in polynomial time .
+PCP is NP - complete in the discrete case ( Dragut et al. , 2012 ) .
+This is not surprising since in our LP formulation of the PCP , the discrete case corresponds to the 0 - 1 integer programming ( BIP ) subclass .
+( Recall that in the discrete case each synset has a unique polarity . )
+BIP is the special case of integer programming where variables are required to be 0 or 1 .
+BIP is a classic NP - hard problem ( Garey and Johnson , 1990 ) .
+We summarize these statements in the following theorem .
+Theorem 2 .
+The PCP -F problem is P and the PCP -D is NP - complete .
+We proved a more general and more comprehensive result than Dragut et al . ( 2012 ) .
+The PCP solved by Dragut et al . ( 2012 ) is a particular case of PCP -D : it can be obtained by instantiating our framework with the MAJORITY model ( Equation 3 ) and requiring each synset to take a unique polarity .
+We believe that the ability to encompass both fractional and discrete cases within one framework , that of LP , is an important contribution , because it helps to give structure to the general problem of polarity consistency and to contextualize the difference between the approaches .
+Towards Debugging SLs
+Simply stating that an SL is inconsistent is of little practical use unless accompanying assistance in diagnosing and repairing inconsistencies is provided .
+Automated assistance is necessary in the face of the scale and complexity of modern SLs : e.g. , AL has close to 7,000 entries , SWN annotates the of WordNet , over 206,000 word-sense pairs .
+There are unique and interesting problems associated with inconsistent SLs , among them : ( 1 ) isolate a ( small ) subset of words / synsets that is polarity inconsistent , but becomes consistent if one of them is removed ; we call this an Irreducible Polarity Inconsistent Subset ( IPIS ) ; ( 2 ) return an IPIS with smallest cardinality ( intuitively , such a set is easiest to repair ) ; ( 3 ) find all IPISs , and ( 4 ) find the largest polarity consistent subset of an inconsistent SL .
+In the framework of linear systems of constraints , the problems ( 1 ) -( 4 ) correspond to ( i ) the identification of an Irreducible Infeasible Subset ( IIS ) of constraints within ?( N , L ) , ( ii ) finding IIS of minimum cardinality , ( iii ) finding all IISs and ( iv ) finding the largest set of constraints in ?( N , L ) that is feasible , respectively .
+An IIS is an infeasible subset of constraints that becomes feasible if any single constraint is removed .
+Problems ( ii ) -( iv ) are NP - hard and some may even be difficult to approximate ( Amaldi and Kann , 1998 ; Chinneck , 2008 ; Chakravarti , 1994 ; Tamiz et al. , 1996 ) .
+We focus on problem ( 1 ) in this paper , which we solve via IIS discovery .
+We keep a bijective mapping from words and synsets to constraints such that for any given constraint , we can uniquely identify the word or synset in ?( N , L ) from which it was introduced .
+Hence , once an IIS is isolated , we know the corresponding words or synsets .
+Modern LP solvers typically can give an IIS when a system is found to be infeasible , but none give all IISs or the IIS of minimum size .
+Example ( continued ) .
+The polarity assignments of w 1 , w 2 , w 3 , and w 4 , are consistent iff there exist polarity distributions P + ( s i ) , P ? ( s i ) , P 0 ( s i ) for i = 1 , 2 , 3 , such that : y > 0 ?( w 1 , + ) : ?.5P + ( s 1 ) + .5P + ( s 2 ) + y ? ? 1 2 , ?( w 2 ,0):.29P + ( s 1 ) + .01P + ( s 2 ) + .7P + ( s 3 ) ? 1 2 AND .29P ? ( s 1 ) + .01P ? ( s 2 ) + .7P ? ( s 3 ) ? 1 2 , ?( w 3 , ? ) : ?P ? ( s 1 ) + y ? ? 1 2 , ?( w 4 , + ) : ?P + ( s 1 ) + y ? ? 1 2 , ?( s 1 ) : P + ( s 1 ) +P ? ( s 1 ) ? 1AND P + ( s 1 ) , P ? ( s 1 ) ? 0 , ?( s 2 ) : P + ( s 2 ) +P ? ( s 2 ) ? 1AND P + ( s 2 ) , P ? ( s 2 ) ? 0 , ?( s 3 ) : P + ( s 3 ) +P ? ( s 3 ) ? 1AND P + ( s 3 ) , P ? ( s 3 ) ?
+0 . Upon examination , if y > 0 , then ?( w 3 , ? ) implies P ? ( s 1 ) > 1 2 and ?( w 4 , + ) implies P + ( s 1 ) > 1 2 . Then P + ( s 1 ) + P ? ( s 1 ) > 1 , contradicting ?( s 1 ) .
+Hence , this LP system is infeasible .
+Moreover {?( w 3 , ? ) , ?( w 4 , + ) , ?( s 1 ) } is an IIS .
+Tracing back we get that the set of words {w 3 , w 4 } is inconsistent .
+Therefore it is an IPIS .
+Isolating IPISs helps focus SL diagnosis and repair efforts .
+Fixing SLs via IIS isolation proceeds iteratively : ( 1 ) isolate an IIS , ( 2 ) determine a repair for this IIS , ( 3 ) if the model is still infeasible , go to step ( 1 ) .
+This approach is well summarized by Greenberg 's aphorism : " diagnosis = isolation + explanation " ( Greenberg , 1993 ) .
+The proposed use requires human interaction to effect the changes to the lexicon .
+One might ask if this involvement is strictly necessary ; in response we draw a parallel between our SL debugger and a software debugger .
+A software debugger can identify a known programming error , say the use of an undefined variable .
+It informs the programmer , but it does not assign a value to the variable itself .
+It requires the user to make the desired assignment .
+Similarly , our debugger can deterministically identify an inconsistent component , but it cannot deterministically decide which elements to adjust .
+In most cases , this is simply not an objective decision .
+To illustrate this point , from our example , we know that minimally one of pertinacity ( ? ) and tenacity ( + ) must be adjusted , but the determination as to which requires the subjective analysis of a domain expert .
+In this paper , we do not repair any of the discovered inconsistencies .
+We focus on isolating as many IPISs as possible .
+Experiments
+The purpose of our experimental work is manifold , we show that : ( 1 ) inconsistencies exist in and between SLs , ( 2 ) our algorithm is effective at uncovering them in the various types of SLs proposed in the literature , ( 3 ) fractional polarity representation is more flexible than discrete , giving orders of magnitude fewer inconsistencies , and ( 4 ) sentiment analysis is significantly improved when the inconsistencies of a basis SL are corrected .
+Experiment Setup :
+We use four SWLs : GI , AL , OF and their union , denoted UN , and three SSLs : QWN , SWN and MicroWN - Op .
+The distribution of their entries is given in Table 1 .
+The MAJORITY model ( Equation 3 ) is used in all trials .
+This allows for direct comparison with Dragut et al . ( 2012 ) .
+We implemented our algorithm in Java interfacing with the GUROBI LP solver 2 , and ran the tests on a 4 ? 1.70 GHz core computer with 6GB of main memory .
+Inconsistencies in SWLs
+In this set of experiments , we apply our algorithm to GI , AL , OF and UN .
+We find no inconsistencies in AL , only 2 in GI , and 35 in both UN and OF ( Table 2 ) .
+( Recall that an inconsistency is a set of words whose polarities cannot be concomitantly satisfied . )
+These numbers do not represent all possible inconsistencies ( See discussion in Section 4 ) .
+In general , the number of IISs for an infeasible system can be exponential in the size of the system ?( N , L ) ( Chakravarti , 1994 ) , however our results suggest that in practice this does not occur .
+Compared with Dragut et al . ( 2012 ) , we see a marked decrease in the number of inconsistencies .
+They found 249 , 2 , 14 , and 240 inconsistencies in UN , AL , GI , and OF , respectively .
+These inconsistencies are obtained in the first iteration of their SAT - Solver .
+This shows that about 86 % of inconsistent words in a discrete framework can be made consistent in a fractional system .
+Inconsistencies in SSLs
+In this set of experiments we check the polarity inconsistencies between SWLs and SSLs .
+We pair each SSL with each of the SWLs .
+SentiWordNet .
+SWN is an automatically generated SL with a fractional polarity annotation of every synset in WordNet .
+Since SWN annotates every synset in WordNet , there are no free variables in this trial .
+Each variable P p? {+ , ?,0 } ( s ) for s ?
+S is fully determined by SWN , so this amounts to a constant on the left hand side of each inequality .
+Our task is to simply check whether the inequality holds between the constant on the left and that on the right .
+Table 3 gives the proportion of words from each SWL that is inconsistent with SWN .
+We see there is substantial disagreement between SWN and all of the SWLs , in most cases more than 70 % disagreement .
+For example , 5,260 of the 6,921 words in OF do not agree with the polarities assigned to their senses in SWN .
+This outcome is deeply surprising given that all these SLs are domain independent - no step in their construction processes hints to a specific domain knowledge .
+This opens up the door to future analysis of SL acquisition .
+For instance , examining the impact that model choice ( e.g. , MAJORITY vs. MAX ) has on inter-lexicon agreement .
+Q-WordNet .
+QWN gives a discrete polarity for 15,510 WordNet synsets .
+When a synset is annotated in QWN , its variables , P p? {+ , ?,0 } ( s ) , are assigned the QWN values in ? ; a feasible assignment is sought for the remaining free variables .
+An inconsistency may occur among a set of words , or Micro-WNOp .
+This is a fractional SSL of 1,105 synsets from WordNet manually annotated by five annotators .
+The synsets are divided into three groups : 110 annotated by the consensus of the annotators , 496 annotated individually by three annotators , and 499 annotated individually by two annotators .
+We take the average polarities of groups 2 and 3 and include this data as two additional sets of values .
+Table 5 gives the inconsistencies per user in each group .
+For Groups 2 and 3 , we give the average number of inconsistencies among the users ( Avg. Incons . in Table 5 ) as well as the inconsistencies of the averaged annotations ( Avg. User in Table 5 ) .
+Micro-WNOp gives us an opportunity to analyze the robustness of our method by comparing the number of inconsistencies of the individual users to that of the averaged annotation .
+Intuitively , we expect that the average number of inconsistencies in a group of users to be close to the number of inconsistencies for the user averaged annotations .
+This is clearly apparent from Table 5 , when comparing Lines 4 and 5 in Group 2 and Lines 3 and 4 in Group 3 .
+For example , Group 2 has an average of 68 inconsistencies for OF , which is very close to the number of inconsistencies , 63 , obtained for the group averaged annotations .
+This study suggests a potential application of our algorithm : to estimate the confidence weight ( trust ) of a user 's polarity annotation .
+A user with good polarity consistency receives a higher weight than one with poor polarity consistency .
+This can be applied in a multi-annotator SL scenario .
+Computation
+We provide information about the runtime execution of our method in this section .
+Over all of our experiments , the resulting systems of constraints can be as small as 2 constraints with 2 variables Table 5 : Micro-WNOp - SWD
+Inconsistencies and as large as 3,330 constraints with 4,946 variables .
+We achieve very good overall execution times , 68 sec. on average .
+At its peak , our algorithm requires 770 MB of memory .
+Compared to the SAT approach by Dragut et al . ( 2012 ) , which takes about 10 min .
+and requires about 10 GB of memory , our method is several orders of magnitude more efficient and more practical , paving the way to building practical SL debugging tools .
+Inconsistency & Sentiment Annotation
+This experiment has two objectives : ( 1 ) show that two inconsistent SLs give very different results when applied to sentiment analysis tasks and ( 2 ) given an inconsistent SL D , and D an improved version of D with fewer inconsistencies , show that D gives better results than D in sentiment analysis tasks .
+We use a third - party sentiment annotation tool that utilizes SLs , Opinion Parser ( Liu , 2012 ) .
+We give the instantiations of D below .
+In ( 1 ) , we use the dataset aclImdb ( Maas et al. , 2011 ) , which consists of 50,000 reviews , and the SLs UN and SWN .
+Let UN and SWN be the subsets of UN and SWN , respectively , with the property that they have the same set of ( word , pos ) pair entries and word appears in aclImdb .
+UN and SWN have 6,003 entries .
+We select from aclImdb the reviews with the property that they contain at least 50 words in SWN and UN .
+This gives 516 negative and 567 positive reviews , a total of 1,083 reviews containing a total of 31,701 sentences .
+Opinion Parser is run on these sentences using SWN and UN .
+We obtain that 16,741 ( 52.8 % ) sentences acquire different polarities between the two SLs .
+In ( 2 ) , we use 110 randomly selected sentences from aclImdb , which we manually tagged with their overall polarities .
+We use OF and OF , where OF is the version of OF after just six inconsistencies are manually fixed .
+We run Opinion Parser on these sentences using OF and OF .
+We obtain an accuracy of 42 % with OF and 47 % with OF , an improvement of 8.5 % for just a small fraction of corrected inconsistencies .
+These two experiments show a strong correlation between polarity inconsistency in SLs and its effect on sentiment tagging in practice .
+Conclusion Resolving polarity inconsistencies helps to improve the accuracy of sentiment analysis tasks .
+We show that LP theory provides a natural framework for the polarity consistency problem .
+We give a polynomial time algorithm for deciding whether an SL is polarity consistent .
+If an SL is found to be inconsistent , we provide an efficient method to uncover sets of words or word senses that are inconsistent and require linguists ' attention .
+Effective SL debugging tools such as this will help in the development of improved SLs for use in sentiment analysis tasks .
+Figure 2 : A network of 4 words and 3 synsets P + ( r ) , P ? ( r ) and P 0 ( r ) , r ? W ? S. Denote by ?
+( N , L ) the set of constraints implied by the polarity distributions for all r ? L : P + ( r ) +P ? ( r ) + P 0 ( r ) = 1 and P p? {+ , ?,0 } ( r) ? 0 , ?r ? W ? S. Let ?
+( N , L ) = ? ( N , L ) ? ? ( N , L ) .

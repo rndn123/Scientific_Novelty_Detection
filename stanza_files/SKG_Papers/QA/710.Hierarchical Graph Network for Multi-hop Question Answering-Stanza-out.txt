@@ -1,0 +1,207 @@
+title
+Hierarchical Graph Network for Multi-hop Question Answering
+abstract
+In this paper , we present Hierarchical Graph Network ( HGN ) for multi-hop question answering .
+To aggregate clues from scattered texts across multiple paragraphs , a hierarchical graph is created by constructing nodes on different levels of granularity ( questions , paragraphs , sentences , entities ) , the representations of which are initialized with pre-trained contextual encoders .
+Given this hierarchical graph , the initial node representations are updated through graph propagation , and multihop reasoning is performed via traversing through the graph edges for each subsequent sub-task ( e.g. , paragraph selection , supporting facts extraction , answer prediction ) .
+By weaving heterogeneous nodes into an integral unified graph , this hierarchical differentiation of node granularity enables HGN to support different question answering sub-tasks simultaneously .
+Experiments on the HotpotQA benchmark demonstrate that the proposed model achieves new state of the art , outperforming existing multi-hop QA approaches .
+1
+Introduction
+In contrast to one- hop question answering ( Rajpurkar et al. , 2016 ; Trischler et al. , 2016 ; Lai et al. , 2017 ) where answers can be derived from a single paragraph ( Wang and Jiang , 2017 ; Seo et al. , 2017 ; Liu et al. , 2018 ; Devlin et al. , 2019 ) , many recent studies on question answering focus on multi-hop reasoning across multiple documents or paragraphs .
+Popular tasks include WikiHop ( Welbl et al. , 2018 ) , ComplexWebQuestions ( Talmor and Berant , 2018 ) , and HotpotQA .
+An example from HotpotQA is illustrated in Figure 1 .
+In order to correctly answer the question ( " The director of the romantic comedy ' Big Stone Gap ' is based in what New York city " ) , the model is 1 Code will be released at https://github.com/yuwfan/HGN.
+required to first identify P1 as a relevant paragraph , whose title contains the keywords that appear in the question ( " Big Stone Gap " ) .
+S1 , the first sentence of P1 , is then chosen by the model as a supporting fact that leads to the next- hop paragraph P2 .
+Lastly , from P2 , the span " Greenwich Village , New York City " is selected as the predicted answer .
+Most existing studies use a retriever to find paragraphs that contain the right answer to the question ( P1 and P2 in this case ) .
+A Machine Reading Comprehension ( MRC ) model is then applied to the selected paragraphs for answer prediction ( Nishida et al. , 2019 ; Min et al. , 2019 b ) .
+However , even after successfully identifying a reasoning chain through multiple paragraphs , it still remains a critical challenge how to aggregate evidence from scattered sources on different granularity levels ( e.g. , paragraphs , sentences , entities ) for joint answer and supporting facts prediction .
+To better leverage fine- grained evidences , some studies apply entity graphs through query - guided multi-hop reasoning .
+Depending on the characteristics of the dataset , answers can be selected either from entities in the constructed entity graph ( Song et al. , 2018 ; Dhingra et al. , 2018 ; De Cao et al. , 2019 ; Tu et al. , 2019 ; Ding et al. , 2019 ) , or from spans in documents by fusing entity representations back into token - level document representation ( Xiao et al. , 2019 ) .
+However , the constructed graph is mostly used for answer prediction only , while insufficient for finding supporting facts .
+Also , reasoning through a simple entity graph ( Ding et al. , 2019 ) or paragraph-entity hybrid graph ( Tu et al. , 2019 ) lacks the ability to support complicated questions that require multi-hop reasoning .
+Intuitively , given a question that requires multiple hops through a set of documents to reach the right answer , a model needs to : ( i ) identify paragraphs relevant to the question ; ( ii ) determine strong supporting evidence in those paragraphs ; and ( iii ) pinpoint the right answer following the garnered evidence .
+To this end , Graph Neural Network with its inherent message passing mechanism that can pass on multi-hop information through graph propagation , has great potential of effectively predicting both supporting facts and answer simultaneously for complex multi-hop questions .
+Motivated by this , we propose a Hierarchical Graph Network ( HGN ) for multi-hop question answering , which empowers joint answer / evidence prediction via multi-level fine - grained graphs in a hierarchical framework .
+Instead of only using entities as nodes , for each question we construct a hierarchical graph to capture clues from sources with different levels of granularity .
+Specifically , four types of graph node are introduced : questions , paragraphs , sentences and entities ( see Figure 2 ) .
+To obtain contextualized representations for these hierarchical nodes , large-scale pre-trained language models such as BERT ( Devlin et al. , 2019 ) and RoBERTa ( Liu et al. , 2019 ) are used for contextual encoding .
+These initial representations are then passed through a Graph Neural Network for graph propagation .
+The updated node representations are then exploited for different sub-tasks ( e.g. , paragraph selection , supporting facts prediction , entity prediction ) .
+Since answers may not be entities in the graph , a span prediction module is also introduced for final answer prediction .
+The main contributions of this paper are threefold : ( i ) We propose a Hierarchical Graph Network ( HGN ) for multi-hop question answering , where heterogeneous nodes are woven into an integral hierarchical graph .
+( ii ) Nodes from different granularity levels mutually enhance each other for different sub-tasks , providing effective supervision signals for both supporting facts extraction and answer prediction .
+( iii )
+On the HotpotQA benchmark , the proposed model achieves new state of the art in both Distractor and Fullwiki settings .
+Related Work Multi-Hop QA Multi-hop question answering requires a model to aggregate scattered pieces of evidence across multiple documents to predict the right answer .
+WikiHop ( Welbl et al. , 2018 ) and Hot-potQA are two recent datasets designed for this purpose .
+Existing work on Hot-potQA Distractor setting focuses on converting the multi-hop reasoning task into single - hop subproblems .
+Specifically , QFE ( Nishida et al. , 2019 ) regards evidence extraction as a query -focused summarization task , and reformulates the query in each hop .
+DecompRC ( Min et al. , 2019 b ) decomposes a compositional question into simpler sub-questions and leverages single - hop MRC models to answer the sub-questions .
+A neural modular network is also proposed in Jiang and Bansal ( 2019 b ) , where neural modules are dynamically assembled for more interpretable multi-hop reasoning .
+Recent studies Min et al. , 2019a ; Jiang and Bansal , 2019a ) have also studied the multi-hop reasoning behaviors that models have learned in the task .
+Graph Neural Network Recent studies on multi-hop QA also build graphs based on entities and reasoning over the constructed graph using graph neural networks ( Kipf and Welling , 2017 ; Veli?kovi ?
+et al. , 2018 ) . MHQA -GRN ( Song et al. , 2018 ) and Coref-GRN ( Dhingra et al. , 2018 ) construct an entity graph based on co-reference resolution or sliding windows .
+Entity-GCN
+( De Cao et al. , 2019 ) considers three different types of edges that connect different entities in the entity graph .
+HDE - Graph ( Tu et al. , 2019 ) ( Xiao et al. , 2019 ) constructs a dynamic entity graph , where in each reasoning step irrelevant entities are softly masked out and a fusion module is designed to improve the interaction between the entity graph and documents .
+More recently , SAE ( Tu et al. , 2020 ) defines three types of edge in the sentence graph based on the named entities and noun phrases appearing in the question and sentences .
+C2F Reader ( Shao et al. , 2020 ) uses graph attention or self-attention on entity graph , and argues that this graph may not be necessary for multi-hop reasoning .
+Asai et al. ( 2020 ) proposes a new graph - based recurrent method to find evidence documents as reasoning paths , which is more focused on information retrieval .
+Different from the above methods , our proposed model constructs a hierarchical graph , effectively exploring relations on different granularities and employing different nodes to perform different tasks .
+Hierarchical Coarse-to- Fine Modeling Previous work on hierarchical modeling for question answering is mainly based on a coarse- to -fine framework .
+Choi et al. ( 2017 ) proposes to use reinforcement learning to first select relevant sentences and then produce answers from those sentences .
+Min et al. ( 2018 ) investigates the minimal context required to answer a question , and observes that most questions can be answered with a small set of sentences .
+Swayamdipta et al. ( 2018 ) constructs lightweight models and combines them into a cas-cade structure to extract the answer .
+Zhong et al. ( 2019 ) proposes to use hierarchies of co-attention and self-attention to combine information from evidence across multiple documents .
+Different from the above methods , our proposed model organizes different granularities in a hierarchical manner and leverages graph neural network to obtain the representations for different downstream tasks .
+Hierarchical Graph Network
+As illustrated in Figure 2 , the proposed Hierarchical Graph Network ( HGN ) consists of four main components : ( i ) Graph Construction Module ( Sec. 3.1 ) , through which a hierarchical graph is constructed to connect clues from different sources ; ( ii ) Context Encoding Module ( Sec. 3.2 ) , where initial representations of graph nodes are obtained via a RoBERTa - based encoder ; ( iii ) Graph Reasoning Module ( Sec. 3.3 ) , where graph-attention - based message passing algorithm is applied to jointly update node representations ; and ( iv ) Multi-task Prediction Module ( Sec. 3.4 ) , where multiple subtasks , including paragraph selection , supporting facts prediction , entity prediction , and answer span extraction , are performed simultaneously .
+Graph Construction
+The hierarchical graph is constructed in two steps : ( i ) identifying relevant multi-hop paragraphs ; and ( ii ) adding edges representing connections between sentences / entities within the selected paragraphs .
+Paragraph Selection
+We first retrieve paragraphs whose titles match any phrases in the question ( title matching ) .
+In addition , we train a para-graph ranker based on a pre-trained RoBERTa encoder , followed by a binary classification layer , to rank the probabilities of whether the input paragraphs contain the ground - truth supporting facts .
+If multiple paragraphs are found by title matching , only two paragraphs with the highest ranking scores are selected .
+If title matching returns no results , we further search for paragraphs that contain entities appearing in the question .
+If this also fails , the paragraph ranker will select the paragraph with the highest ranking score .
+The number of selected paragraphs in the first - hop is at most 2 .
+Once the first-hop paragraphs are identified , the next step is to find facts and entities within the paragraphs that can lead to other relevant paragraphs ( i.e , , the second hop ) .
+Instead of relying on entity linking , which could be noisy , we use hyperlinks ( provided by Wikipedia ) in the first -hop paragraphs to discover second -hop paragraphs .
+Once the links are selected , we add edges between the sentences containing these links ( source ) and the paragraphs that the hyperlinks refer to ( target ) , as illustrated by the dashed orange line in Figure 2 .
+In order to allow information flow from both directions , the edges are considered as bidirectional .
+Through this two -hop selection process , we are able to obtain several candidate paragraphs .
+In order to reduce introduced noise during inference , we use the paragraph ranker to select paragraphs with top - N ranking scores in each step .
+Nodes and Edges Paragraphs are comprised of sentences , and each sentence contains multiple entities .
+This graph is naturally encoded in a hierarchical structure , and also motivates how we construct the hierarchical graph .
+For each paragraph node , we add edges between the node and all the sentences in the paragraph .
+For each sentence node , we extract all the entities in the sentence and add edges between the sentence node and these entity nodes .
+Optionally , edges between paragraphs and edges between sentences can also be included in the final graph .
+Each type of these nodes captures semantics from different information sources .
+Thus , the hierarchical graph effectively exploits the structural information across all different granularity levels to learn fine- grained representations , which can locate supporting facts and answers more accurately than simpler graphs with homogeneous nodes .
+An example hierarchical graph is illustrated in Figure 2 .
+We define different types of edges as follows : ( i ) edges between question node and paragraph nodes ; ( ii ) edges between question node and its corresponding entity nodes ( entities appearing in the question , not shown for simplicity ) ; ( iii ) edges between paragraph nodes and their corresponding sentence nodes ( sentences within the paragraph ) ; ( iv ) edges between sentence nodes and their linked paragraph nodes ( linked through hyperlinks ) ; ( v ) edges between sentence nodes and their corresponding entity nodes ( entities appearing in the sentences ) ; ( vi ) edges between paragraph nodes ; and ( vii ) edges between sentence nodes that appear in the same paragraph .
+Note that a sentence is only connected to its previous and next neighboring sentence .
+The final graph consists of these seven types of edges as well as four types of nodes , which link the question to paragraphs , sentences , and entities in a hierarchical way .
+Context Encoding Given the constructed hierarchical graph , the next step is to obtain the initial representations of all the graph nodes .
+To this end , we first combine all the selected paragraphs into context C , which is concatenated with the question Q and fed into pre-trained Transformer RoBERTa , followed by a bi-attention layer ( Seo et al. , 2017 ) .
+We denote the encoded question representation as Q = {q 0 , q 1 , . . . , q m?1 } ?
+R m?d , and the encoded context representation as C = {c 0 , c 1 , ... , c n?1 } ?
+R n?d , where m , n are the length of the question and the context , respectively .
+Each q i and c j ?
+R d .
+A shared BiLSTM is applied on top of the context representation C , and the representations of different nodes are extracted from the output of the BiLSTM , denoted as M ? R n?2d .
+For entity / sentence / paragraph nodes , which are spans of the context , the representation is calculated from : ( i ) the hidden state of the backward LSTM at the start position , and ( ii ) the hidden state of the forward LSTM at the end position .
+For the question node , a max-pooling layer is used to obtain its representation .
+Specifically , p i = MLP 1 M[ P ( i ) start ] [ d : ] ; M[ P ( i ) end ] [ :d ] s i = MLP 2 M[ S ( i ) start ] [ d : ] ; M[ S ( i ) end ] [ :d ] e i = MLP 3 M[ E ( i ) start ] [ d : ] ; M[ E ( i ) end ] [ :d ] q = max-pooling ( Q ) , ( 1 ) where P ( i ) start , S ( i ) start , and E ( i ) start denote the start position of the i-th paragraph / sentence / entity node .
+Similarly , P ( i ) end , S ( i ) end , and E ( i ) end denote the corresponding end positions . MLP ( ? ) denotes an MLP layer , and [ ; ] denotes the concatenation of two vectors .
+As a summary , after context encoding , each p i , s i , and e i ?
+R d , serves as the representation of the i-th paragraph / sentence / entity node .
+The question node is represented as q ?
+R d .
+Graph Reasoning After context encoding , HGN performs reasoning over the hierarchical graph , where the contextualized representations of all the graph nodes are transformed into higher - level features via a graph neural network .
+Specifically , let P = {p i } np i=1 , S = {s i } ns i=1 , and E = {e i } ne i=1 , where n p , n s and n e denote the number of paragraph / sentence / entity nodes in a graph .
+In experiments , we set n p = 4 , n s = 40 and n e = 60 ( padded where necessary ) , and denote H = {q , P , S , E} ?
+R g?d , where g = n p + n s + n e + 1 , and d is the feature dimension of each node .
+For graph propagation , we use Graph Attention Network ( GAT ) ( Veli?kovi ?
+et al. , 2018 ) to perform message passing over the hierarchical graph .
+Specifically , GAT takes all the nodes as input , and updates node feature h i through its neighbors N i in the graph .
+Formally , h i = LeakyRelu j?N i ? ij h j W , ( 2 ) where h j is the j th vector from H , W ?
+R d?d is a weight matrix 2 to be learned , and ? ij is the attention coefficients , which can be calculated by : ? ij = exp ( f ( [ h i ; h j ]w e ij ) ) k?N i exp ( f ( [ h i ; h k ]w e ik ) ) , where w e ij ?
+R 2d is the weight vector corresponding to the edge type e ij between the i-th and jth nodes , and f ( ? ) denotes the LeakyRelu activation function .
+In a summary , after graph reasoning , we obtain H = {h 0 , h 1 , . . . , h g } ?
+R g?d , from which the updated representations for each type of node can be obtained , i.e. , P ? R np?d , S ? R ns?d , E ? R ne?d , and q ?
+R d .
+Gated Attention
+The graph information will further contribute to the context information for answer span extraction .
+We merge the context representation M and the graph representation H via a gated attention mechanism : C = Relu( MW m ) ? Relu ( H W m ) T H = Softmax ( C ) ? H G = ?( [ M ; H]W s ) ? Tanh ( [ M ; H]W t ) , ( 4 ) where W m ? R 2d?2d , W m ? R 2d?2d , W s ? R 4d?4d , W t ? R 4d?4d are weight matrices to learn .
+G ? R n?4d is the gated representation which will be used for answer span extraction .
+Multi-task Prediction
+After graph reasoning , the updated node representations are used for different sub-tasks : ( i ) paragraph selection based on paragraph nodes ; ( ii ) supporting facts prediction based on sentence nodes ; and ( iii ) answer prediction based on entity nodes and context representation G. Since the answers may not reside in entity nodes , the loss for entity node only serves as a regularization term .
+In our HGN model , all three tasks are jointly performed through multi-task learning .
+The final objective is defined as : L joint = L start + L end + ?
+1 L para + ?
+2 L sent + ?
+3 L entity + ?
+4 L type , ( 5 ) where ?
+1 , ? 2 , ? 3 , and ?
+4 are hyper-parameters , and each loss function is a cross-entropy loss , calculated over the logits ( described below ) .
+For both paragraph selection ( L para ) and supporting facts prediction ( L sent ) , we use a two -layer MLP as the binary classifier : o sent = MLP 4 ( S ) , o para = MLP 5 ( P ) , ( 6 ) where o sent ?
+R ns represents whether a sentence is selected as supporting facts , and o para ?
+R np represents whether a paragraph contains the ground -truth supporting facts .
+We treat entity prediction ( L entity ) as a multiclass classification problem .
+Candidate entities include all entities in the question and those that match the titles in the context .
+If the ground - truth answer does not exist among the entity nodes , the entity loss is zero .
+Specifically , o entity = MLP 6 ( E ) . ( 7 )
+The entity loss will only serve as a regularization term , and the final answer prediction will only rely on the answer span extraction module as follows .
+The logits of every position being the start and end of the ground - truth span are computed by a two -layer MLP on top of G in Eqn . ( 4 ) : o start = MLP 7 ( G ) , o end = MLP 8 ( G ) . ( 8 ) Following previous work ( Xiao et al. , 2019 ) , we also need to identify the answer type , which includes the types of span , entity , yes and no .
+We use a 3 - way two - layer MLP for answer -type classification based on the first hidden representation of G : o type = MLP 9 ( G[ 0 ] ) . ( 9 ) During decoding , we first use this to determine the answer type .
+If it is " yes " or " no " , we directly return it as the answer .
+Overall , the final cross-entropy loss ( L joint ) used for training is defined over all the aforementioned logits : o sent , o para , o entity , o start , o end , o type .
+Experiments
+In this section , we describe experiments comparing HGN with state - of - the - art approaches and provide detailed analysis on the model and results .
+Dataset
+We use HotpotQA dataset for evaluation , a popular benchmark for multi-hop QA .
+Specifically , two sub-tasks are included in this dataset : ( i ) Answer prediction ; and ( ii ) Supporting facts prediction .
+For each sub-task , exact match ( EM ) and partial match ( F1 ) are used to evaluate model performance , and a joint EM and F1 score is used to measure the final performance , which encourages the model to take both answer and evidence prediction into consideration .
+There are two settings in HotpotQA : Distractor and Fullwiki setting .
+In the Distractor setting , for each question , two gold paragraphs with groundtruth answers and supporting facts are provided , along with 8 ' distractor ' paragraphs that were collected via a bi-gram TF - IDF retriever ( Chen et al. , 2017 ) .
+The Fullwiki setting is more challenging , which contains the same training questions as in the Distractor setting , but does not provide relevant paragraphs for test set .
+To obtain the right answer and supporting facts , the entire Wikipedia can be used to find relevant documents .
+Implementation details can be found in Appendix B. Joint EM / F1 with 2.57/1.08 improvement , despite using an inferior retriever ; when using the same retriever as in SemanticRetrievalMRS ( Yixin Nie , 2019 ) , our method outperforms by a significant margin , demonstrating the effectiveness of our multi-hop reasoning approach .
+In the following sub-sections , we provide a detailed analysis on the sources of performance gain on the dev set .
+Additional ablation study on paragraph selection is provided in Appendix D.
+Experimental Results
+Results on Test Set
+Effectiveness of Hierarchical Graph
+As described in Section 3.1 , we construct our graph with four types of nodes and seven types of edges .
+For ablation study , we build the graph step by step .
+First , we only consider edges from question to paragraphs , and from paragraphs to sentences , i.e. , only edge type ( i ) , ( iii ) and ( iv ) are considered .
+We call this the PS Graph .
+Based on this , entity nodes and edges related to each entity node ( corresponding to edge type ( ii ) and ( v ) ) are added .
+We call this the PSE Graph .
+Lastly , edge types ( vi ) and ( vii ) are added , resulting in the final hierarchical graph .
+As shown in Table 4 , the use of PS Graph improves the joint F1 score over the plain RoBERTa model by 2.81 points .
+By further adding entity nodes , the Joint F1 increases by 0.30 points .
+This indicates that the addition of entity nodes is helpful , but may also bring in noise , thus only leading to limited performance improvement .
+By including edges among sentences and paragraphs , our final hierarchical graph provides an additional improvement of 0.24 points .
+We hypothesize that this is due to the explicit connection between sentences that leads to better representations .
+Effectiveness of Pre-trained Language Model
+To verify the effects of pre-trained language models , we compare HGN with prior state - of - the - art methods using the same pre-trained language models .
+Results in Table 5 show that our HGN variants outperform DFGN , EPS and SAE , indicating the performance gain comes from better model design .
+Analysis
+In this section , we provide an in- depth error analysis on the proposed model .
+HotpotQA provides two reasoning types : " bridge " and " comparison " .
+" Bridge " questions require the identification of a bridge entity that leads to the answer , while " comparison " questions compare two entities to infer the answer , which could be yes , no or a span of text .
+For analysis , we further split " comparison " questions into " comp-yn " and " comp-span " .
+Table 6 indicates that " comp-yn " questions are the easiest , on which our model achieves 88.5 joint F1 score .
+HGN performs similarly on " bridge " and " comp-span " with 74 joint F1 score , indicating that there is still room for further improvement .
+To provide a more in - depth understanding of our Note that these error types are not mutually exclusive , but we aim to classify each example into only one type , in the order presented above .
+For example , if an error is classified as ' Commonsense & External Knowledge ' type , it cannot be classified as ' Multi-hop ' or ' MRC ' error .
+Table 3 shows examples from each category ( the corresponding paragraphs are omitted due to space limit ) .
+We observed that a lot of errors are due to the fact that some questions have multiple answers with the same meaning , such as " a body of water vs. creek " , " EPA vs. Environmental Protection Agency " , and " American - born vs. U.S. born " .
+In these examples , the former is the ground - truth answer , and the latter is our model 's prediction .
+Secondly , for questions that require commonsense or discrete reasoning ( e.g. , " second " means " Code # 02 " 3 , " which band has more members " , or " who was born earlier " ) , our model just randomly picks an entity as answer , as it is incapable of performing this type of reasoning .
+The majority of the errors are from either multi-hop reasoning or MRC model 's span selection , which indicates that there is still room for further improvement .
+Additional examples are provided in Appendix F.
+Generalizability Discussion
+The hierarchical graph can be applied to different multi-hop QA datasets , though in this paper mainly tailored for HotpotQA .
+Here we use Wikipedia hyperlinks to connect sentences and paragraphs .
+An alternative way is to use an entity linking system to make it more generalizable .
+For each sentence node , if its entities exist in a paragraph , an edge can be added to connect the sentence and paragraph nodes .
+In our experiments , we restrict the number of multi-hops to two for the HotpotQA task , which can be increased to accommodate other datasets .
+The maximum number of paragraphs is set to four for HotpotQA , as we observe that using more documents within a maximum sequence length does not help much ( see Table 9 in the Appendix ) .
+To generalize to other datasets that need to consume longer documents , we can either : ( i ) use sliding - windowbased method to chunk a long sequence into short ones ; or ( ii ) replace the BERT - based backbone with other transformer - based models that are capable of dealing with long sequences ( Beltagy et al. , 2020 ; Zaheer et al. , 2020 ; .
+Conclusion
+In this paper , we propose a new approach , Hierarchical Graph Network ( HGN ) , for multi-hop 3 Please refer to Row 4 in Table 3 for more context .
+question answering .
+To capture clues from different granularity levels , our HGN model weaves heterogeneous nodes into a single unified graph .
+Experiments with detailed analysis demonstrate the effectiveness of our proposed model , which achieves state - of - the - art performances on the Hot-potQA benchmark .
+Currently , in the Fullwiki setting , an off-the-shelf paragraph retriever is adopted for selecting relevant context from large corpus of text .
+Future work includes investigating the interaction and joint training between HGN and paragraph retriever for performance improvement .
+Victor Zhong , Caiming Xiong , Nitish Keskar , and Richard Socher .
+2019 .
+Coarse-grain fine -grain coattention network for multi-evidence question answering .
+In ICLR .

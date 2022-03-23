@@ -1,0 +1,199 @@
+title
+Uncertainty - Aware Balancing for Multilingual and Multi-Domain Neural Machine Translation Training
+abstract
+Learning multilingual and multi-domain translation model is challenging as the heterogeneous and imbalanced data make the model converge inconsistently over different corpora in real world .
+One common practice is to adjust the share of each corpus in the training , so that the learning process is balanced and low-resource cases can benefit from the highresource ones .
+However , automatic balancing methods usually depend on the intra-and interdataset characteristics , which is usually agnostic or requires human priors .
+In this work , we propose an approach , MULTIUAT , that dynamically adjusts the training data usage based on the model 's uncertainty on a small set of trusted clean data for multi-corpus machine translation .
+We experiment with two classes of uncertainty measures on multilingual ( 16 languages with 4 settings ) and multi-domain settings ( 4 for in - domain and 2 for out - of- domain on English - German translation ) and demonstrate our approach MULTIUAT substantially outperforms its baselines , including both static and dynamic strategies .
+We analyze the crossdomain transfer and show the deficiency of static and similarity based methods .
+1
+Introduction
+Text corpora are commonly collected from several different sources in different languages , raising the problem of learning a NLP system from the heterogeneous corpora , such as multilingual models ( Wu and Dredze , 2019 ; Arivazhagan et al. , 2019 ; Aharoni et al. , 2019 ; Freitag and Firat , 2020 ; Arthur et al. , 2021 ) and multi-domain models ( Daum ?
+III , 2007 ; Li et al. , 2019 ; Deng et al. , 2020 ; Jiang et al. , 2020 ) .
+A strong demand is to deploy a unified model for all the languages and domains , because a unified model is much more resource -efficient , and knowledge learned from high- resource languages / domains ( HRLs / HRDs ) can be transferred to low-resource languages / domains ( LRLs / LRDs ) .
+One common issue on training models across corpora is that data from a variety of corpora are both heterogeneous ( different corpora reveal different linguistic properties ) and imbalance ( the accessibility of training data varies across corpora ) .
+The standard practice to address this issue is to adjust the training data distribution heuristically by up-sampling the training data from LRLs / LRDs ( Arivazhagan et al. , 2019 ; Conneau et al. , 2020 ) . Arivazhagan et al. ( 2019 ) rescale the training data distribution with a heuristic temperature term and demonstrate that the ideal temperature can substantially improve the overall performance .
+However , the optimal value for such heuristics is both hard to find and varies from one experimental setting to another ( Wang and Neubig , 2019 ; Wang et al. , 2020a , b) . Wang et al. ( 2020a ) and Wang et al . ( 2020 b ) hypothesize that the training data instances that are similar to the validation set can be more beneficial to the evaluation performance and propose a general reinforcement - learning framework Differentiable Data Selection ( DDS ) that automatically adjusts the importance of data points , whose reward is the cosine similarity of the gradients between a small set of trusted clean data and training data .
+They instantiate this framework on multilingual NMT , known as MULTIDDS , to dynamically weigh the importance of language pairs .
+Both the hypothesis and the proposed approach rely on the assumption that knowledge learned from one corpus can always be beneficial to the other corpora .
+However , their assumption does not always hold .
+If the knowledge learned from one corpus is not able to be transferred easily or is useless to the other corpora , this approach fails .
+Unlike cosine similarity , model uncertainty is free from the aforementioned assumption on cross-corpus transfer .
+From a Bayesian viewpoint , the model parameters can be considered as a random variable that describes the dataset .
+If one dataset is well - described by the model parameters , its corresponding model uncertainty is low , and vice versa .
+This nature makes the model uncertainty an ideal option to weigh the datasets .
+In this work , we propose an approach MUL - TIUAT that leverages the model uncertainty as the reward to dynamically adjust the sampling probability distribution over multiple corpora .
+We consider the model parameter as a random variable that describes the multiple training corpora .
+If one corpus is well - described by the model compared with other corpora , we spare more training efforts to the other poorly described corpora .
+We conduct extensive experiments on multilingual NMT ( 16 languages with 4 settings ) and multi-domain NMT ( 4 for indomain and 2 for out - of- domain ) , comparing our approach with heuristic static strategy and dynamic strategy .
+In multilingual NMT , we improve the overall performance from + 0.83 BLEU score to + 1.52 BLEU score among 4 settings , comparing with the best baseline .
+In multi-domain NMT , our approach improves the in-domain overall performance by + 0.58 BLEU score comparing with the best baseline and achieves the second best out -ofdomain overall performance .
+We also empirically illustrate the vulnerability of cosine similarity as the reward in the training among multiple corpora .
+Preliminaries Standard NMT
+A standard NMT model , parameterized by ? ? ? , is commonly trained on one language pair D o trn = {( x x x , y y y ) i } M i=1 from one domain .
+The objective is to minimize the negative log-likelihood of the training data with respect to ? ? ? : L s ( D o trn ; ? ? ? ) = ?
+M i=1 log p(y y y|x x x ; ? ? ? ) . ( 1 ) Multi-corpus NMT
+Both multilingual NMT and multi-domain NMT can be summarized as multicorpus NMT that aims to build a unified translation system to maximize the overall performance across all the language pairs or domains .
+Formally , let us assume we are given a number of datasets D trn = { D j trn } N j=1 from N languages pairs or domains , in which D j trn = { ( x x x , y y y ) j i } M j i=1 , where M j is size of j-th language / domain .
+Similar to Equation 1 , a simple way of training multi-corpus NMT model is to treat all instances equally : L( D trn ; ? ? ? ) = N j=1 L s ( D j trn ; ? ? ? ) . ( 2 )
+Heuristic strategy for multi-corpus training In practice , Equation 2 can be reviewed as training using mini- batch sampling according to the proportion of these corpora , q( n ) = Mn N i=1 M i , and thus we minimize : L( D trn ; ? ? ? , q( n ) ) = E n?q( n ) [ L s ( D n trn ; ? ? ? ) ] . ( 3 ) However , this simple training method does not work well in real cases , where low-resource tasks are under-trained .
+A heuristic static strategy is to adjust the proportion exponentiated by a temperature term ?
+( Arivazhagan et al. , 2019 ; Conneau et al. , 2020 ) : q ? ( n ) = q(n ) 1 / ? N i=1 q( i ) 1 / ? . ( 4 ) And the loss function for multi-corpus training can be re-formulated as : L( D trn ; ? ? ? , q ? ( n ) ) = E n?q? ( n ) [ L s ( D n trn ; ? ? ? ) ] .
+( 5 ) Specifically , ? = 1 or ? = ? is equivalent to proportional ( Equation 2 ) or uniform sampling respectively .
+Differentiable Data Selection ( DDS ) Wang et al. ( 2020a ) propose a general framework that automatically weighs training instances to improve the performance while relying on an independent set of held - out data D dev .
+Their framework consists of two major components , the model ? ? ? and the scorer network ? ? ?.
+The scorer network ? ? ? is trained to assign a sampling probability to each training instance , denoted as p ? ? ? ( x x x , y y y ) , based on its contribution to the validation performance .
+The training instance that contributes more to the validation performance is assigned a higher probability and more likely to be used for updating the model ? ? ?.
+This strategy aims to maximize the overall performance over D dev and is expected to generalize well on the unseen D tst with the assumption of the independence and identical distribution between D dev and D tst .
+Therefore , the objective can formulated as : and ? ? ? and ? ? ? are updated iteratively using bilevel optimization ( Colson et al. , 2007 ; von Stackelberg et al. , 2011 ) .
+Methodology
+In this work , we leverage the idea of DDS under the multi-corpus scenarios .
+We utilize a differentiable domain / language scorer ? ? ? to weigh the training corpora .
+To learn ? ? ? , we exploit the model uncertainty to measure the model 's ability over the target corpus .
+Below , we elaborate on the details of our method .
+Model Uncertainty Model uncertainty can be a measure that indicates whether the model parameters ? ? ? are able to describe the data distribution well ( Kendall and Gal , 2017 ; Dong et al. , 2018 ; Xiao and Wang , 2019 ) .
+Bayesian neural networks can be used for quantifying the model uncertainty ( Buntine and Weigend , 1991 ) , which models the ? ? ? as a probabilistic distribution with constant input and output .
+From the Bayesian point of view , ? ? ? is interpreted as a random variable with the prior p( ? ? ? ) .
+Given a dataset D , the posterior p(? ? ?|D ) can be obtained via Bayes ' rule .
+However , the exact Bayesian inference is intractable for neural networks , so that it is common to place the approximation q(? ? ? ) to the true posterior p(? ? ?|D ) .
+Several variational inference methods have been proposed ( Graves , 2011 ; Blundell et al. , 2015 ; Gal and Ghahramani , 2016 ) .
+In this work , we leverage Monte Carlo Dropout ( Gal and Ghahramani , 2016 ) to obtain samples of sentence - level translation probability .
+To quantify the model uncertainty when the model makes predictions , we treat the sentence - level translation probability as random variable .
+We run K forward passes with a random subset of model parameters ? ? ? deactivated , which is equivalent to drawing samples from the random variable , and average the samples as the estimate of the model uncertainty .
+2 Consider an ensemble of models { p ? ? ? k ( y y y|x x x ) }
+K k=1 sampled from the approximate posterior q(? ? ? ) , the predictive posterior can be obtained by taking the expectation over multiple inferences : p(y y y|x x x , D ) ? E ? ? ?q(? ? ? ) [ p( y y y|x x x , ? ? ? ) ] ? 1 K K k=1 p ? ? ? k ( y y y|x x x ) . ( 7 ) 2 K is set to 30 in our work .
+? ? ? ? ? ? ? ? N n=1 R ( n ) ? ? ? ? ? log p ? ? ? ( n ) ; 12 end 13 end
+Uncertainty - Aware Training
+To make the training more efficient and stable , MULTIUAT leverages the scorer network ? ? ? to dynamically adjust the sampling probability distribution of domains / languages .
+3
+We present the pseudo-code for training with MULTIUAT in Algorithm 1 . MULTIUAT firstly parameterizes the initial sampling probability distribution for multi-corpus training with ? ? ? as Equation 4 with the warm - up temperature ? = 1 . For the computational efficiency , the scorer network ? ? ? is updated for every S steps .
+When updating ? ? ? , we randomly draw one mini-batch from each validation set { D i dev } N i=1 and compute the corresponding uncertainty measure as in Section 3.3 with Monte Carlo Dropout to approximate the model uncertainty towards this corpus , assuming the validation set is representative enough for its corresponding true distribution .
+The corpus associated with high uncertainty is considered to be relatively poorly described by the model ? ? ? and its sampling probability will be increased .
+The model ? ? ? is updated by mini-batch gradient descent between two updates of ? ? ? , like common gradient - based optimization , and hence the objective is formulated as follows : ? ? ? = argmin ? ? ? L( D dev ; ? ? ?(? ? ? ) ) ? ? ?(? ? ? ) = argmin ? ? ? E n?p ? ? ? ( n ) [ L ( D n trn ; ? ? ? ) ] . ( 8 ) A considerable problem here is Equation 6 is not directly differentiable w.r.t. the scorer ? ? ?.
+To tackle this problem , reinforcement learning ( RL ) with suitable reward functions is required ( Fang et al. , 2017 ; Wang et al. , 2020a ) : ? ? ? ? ? ? ? ? N n=1 R ( n ) ? ? ? ? ? log p ? ? ? ( n ) . ( 9 ) Details for the reward functions R ( n ) are depicted at Section 3.3 and the update of ? ? ? follows the RE-INFORCE algorithm ( Williams , 1992 ) .
+Uncertainty Measures
+We explore the utility of two groups of model uncertainty measures : probability - based and entropybased measures at the sentence level Fomicheva et al. , 2020 ; Malinin and Gales , 2021 ) .
+Probability - Based Measures
+We explore four probability - based uncertainty measures following the definition of .
+For the sampled model parameters ? ? ? k , with the teacher - forced decoding , we note the predicted probability of the t-th position as : ?n , t = argmax y p( y|x x x n , y y y n , <t ; ? ? ? k ) , ( 10 ) where we have used the ground truth prefix y y y n , <t in the conditioning context .
+We then define the reward function as the following uncertainty measures : ? Predicted Translation Probability ( PRETP ) :
+The predicted probability of the sentence , R PRETP ( n ; ? ? ? k ) = 1 ? T t=1 p( ? n, t |x x x n , y y y n , <t ; ? ? ? k ) . ? Expected Translation Probability ( EXPTP ) :
+The expectation of the distribution of maximal position - wise translation probability , R EXPTP ( n ; ? ? ? k ) = 1 ?E [ p ( ?
+n, t |x x x n , y y y n , <t ; ? ? ? k ) ]
+. ? Variance of Translation Probability ( VARTP ) :
+The variance of the distribution of maximal position - wise translation probability , R VARTP ( n ; ? ? ? k ) = Var [ p ( ?
+n, t |x x x n , y y y n , <t ; ? ? ? k ) ]
+. ? Combination of Expectation and Variance ( COMEV ) : R COMEV ( n ; ? ? ? k ) = Var [ p ( ?
+n, t |x x x n , y y y n , <t ; ? ? ? k ) ] E [ p ( ?
+n, t |x x x n , y y y n , <t ; ? ? ? k ) ]
+. Entropy - Based Measures Malinin and Gales ( 2021 ) consider the uncertainty estimation for autoregressive models at the token - level and sequencelevel and treat the entropy of the posterior as the total uncertainty in the prediction of y y y .
+Following their interpretation , we leverage the entropy as the measure of the model uncertainty .
+Drawing a pair of sentence ( x x x , y y y ) with T target tokens from the n-th corpus D n , the reward function is defined as the averaged entropy over all the positions : R( n ; ? ? ? ) = 1 T T t=1 V v=1 p(y n, t , v ) log p(y n , t , v ) . ( 11 ) where V is the vocabulary size and p(y n, t , v ) stands for the predicted conditional probability p(y n,t , v |x x x , y y y n ,<t , v ; ? ? ? k ) on the v-th word in the vocabulary .
+In this work , we explore the utility of two entropy - based uncertainty measures as follows : ?
+Entropy of the sentence ( ENTSENT ) :
+The average entropy of the sentence as defined in Equation 11 . ? Entropy of EOS ( ENTEOS ) :
+The entropy of the symbol EOS in the sentence as defined in Equation 11 where t = T . Following Equation 7 , we have the final reward by multiple sampled ? ? ? k for each uncertainty reward respectively : R( n ) = 1 K K k=1 R {.} ( n ; ? ? ? k ) . ( 12 ) 4 Experimental Setup
+Baselines
+We compare MULTIUAT with both static and dynamic strategies as follows : Heuristics
+We run experiments with proportional ( PROP . , ? = 1 ) , temperature ( TEMP . , ? = 5 ) and uniform ( UNI . , ? = ? ) in Equation 4 following Wang et al . ( 2020 b ) .
+MULTIDDS -S
+We compare with the best model MULTIDDS -S proposed by Wang et al . ( 2020 b ) over multilingual NMT tasks .
+Its reward for the n-th corpus is defined using cosine similarity : R cos ( n ) = 1 N N i=1 cos ( ?
+? ? ? L( D i dev ) , ? ? ? ? L( D n trn ) ) . ( 13 )
+Multilingual Setup
+We follow the identical setup as Wang et al . ( 2020 b ) in the multilingual NMT .
+The model is trained on two sets of language pairs based on the language diversity .
+Related 4 LRLs ( Azerbaijani : aze , Belarusian : bel , Glacian : glg , Slovak : slk ) and a related HRL for each LRL ( Turkish : tur , Russian : rus , Portuguese : por , Czech : ces ) .
+Diverse 8 languages with varying amounts of data , picked without consideration for relatedness ( Bosnian : bos , Marathi : mar , Hindi : hin , Macedonian:mkd , Greek : ell , Bulgarian : bul , French : fra , Korean : kor ) .
+We run many - to-one ( M2O , translating 8 languages to English ) and one-to-many ( O2 M , translating English to 8 languages ) translations for both diverse and related setups .
+4
+Multi-Domain Setup
+We run experiments on English - German translation and collect six corpora from WMT2014 ( Bojar et al. , 2014 ) and the Open Parallel Corpus ( Tiedemann , 2012 ) , 4 for in- domain and 2 for out-ofdomain : In -Domain ( ID ) ( i ) WMT , from WMT2014 translation task ( Bojar et al. , 2014 ) with the concatenation from newstest2010 to newstest2013 for validation and newstest2014 for testing ; ( ii ) Tanzil , 5 a collection of Quran translations ; ( iii ) EMEA , 6 a parallel corpus from the European Medicines Agency ; ( iv ) KDE , 7 a parallel corpus of KDE4 localization files .
+Train Valid Test ID WMT 3 , 950K 11K 3 K Tanzil 449K 3 K 3 K EMEA 277K 3 K 3 K KDE 135K 3 K 3 K OOD QED - - 3 K TED - - 3 K Table 1 : Dataset statistics of multi-domain corpora .
+Out - Of-Domain ( OOD ) ( i ) QED , 8 a collection of subtitles for educational videos and lectures ( Abdelali et al. , 2014 ) ; ( ii ) TED , 9 a parallel corpus of TED talk subtitles .
+These two domains are only used for out - of- domain evaluation .
+All these corpora are first tokenized by Moses ( Koehn et al. , 2007 ) and processed into sub-word units by BPE ( Sennrich et al. , 2016 ) with 32 K merge operations .
+Sentence pairs that are duplicated and violates source-target ratio of 1.5 are removed .
+The validation sets and test sets are randomly sampled , except for WMT .
+The dataset statistics are listed in Table 1 .
+Model Architecture
+We believe all the approaches involved in this work , including the baseline approaches and MULTIUAT , are model- agnostic .
+To validate this idea , we experiment two variants of transformer ( Vaswani et al. , 2017 ) .
+For multilingual NMT , the model architecture is a transformer with 4 attention heads and 6 layers .
+10
+And for multi-domain NMT models , we use the standard transformer - base with 8 attention heads and 6 layers .
+11
+All the models in this work are implemented by fairseq ( Ott et al. , 2019 ) .
+Evaluation
+We report detokenized BLEU ( Papineni et al. , 2002 ) using SacreBLEU ( Post , 2018 ) with statistical significance given by Koehn ( 2004 ) . 12 ? BLEU is the macro average of BLEU scores within the same setting , with the assumption that all the language pairs / domains are equally important .
+Main Results
+The summarized results for both multilingual and multi-domain NMT are presented in Table 2 . 13
+The complete results with statistical significance can be found in Appendix A. Multilingual NMT Overall , dynamic strategies ( MULTIDDS -S and MULTIUAT ) demonstrate their superiority against heuristic static strategies .
+As shown in Table 2 , the optimal ? of heuristic static strategies varies as the combination of corpora changes .
+For example , proportional sampling yields best performance on M2O settings , yet achieves the worst performance on O2M settings among heuristic static strategies .
+Dynamic strategies are free from adjusting the data usage by tuning the ? . MULTIDDS -S marginally outperforms heuristic static strategies .
+MULTIUAT with various uncertainty measures reaches the best performance in all four settings .
+Based on the detailed results in Appendix A , we can observe that MULTIUAT appears to be more favorable to HRLs .
+Multi-domain NMT MULTIUAT outperforms all its baselines on in-domain evaluation and achieves the second best performance on out-ofdomain evaluation .
+MULTIUAT with PRETP achieves the optimal balance on in-domain evaluation and the one with EXPTP achieves the second best performance on out-of- domain evaluation .
+However , MULTIDDS -S performs poorly on multi-domain NMT and is even outperformed by some heuristic static strategies .
+Based on the detailed results in Appendix A , we can observe that the higher sampling probability for certain domain is commonly but not always positively correlated to the corresponding indomain performance .
+Uniformly sampling minibatches from domains does not result in the best performance on LRDs , because the LRDs with too much up-sampling are not able to fully leverage the knowledge from the HRDs .
+Analysis Wang et al. ( 2020 b ) conduct exhaustive analyses on multilingual NMT and most of our observations are consistent with theirs .
+14 Hence , we focus more on analyzing the results on multi-domain NMT .
+Comparison of Uncertainty Measures
+We explore the utility of different uncertainty measures and display the summarized results in Table 2 .
+Different uncertainty measures deliver different results .
+We do not observe one uncertainty measure that consistently outperforms others .
+The probability - based uncertainty measures seem to be more sensitive to the intra-and inter-dataset characteristics , and perform well on either multilingual NMT or multi-domain NMT .
+MULTIUAT with the uncertainty measure of VARTP performs substantially worse than other uncertainty measures in multi-domain NMT .
+In contrast to the probabilitybased uncertainty measures , the entropy - based uncertainty measures are more robust to the change of datasets and deliver relatively stable improvements .
+We also find out that MULTIUAT with the uncertainty measures demonstrate better out -ofdomain generalization in the multi-domain NMT , compared with its baselines .
+Based on the detailed results in Appendix A , MULTIUAT with the entropy - based uncertainty measures demonstrates better robustness against the change of datasets .
+Therefore , we mainly compare MULTIUAT with the uncertainty measure of ENTEOS against the baselines in the following analyses , based on the macro-average results on both multilingual and multi-domain NMT .
+Learned Distribution for Language Pairs / Domains
+We visualize the change of sampling distribution , w.r.t. the training iterations , of the multilingual O2M - diverse ( Figure 1 ) and multi-domain ( Figure 2 ) setting .
+HRLs / HRDs .
+In the multilingual NMT , we observe that the learned distributions by both MULTIDDS -S and MULTIUAT converge from proportional sampling to uniform sampling with a mild trend to divergence in the one given by MULTIDDS -S .
+In the multi-domain NMT , MULTIUAT illustrates the consistent adjustment as the trend illustrated in multilingual O2 M - diverse setting , but the learned distribution given by MULTIDDS -S is overwhelmed by Tanzil .
+The model uncertainty focuses on how well the dataset is described by the model ? ? ? , instead of the interference among datasets , so that MULTIUAT is free from the assumption on the cross-corpus transference and not affected by Tanzil .
+Why Cosine Similarity Fails ?
+15
+A natural question is raised after seeing Figure 2 : why does Tanzil overwhelm the sampling distribution by MULTIDDS -S in multi-domain NMT ?
+As in Equation 13 , MULTIDDS -S computes pairwise cosine similarities for all the language pairs / domains using sampled mini-batches between D trn and D dev to update the sampling probability .
+We average all the cosine similarity matrices during the training and visualize the averaged matrix in Figure 3 .
+As visualized , Tanzil is a highly self-correlated domain whose cosine similarity is about at least two times larger than the other values in the matrix .
+This leads to a very high reward on Tanzil , and the sampling probability of Tanzil in MULTIDDS -S keeps increasing to more than 40 % in Figure 2 .
+However , is Tanzil highly beneficial to the overall performance ?
+To probe the cross-domain generalization , we train four single- domain NMT models on each in - domain corpus and evaluate these models on all the in-domain test sets , and the results are presented in Table 4 .
+We can observe that the knowledge learned from WMT can be generalized to other domains , but the knowledge learned from Tanzil is almost not beneficial to other domains .
+Therefore , MULTIDDS -S with the datadependent cosine similarity reward is vulnerable to the change of datasets and can be possibly overwhelmed by a special dataset like Tanzil , since the cross-corpus transfer is intractable .
+Effects of Sampling Priors Both MULTIDDS -S and MULTIUAT initialize the sampling probability distribution to proportional distribution ( line 1 in Algorithm 1 ) .
+We investigate how the prior sampling distribution affects the performance and present the results in Table 3 .
+We can observe that the prior sampling distribution can affect the overall performance .
+For both MULTIDDS -S and MULTIUAT , the overall results on both in - domain and out -of- domain evaluation are negatively correlated with the prior ? .
+We also visualize the change of sampling probability of KDE given by MULTIDDS -S and MUL - TIUAT with different prior sampling distributions in Figure 4 .
+The learned sampling distribution by MULTIUAT always converges to uniform distribution , regardless of the change of prior sampling distribution .
+However , the change of priors significantly affects the learned sampling distribution of MULTIDDS -S .
+Related Work Multi-corpus NLP
+Multilingual training has been particularly prominent in recent advances driven by the demand of training a unified model for all the languages ( Dong et al. , 2015 ; Plank et al. , 2016 ; Johnson et al. , 2017 ; Arivazhagan et al. , 2019 ) . Freitag and Firat ( 2020 ) extend current English-centric training to a many - to - many setup without sacrificing the performance on Englishcentric language pairs .
+Wang et al . ( 2021 ) improve the multilingual training by adjusting gradient directions based on gradient similarity .
+Existing works on multi-domain training commonly attempt to leverage architectural domain-specific components or auxiliary loss ( Sajjad et al. , 2017 ; Tars and Fishel , 2018 ; Zeng et al. , 2018 ; Li et al. , 2018 ; Deng et al. , 2020 ; Jiang et al. , 2020 ) .
+These approaches commonly do not explore much on the training proportion across domains and are limited to in-domain prediction and less generalizable to unseen domains .
+Zaremoodi and Haffari ( 2019 ) dynamically balance the importance of tasks in multitask NMT to improve the low-resource NMT performance .
+Vu et al. ( 2021 ) leverage a pre-trained language model to select useful monolingual data from either source language or target language to perform unsupervised domain adaptation for NMT models .
+Our work is directly related to Wang et al . ( 2020a ) and Wang et al . ( 2020 b ) that leverage cosine similarity of gradients as a reward to dynamically adjust the data usage in the multilingual training .
+Model uncertainty Estimating the sequence and word-level uncertainty via Monta Carlo Dropout ( Gal and Ghahramani , 2016 ) has been investigated for NMT ( Xiao et al. , 2020 ; Fomicheva et al. , 2020 ; Malinin and Gales , 2021 ) . exploit model uncertainty on back -translation to reduce the noise in the backtranslated corpus .
+Xiao et al . ( 2020 ) and Malinin and Gales ( 2021 ) investigate to leverage model uncertainty to detect out - of- distribution translations .
+Fomicheva et al. ( 2020 ) summarize several measures to estimate quality of translated sentences , including the model uncertainty .
+Our work exploits the uncertainty measures as suggested by and Malinin and Gales ( 2021 ) .
+Conclusion
+In this work , we propose MULTIUAT , a general model - agnostic framework that learns to automatically balance the data usage to achieve better overall performance on multiple corpora based on model uncertainty .
+We run extensive experiments on both multilingual and multi-domain NMT , and empirically demonstrate the effectiveness of our approach .
+Our approach substantially outperforms other baseline approaches .
+We empirically point out the vulnerability of a comparable approach MULTIDDS -S ( Wang et al. , 2020 b ) .
+We focus on the problem that dynamically balances text corpora collected from heterogeneous sources in this paper .
+However , the heterogeneity of text corpora is far beyond the languages and domains which are discussed in this work .
+For example , the quality of datasets is not covered .
+We leave the study on the quality of datasets to the future work .

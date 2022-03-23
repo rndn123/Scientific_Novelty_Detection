@@ -1,0 +1,243 @@
+title
+Evaluating Explanation Methods for Neural Machine Translation
+abstract
+Recently many efforts have been devoted to interpreting the black - box NMT models , but little progress has been made on metrics to evaluate explanation methods .
+Word Alignment Error Rate can be used as such a metric that matches human understanding , however , it can not measure explanation methods on those target words that are not aligned to any source word .
+This paper thereby makes an initial attempt to evaluate explanation methods from an alternative viewpoint .
+To this end , it proposes a principled metric based on fidelity in regard to the predictive behavior of the NMT model .
+As the exact computation for this metric is intractable , we employ an efficient approach as its approximation .
+On six standard translation tasks , we quantitatively evaluate several explanation methods in terms of the proposed metric and we reveal some valuable findings for these explanation methods in our experiments .
+Introduction Neural machine translation ( NMT ) has witnessed great success during recent years ( Sutskever et al. , 2014 ; Bahdanau et al. , 2014 ; Gehring et al. , 2017 ; Vaswani et al. , 2017 ) .
+One of the main reasons is that neural networks possess the powerful ability to model sufficient context by entangling all source words and target words from translation history .
+The downside yet is its poor interpretability : it is unclear which specific words from the entangled context are crucial for NMT to make a translation decision .
+As interpretability is important for understanding and debugging the translation process and particularly to further improve NMT models , many efforts have been devoted to explanation methods for NMT ( Ding et al. , 2017 ; Alvarez -Melis and Jaakkola , 2017 ; Li et al. , 2019 ; Ding et al. , 2019 ; . However , little progress has been made on evaluation metric to study how good these explanation methods are and which method is better than others for NMT .
+Generally speaking , we recognize two orthogonal dimensions for evaluating the explanation methods : i ) how much the pattern ( such as source words ) extracted by an explanation method matches human understanding on predicting a target word ; or ii ) how the pattern matches predictive behavior of the NMT model on predicting a target word .
+In terms of i ) , Word Alignment Error Rate ( AER ) can be used as a metric to evaluate an explanation method by measuring agreement between human-annotated word alignment and that derived from the explanation method .
+However , AER can not measure explanation methods on those target words that are not aligned to any source words according to human annotation .
+In this paper , we thereby make an initial attempt to measure explanation methods for NMT according to the second dimension of interpretability , which covers all target words .
+The key to our approach can be highlighted as fidelity : when extracting the most relevant words with an explanation method , if those relevant words have the potential to construct an optimal proxy model that agrees well with the NMT model on making a translation decision , then this explanation method is good ( ?3 ) .
+To this end , we formalize a principled evaluation metric as an optimization problem over the expected disagreement between the optimal proxy model and the NMT model ( ?3.1 ) .
+Since it is intractable to exactly calculate the principled metric for a given explanation method , we propose an approximate metric to address the optimization problem .
+Specifically , inspired by statistical learning theory ( Vapnik , 1999 ) , we cast the optimization problem into a standard machine learning problem which is addressed in a two -step strat-egy : firstly we follow empirical risk minimization to optimize the empirical risk ; then we validate the optimized parameters on a held - out test dataset .
+Moreover , we construct different proxy model architectures by utilizing the most relevant words to make a translation decision , leading to variant approximate metric in implementation ( ?3.2 ) .
+We apply the approximate metric to evaluate four explanation methods including attention ( Bahdanau et al. , 2014 ; Vaswani et al. , 2017 ) , gradient norm , weighted gradient ( Ding et al. , 2019 ) and prediction difference ( Li et al. , 2019 ) .
+We conduct extensive experiments on three standard translation tasks for two popular translation models in terms of the proposed evaluation metric .
+Our experiments reveal valuable findings for these explanation methods : 1 ) The evaluation methods ( gradient norm and prediction difference ) are good to interpret the behavior of NMT ; 2 ) The prediction difference performs better than other methods .
+This paper makes the following contributions : ?
+It presents an attempt at evaluating the explanation methods for neural machine translation from a new viewpoint of fidelity .
+?
+It proposes a principled metric for evaluation , and to put it into practice it derives a simple yet efficient approach to approximately calculate the metric . ?
+It quantitatively compares several different explanation methods and evaluates their effects in terms of the proposed metric .
+NMT and Explanation Methods
+NMT Models Suppose x = {x 1 , ? ? ? , x | x| } denotes a source sentence with length | x | and y = {y 1 , ? ? ? , y |y | } is a target sentence .
+Most NMT literature models the following conditional probability P ( y | x ) in an encoder-decoder fashion : P ( y | x ) = t P ( y t | y <t , x ) = t P ( y t | s t ) , ( 1 ) where y <t = {y 1 , ? ? ? , y t?1 } denotes a prefix of y with length t ?
+1 , and s t is the decoding state vector of timestep t.
+In the encoding stage , the encoder of a NMT model transforms the source sentence x into a sequence of hidden vectors h = {h 1 , ? ? ? , h | x| }.
+In the decoding stage , the decoder module summarizes the hidden vectors h and the history decoding states s <t = {s 1 , ? ? ? , s t?1 } into the decoding state vector s t .
+In this paper , we consider two popular NMT translation architectures , RNN -SEARCH ( Bahdanau et al. , 2014 ) and TRANSFORMER ( Vaswani et al. , 2017 ) . RNN-SEARCH utilizes a bidirectional RNN to define h and it computes s t by the attention function over h , i.e. , s t = Attn( s t?1 , h ) , ( 2 ) where Attn is the attention function , which is defined as follows : Attn(q , v ) = i ?( q , v i ) v i , ?( q , v i ) = exp e( q , v i ) j exp e( q , v j ) , ( 3 ) where q and v i are vectors , e is a similarity function over a pair of vectors and ? is its normalized function .
+Different from RNN -SEARCH , which relies on RNN , TRANSFORMER employs an attention network to define h , and two additional attention networks to define s t as follows : 1 s t = Attn(s t+ 1 2 , h ) , s t+ 1 2 = Attn( s t?1 , s < t ) . ( 4 )
+Explanation Methods
+In this section , we describe several popular explanation methods that will be evaluated with our proposed metric .
+Suppose c t = y <t , x denotes the context at timestep t , w ( or w ) denotes either a source or a target word in the context c t .
+According to Poerner et al . ( 2018 ) , each explanation method for NMT could be regarded as a word relevance score function ?( w ; y , c t ) , where ?( w ; y , c t ) > ?( w ; y , c t ) indicates that w is more useful for the translation decision P ( y t |c t ) than word w .
+Attention Since Bahdanau et al. ( 2014 ) propose the attention mechanism for NMT , it has been the most popular explanation method for NMT ( Tu et al. , 2016 ; Mi et al. , 2016 ; Zenkel et al. , 2019 ) .
+To interpret RNN-SEARCH and TRANS - FORMER , we define different ? for them based on attention .
+For RNN -SEARCH , since attention is only defined on source side , ?( w ; y , c t ) can be defined only for the source words : ?( x i ; y , c t ) = ?( s t?1 , h i ) where ? is the attention weight defined in Eq. ( 3 ) , and s t?1 is the decoding state of RNN -SEARCH defined in Eq . ( 2 ) .
+In contrast , TRANSFORMER defines the attention on both sides and thus ?( w ; y , c t ) is not constrained to source words : ?( w ; y , c t ) = ?( s t+ 1 2 , h i ) if w = x i , ?( s t?1 , s j ) if w = y j and j < t , where s t?1 and s t+ 1 2 are defined in Eq . ( 4 ) .
+Gradient Different from attention that is restricted to a specific family of networks , the explanation methods based on gradient are more general .
+Suppose g( w , y ) denotes the gradient of P (y | c t ) w.r.t to the variable w in c t : g( w , y ) = ?P ( y | c t ) ?w ( 5 ) where ?w denotes the gradient w.r.t the embedding of the word w , since a word itself is discrete and can not be taken gradient .
+Therefore , g( w , y ) returns a vector with the same shape as the embedding of w .
+In this paper , we implement two different gradient - based explanation methods and derive different definitions of ?( w ; y , c t ) as follows .
+? Gradient Norm :
+The first definition of ? is the ?
+1 norm of g : ?( w ; y , c t ) = | g ( w , y ) | ?1 . ? Weighted Gradient ( Ding et al. , 2019 ) :
+The second one is defined as the weighted sum of the embedding of w , with the return of g as the weight : ?( w ; y , c t ) = g( w , y ) ? w .
+It is worth noting that for each sentence x , y , one has to independently calculate ?P ( y| ct ) ?w for each timestep t.
+Therefore , one has to calculate | y | times of gradient for each sentence .
+In contrast , when training NMT , one only requires calculating sentence level gradient and it only calculates one gradient thanks to gradient accumulation in back propagation algorithm .
+Prediction Difference Li et al. ( 2019 ) propose a prediction difference ( PD ) method , which defines the contribution of the word w by evaluating the change in the probability after removing w from c t .
+Formally , ?( w ; y , c t ) based on prediction difference is defined as follows : ?( w ; y , c t ) = P (y | c t ) ?
+P (y | c t \w ) where P (y | c t ) is the NMT probability of y defined in Eq. ( 1 ) , and P (y | c t \w ) denotes the NMT probability of y after excluding w from its context c t .
+To achieve the effect of excluding w from c t , it simply replaces the word embedding of w with zero vector before feeding it into the NMT model .
+Evaluation Methodology
+Principled Metric
+The key to our metric is described as follow : to define an explanation method ?
+good enough in terms of our metric , the relevant words selected by ? from the context c t should have the potential to construct an optimal model that exhibits similar behavior to the target model P ( y | c t ) .
+To formalize this metric , we first specify some necessary notations .
+Assume that f ( c t ) is the target word predicted by P (y | c t ) , i.e. , f ( c t ) = arg max y P ( y | c t ) .
+In addition , let W k ? ( c t ) be the top-k relevant words on the source side and target side of the context c t : W k ? ( c t ) = top k w?x ? w ; f ( c t ) , c t ? top k w?y <t ? w ; f ( c t ) , c t where ? denotes the union of two sets , and top k w?x ?( w ; f ( c t ) , c t ) returns words corresponding to the k largest ? values .
+2
+In addition , suppose Q(y | W k ? ( c t ) ; ? ) ( Q( ? ) or Q for brevity ) is a proxy model that makes a translation decision on top of W k ? ( c t ) rather than the entire context c t like a standard NMT model .
+Formally , we define a principled metric as follows : Definition 1
+The metric of ? is defined by min Q min ?
+?E ct log Q f ( c t ) | W k ? ( c t ) ; ? ( 6 ) where E ct [ ? ] denotes the expectation with respect to the data distribution of c t , and Q is minimized over all possible proxy models .
+The underlying idea of the above metric is to measure the expectation of the disagreement between an optimal proxy model Q constructed from ? and the NMT model P .
+Here the disagreement is measured by the minus log-likelihood of Q over the data W k ? ( c t ) , f ( c t ) whose label f ( c t ) is gener - ated from P . 3 Definition of Fidelity
+The metric of ?
+actually defines fidelity by measuring how much the optimal proxy model defined on W k ? ( c t ) disagrees with P ( y | c t ) .
+The mention of fidelity is widely used in model compression ( Bucilu ?
+et al. , 2006 ; Polino et al. , 2018 ) , model distillation ( Hinton et al. , 2015 ; Liu et al. , 2018 ) , and particularly in evaluating the explanation models for black - box neural networks ( Lakkaraju et al. , 2016 ; Bastani et al. , 2017 ) .
+These works focus on learning a specific model Q on which fidelity can be directly defined .
+However , we are interested in evaluating explanation methods ?
+where Q is a latent variable that we have to minimize .
+By doing this , fidelity in our metric is defined on ? as shown in Eq ( 6 ) .
+Approximation Generally , it is intractable to exactly calculate the principled metric due to two main challenges .
+On one hand , the real data distribution of c t is unknowable , making it impossible to exactly define the expectation with respect to an unknown distribution .
+On the other hand , the domain of a proxy model Q is not bounded , and it is difficult to minimize a model Q within an unbounded domain .
+Empirical Risk Minimization Inspired by the statistical learning theory ( Vapnik , 1999 ) , we calculate the expected disagreement over c t by a twostep strategy : we minimize the empirical risk to obtain an optimized ? for a given Q ; and then we estimate the risk defined on a held - out test set by using the optimized ?.
+In this way , we cast the principled metric into a standard machine learning task .
+For a given model architecture Q , to optimize ? , we first collect the training set as { W k ? ( c t ) , f ( c t ) } for each sentence pair x , y at every time step t , where x , y is a sentence pair from a given bilingual corpus D train = { x n , y n | n = 1 , ? ? ? , N }. Then we optimize ? by the empirical risk minimization : min ? x,y ?D train ct ? log Q( f ( c t ) | W k ? ( c t ) ; ? ) ( 7 ) Proxy Model Selection
+In response to the second challenge of the unbounded domain , we define a surrogate distribution family Q , and then approximately calculate Eq. ( 6 ) within Q instead : min Q?Q min ?
+?E ct log Q f ( c t ) | W k ? ( c t ) ; ? ( 8 ) We consider three different proxy models including multi-layer feedforward network ( FN ) , recurrent network ( RN ) and self-attention network ( SA ) .
+In details , for different networks ?
+{ FN , RN , SA} , the proxy model Q is defined as follows : Q ( y | W k ? ( c t ) ) = P (y | s t ) where s t is the decoding state regarding different architecture .
+Specifically , for feedforward network , the decoding state is defined by s FN t = FNN ( x 1 , ? ? ? , xk , ?1 , ? ? ? , ?k ) .
+For ?
+{ RN , SA} , the decoding state s t is defined by s t = Attn s 0 , {h x1 , ? ? ? , h xk , h ?1 ? ? ? , h ?k } , where x and ? are source and target side words from W k ? ( c t ) , s 0 is the query of init state , h is the position - aware representations of words , generated by the encoder of RN or SA as defined in Eq. ( 3 ) and Eq. ( 4 ) .
+For RN , s RN t is the weight - sum vectors of a bidirectional LSTM over all selected top k source and target words ; while for SA , s SA t is the weight - sum of vectors over the SA networks .
+Optimize ? * over FW train w.r.t Eq. ( 7 )
+Evaluation Paradigm 5 : Add Q ( ? * ) into Q * 6 : end for 7 : for Q * ? Q * do 8 : m Q * = 0 9 : for f ( c t ) , W k ? ( c t ) ?
+FW test do 10 : m Q * += ? log Q * ( f ( c t ) | W k ? ( c t ) ) 11 : end for 12 : end for 13 : Return min Q * ?Q * exp m Q * | F Wtest | standard process of addressing a machine learning problem , Algorithm 1 summarizes the procedure to approximately calculate the metric of ? on the test dataset D test , which returns the preplexity ( PPL ) on FW test .
+4
+In this paper , we try four different choices to specify the surrogate family , i.e. , Q = { Q FN } , Q = { Q RN } , Q = { Q SA } , and Q = { Q FN , Q RN , Q SA } , leading to four instances of our metric respectively denoted as FN , RN , SA and Comb .
+In addition , as the baseline metric , we employ the well - trained NMT model P as the proxy model Q by masking out the input words that do not appear in the rule set W k ? ( c t ) ) .
+For the baseline metric , it does n't require to train Q s parameter ? and tests on D test only .
+Since P is trained with the entire context c t whereas it is testified on W k ? ( c t ) , this mismatch may lead to poor performance and is thus less trusted .
+This baseline metric extends the idea of Arras et al . ( 2016 ) ; Denil et al. ( 2014 ) from classification tasks to structured prediction tasks like machine translation which are highly dependent on context rather than just keywords .
+Experiments
+In this section , we conduct experiments to prove the effectiveness of our metric from two viewpoints : how good an explanation method is and which explanation method is better than others .
+Settings Datasets
+We carry out our experiments on three standard IWSLT translation tasks including IWSLT14 De?En ( 167 k sentence pairs ) , IWSLT17 Zh?En ( 237 k sentence pairs ) and IWSLT17 Fr?En ( 229 k sentence pairs ) .
+All these datasets are tokenized and applied BPE ( Byte - Pair Encoding ) following Ott et al . ( 2019 ) .
+The target side vocabulary sizes of the three datasets are 8876 , 11632 , and 9844 respectively .
+In addition , we carry out extended experiments on three largescale WMT translation tasks including WMT14 De?En ( 4.5 m sentence pairs ) , WMT17 Zh?En ( 22 m sentence pairs ) and WMT14 Fr?En ( 40.8 m sentence pairs ) , with vocabulary sizes 22568 , 29832 , 27168 respectively .
+NMT Systems
+To examine the generality of our evaluation method , we conduct experiments on two NMT systems , i.e. RNN-SEARCH ( denoted by RNN ) and TRANSFORMER ( denoted by Trans . ) , both of which are implemented with fairseq ( Ott et al. , 2019 ) .
+For RNN , we adopt the 1 - layer RNN with LSTM cells whose encoder ( bi-directional ) and decoder hidden units are 256 and 512 respectively .
+For TRANSFORMER on the IWSLT datasets , the number of layers and attention heads are 2 and 4 respectively .
+For both models , we set the embedding dimensions as 256 .
+On WMT datasets , we simply use TRANSFORMER - BASE with 4 attention heads .
+The performances of our NMT models are comparable to those reported in recent literature ( Tan et al. , 2019 ) . Explanation Methods
+On both NMT systems , we implement four explanation methods , i.e. Attention ( ATTN ) , gradient norm ( NGRAD ) , weighted gradient ( WGRAD ) , and prediction difference ( PD ) as mentioned in Section ?2 .
+Our metric
+We implemented five instantiations of the proposed metric including FN , RN , SA , Comb , and Baseline ( Base for brevity ) as presented in section ?3.3 .
+To configurate them , we adopt the same settings from NMT systems to train SA and RN .
+FN is implemented with feeding the features of bag of words through a 3 - layer fully connected network .
+As given in algorithm 1 , the approximate fidelity is estimated through Q with the lowest PPL , therefore the best metric is that achieves the lowest PPL since it results in a closer approximation to the real fidelity .
+Experiments on IWSLT tasks
+In this subsection , we first conduct experiments and analysis on the IWSLT De?
+En task to configurate fidelity - based metric and then extend the experiments to other IWSLT tasks .
+Comparison of metric instantiations
+We calculate PPL on the IWSLT De?
+En dataset for four metric instantiations ( FN , RN , SA , Comb ) and Baseline ( Base ) with k = 1 to extract the most relevant words .
+Table 1 summarizes the results for two translation systems ( TRANSFORMER annotated as Trans and RNN -SEARCH annotated as RNN ) , respectively .
+Note that since there is no target-side attention in RNN - SEARCH , we can not extract the best relevant target word , so Table 1 does not include the results of ATTN method for RNN - SEARCH .
+The baseline ( Base ) achieves undesirable PPL which indicates the relevant words identified by PD failed to make the same decision as the NMT system .
+The main reason is that the mismatch between training and testing leads to the issue as presented in section ?3.3 .
+On the contrary , the other four metric instantiations attain much lower PPL than the Baseline .
+In addition , the PPLs on PD , NGRAD , and ATTN are much better than those on WGRAD .
+This finding shows that all PD , NGRAD , and ATTN are good explanation methods except WGRAD in terms of fidelity .
+Density of generalizable rules
+To understand possible reasons for why one explanation method is better under our metric , we make a naive conjecture : when it tries to reveal the patterns that the well - trained NMT has captured , it extracted more concentrated patterns .
+In other words , a generalized rule W k ? ( c t ) ? f ( c t ) from one sentence pair can often be observed among other examples .
+To measure the density of the extracted rules , we first divide all extracted rules into five bins according to their frequencies .
+Then we collect the number of rules in each bin as well as the total number of rules .
+Table 2 shows the statistics to measure the density of rules obtained from different evaluation methods .
+From this table , we can see that the density for PD is the highest among those for all explanation methods , because it contains fewer infrequent rules in B 1 , whereas there are more frequent rules in other bins .
+This might be one possible reason that PD is better under our fidelity - based evaluation metric .
+Stability of ranking order In Table 1 the ranking order is PD > NGRAD > ATTN > WGRAD regarding all five metric instantiations .
+Generally , a good metric should preserve the ranking order of explanation methods independent of the test dataset .
+Regarding this criterion of orderpreserving property , we analyze the stability of different fidelity - based metric instantiations .
+To this end , we randomly sample one thousand test data with replacement whose sizes are variant from 1 % to 100 % and then calculate the rate whether the ranking order is preserved on these test datasets .
+The results in Table 3 Effects on different k
+In this experiment , we examine the effects of explanation methods on larger k with respect to SA .
+Figure 1 depicts the effects of k for TRANSFORMER on De?En task .
+One can clearly observe two findings : 1 ) the ranking order of explanation methods is invariant for different k. 2 ) as k is larger , the PPL is much better for each explanation method .
+3 ) the PPL improvement for PD , ATTN , and NGRAD is less after k > 2 , which further validates that they are powerful in explaining NMT using only a few words .
+Testing on other scenarios
+In the previous experiments , our metric instantiations are trained and evaluated under the same scenario , where c t used to extract relevant words is obtained from gold data and its label f ( c t ) is the prediction from NMT f , namely Teacher Forcing Decode .
+To examine the robustness of our metric , we apply the trained metric to two different scenarios : real decoding scenario ( Real- Decode ) where both c t and its label f ( c t ) are from the NMT output ; and golden data scenario ( Golden - Data ) where both c t and its label are from golden test data .
+The results for both scenarios are shown in Table 5 . From Table 5 , we see that the ranking order for both scenarios is the same as before .
+To our surprise , the results in Real - Decode are even better than those in the matched Teacher Forcing Decode scenario .
+One possible reason is that the labels generated by a NMT system in the Real - Decode tend to be high- frequency words , which leads to better PPL .
+In contrast , our metric instantiation in the Golden - Data results in much higher PPL due to the mismatch between training and testing .
+The performance of experimenting training and testing in the same scenario like Golden - Data can be experimented in future works , however , it 's not the focus of this paper .
+Scalability on WMT tasks
+Since our metric such as SA requires to extract generalized rules for each explanation method from the entire training dataset , it is computationally expensive for some explanation methods such as gradient methods to directly run on WMT tasks with large scale training data .
+four explanation methods remains unchanged with respect to different sample sizes .
+Secondly , with the increase of the sample size , the metric score decreases slower and slower and there is no significant drop from sampling 2 million sentence pairs to sampling 1 million .
+Effects on sample size Results on WMT
+With the analysis of effects on various sample sizes , we choose a sample size of 1 million for the following scaling experiments .
+The PPL results for WMT De?En , Zh?En , and Fr? En are listed in Table 6 .
+We can see that the order PD > NGRAD > ATTN > WGRAD evaluated by SA still remains unchanged on these three datasets as before .
+One can observe that the ranking order under the baseline does n't agree with SA on WMT De?En and Zh?En .
+Since the baseline yields in high PPL due to the mismatch we mentioned in section ?3.3 , in this case , we tend to trust
+The airfields were crowded with airplanes as a result of many flight delays .
+Figure 3 : AER can not evaluate explanation methods on those target words " as a result of " , which are not aligned to any word in the source sentence according to human annotation .
+the evaluation results from SA that achieves lower PPL leading to better fidelity .
+Relation to Alignment Error Rate Since the calculation of the Alignment Error Rate ( AER ) requires manually annotated test datasets with ground -truth word alignments , we select three different test datasets contained such alignments for experiments , namely , IWSLT Zh?En , NIST05 Zh?En 5 and Zenkel De?En ( Zenkel et al. , 2019 ) .
+Note that unaligned target words account for 7.8 % , 4.7 % , and 9.2 % on these three test sets respectively , which are skipped by AER for evaluating explanation methods .
+For example , in Figure 3 , those target words ' as a result ' cannot be covered by AER due to the impossibility of human annotation , but for a fidelity - based metric , they can be analyzed as well .
+Table 7 demonstrates that our fidelity - based metric does not agree very well with AER on the WMT Zh?
+En task : NGRAD is better than ATTN in terms of SA but the result is opposite in terms of AER .
+Since the evaluation criteria of SA and AER are different , it is reasonable that their evaluation results are different .
+This finding is in line with the standpoint by Jacovi and Goldberg ( 2020 ) : SA is an objective metric that reflects fidelity of models while AER is a subject metric based on human evaluation .
+However , it is observed that the ranking by SA is consistent on all three tasks but that by AER is highly dependent on different tasks .
+Related Work
+In recent years , explaining deep neural models has been a growing interest in the deep learning community , aiming at more comprehensible and trustworthy neural models .
+In this section , we mainly discuss two dominating ways towards it .
+One way is to develop explanation methods to interpret a target black - box neural network ( Bach et al. , 2015 ; Zintgraf et al. , 2017 ) .
+For example , on classification tasks , Bach et al . ( 2015 ) propose layer - wise relevance propagation to visualize the relationship between a pair of neurons within networks , and Li et al . ( 2016 ) introduce a gradientbased approach to understanding the compositionality in neural networks for NLP .
+In particular , on structured prediction tasks , many research works design similar methods to understand NMT models ( Ding et al. , 2017 ; Alvarez -Melis and Jaakkola , 2017 ; Ding et al. , 2019 ; . The other way is to construct an interpretable model for the target network and then indirectly interpret its behavior to understand the target network on classification tasks ( Lei et al. , 2016 ; Murdoch and Szlam , 2017 ; Arras et al. , 2017 ; .
+The interpretable model is defined on top of extracted rational evidence and learned by model distillation from the target network .
+To extract rational evidence from the entire inputs , one either leverages a particular explanation method ( Lei et al. , 2016 ; or an auxiliary evidence extraction model ( Murdoch and Szlam , 2017 ; Arras et al. , 2017 ) .
+Although our work focuses on evaluating explanation methods and does not aim to construct an interpretable model , we draw inspiration from their ideas to design Q ? Q in Eq. ( 6 ) for our evaluation metric .
+With the increasing efforts on designing new explanation methods , yet there are only a few works proposed to evaluate them .
+Mohseni and Ragan ( 2018 ) propose a paradigm to evaluate explanation methods for document classification that involves human judgment for evaluation .
+Poerner et al. ( 2018 ) conduct the first human-independent comprehensive evaluation of explanation meth-ods for NLP tasks .
+However , their metrics are task -specific because they make some assumptions for a specific task .
+Our work proposes a principled metric to evaluate explanation methods for NMT and our evaluation paradigm is independent of any assumptions as well as humans .
+It is worth noting that Arras et al . ( 2016 ) ; Denil et al. ( 2014 ) directly measure the performance of the target model P on the extracted words without constructing Q to evaluate explanation methods for classification tasks .
+However , since translation is more complex than classification tasks , P trained on the entire context c t typically makes a terrible prediction when testing on the compressed context W k ? ( c t ) .
+As a result , the poor prediction performance makes it difficult to discriminate one explanation method from others , as observed in our internal experiments .
+Concurrently , Jacovi and Goldberg ( 2020 ) make a proposition to evaluate faithfulness of an explanation method separately from readability and plausibility ( i.e. , human-interpretability ) , which is similar to our definition of fidelity , but they do not formalize a metric or propose algorithms to measure it .
+Conclusions
+This paper has made an initial attempt to evaluate explanation methods from a new viewpoint .
+It has presented a principled metric based on fidelity in regard to the predictive behavior of the NMT model .
+Since it is intractable to exactly calculate the principled metric for a given explanation method , it thereby proposes an approximate approach to address the minimization problem .
+The proposed approach does not rely on human annotation and can be used to evaluate explanation methods on all target words .
+On six standard translation tasks , the metric quantitatively evaluates and compares four different explanation methods for two popular translation models .
+Experiments reveal that PD , NGRAD , and ATTN are all good explanation methods that are able to construct the NMT model 's predictions with relatively low perplexity and PD shows the best fidelity among them .
+Given a bilingual training set D train and a bilingual test set D test , we evaluate an explanation method ?
+w.r.t the NMT model P (y | c t ) by setting the proxy model family Q ( ? ) to include three neural networks as defined before .
+Following the Algorithm 1 Calculating the evaluation metric Require : ? , Q ( ? ) , D train , D test Ensure : the metric score m of ? over D test 1 : Q * = {} 2 : Collect f ( c t ) , W k ? ( c t ) from D train and D test to obtain two sets FW train and FW test 3 : for Q ( ? ) ? Q ( ? ) do 4 :
+B i : B 1 = ( 0 , 1 ] , B 2 = ( 1 , 10 ] , B 3 = ( 10 , 100 ] , B 4 = ( 100 , 1000 ] , and B 4 = ( 1000 , ? ) .
+Table 1 : 1 The PPL comparison for the five metric instantiations on the IWSLT De?
+En dataset .
+NMT Metric ATTN PD NGRAD WGRAD Base 196.9 54.3 193.4 13400 FN 13.9 5.8 11.3 131.2 Trans RN 13.8 5.7 10.7 126.7 SA 13.9 5.5 10.8 119.5 Comb 13.8 5.5 10.7 119.5 Base - 54.2 90.3 28587 FN - 6.7 8.3 170.8 RNN RN - 6.5 7.8 163.2 SA - 6.5 8.1 154.9 Comb - 6.5 7.8 154.9
+Table 2 : 2 Density of the extracted rules from TRANS - FORMER on the IWSLT De?En .
+The density is measured by the total number of unique rules and the number of rules with certain frequency in each interval Method Total B 1 B 2 B 3 B 4 B 5 ATTN 1.97M 1.65 M 298 K 23.7 K 1.54 K 104 PD 1.62M 1.25 M 328K 31.2 K 2.11 K 108 NGRAD 1.89M 1.54 M 326 K 27.6 K 1.64 K 83 WGRAD 2.62 M 2.37 M 278 K 17.5 K 0.86 K 34
+indicate that FN , RN , SA , Comb are more stable than Base to the change of distribution of test sets .
+According to Table 1 and Table 3 , SA performs similar to the best metric Comb and it is faster than Comb or RN for training and testing , thereby , in the rest of experiments , we mainly employ SA to measure evaluation methods .
+Base FN SA RN Comb 1 % 53.0 % 97.1 % 99.9 % 99.8 % 99.8 % 5 % 56.1 % 100 % 100 % 100 % 100 % 20 % 60.8 % 100 % 100 % 100 % 100 % 50 % 66.8 % 100 % 100 % 100 % 100 % 100 % 75.4 % 100 % 100 % 100 % 100 %
+Table 3 : 3 The rate ( percentage ) of sampled test dataset that have the same rankings as the test set on the IWSLT Zh ?
+En dataset .
+$ WWQ 3G 1 JUDG : JUDG 33 / 7RS .
+Figure 1 : PPL for each explanation method on TRANS - FORMER over the IWSLT De?
+En dataset with different k value .
+Table 4 : 4 The PPL comparison for two fidelity - based metric instantiations on two IWSLT datasets .
+NMT Methods Zh?En Base SA Base SA Fr?En ATTN 897.1 30.8 359.6 12.1 Trans PD NGRAD 583.7 19 271.0 8.7 215.1 10.8 55.3 4.6 WGRAD 24126 180.9 44287 155.4 ATTN - - - - RNN PD NGRAD 263.0 13.2 85.8 6.7 139.9 11.3 49.0 5.5 WGRAD 23068 243.1 50657 194.9 Methods R- Dec Golden T-Dec ATTN 11.5 57.1 13.8 PD 4.7 23.3 5.5 NGRAD 8.2 42.0 10.7 WGRAD 115.0 223.4 119.5 Table 5 : Evaluating four explanation methods on 3 different scenarios Real-Decode ( R- Dec ) , Golden - Data ( Golden ) and Teacher -Forcing Decode ( T- Dec ) ) for TRANSFORMER over IWSLT De?
+En task .
+Table 6 : 6 The PPL and Ranking Order comparison between two fidelity - based metric instantiations ( Base and SA ) on three WMT datasets . " " denotes the mismatch of ranking order .
+We randomly sample
+Table 7 : 7 Relation with word alignment . " " denotes the mismatch of ranking order .
+Datasets Methods SA PPL Rank AER Rank Alignment ATTN 30.8 3 55.0 3 IWSLT Zh?En PD NGRAD 19 10.8 1 50.6 1 2 52.9 2 WGRAD 180.9 4 79.2 4 ATTN 27.3 3 42.1 2 WMT Zh?En PD NGRAD 16.5 2 49.3 3 7.7 1 32.7 1 WGRAD 263.5 4 79.2 4 ATTN 17.0 3 48.7 3 WMT De?En PD NGRAD 15.1 2 48.1 2 5.4 1 34.1 1 WGRAD 194.7 4 73.5 4 ? ? ? ? ? ? , ? ? ? ?
+Due to space limitation , we present the notations for a single layer NMT models , and for TRANSFORMER we only keep the attention ( with a single head ) block while skipping other blocks such as resNet and layer normalization .
+More details can be found in the references ( Vaswani et al. , 2017 ) .
+In fact , W k ? ( ct ) ? f ( ct ) can be considered as generalized translation rules obtained by ?.
+In other words , the rules are extracted under teacher forcing decoding .
+In particular , if k = 1 , this is similar to the statistical machine translation ( SMT ) with word level rules ( Koehn , 2009 ) , except that a generalized translation rule also involves a word from y <t which simulates the role of language modeling in SMT .
+It is natural to extend our definition by using other similar disagreement measures such as the KL distance .
+Since the KL distance requires additional GPU memory to restore the distribution P in the implementation , we employ the minus log-likelihood for efficiency in our experiments .
+Note that the negative log-likelihood in Eq. 6 is proportional to PPL and thus we use PPL as the metric value in this paper .
+https://www.ldc.upenn.edu/ collaborations/ evaluations / nist

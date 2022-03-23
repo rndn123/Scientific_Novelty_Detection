@@ -1,0 +1,181 @@
+title
+A non-DNN Feature Engineering Approach to Dependency Parsing - FBAML at CoNLL 2017 Shared Task
+abstract
+For this year 's multilingual dependency parsing shared task , we developed a pipeline system , which uses a variety of features for each of its components .
+Unlike the recent popular deep learning approaches that learn low dimensional dense features using non-linear classifier , our system uses structured linear classifiers to learn millions of sparse features .
+Specifically , we trained a linear classifier for sentence boundary prediction , linear chain conditional random fields ( CRFs ) for tokenization , part- of-speech tagging and morph analysis .
+A second order graph based parser learns the tree structure ( without relations ) , and a linear tree CRF then assigns relations to the dependencies in the tree .
+Our system achieves reasonable performance - 67.87 % official averaged macro F1 score .
+Introduction
+Our system for the universal dependency parsing shared task in CoNLL 2017 ( Zeman et al. , 2017 ) follows a typical pipeline framework .
+The system architecture is shown in Figure 1 , which consists of the following components : ( 1 ) sentence segmentor , which segments raw text into sentences , ( 2 ) tokenizer that tokenizes sentences into words , or performs word segmentation for Asian languages , ( 3 ) morphologic analyzer generates morphologic features , ( 4 ) part- of-speech ( POS ) tagger generates universal POS tags and language specific POS tags , ( 5 ) parser predicts tree structures without relations , ( 6 ) a relation predictor assigns relations to the dependencies in the tree .
+For each component , we take a non deep learning based approach , that is the typical structured linear classifier that learns sparse features , but requires heavy feature engineering .
+Sentence segmentation , tokenization , POS tagger and morphologic analyzer are based on linear chain CRFs ( Lafferty et al. , 2001 ) , and the relation predictor is based on linear tree CRFs .
+We train the pipeline for each language independently using the training portion of the treebank and the official word embeddings for 45 languages provided by the organizers .
+Our system components are implemented in C ++ with no third party toolkits .
+Due to the time limit , we did not optimize our system for speed or memory .
+2 System Components 2.1 Sentence Segmentation
+Task setup
+We cast sentence segmentation as a classification problem at the character level , determining whether a character is the end of the sentence character ( EOS ) .
+To obtain the gold labels , we aligned the raw text file with the conllu file with annotations .
+Since most characters are not sentence boundaries , using all the characters will make the data very imbalanced .
+To address this problem , we only consider a character as a candidate trigger if it is labeled as EOS at least once in the training data .
+Intuitively this would prune many characters as EOS characters should be punctuation marks .
+However , we noticed that for English ( possibly other languages too ) many sentences in the data end without punctation , and thus the last character of the sentence will be added into the EOS character trigger set .
+To reduce the size of the triggers , we use a three label scheme for the characters .
+?
+Label
+N for the character following the end of a sentence , and before the beginning of the next sentence .
+A typical example for this is the space between two sentences .
+Even for cases when punctuation marks are omitted , this applies to the space separating the two sentences .
+?
+Label E represents a character is the end of a sentence , and its next character is the beginning of the next sentence .
+This category is introduced for sentences that are not split by space .
+For example , past few years , ... Great to have you on board ! , ' G ' is the beginning of the second sentence , '.' before ' G ' has a label of ' E ' . ?
+Label
+O is used for all other cases .
+Note that a punctuation mark that ends a sentence will have a label of ' O ' if there is a space following the sentence .
+In this case , EOS information is obtained by the ' N ' label for the space .
+Using this scheme , during testing , an EOS character is found if it is labeled as E or its next character is labeled as N .
+For training , we collect the characters labeled as E or N in the training set as candidates .
+the number of trigger candidates compared to considering all the characters .
+Features
+We use a linear classifier for EOS detection .
+We tune the feature templates on the English development data , and apply to all the other languages .
+Detailed feature templates are described in Table 2 . Features include the surrounding characters and their lower cases .
+For character types , we use digit and letters , and keep the other symbols .
+Take 12:00 pm as an example , it is represented as : 00:00 aa , where we replace all digits by ' 0 ' and all lower cased letters by ' a' .
+For languages that have spaces between words , we also use the surrounding ' words ' split by spaces and the current character .
+For example , for the following example : comes this story : President Bush for character 'y ' , we have word features : word ?2 =this , word ?1 =stor , word 1 = : , word 2 = President .
+Tokenization
+Methodology
+We use a sequence labeling model for tokenization .
+Each character will be labeled as one of the following tags : ?
+B : beginning of a multi-character token , ?
+I : inside a multi-character token , ?
+E : end of a multi-character token , ?
+S : single character token , ? O : other .
+The labels are generated by aligning the raw text with the gold sentence segmentation with the word form column of the conllu table .
+char i , ?3 ? i ? + 3 char i char i + 1 , ?3 ? i ?
++ 2 lowchar i , ?3 ? i ? + 3 lowchar i lowchar i + 1 , ?3 ? i ?
++ 2 chartype i , ?3 ? i ? + 3 chartype i chartype i+1 , ?3 ? i ?
++ 2 word i , i = ?2 , ?1 , 1 , 2 wordtype i , i = ?2 , ?1 , 1 , 2 Table 2 : Feature templates for sentence segmentation .
+char i is the i th character to the right of current character , char ? i is the i th character to the left of the current character .
+lowchar is the lower cased character , chartype is the character type , it can be digit , upper cased letter , lower cased letter or other .
+word i is surrounding ' words ' splitted by spaces and the current character .
+wordtype is the concatenation of character types chartype 0 , chartype ?1 chartype 0 word ?1 , word 1 word ?1 chartype 0 , word 1 chartype 0 chartype ?1 chartype 0 , chartype 0 chartype 1 transition feature Table 3 : Tokenization feature templates for languages with space between words ( except Chinese and Japanese ) .
+Features Linear chain CRF is used to learn the model with character and word n-gram features .
+We used two sets of feature templates , one for languages having spaces between words including English , Arabric etc. , the other for languages without spaces including Chinese and Japanese , as shown in Table 3 and 4 .
+The first feature template set is tuned on English development set , the second one is tuned on Chinese development set .
+POS Tagging and Morph Analysis
+Methodology
+For morphological analysis and POS tagging , we use the same model setup and features , therefore we group them together in this section .
+We used linear chain CRFs for these tasks ( a sequence labeling task for each word in the sequence ) .
+As the morph features consist of several fields separated by a special symbol , we treat the prediction of each field as an independent task , and then combine the predictions from different models .
+For POS tagging ( both universal ( UPOS ) and language specific POS ( XPOS ) tagging ) , we use the same set of features as used for morph analysis , and the automatically predicted morph features .
+For languages that have multiple labels in XPOS tag , we use a similar strategy as for morph analysis , i.e. , learning multiple taggers and combine the results .
+char i char i+ 1 , ?2 ? i ?
+1 word ?1 ,
+Features
+The list of feature templates are shown in Table 5 .
+Note for POS tagging , as mentioned above , one additional feature is the morph feature , which comes from the automatic morph models .
+The basic features includes word and lower cased word n-grams , prefixes and suffixes .
+With these features , the baseline UPOS tagger achieves 94.78 % accuracy on the English development set .
+Since we do not use deep learning based approaches , incorporating pretrained word embeddings is not straightforward for linear classifiers .
+In our system , we clustered the word vectors using k-means , where k = 2048 and 10000 , and then used the cluster n-grams as features .
+Unlabeled Dependency Parsing
+Methodology
+Our dependency parser consists of two components , one is the unlabeled parser which only predicts the tree structures , the other is relation type prediction that assigns dependency relations to the dependencies .
+Originally , we trained a third order parser with word / POS / morph n-gram features , but it is too slow to extract features , especially word i , ?2 ? i ?
+2 word i char i+ 1 , ?2 ? i ?
+1 cluster 0 , cluster i cluster i+ 1 , i = ?1 , 0 lower CasedW ord 0 pref ix i , j , i = ?1 , 0 , 1 , 1 ? j ?
+6 suf f ix i , j , i = ?1 , 0 , 1 , 1 ? j ?
+6 word 0 pref ix i , j , i = ?1 , 1 , 1 ? j ?
+6 word 0 suf f ix i , j , i = ?1 , 1 , 1 ? j ? 6 morph ( invalid for morph analysis ) transition features Table 5 : Feature templates for morph analysis and POS tagging , where pref ix i , j is the length = j prefix of the i th word to the right of current word , cluster i is the cluster id of word i the third order features .
+So we chose to build a second order parser to balance speed and performance .
+We developed two versions of dependency parsers , one is pseudo- projective parser that handles treebanks that are nearly projective ( projective dependencies % > 95 % ) , the other is the 1- endpoint - crossing parser ( Pitler et al. , 2013 ; Pitler , 2014 ) that processes treebanks with more non-projective dependencies ( projective dependencies % < 95 % ) , such as Dutch - LassySmall , Ancient Greek , Ancient Greek - PROIEL , Basque , Latin-PROIEL and Latin .
+We modified the original third order 1 - endpoint - crossing parsing algorithm to guarantee the unique derivation of any parse tree , because we need the top k parse trees for training .
+Features
+Our original third order parser includes 1000 + feature templates , and generated more than 100 million features on English data .
+As the features consume too much memory , making the parser rather slow , we kept only 260 templates , and use second order parser instead , which generated 15 million features .
+Most of the feature templates come from the previous works ( Koo and Collins , 2010 ; McDonald et al. , 2005 ) , including word , POS ngrams and their combinations .
+We also add some morphology and word cluster n-grams .
+Detailed feature templates are described in Table 6 .
+Relation Classification
+Methodology
+Once the tree structure of a parse tree is obtained , we train a linear tree CRF to assign the relation type to each arc in the tree .
+Given a tree represented as a collection of arcs : T = {e} , the tree CRF represents the potential function of T as the sum of the potential functions of arcs and arc pair chains : ?( T ) = e ?( e ) + e?e ?( e ? e ) ( 1 ) where ?( e ) is the linear combination of node features in the CRF and ?( e ? e ) is the linear combination of transition features in the CRF .
+Features
+For each arc p ? c , we use the same feature templates as in 3 CoNLL Shared Task Results
+Implementation details
+All the classifiers , including linear chain CRF , tree CRF and second order dependency parser , are trained using 10 - best MIRA ( McDonald et al. , 2005 ) .
+Parameters are averaged to avoid overfitting .
+We found that k best MIRA consistently outperforms averaged perceptron about 0.1 ? 0.2 % for all tasks .
+For CRFs and the parser , we used the lazy decoding algorithm ( Huang and Chiang , 2005 ) for fast k-best candidate generation , the complexity is nearly the same as 1 - best decoding .
+Specifically , the time complexity for CRFs is O ( nL 2 + nk log ( k ) ) , and O(n 4 + nk log ( k ) ) for the parser .
+where n is the length of sentence .
+Both CRFs are optimized for fast tagging : strings like words , POS tags are mapped to bit strings for efficient concatenation to generate feature strings , while the parser is not optimized .
+The actual running time for 1 - endpoint - crossing parser is about 1.8 times of projective parser , though theoretically it should be 50x times slower .
+The main reason is that feature generating is much more slower than decoding , which is actully the same for both parsers .
+For fast training , we use hogwild strategy to update the parameters using 30 threads .
+Empirical results on English development data showed that compared with standard MIRA that only used single thread , the hogwild strategy get 5x speedup , the parser can be trained within 2.5 hours .
+While the performance is very competitive , only lost 0.1 % UAS .
+p i .word , c i .word , ?2 ? i ?
+2 p i .word p i+1 .word , c i .word c i+1 .word , ?2 ? i ?
+1 p i .word c j .word , c i . word s j .word , g i . word c j .word , ?1 ? i , j ?
+1 g i . word p j .word c k .word , p i . word c j .word s k .word , ?1 ? i , j , k ?
+1 p i .word c j .word c j+1 .word , ?1 ? i ? 1 , ?1 ? j ?
+0 p i .word p i+1 .word c j .word , ?1 ? i ? 0 , ?1 ? j ?
+1 g 0 .word p i .word c j .word c j+1 .word , ?1 ? i ? 1 , ?1 ? j ?
+0 g 0 .word p i .word p i+1 .word c j .word , ?1 ? i ? 0 , ?1 ? j ?
+1 p i .word c j .word c j+1 .word s 0 .word , ?1 ? i ? 1 , ?1 ? j ?
+0 p i .word p i+1 .word c j .word s 0 .word , ?1 ? i ? 0 , ?1 ? j ?
+1 replace word above by upos , xpos , lowCasedW ord , wordCluster , morph combine the templates above with distance and direction of arcs Table 6 : Feature templates for unlabeled dependency parsing , where p i , c i , g i , s i are the i th token right to the parent , child , grand parent , sibling .
+( to the left , if i < 0 ) To cluster word vectors , we implemented fast k means using triangle inequality .
+We let k means run 20 iterations using 45 threads to quickly generate clusters .
+For languages without pretrained word vectors , such as en lines , we use word vectors from en instead .
+For surprised languages , we trained POS tagger , morphological analyzer and parser using the example data .
+The word cluster features are derived by running word2vec on the unlabeled dataset , and k-means clustering .
+For sentence segmentation and tokenization , we just used the models trained on English data , since the example dataset is quite limited .
+Results on development data
+The feature sets are tuned on English development data , except some languages specific tasks such as Chinese word segmentation .
+Table 7 shows the results on development dataset .
+We have the following observation regarding feature effect . ?
+Character type features are useful for sentence segmentation , which made 13 % absolute F1 score improvement .
+?
+Morphological features help the parser , resulting in an UAS 0.5 % absolute F1 score improvement . ?
+For tokenization , word features i.e. , word ?1 and word 1 in Table 3 are useful , which made 1 % absolute F1 score improvement .
+?
+Lemma features do not have a big effect on parsing .
+We compared using the gold lemma features vs.
+the automatically generated ones , with about 0.3 % improvement from the former , and only 0.1 % using the latter .
+Because of this our system did not do lemmartization for all the languages .
+?
+Word cluster features have limited gains .
+We tried two different ways to convert the pretrained word vectors to binary features : ( 1 ) find the k nearest neighbors ( k = 3 in experiments ) in the embedding space , and use these neighors as features ; ( 2 ) cluster the words into k clusters , ( k = 8 , 16 , . . . , 2048 , 10000 , 100000 ) , and used the cluster features .
+The results on the English development set showed that the two approaches performed quite the same , both achieving 94.92 % UPOS accuracy , 0.15 % improvement over the baseline .
+In addition , we noticed that the word cluster features did not help when k is small .
+In our system submission , we used k = 2048 , 10000 to generate the clusters .
+It is worth pointing out that such improvement from using the cluster features is quite limited compared to using embeddings in deep learning based methods .
+For example , using stacked word and character bi-LSTM - CRFs ( Lample et al. , 2016 ) achieved 95.75 % POS tagging accuracy , and 96.00 % using word+ prefix / suffix embedding .
+We suspect that the converting real valued features to binary features ( cluster features ) loses too much information .
+Table 9 : Official performance of our system on small treebanks , PUD treebanks and suprise languages .
+Official Results and Analysis Detailed numbers for official runs on the test set are listed in Table 8 and Table 9 .
+Our system ranked the 15 th among the 33 submissions .
+Unfortunately , we found that for one language ( no nynorsk ) , we used the model trained on another language , therefore the performance is poor .
+Changing to the correct model would change our results from 67.87 % averaged macro F1 score to 68.78 % .
+For two languages la and grc proiel , we trained the 1 - endpoint - crossing parser , but used the projective parser for testing due to memory issue .
+On the development dataset , we found that such strategy lost about 0.5 % LAS due to the inconsistent decoding algorithms between training and testing .
+For PUD treebanks that have no corresponding training portion , we used the model trained on the non -PUD dataset , e.g. , used the model trained on en to parse en pud .
+Regarding speed , our parser is not optimized for running time nor memory .
+It spent 67 hours to parse all the languages using 10 threads .
+The peak memory usage is about 89GB when parsing grc proiel .
+The most time consuming part in our system is feature generation that has a complexity of O(n 3 T ) , where T = 260 is the number of templates .
+Conclusion and Future Work
+We described our system for the universal dependency parsing task that relies heavily on feature engineering for each component in the pipeline .
+Our system achieves reasonable performance .
+An important observation we have is regarding the pretrained word embeddings .
+Unlike neural net based parsers that can effectively use large unlabeled data by pretrained word embedding , pictures of semi-supervised learning approaches for feature engineering based systems are unclear .
+Though we tried different ways in our work , the improvement is quite limited .
+In our future work , we plan to combine our system with neural net based approaches and explore some other semi-superivsed learning techniques .
+Figure 1 : 1 Figure 1 : System architecture : pipeline components for universal dependency parsing .

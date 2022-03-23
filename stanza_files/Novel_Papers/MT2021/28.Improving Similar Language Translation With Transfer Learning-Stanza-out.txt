@@ -1,0 +1,164 @@
+title
+Improving Similar Language Translation With Transfer Learning
+abstract
+We investigate transfer learning based on pretrained neural machine translation models to translate between ( low- resource ) similar languages .
+This work is part of our contribution to the WMT 2021 Similar Languages Translation Shared Task where we submitted models for different language pairs , including French -Bambara , Spanish - Catalan , and Spanish - Portuguese in both directions .
+Our models for Catalan -Spanish ( 82.79 BLEU ) and Portuguese -Spanish ( 87.11 BLEU ) rank top 1 in the official shared task evaluation , and we are the only team to submit models for the French -Bambara pairs .
+Introduction
+We present the findings from our participation in the WMT 2021 Similar Language Translation shared task 2021 , which focused on translation between similar language pairs in low-resource settings .
+The similar languages task focuses on building machine translation ( MT ) systems for translation between pairs of similar languages , without English as a pivot language .
+Similarity between languages interacts with MT quality , usually positively ( Adebara et al. , 2020 ) .
+Languages described as similar usually share certain levels of mutual intelligibility .
+Depending on the level of closeness , certain languages may share orthography , lexical , syntactic , and / or semantic structures which may facilitate translation between pairs .
+However , ( a ) scarcity of parallel data that can be used for training MT models remains a bottleneck .
+Even high- resource pairs can suffer from ( b ) low -data quality .
+That is , available data is not always guaranteed to be actual bitext with target standing as a translation of source .
+In fact , some open resources such as OPUS ( Tiedemann , 2012a ; Tiedemann et al. , 2015 ) can suffer from noise such as when the source and target sentences belong to the same language .
+In this work , we tackle both ( a ) scarcity and ( b ) low -data quality .
+For a , we use simple knowledge transfer from already trained MT models to the downstream pair .
+For b , we use a simple procedure of language identification to remove noisy bitext where both the source and target are detected to be the same language or where source or target is identified as a different language from what it is expected to be .
+The models we develop are for Spanish to Catalan ( ES - CA ) , Catalan to Spanish ( CA - ES ) , Spanish to Portuguese ( PT - ES ) , Portuguese to Spanish ( PT - ES ) , French to Bambara ( FR - BM ) , and Bambara to French ( BM - FR ) language pairs 1 . Whenever possible , we choose an available MT model trained with the same source and target languages as our pair of interest .
+In cases where no such a model exists , we pick a model with either the source or the target language as our intended pair ( Section 5 ) .
+To show the utility of our transfer learning approach to the problem , we also train on one pair from scratch ( which we treat as a baseline ) .
+We experiment with tokenized ( primary models ) and untokenized ( contrastive models ) settings and compared the settings with models developed by fine-tuning pre-trained models as well as models trained from scratch .
+Our experiments show that the tokenized settings perform better than the untokenized settings for all language pairs .
+The model fine-tuned on top of the pre-trained MT model has higher performance than our baseline model from the first epoch compared with the model trained from scratch ( for six epochs ) .
+Our models for the CA -ES and PT - ES language pairs achieve top 1 rank in the offical shared task results , with 82.96 and 47.71 BLEU scores respectively .
+In addition , we are the only team that submitted for the rest of the language pairs ( i.e. , ES - PT , FR - BM , and BR - FR ) .
+The rest of our paper is organized as follows : we discuss related work in Section 2 .
+We describe the data and pre-processing in Section 3 .
+Next , we describe the data cleaning process in Section 4 .
+In Section 5 , we describe the models we developed for this task and we discuss the various experiments we perform .
+We also describe the architectures of the models we developed .
+Then we discuss the evaluation criteria in Section 6 .
+Evaluation is done on both the validation and test sets .
+In section 7 we perform error analysis on the output of our models for some language pairs to determine the types of errors the models make .
+We conclude with discussion of the insights we gained from the shared task in Section 8 .
+Related Work
+In recent times , there has been an increase of research interest in low-resource MT scenarios ( Jawahar et al. , 2021 ; Baziotis et al. , 2020 ) . NMT models , specifically those based on the Transformer architecture , have been shown to perform well when translating between similar languages ( Przystupa and Abdul - Mageed , 2019 ; Adebara et al. , 2020 ; Barrault et al. , 2019
+Barrault et al. , , 2020 , low resource scenarios ( Adebara et al. , 2021 ) , and in contexts not involving English ( Fan et al. , 2021 ) .
+Furthermore , pre-training techniques have been successful for many NLP tasks ( Zoph et al. , 2016 ; Durrani et al. , 2021 ) including NMT ( Aji et al. , 2020 ; Weng et al. , 2020 ) .
+Self-supervised pretraining acquires general knowledge from a large amount of unlabeled monolingual or multilingual data to improve the training process of downstream tasks ( Aji et al. , 2020 ; Devlin et al. , 2018 ) .
+The pre-trained model acquires some syntactic and semantic knowledge which can be transferred as initialized parameters to improve NMT models and translation quality ( Goldberg , 2019 ; Jawahar et al. , 2019 ; Aji et al. , 2020 ) .
+The intuitive justification for using pre-trained models is that the embedding space becomes more consistent , with semantically similar words closer together .
+The knowledge from pre-trained language models ( LMs ) can be used to initialize the NMT model before training it on parallel data .
+However , there are certain limitations for MT tasks .
+First , LMs cannot be easily fine-tuned for MT tasks .
+Second , there is a discrepancy between pre-training objectives for LMs and the training objective in MT .
+Existing pre-training approaches such as mBART rely on autoencoding objectives to pre-train the models , which are different from MT .
+Furthermore , LMs learn to reconstruct all source tokens with some noises , while NMT learns to translate most source tokens and copy only a few of them .
+LM pre-training is said to copy about 65 % of tokens , while NMT training needs to copy less than 10 % ( Knowles and Koehn , 2018 ) .
+The unexpected knowledge / bias can be therefore propagated to the NMT model via pre-training , which may result in NMT models mistakenly copying source tokens to the target side ( Liu et al. , 2021 ) .
+For instance , because copying behaviours can be learned , a source word such as " shoe " may be copied to the target by pretraining based NMT models instead of providing a translation .
+Therefore , fine-tuning MT models on pre-trained LMs still do not achieve adequate improvements .
+In order to address the difference in training objectives that using pre-trained language models results in , we use pre-trained MT models to initialize our models .
+This is still a type of transfer learning .
+Following the justification for pre-trained models , we hypothesize that two linguistically similar languages will share closer semantic and syntactic relationships .
+This is based on the assumption that the more similar the source and target languages , the more similar the syntax and semantic properties and the higher the gains from using pre-trained models will be .
+We now introduce our data .
+Data
+For our experiments , we use parallel data from OPUS ( Tiedemann , 2012 b ) .
+Our data are from the following language pairs Spanish and Catalan , Spanish and Portuguese , and French and Bambara .
+We use data in the two directions from each of these three pairs .
+Details about our data is in Table 1 . Table 1 : Number of sentences and words for the training data used for each language pair .
+We also report the type token ratio ( TTR ) before and after tokenization .
+Pre-Processing
+We perform pre-processing using the Moses toolkit ( Koehn et al. , 2007 ) .
+For each language not supported by Moses , we use the tokenization setting of the language it is translated to .
+This applies only to Bambara , for which we used tokenization for the French language .
+We perform data cleaning , as we explain next .
+Data Cleaning & Analysis
+We perform data cleaning on the ES - CA , CA-ES , ES - PT , and PT - ES language pairs .
+We do not clean the French and Bambara pairs because we had very few training sentences for these .
+For cleaning , we run the langid tool ( Lui and Baldwin , 2012 ) on the concatenation of the source and target and remove sentences that are not identified as belonging to one or both of the language pair .
+In " Claimed " refers to the expected language as coming from source , while " predicted " is what langid .
+py identified .
+Models
+Primary and Contrastive Models
+We developed our primary and contrastive models using Transformers from HuggingFace library ( Wolf et al. , 2019 ) .
+The primary models were developed using tokenized data while the contrastive models employed untokenized data .
+For the tok- enized setting , we used Moses tokenizer ( as explained earlier ) while the untokenized setting used the data just as they were made available to us by shared task organizers .
+We used the pre-trained NMT models developed by Helsinki-NLP on HuggingFace .
+We used pretrained models closest to the language pairs we trained .
+For language pairs without existing pretrained models , we used a close language pair with either the source or target matching one of our downstream task languages in a given pair .
+Specifically , we used the following Marian models released by Helsinki- NLP : es-ca ( for ES - PT ) , ca-es ( for CA -ES and PT - ES ) , fr-en ( for FR - BM ) , and enfr ( for BM - FR ) .
+As an example , we report the hyperparameters for the CA - ES primary model in Untok Output Por lo tanto , el Fondo debe movilizarse para que se conceda una contribuci ?n financiera a Bulgaria , Grecia , Lituania y Polonia .
+Tok Output Per tant , el Fons s'ha de mobilitzar per aportar una contribuci ?
+financera a favor de Bulgaria , Gr?cia , Litu?nia i Pol?nia .
+Reference
+Per tant , el Fons s'ha de mobilitzar per aportar una contribuci ?
+financera en favor de Bulg?ria , Gr?cia , Litu?nia i Pol?nia .
+CA-ES
+Source Text A fi de reduir al m?nim el temps necessari per mobilitzar el Fons , aquesta Decisi ?
+s'ha d'aplicar a partir de la data de la seva adopci ? , Untok Output A fin de reducir al m?nimo el tiempo necesario para movilizar el Fondo , esta Decisi ?n debe aplicarse a partir de la fecha de su adopci ? n ,
+Tok Output
+Con el fin de reducir al m?nimo el tiempo necesario para movilizar el Fondo , esta Decisi ? n se ha de aplicar a partir de la fecha de su adopci?n .
+Reference
+Con el fin de reducir al m?nimo el tiempo necesario para movilizar el Fondo , la presente Decisi ?n debe aplicarse a partir de la fecha de su adopci ? n ,
+ES - PT Source Text Posici ?n del Parlamento Europeo de 6 de abril de 2017 ( pendiente de publicaci ?n en el Diario Oficial ) y Decisi ?n del Consejo de 11 de mayo de 2017 .
+Untok Output Posic ?o do Parlamento Europeu de 6 de A bril de 2017 ( pendente de publicac ?o no Jornal Oficial ) e D ecis ? o do Conselho de 11 de Maio de 2017 .
+Tok Output Posic ?o do Parlamento Europeu de 6 de A bril de 2017 ( indiferente ? publicac ?o no Jornal Oficial da Uni?o Europeia e decis ?o do Conselho de 11 de Maio de 201 ) .
+Reference Posic ?o do Parlamento Europeu de 6 de abril de 2017 ( ainda n?o publicada no Jornal Oficial ) e decis ? o do Conselho de 11 de maio de 2017 .
+PT-ES
+Source Text Os Estados - Membros transmitem os dados referentes ao transporte por vias naveg ?
+veis interiores no seu territ ? rio nacional ? Comiss ?o ( Eurostat ) .
+Untok Output Los Estados miembros transmitir ?n a la Comisi?n ( Eurostat ) los datos relativos al transporte por v?as navegables interiores en su territorio nacional .
+Tok Output Los Estados miembros transmitir ?n a la Comisi ?n los datos relativos al transporte por v?as navegables interiores en su territorio nacional ( convenientREAT )
+Reference Los Estados miembros transmitir ?n los datos relativos al transporte por v?as navegables interiores en su territorio nacional a la Comisi?n ( Eurostat ) .
+FR - BM Source
+Text vous pourriez peut -? tre organiser de petits groupes pour lire et discuter de ce livre , chapitre par chapitre .
+Tok Output - An y'a mEn kura in mEn : Mama denmuso , an ka jamana de wa k'a furu min ma kOnO .
+Reference aw bEse ka to ka mOgOw dalajEka gafe in kalan ; ani ka hakilina falenfalen kEsigidaw kan kelen kelen .
+BM -FR
+Source Text Hakilijigin ka ?Esin kEnEyabaarakElaw ma Tok Output cher agent de sant ?
+villageois , Reference cher agent de sant ?
+villageois , Table 7 : Examples sentences from the various pairs and corresponding translations based on the untokenized and tokenized models .
+Examples are from the Dev set .
+We highlight the differences between the outputs from the untokenized model and the reference text with blue highlights and the differences between the tokenized model and the reference text in red highlights .
+It can be observed that the number of errors in the untokenized model ( based simply on the number of blue highlights here ) is larger than that in the tokenized model ( less errors / red highlights language pair .
+We trained each model for different number of epochs due to time and GPU constraints .
+We show the number of epochs each model is trained for and the epoch with the highest BLEU score in Table 4 .
+We did not train any contrastive models for FR - BM and BM - FR pairs , so we report the training for the primary ( tokenized ) models only .
+Baseline
+We developed a single baseline model based on Transformers as implemented in Fairseq .
+This model does not use any pre-trained MT models nor tokenization .
+This model was developed for the ES - PT pair for six epochs and it achieved a BLEU score of 37.6 .
+For comparison , we developed a model for the same pair ( i.e. , ES - PT ) based on an already available pt-es pre-trained MT model .
+After six epochs , this ES - PT model employing transfer learning achieved 52.18 BLEU ( thus significantly outperforming our baseline ) .
+Based on this result , we resumed with experiments for all other language pairs without including a baseline .
+Ideally , we would train such baseline models for all the pairs .
+However , due to limited time and GPU resources , we only trained a baseline for a single pair .
+Evaluation
+We evaluated our models on both the Dev and Test sets .
+We used the checkpoint with the best BLEU score as evaluated on DEV as our best model .
+We used a beam size of four during evaluation on both Dev and Test and evaluated on de-tokenized data .
+Evaluation on Dev set .
+We report the results on the Dev sets for each language pair in Table 5 .
+As explained , the models were trained with both tokenized and untokenized data .
+As Table 5 shows , the tokenized setting yielded the highest performance for all language pairs .
+We show sample outputs from our tokenized models ( from Dev data ) in Table 7 . Evaluation on Test set .
+Our
+Test set performance was evaluated by the shared task organizers using BLEU ( Papineni et al. , 2002 ) , RIBES , and TER ( Snover et al. , 2009 ) .
+We report the scores in Table 6 . Each of our CA -ES and PT - ES models ranked top 1 based on the official shared task results .
+In addition , we were the only team to submit models in the official competition for the French -Bambara pairs .
+As with the Dev set , the tokenized setting gave the highest performance for all language pairs .
+Effect of Language Similarity
+In order to gain some insight into the interference of similarity between languages of a given pair , we performed an analysis based on Levenstein distance that allows us to identify the percentage of cognates shared between the languages .
+We then compared system output to the reference sentences , trying to quantify how much the system is able to translate cognates correctly ( in this case the correct translation will have the same cognate word in the target as it is in the source ) .
+We performed this analysis for one language pair : CA - ES and found that the model learned the cognates correctly up to 80 % of the time .
+Conclusion
+We describe our contribution to the WMT2021 Similar Languages Translation Shared Task .
+We develop models for ES - CA , CA-ES , ES - PT , PT -ES , FR - BM , and BM - FR and show the improvement our models make with tokenized data when compared to untokenized data .
+We also show the utility of transfer learning based on fine-tuning NMT pretrained models .
+Future work can investigate how the choice of pre-trained models affects the downstream tasks .
+Table 2 : 2 Table 2 , we provide some examples of data points we remove from the training data during data cleaning .
+These examples are removed because the claimed language is different from the language predicted by langid .
+After cleaning , we are left with ?
+10 M clean sentences out of ?
+18.3 M sentences for the Spanish and Catalan pair , and ?
+3.1 M clean sentences out of ?
+4.2 M sentences for the Spanish and Portuguese pair , respectively .
+We note that removed data comprise large portions of each dataset , thus confirming our concerns about data quality .
+Examples removed from our training data .
+Sentence Claimed Predicted Animal Crossing : Spanish English Pico de Santo Tom ?s Spanish Portug .
+Quinto Sereno Sammon- Portug. Italian ico La sombra del caudillo Catalan Spanish Cultura del Nepal Catalan Spanish Morts a R?walpindi Catalan French

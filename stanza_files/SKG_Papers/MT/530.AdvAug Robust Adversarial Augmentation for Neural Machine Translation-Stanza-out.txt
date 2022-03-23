@@ -1,0 +1,224 @@
+title
+AdvAug : Robust Adversarial Augmentation for Neural Machine Translation
+abstract
+In this paper , we propose a new adversarial augmentation method for Neural Machine Translation ( NMT ) .
+The main idea is to minimize the vicinal risk over virtual sentences sampled from two vicinity distributions , of which the crucial one is a novel vicinity distribution for adversarial sentences that describes a smooth interpolated embedding space centered around observed training sentence pairs .
+We then discuss our approach , AdvAug , to train NMT models using the embeddings of virtual sentences in sequence - tosequence learning .
+Experiments on Chinese-English , English - French , and English - German translation benchmarks show that AdvAug achieves significant improvements over the Transformer ( up to 4.9 BLEU points ) , and substantially outperforms other data augmentation techniques ( e.g. back - translation ) without using extra corpora .
+Introduction Recent work in neural machine translation ( Bahdanau et al. , 2015 ; Gehring et al. , 2017 ; Vaswani et al. , 2017 ) has led to dramatic improvements in both research and commercial systems .
+However , a key weakness of contemporary systems is that performance can drop dramatically when they are exposed to input perturbations ( Belinkov and Bisk , 2018 ; Cheng et al. , 2019 ) , even when these perturbations are not strong enough to alter the meaning of the input sentence .
+Consider a Chinese sentence , " zhejia feiji meiyou zhuangshang zhujia huo yiyuan , shizai shi qiji " .
+If we change the word " huo ( ? ) " to its synony m " ji ( ? ) " , the Transformer model will generate contradictory results of " It was indeed a miracle that the plane did not touch down at home or hospital . " versus
+" It was a miracle that the plane landed at home and hospital . "
+Such perturbations can readily be found in many public benchmarks and real-world applications .
+This lack of stability not only lowers translation quality but also inhibits applications in more sensitive scenarios .
+At the root of this problem are two interrelated issues : first , machine translation training sets are insufficiently diverse , and second , NMT architectures are powerful enough to overfit - and , in extreme cases , memorize - the observed training examples , without learning to generalize to unseen perturbed examples .
+One potential solution is data augmentation which introduces noise to make the NMT model training more robust .
+In general , two types of noise can be distinguished : ( 1 ) continuous noise which is modeled as a realvalued vector applied to word embeddings ( Miyato et al. , 2016 ( Miyato et al. , , 2017
+Cheng et al. , 2018 ; Sato et al. , 2019 ) , and ( 2 ) discrete noise which adds , deletes , and / or replaces characters or words in the observed sentences ( Belinkov and Bisk , 2018 ; Sperber et al. , 2017 ; Ebrahimi et al. , 2018 ; Cheng et al. , 2019 ; Karpukhin et al. , 2019 ) .
+In both cases , the challenge is to ensure that the noisy examples are still semantically valid translation pairs .
+In the case of continuous noise , it only ensures that the noise vector lies within an L 2 - norm ball but does not guarantee to maintain semantics .
+While constructing semantics - preserving continuous noise in a high-dimensional space proves to be non-trivial , state - of - the - art NMT models are currently based on adversarial examples of discrete noise .
+For instance , Cheng et al . ( 2019 ) generate adversarial sentences using discrete word replacements in both the source and target , guided by the NMT loss .
+This approach achieves significant improvements over the Transformer on several standard NMT benchmarks .
+Despite this promising result , we find that the generated adversarial sentences are unnatural , and , as we will show , suboptimal for learning robust NMT models .
+In this paper , we propose AdvAug , a new adversarial augmentation technique for sequence - tosequence learning .
+We introduce a novel vicinity distribution to describe the space of adversarial examples centered around each training example .
+Unlike prior work ( Cheng et al. , 2019 ) , we first generate adversarial sentences in the discrete data space and then sample virtual adversarial sentences from the vicinity distribution according to their interpolated embeddings .
+Our intuition is that the introduced vicinity distribution may increase the sample diversity for adversarial sentences .
+Our idea is partially inspired by mixup ( Zhang et al. , 2018 ) , a technique for data augmentation in computer vision , and we also use a similar vicinity distribution as in mixup to augment the authentic training data .
+Our AdvAug approach finally trains on the embeddings sampled from the above two vicinity distributions .
+As a result , we augment the training using virtual sentences in the feature space as opposed to in the data space .
+The novelty of our paper is the new vicinity distribution for adversarial examples and the augmentation algorithm for sequence - to-sequence learning .
+Extensive experimental results on three translation benchmarks ( NIST Chinese-English , IWSLT English - French , and WMT English - German ) show that our approach achieves significant improvements of up to 4.9 BLEU points over the Transformer ( Vaswani et al. , 2017 ) , outperforming the former state - of - the - art in adversarial learning ( Cheng et al. , 2019 ) by up to 3.3 BLEU points .
+When compared with widely - used data augmentation methods ( Sennrich et al. , 2016a ; Edunov et al. , 2018 ) , we find that our approach yields better performance even without using extra corpora .
+We conduct ablation studies to gain further insights into which parts of our approach matter most .
+In summary , our contributions are as follows : 1 . We propose to sample adversarial examples from a new vicinity distribution and utilize their embeddings , instead of their data points , to augment the model training .
+2 . We design an effective augmentation algorithm for learning sequence - to-sequence NMT models via mini-batches .
+3 . Our approach achieves significant improvements over the Transformer and prior stateof - the - art models on three translation benchmarks .
+Background Neural Machine Translation .
+Generally , NMT ( Bahdanau et al. , 2015 ; Gehring et al. , 2017 ; Vaswani et al. , 2017 ) models the translation probability P ( y|x ; ? ) based on the encoder-decoder paradigm where x is a source - language sentence , y is a target - language sentence , and ? is a set of model parameters .
+The decoder in the NMT model acts as a conditional language model that operates on a shifted copy of y , i.e. , sos , y 0 , ... , y | y |?1 where sos is a start symbol of a sentence and representations of x learned by the encoder .
+For clarity , we use e( x ) ? R d?|x | to denote the feature vectors ( or word embeddings ) of the sentence x where d is dimension size .
+Given a parallel training corpus S , the standard training objective for NMT is to minimize the empirical risk : L clean ( ? ) = E P ? ( x , y ) [ ( f ( e( x ) , e( y ) ; ? ) , ? ) ] , ( 1 ) where f ( e( x ) , e( y ) ; ? ) is a sequence of model predictions f j ( e( x ) , e( y ) ; ?) = P ( y|y <j , x ; ? ) at position j , and ? is a sequence of one- hot label vectors for y ( with label smoothing in the Transformer ) .
+is the cross entropy loss .
+The expectation of the loss function is summed over the empirical distribution P ? ( x , y ) of the training corpus : P ? ( x , y ) = 1 | S| ( x ,y ) ?S ?( x = x , y = y ) , ( 2 ) where ? denotes the Dirac delta function .
+Generating Adversarial Examples for NMT .
+To improve NMT 's robustness to small perturbations in the input sentences , Cheng et al . ( 2019 ) incorporate adversarial examples into the NMT model training .
+These adversarial sentences x are generated by applying small perturbations that are jointly learned together with the NMT model : x = argmax x:R( x , x ) ? ( f ( e( x ) , e( y ) ; ? ) , ? ) , ( 3 ) where R ( x , x ) captures the degree of semantic similarity and is an upper bound on the semantic distance between the adversarial example and the original example .
+Ideally , the adversarial sentences convey only barely perceptible differences to the original input sentence yet result in dramatic distortions of the model output .
+Cheng et al. ( 2019 ) propose the AdvGen algorithm , which greedily replaces words with their top k most probable alternatives , using the gradients of their word embeddings .
+Adversarial examples are designed to both attack and defend the NMT model .
+On the encoder side , an adversarial sentence x is constructed from the original input x to attack the NMT model .
+To defend against adversarial perturbations in the source input x , they use the AdvGen algorithm to find an adversarial target input ? from the decoder input y .
+For notational convenience , let ? denote this algorithm , the adversarial example ? is stochastically induced by ? as ? ? ?( s ; x , y , ? ) where ? is the set of parameters used in ? including the NMT model parameters ?.
+For a detailed definition of ? , we refer to ( Cheng et al. , 2019 ) .
+Hence , the set of adversarial examples originating from ( x , y ) ?
+S , namely A ( x, y ) , can be written as : A ( x, y ) = { ( x , ? ) |x ? ?( x ; x , y , ? src ) , ? ? ?( y ; x , y , ? tgt ) } , ( 4 ) where ? src and ? tgt are separate parameters for generating x and ? , respectively .
+Finally , the robustness loss L robust is computed on A ( x, y ) with the loss ( f ( e( x ) , e( ? ) ; ? ) , ? ) , and is used together with L clean to train the NMT model .
+Data Mixup .
+In image classification , the mixup data augmentation technique involves training on linear interpolations of randomly sampled pairs of examples ( Zhang et al. , 2018 ) .
+Given a pair of images ( x , y ) and ( x , y ) , where x denotes the RGB pixels of the input image and y is its one- hot label , mixup minimizes the sample loss from a vicinity distribution ( Chapelle et al. , 2001 ) P v ( x , ? ) defined in the RGB - pixel ( label ) space : x = ?x + ( 1 ? ? ) x , ( 5 ) ? = ?y + ( 1 ? ?)y . ( 6 ) ? is drawn from a Beta distribution Beta ( ? , ? ) controlled by the hyperparameter ?.
+When ? ? 0 , ( x , ? ) is close to any one of the images ( x , y ) and ( x , y ) .
+Conversely , ( x , ? ) approaches the middle interpolation point between them when ? ? +?.
+The neural networks g parameterized by ?
+can be trained over the mixed images ( x , ? ) with the loss function L mixup ( ? ) = ( g( x ; ? ) , ? ) .
+In practice , the image pair is randomly sampled from the same mini-batch . , y : This idea is really good everyone likes it .
+x : , y :
+This idea is not good anyone loves it .
+^F igure 1 : Illustration of training examples sampled from vicinity distributions of P adv and P aut .
+Solid circles are observed sentences in the training corpus S. Solid triangles are adversarial sentences generated by replacing words in their corresponding observed sentences .
+Dashed points are virtual sentences obtained by interpolating the embeddings of the solid points .
+The dashed triangles define the data space of adversarial examples from P adv .
+The circles ( solid and dashed ) constitute P aut .
+Approach : AdvAug
+In our approach AdvAug , the goal is to reinforce the model over virtual data points surrounding the observed examples in the training set .
+We approximate the density of P ( x , y ) in the vicinities of the generated adversarial examples and observed training examples .
+To be specific , we design two vicinity distributions ( Chapelle et al. , 2001 ) to estimate the joint distribution of P ( x , y ) : P adv for the ( dynamically generated ) adversarial examples and P aut for the ( observed ) authentic examples in S. Given the training set S , we have : P adv ( x , ? ) = 1 | S| ( x,y ) ?S ? adv ( x , ?|A ( x, y ) ) , ( 7 ) P aut ( x , ? ) = 1 | S| ( x, y ) ?S ? aut ( x , ?|x , y ) , ( 8 ) where A ( x, y ) is the set of adversarial examples originated from ( x , y ) defined in Eq. ( 4 ) .
+We will discuss ? adv and ? aut in detail which define the probability functions , but first we give some highlevel descriptions : ?
+P adv is a new vicinity distribution for virtual adversarial sentences of the same origin .
+It captures the intuition that the convex combination of adversarial sentences should have the same translation .
+It is the most important factor for improving the translation quality in our experiments . ?
+P aut is a distribution to improve the NMT 's robustness by " mixing up " observed sentences of different origins .
+This distribution is similar to mixup , but it is defined over linear interpolations of the sequence of word embeddings of the source and target sentences .
+Although P aut by itself yields marginal improvements , we find it is complementary to P adv .
+We train the NMT model on two vicinity distributions P adv and P aut .
+Figure 1 illustrates examples sampled from them .
+As shown , a solid circle stands for an observed training example ( i.e. a sentencepair ) in S and a solid triangle denotes an adversarial example in A ( x, y ) .
+For P adv , we construct virtual adversarial examples ( dashed triangles ) to amend the sample diversity by interpolating the word embeddings of solid triangles .
+Likewise , we interpolate the word embeddings of solid circles to model P aut for the ( observed ) authentic examples .
+This results in the dashed circles in Figure 1 . Unlike prior works on vicinal risk minimization ( Chapelle et al. , 2001 ; Zhang et al. , 2018 ) , we do not directly observe the virtual sentences in P adv or P aut .
+This also distinguishes us from Cheng et al . ( 2019 ) , who generate actual adversarial sentences in the discrete word space .
+In the remainder of this section , we will discuss the definition of P adv and P aut and how to optimize the translation loss over virtual sentences via mini-batch training .
+P adv for Adversarial Data
+To compute ? adv , we employ ? similar as in ( Cheng et al. , 2019 ) to generate an adversarial example set A ( x , y ) from each instance ( x , y ) ? S ( see Eq. ( 4 ) ) .
+Let ( x , y ) and ( x , y ) be two examples randomly sampled from A ( x, y ) .
+We align the two sequences by padding tokens to the end of the shorter sentence .
+Note that this operation aims for a general case ( particularly for P aut ) although the lengths of y and y in A ( x, y ) are same .
+To obtain e( x ) = [ e( x 1 ) , . . . , e( x | x | ) ] , we apply the convex combination m ? ( x , x ) over the aligned word embeddings , which is : e( x i ) = ?e( x i ) + ( 1 ? ?) e( x i ) , ?i ? [ 1 , | x | ] , ( 9 ) where ? ? Beta ( ? , ? ) .
+We use m ? ( ? , ? ) for the interpolation .
+Similarly , e( ? ) can also be obtained with m ? ( y , y ) .
+All adversarial examples in A ( x, y ) are supposed to be translated into the same target sentence , and the convex combination still lies in space of the adversarial search ball defined in Eq. ( 3 ) .
+As a result , all virtual sentence pairs ( x , ? ) ? A ( x, y ) of the same origin can be fed into NMT models as source and target inputs which share the same soft target label for ( x , y ) .
+? adv in P adv can be calculated from : ? adv ( x , ?|A ( x, y ) ) = 1 | A ( x, y ) | 2 ( x ,y ) ? A ( x, y ) ( x ,y ) ? A ( x, y ) E ? [?( e( x ) = m ? ( x , x ) , e( ? ) = m ? ( y , y ) ] .
+( 10 ) Hence , the translation loss on vicinal adversarial examples L adv ( ? ) can be integrated over P adv as : L adv ( ? ) = E P adv ( x , ? ) [ ( f ( e( x ) , e( ? ) ; ? ) , ? ) ] , ( 11 ) where ? is a sequence of output distributions ( denoted as a sequence of label vectors , e.g. ? ) as the soft target for the sentence y .
+We employ two useful techniques in computing the loss L adv in Eq. ( 11 ) .
+First , we minimize the KL - divergence between the model predictions at the word level : where ? means a fixed copy of the current parameter set and no gradients are back - propagated through it .
+Removing constant values from Eq. ( 12 ) yields an equivalent solution of : ( f ( e( x ) , e( ? ) ; ? ) , ? ) = ( f ( e( x ) , e( ? ) ; ? ) , f ( e( x ) , e( y ) ; ? ) ) . ( 13 ) Eq. ( 13 ) indicates that f ( e( x ) , e( y ) ; ? ) can be used as the soft target ? in Eq. ( 11 ) for virtual adversarial example ( x , ? ) .
+KL - divergence enforces the model on virtual adversarial examples to indirectly learn from the soft target of the observed examples over large vocabularies .
+This justifies the use of ? in Eq. ( 11 ) and turns out to be more effective than directly learning from the ground - truth label .
+Besides , Eq. ( 11 ) needs to enumerate numerous pairs of adversarial examples in A ( x, y ) while in practice we only sample a pair at a time inside each mini-batch for training efficiency .
+We hence employ curriculum learning to do the importance sampling .
+To do so , we re-normalize the translation loss and employ a curriculum from ( Jiang et al. , 2018 ) to encourage the model to focus on the difficult training examples .
+Formally , for a mini-batch of the training losses L = { i } m i=1 , we re-weigh the batch loss using : L = 1 m i=1 I ( i > ? ) m i=1 I ( i > ? ) i , ( 14 ) where I ( ? ) is an indicator function and ? is set by a moving average tracking the p-th percentile of the example losses of every mini-batch .
+In our experiments , we set the p-th percentile to be 100 ? ( 1? r t ) for the training iteration t , and gradually anneal r t using r t = 0.5 t/ ? , where ? is the hyperparameter .
+P aut for Authentic Data
+We define the ? aut in the vicinity distribution P aut for authentic examples as follows : ? aut ( x , ?|x , y ) = 1 | S| ( x ,y ) ?S E ? [ ?( e( x ) = m ? ( x , x ) , e( ? ) = m ? ( y , y ) , ? = m ? ( ? , ? ) ) ] . ( 15 )
+The translation loss on authentic data is integrated over all examples of the vicinity distribution P aut : L aut ( ? ) = E Paut ( x , ? ) [ ( f ( e( x ) , e( ? ) ; ? ) , ? ) ] . ( 16 )
+In our experiments , we select the value of ? in Eq. ( 15 ) twice for every ( x , y ) : ( 1 ) a constant 1.0 and ( 2 ) a sample from the Beta distribution .
+The former is equivalent to sampling from the empirical distribution P ? whereas the latter is similar to applying mixup in the embedding space of the sequence model .
+In other words , L aut ( ? ) equals the sum of two translation losses , L clean ( ? ) computed on the original training examples when ? is 1.0 and L mixup ( ? ) computed on virtual examples when ? is sampled from a Beta distribution .
+Accordingly , when ? is 1.0 we set ? to be the interpolation of the sequences of one- hot label vectors for y and y , i.e. ? = ? and ? = ? . Otherwise ? is the interpolation of model output vectors of ( x , y ) and ( x , y ) , that is , ? = f ( e( x ) , e( y ) ; ?) and ? = f ( e( x ) , e(y ) ; ?) .
+Training Finally , the training objective in our AdvAug is a combination of the two losses : ? * = argmin ?
+{ L aut ( ? ) + L adv ( ? ) }. ( 17 ) Here , we omit two bidirectional language model losses for simplicity , which are used to recommend word candidates to maintain semantic similarities ( Cheng et al. , 2019 ) .
+In practice , we need to compute the loss via minibatch training .
+For the P aut , we follow the pair sampling inside each mini-batch in mixup .
+It can avoid padding too much tokens because sentences of similar lengths are grouped within a mini-batch ( Vaswani et al. , 2017 )
+Experiments
+Setup
+We verify our approach on translation tasks for three language pairs : Chinese-English , English - French , and English - German .
+The performance is evaluated with the 4 - gram BLEU score ( Papineni et al. , 2002 ) calculated by the multi-bleu. perl script .
+We report case-sensitive tokenized BLEU scores for English - French and English - German , and caseinsensitive tokenized BLEU scores for Chinese -English .
+Note that all reported BLEU scores in our approach are from a single model rather than averaging multiple models ( Vaswani et al. , 2017 ) .
+For the Chinese-English translation task , the training set is the LDC corpus consisting of 1.2 M sentence pairs .
+The NIST 2006 dataset is used as the validation set , and NIST 02 , 03 , 04 , 05 , 08 are used as the test sets .
+We apply byte-pair encoding ( BPE ) ( Sennrich et al. , 2016 b ) with 60 K merge operations to build two vocabularies comprising 46 K Chinese sub-words and 30 K English sub-words .
+We use the IWSLT 2016 corpus for English - French translation .
+The training corpus with 0.23 M sentence pairs is preprocessed with the BPE script with 20 K joint operations .
+The validation set is test2012 and the test sets are test2013 and test2014 .
+For English - German translation , we use the WMT14 corpus consisting of 4.5 M sentence pairs .
+The validation set is newstest 2013 whereas the test set is newstest2014 .
+We build a shared vocabulary of 32 K sub-words using the BPE script .
+We implement our approach on top of the Transformer ( Vaswani et al. , 2017 ) .
+The size of the hidden unit is 512 and the other hyperparameters are set following their default settings .
+There are three important hyperparameters in our approach , ? in the Beta distribution and the word replacement ratio of ? src ? ? src , and ? tgt ? ? tgt detailed in Eq. ( 4 ) .
+Note that ? src and ? tgt are not new hyperparameters but inherited from ( Cheng et al. , 2019 ) .
+We tune these hyperameters on the validation set via a grid search , i.e. ? ? { 0.2 , 0.4 , 4 , 8 , 32 } , ? src ? { 0.10 , 0.15 , 0.25 } and ? tgt ? { 0.10 , 0.15 , 0.30 , 0.5 } .
+For the mixup loss L mixup , ? is fixed to 0.2 .
+For the loss L aut and L adv , the optimal value of ? is 8.0 .
+The optimal values of ( ?
+src , ? tgt ) are found to be ( 0.25 , 0.50 ) , ( 0.15 , 0.30 ) and ( 0.15 , 0.15 ) for Chinese -English , English - French and English - German , respectively , while it is set to ( 0.10 , 0.10 ) only for backtranslated sentence pairs .
+? in Eq. ( 14 ) is set to 250K , 100K , 1 M for Chinese-English , English - French and English - German .
+Unlike Cheng et al. ( 2019 ) , we remove the learning of target language models to speed up the training .
+For each training batch , we introduce a batch of augmented adversarial examples and a batch of augmented authentic examples , which costs twice the vanilla training .
+For constructing adversarial examples , we solely compute the gradients for word embeddings which takes little time .
+After summing up the time of all steps , our total training time is about 3.3 times the vanilla training .
+Main Results Chinese-English Translation .
+Table 1 shows results on the Chinese-English translation task , in comparison with the following six baseline methods .
+For a fair comparison , we implement all these Method Loss Config .
+English - French English - German test2013 test2014 newstest13 newstest14 Edunov et al. ( 2018 ) propose three improved methods to generate back - translated data , which are sampling , top10 and beam+noise .
+Among those , we choose beam + noise as our baseline method , which can be regarded as an approach to incorporating noise into data .
+We first verify the importance of different translation losses in our approach .
+We find that both L aut and L adv are useful in improving the Transformer model .
+L adv is more important and yields a significant improvement when combined with the standard empirical loss L clean ( cf. Eq. ( 1 ) ) .
+These results validate the effectiveness of augmenting with virtual adversarial examples .
+When we use both L aut and L adv to train the model , we obtain the best performance ( up to 4.92 BLEU points on MT05 ) .
+We also compare with the mixup loss .
+However , L mixup is only slightly better than the standard empirical loss L clean .
+Compared with the baseline methods without using extra corpora , our approach shows significant improvements over the state - of - the - art models .
+In particular , the superiority of L clean + L adv over both Cheng et al . ( 2019 ) and Sato et al . ( 2019 ) verifies that we propose a more effective method to address adversarial examples in NMT .
+We also directly incorporate two adversarial examples to NMT models without interpolating their embeddings , but we do not observe any further gain over Cheng et al . ( 2019 ) .
+This substantiates the superior performance of our approach on the standard data sets .
+To compare with the approaches using extra monolingual corpora , we sample 1.25 M English sentences from the Xinhua portion of the GIGA - WORD corpus and list our performance in the last row of Table 1 .
+When the back - translated corpus is incorporated , our approach yields further improvements , suggesting our approach complements the back -translation approaches .
+English - French and English -German Translation .
+Table 2 shows the comparison with the Transformer model ( Vaswani et al. , 2017 ) , Sato et al. ( 2019 ) and Cheng et al . ( 2019 ) on English - French and English - German translation tasks .
+Our approach consistently outperforms all three baseline methods , yielding significant 3.34 and 2.27 BLEU point gains over the Transformer on the English - French and English - German translation tasks , respectively .
+We also conduct similar ablation studies on the translation loss .
+We still find that the combination of L adv abd L aut performs the best , which is consistent with the findings in the Chinese - English translation task .
+The substantial gains on these two translation tasks suggest the potential applicability of our approach to more language pairs .
+Input ?( ? ) ?
+Reference however , implementation of the deals has witnessed ups and downs , resulting in continuous setbacks in the peace process Vaswani et al .
+however , the process of implementing the agreement was full of twists and on Input turns , with the result that the peace process suffered setbacks again and again .
+on Noisy Input the process of the agreement has caused repeated setbacks to the peace process .
+Ours however , the process of implementing the agreement experienced twists and on Input turns , resulting in repeated setbacks in the peace process .
+on Noisy Input however , the process of implementing the agreement experienced twists and turns , resulting in repeated setbacks in the peace process .
+Effect of ?
+The hyperparameter ? controls the shape of the Beta distribution over interpolation weights .
+We study its effect on the validation set in Table 4 . Notable differences occur when ? < 1 and ? > 1 , this is because the Beta distribution show two different shapes with ? = 1 as a critical point .
+As we see , both L aut and L adv prefer a large ? and perform better when ? = 8 . Recall that when ? is large , m ? behaves similarly to a simple average function .
+In L mixup , ? = 4 performs slightly better , and a large ? = 32 will fail the model training .
+Although the result with ? = 4 appears to be slightly better , it consumes more iterations to train the model to reach the convergence , i.e. , 90 K for ? = 4 vs. 20 K for ? = 0.2 .
+These indicate the differences between the proposed vicinity distributions and the one used in mixup .
+Robustness to Noisy Inputs and Overfitting
+To test robustness on noisy inputs , we follow Cheng et al . ( 2019 ) to construct a noisy data set by randomly replacing a word in each sentence of the standard validation set with a relevant alternative .
+The relevance between words is measured by the similarity of word embeddings .
+100 noisy sentences are generated for each of them and then re-scored to pick the best one with a bidirectional language model .
+Table 5 shows the results on artificial noisy inputs with different noise levels .
+Our approach shows higher robustness over all baseline methods across all noise levels .
+Figure 2 shows the evolution of BLEU scores during training .
+For L clean , the BLEU score reaches its peak at about 20 K iterations , and then the model starts overfitting .
+In comparison , all of the training losses proposed in this paper are capable of resisting overfitting : in fact , even after 100 K iterations , no significant regression is observed ( not shown in this figure ) .
+At the same iteration , our results are consistently higher than both the empirical risk ( L clean ) and mixup ( L mixup ) .
+As shown in Table 3 , the baseline yields an incorrect translation possibly because the word " danshi ( ? ) " seldom occurs in this context in our training data .
+In contrast , our model incorporates embeddings of virtual sentences that contain " danshi ( ? ) " or its synonym " dan ( ? ) " .
+This encourages our model to learn to push their embeddings closer during training , and make our model more robust to small perturbations in real sentences .
+Related Work Data Augmentation .
+Data augmentation is an effective method to improve machine translation performance .
+Existing methods in NMT may be divided into two categories , based upon extra corpora ( Sennrich et al. , 2016a ; Cheng et al. , 2016 ; Zhang and Zong , 2016 ; Edunov et al. , 2018 ) or original parallel corpora ( Fadaee et al. , 2017 ; Wang et al. , 2018 ; Cheng et al. , 2019 ) .
+Recently , mixup ( Zhang et al. , 2018 ) has become a popular data augmentation technique for semi-supervised learning ( Berthelot et al. , 2019 ) and overcoming real- world noisy data .
+Unlike prior works , we introduce a new method to augment the representations of the adversarial examples in sequence - tosequence training of the NMT model .
+Even without extra monolingual corpora , our approach substantially outperforms the widely - used back - translation methods ( Sennrich et al. , 2016a ; Edunov et al. , 2018 ) .
+Furthermore , we can obtain even better performance by including additional monolingual corpora .
+Robust Neural Machine Translation .
+It is well known that neural networks are sensitive to noisy inputs ( Szegedy et al. , 2014 ; , and neural machine translation is no exception .
+Thus improving the robustness of NMT models has become a popular research topic ( e.g. , Belinkov and Bisk , 2018 ; Sperber et al. , 2017 ; Ebrahimi et al. , 2018 ; Cheng et al. , 2018
+Cheng et al. , , 2019 Karpukhin et al. , 2019 ; . Many of these studies focus on augmenting the training data to improve robustness , especially with adversarial examples ( Ebrahimi et al. , 2018 ; Cheng et al. , 2019 ; Karpukhin et al. , 2019 ; . Others also tried to deal with this issue by finding better input representations , adding adversarial regularization ( Sato et al. , 2019 ) and so on .
+In contrast to those studies , we propose the vicinity distribution defined in a smooth space by interpolating discrete adversarial examples .
+Experimental results show substantial improvements on both clean and noisy inputs .
+Conclusion
+We have presented an approach to augment the training data of NMT models by introducing a new vicinity distribution defined over the interpolated embeddings of adversarial examples .
+To further improve the translation quality , we also incorporate an existing vicinity distribution , similar to mixup for observed examples in the training set .
+We design an augmentation algorithm over the virtual sentences sampled from both of the vicinity distributions in sequence - to-sequence NMT model training .
+Experimental results on Chinese-English , English - French and English - German translation tasks demonstrate the capability of our approach to improving both translation performance and robustness .
+D KL ( f j ( e( x ) , e( y ) ; ? ) ||f j ( e( x ) , e( ? ) ; ? ) ) , ( 12 )

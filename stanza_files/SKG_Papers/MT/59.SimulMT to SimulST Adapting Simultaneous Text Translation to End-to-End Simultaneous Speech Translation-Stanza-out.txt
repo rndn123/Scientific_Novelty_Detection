@@ -1,0 +1,127 @@
+title
+SimulMT to SimulST : Adapting Simultaneous Text Translation to End-to- End Simultaneous Speech Translation
+abstract
+Simultaneous text translation and end-to- end speech translation have recently made great progress but little work has combined these tasks together .
+We investigate how to adapt simultaneous text translation methods such as wait -k and monotonic multihead attention to end-to - end simultaneous speech translation by introducing a pre-decision module .
+A detailed analysis is provided on the latency -quality trade- offs of combining fixed and flexible predecision with fixed and flexible policies .
+We also design a novel computation - aware latency metric , adapted from Average Lagging .
+1
+Introduction Simultaneous speech translation ( SimulST ) generates a translation from an input speech utterance before the end of the utterance has been heard .
+SimulST systems aim at generating translations with maximum quality and minimum latency , targeting applications such as video caption translations and real-time language interpreter .
+While great progress has recently been achieved on both end-to - end speech translation ( Ansari et al. , 2020 ) and simultaneous text translation ( SimulMT ) ( Grissom II et al. , 2014 ; Gu et al. , 2017 ; Luo et al. , 2017 ; Lawson et al. , 2018 ; Alinejad et al. , 2018 ; Zheng et al. , 2019 b , a ; Ma et al. , 2020 ; Arivazhagan et al. , 2019 Arivazhagan et al. , , 2020 , little work has combined the two tasks together ( Ren et al. , 2020 ) .
+End-to- end SimulST models feature a smaller model size , greater inference speed and fewer compounding errors compared to their cascade counterpart , which perform streaming speech recognition followed by simultaneous machine translation .
+In addition , it has been demonstrated that end-to- end SimulST systems can have lower latency than cascade systems ( Ren et al. , 2020 ) .
+In this paper , we study how to adapt methods developed for SimulMT to end-to- end SimulST .
+To this end , we introduce the concept of pre-decision module .
+Such module guides how to group encoder states into meaningful units prior to making a READ / WRITE decision .
+A detailed analysis of the latency -quality trade- offs when combining a fixed or flexible pre-decision module with a fixed or flexible policy is provided .
+We also introduce a novel computation - aware latency metric , adapted from Average Lagging ( AL ) ( Ma et al. , 2019 ) .
+Task formalization A SimulST model takes as input a sequence of acoustic features X = [ x 1 , ...x | X| ] extracted from speech samples every T s ms , and generates a sequence of text tokens Y = [y 1 , ... , y | Y | ] in a target language .
+Additionally , it is able to generate y i with only partial input X 1:n( y i ) = [ x 1 , ...x n(y i ) ] , where n(y i ) ?
+| X | is the number of frames needed to generate the i-th target token y i .
+Note that n is a monotonic function , i.e. n( y i?1 ) ? n( y i ) .
+A SimulST model is evaluated with respect to quality , using BLEU ( Papineni et al. , 2002 ) , and latency .
+We introduce two latency evaluation methods for SimulST that are adapted from SimulMT .
+We first define two types of delays to generate the word y i , a computation - aware ( CA ) and a non computation - aware ( NCA ) delay .
+The CA delay of y i , d CA ( y i ) , is defined as the time that elapses ( speech duration ) from the beginning of the process to the prediction of y i , while the NCA delay for To better evaluate the latency for SimulST , we introduce a modification to AL .
+We assume an oracle system that can perform perfect simultaneous translation for both latency and quality , while in Ma et al . ( 2019 ) the oracle is ideal only from the latency perspective .
+We evaluate the lagging based on time rather than steps .
+The modified AL metric is defined in Eq. ( 1 ) : y i d CA ( y i ) is defined by d NCA ( y i ) = T s ? n( y i ) . AL = 1 ? ( | X | ) ? ( | X | ) i=1 d(y i ) ? | X| | Y * | ?T s ?( i?1 ) ( 1 ) where | Y * | is the length of the reference translation , ? ( | X | ) is the index of the first target token generated when the model read the full input .
+There are two benefits from this modification .
+The first is that latency is measured using time instead of steps , which makes it agnostic to preprocessing and segmentation .
+The second is that it is more robust and can prevent an extremely low and trivial value when the prediction is significantly shorter than the reference .
+3 Method
+Model Architecture End-to- end ST models directly map a source speech utterance into a sequence of target tokens .
+We use the S-Transformer architecture proposed by ( Di Gangi et al. , 2019 b ) , which achieves competitive performance on the MuST - C dataset ( Di Gangi et al. , 2019a ) .
+In the encoder , a two -dimensional attention is applied after the CNN layers and a distance penalty is introduced to bias the attention towards short - range dependencies .
+We investigate two types of simultaneous translation mechanisms , flexible and fixed policy .
+In particular , we investigate monotonic multihead attention ( Ma et al. , 2020 ) , which is an instance of flexible policy and the prefix-to- prefix model ( Ma et al. , 2019 ) , an instance of fixed policy , designated by wait -k from now on .
+Monotonic Multihead Attention ( MMA ) ( Ma et al. , 2020 ) extends monotonic attention ( Raffel et al. , 2017 ; Arivazhagan et al. , 2019 ) to Transformer - based models .
+Each head in each layer has an independent step probability p ij for the ith target and jth source step , and then uses a closed form expected attention for training .
+A weighted average and variance loss were proposed to control the behavior of the attention heads and thus the trade - offs between quality and latency .
+Wait -k ( Ma et al. , 2019 ) is a fixed policy that waits for k source tokens , and then reads and writes alternatively .
+Wait -k can be a special case of Monotonic Infinite - Lookback Attention ( MILk ) ( Arivazhagan et al. , 2019 ) or MMA where the stepwise probability p ij = 0 if j ?
+i < k else p ij = 1 .
+Pre-Decision Module In SimulMT , READ or WRITE decisions are made at the token ( word or BPE ) level .
+However , with speech input , it is unclear when to make such decisions .
+For example , one could choose to read or write after each frame or after generating each encoder state .
+Meanwhile , a frame typically only covers 10 ms of the input while an encoder state generally covers 40 ms of the input ( assuming a subsampling factor of 4 ) , while the average length of a word in our dataset is 270 ms .
+Intuitively , a policy like wait -k will not have enough information to write a token after reading a frame or generating an encoder state .
+In principle , a flexible or modelbased policy such as MMA should be able to handle granulawhile MMA is more robust tr input .
+Our analysis will show , however , that o the granularity of the input , it also performs poorly when the input is too fine-grained .
+In order to overcome these issues , we introduce the notion of pre-decision module , which groups frames or encoder states , prior to making a decision .
+A pre-decision module generates a series of trigger probabilities p tr on each encoder states to indicate whether a simultaneous decision should be made .
+If p tr > 0.5 , the model triggers the simultaneous decision making , otherwise keeps reading new frames .
+We propose two types of pre-decision module .
+Fixed Pre-Decision
+A straightforward policy for a fixed pre-decision module is to trigger simultaneous decision making every fixed number of frames .
+Let ?t be the time corresponding to this fixed number of frames , with ?t a multiple of T s , and r e = int ( | X | / |H| ) .
+p tr at encoder step j is defined in Eq. ( 2 ) : p tr ( j ) = 1 if mod ( j ? r e ? T s , ?t ) = 0 , 0 Otherwise .
+( 2 ) Flexible Pre-Decision
+We use an oracle flexible pre-decision module that uses the source boundaries either at the word or phoneme level .
+Let A be the alignment between encoder states and source labels ( word or phoneme ) .
+A( h i ) represents the token that h i aligns to .
+The trigger probability can then be defined in Eq. ( 3 ) : p tr ( j ) = 0 if A( h j ) = A ( h j?1 ) 1 Otherwise . ( 3 )
+Experiments
+We conduct experiments on the English - German portion of the MuST - C dataset ( Di Gangi et al. , 2019a ) , where source audio , source transcript and target translation are available .
+We train on 408 hours of speech and 234 k sentences of text data .
+We use Kaldi ( Povey et al. , 2011 ) to extract 80 dimensional log-mel filter bank features , computed with a 25 ms window size and a 10 ms window shift .
+For text , we use SentencePiece ( Kudo and Richardson , 2018 ) to generate a unigram vocabulary of size 10,000 .
+We use Gentle 2 to generate the alignment between source text and speech as the label to generate the oracle flexible predecision module .
+Translation quality is evaluated with case-sensitive detokenized BLEU with SACREBLEU ( Post , 2018 ) .
+The latency is evaluated with our proposed modification of AL ( Ma et al. , 2019 ) .
+All results are reported on the MuST - C dev set .
+All speech translation models are first pretrained on the ASR task where the target vocabulary is character - based , in order to initialize the 2 https://lowerquality.com/gentle/ encoder .
+We follow the same hyperparameter settings from ( Di Gangi et al. , 2019 b ) .
+We follow the latency regularization method introduced by ( Ma et al. , 2020 ; Arivazhagan et al. , 2019 ) ,
+The objective function to optimize is L = ?log ( P ( Y | X ) ) + ?max ( C( D ) , 0 ) ( 4 )
+Where C is a latency metric ( AL in this case ) and D is described in Section 2 .
+Only samples with AL > 0 are regularized to avoid overfitting .
+For the models with monotonic multihead attention , we first train a model without latency with ? latency = 0 .
+After the model converges , ? latency is set to a desired value and the model is continue trained until convergence .
+The latency - quality trade- offs of the 4 types of model from the combination of fixed or flexible predecision with fixed or flexible policy are presented in Fig.
+2 .
+The non computation - aware delays are used to calculate the latency metric in order to evaluate those trade - offs from a purely algorithmic perspective .
+Fixed Pre-Decision + Fixed Policy 3 ( Fig. 2a ) .
+As expected , both quality and latency increase with step size and lagging .
+In addition , the latencyquality trade - offs are highly dependent on the step size of the pre-decision module .
+For example , with step size 120ms , the performance is very poor even with large k because of very limited information being read before writing a target token .
+Large step sizes improve the quality but introduce a lower bound on the latency .
+Note that step size 280ms , which provides an effective latency -quality tradeoff compared to other step sizes , also matches the average word length of 271ms .
+This motivates the study of a flexible pre-decision module based on word boundaries .
+Fixed Pre-Decision + Flexible Policy 4 ( Fig. 2 b ) Similar to wait -k , MMA obtains very poor performance with a small step size of 120ms .
+For other step sizes , MMA obtains similar latency -quality trade-offs , demonstrating some form of robustness to the step size .
+Step size : 120 ms
+Step size : 200 ms
+Step size : 280 ms
+Step size : 360 ms
+Step size : 440 ms
+Step size : word size : phoneme Step size : 120 ms
+Step size : 200 ms
+Step size : 280 ms
+Step size : 360 ms
+Step size : 440 ms would not normally have access to this information and that the purpose of this experiment is to guide future design of a flexible pre-decision model .
+First , as previously observed , the granularity of the pre-decision greatly influences the latency -quality trade-offs .
+Models using phoneme boundaries obtain very poor translation quality because those boundaries are too granular , with an average phoneme duration of 77ms .
+In addition , comparing MMA and wait -k with phoneme boundaries , MMA is found to be more robust to the granularity of the pre-decision .
+Best Curves
+The best settings for each approach are compared in Fig. 3 .
+For fixed pre-decision , we choose the setting that has the best quality for each latency bucket of 500ms , while for the flexible pre-decision we use oracle word boundaries .
+For both wait -k and MMA , the flexible pre-decision module outperforms the fixed pre-decision module .
+This is expected since the flexible pre-decision module uses oracle information in the form of precomputed word boundaries but provides a direction for future research .
+The best latency -quality trade- offs are obtained with MMA and flexible predecision from word boundaries .
+Computation Aware Latency
+We also consider the computation - aware latency described in Section 2 , shown in Fig.
+4 .
+The focus is on fixed pre-decision approaches in order to understand the relation between the granularity of the pre-decision and the computation time .
+Fig. 4 shows that as the step size increases , the difference between the NCA and the CA latency shrinks .
+This is because with larger step sizes , there is less overhead of recomputing the bidirectional encoder states 5 .
+We recommend future work on SimulST to make use of CA latency as it reflects a more realistic evaluation , especially in low-latency regimes , and is able to distinguish streaming capable systems .
+Conclusion
+We investigated how to adapt SimulMT methods to end-to- end SimulST by introducing the concept of pre-decision module .
+We also adapted Average Lagging to be computation - aware .
+The effects of combining a fixed or flexible pre-decision module with a fixed or flexible policy were carefully analyzed .
+Future work includes building an incremental encoder to reduce the CA latency and design a learnable pre-decision module .
+Note that d NCA is an ideal case for d CA where the computational time for the model is ignored .
+Both delays are measured in milliseconds .
+Two types of latency measurement , L CA and L N CA , are calculated accordingly : L = C ( D ) where C is a latency metric and D = [ d( y 1 ) , ... , d( y | Y | ) ] .

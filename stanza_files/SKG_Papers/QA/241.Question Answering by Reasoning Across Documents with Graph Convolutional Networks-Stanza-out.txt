@@ -1,0 +1,237 @@
+title
+Question Answering by Reasoning Across Documents with Graph Convolutional Networks
+abstract
+Most research in reading comprehension has focused on answering questions based on individual documents or even single paragraphs .
+We introduce a neural model which integrates and reasons relying on information spread within documents and across multiple documents .
+We frame it as an inference problem on a graph .
+Mentions of entities are nodes of this graph while edges encode relations between different mentions ( e.g. , within - and crossdocument coreference ) .
+Graph convolutional networks ( GCNs ) are applied to these graphs and trained to perform multi-step reasoning .
+Our Entity - GCN method is scalable and compact , and it achieves state - of - the - art results on a multi-document question answering dataset , WIKIHOP ( Welbl et al. , 2018 ) .
+Introduction
+The long-standing goal of natural language understanding is the development of systems which can acquire knowledge from text collections .
+Fresh interest in reading comprehension tasks was sparked by the availability of large-scale datasets , such as SQuAD ( Rajpurkar et al. , 2016 ) and CNN / Daily Mail ( Hermann et al. , 2015 ) , enabling end-to - end training of neural models ( Seo et al. , 2016 ; Xiong et al. , 2016 ; Shen et al. , 2017 ) .
+These systems , given a text and a question , need to answer the query relying on the given document .
+Recently , it has been observed that most questions in these datasets do not require reasoning across the document , but they can be answered relying on information contained in a single sentence ( Weissenborn et al. , 2017 ) .
+The last generation of large-scale reading comprehension datasets , such as a NarrativeQA ( Kocisky et al. , 2018 ) , Trivi-aQA ( Joshi et al. , 2017 ) , and RACE ( Lai et al. , 2017 ) , have been created in such a way as to address this shortcoming and to ensure that systems relying only on local information cannot achieve competitive performance .
+Even though these new datasets are challenging and require reasoning within documents , many question answering and search applications require aggregation of information across multiple documents .
+The WIKIHOP dataset ( Welbl et al. , 2018 ) was explicitly created to facilitate the development of systems dealing with these scenarios .
+Each example in WIKIHOP consists of a collection of documents , a query and a set of candidate answers ( Figure 1 ) .
+Though there is no guarantee that a question cannot be answered by relying just on a single sentence , the authors ensure that it is answerable using a chain of reasoning crossing document boundaries .
+Though an important practical problem , the multi-hop setting has so far received little attention .
+The methods reported by Welbl et al . ( 2018 ) approach the task by merely concatenating all documents into a single long text and training a standard RNN - based reading comprehension model , namely , BiDAF ( Seo et al. , 2016 ) and FastQA ( Weissenborn et al. , 2017 ) .
+Document concatenation in this setting is also used in Weaver ( Raison et al. , 2018 ) and MHPGM ( Bauer et al. , 2018 ) .
+The only published paper which goes beyond concatenation is due to Dhingra et al . ( 2018 ) , where they augment RNNs with jump-links corresponding to co-reference edges .
+Though these edges provide a structural bias , the RNN states are still tasked with passing the information across the document and performing multihop reasoning .
+Instead , we frame question answering as an inference problem on a graph representing the document collection .
+Nodes in this graph correspond to named entities in a document whereas edges encode relations between them ( e.g. , crossand within-document coreference links or simply co-occurrence in a document ) .
+We assume that reasoning chains can be captured by propagating local contextual information along edges in this graph using a graph convolutional network ( GCN ) ( Kipf and Welling , 2017 ) .
+The multi-document setting imposes scalability challenges .
+In realistic scenarios , a system needs to learn to answer a query for a given collection ( e.g. , Wikipedia or a domain-specific set of documents ) .
+In such scenarios one cannot afford to run expensive document encoders ( e.g. , RNN or transformer - like self-attention ( Vaswani et al. , 2017 ) ) , unless the computation can be preprocessed both at train and test time .
+Even if ( similarly to WIKIHOP creators ) one considers a coarse- to- fine approach , where a set of potentially relevant documents is provided , re-encoding them in a query -specific way remains the bottleneck .
+In contrast to other proposed methods ( e.g. , ( Dhingra et al. , 2018 ; Raison et al. , 2018 ; Seo et al. , 2016 ) ) , we avoid training expensive document encoders .
+In our approach , only a small query encoder , the GCN layers and a simple feed -forward answer selection component are learned .
+Instead of training RNN encoders , we use contextualized embeddings ( ELMo ) to obtain initial ( local ) representations of nodes .
+This implies that only a lightweight computation has to be performed online , both at train and test time , whereas the rest is preprocessed .
+Even in the somewhat contrived WIKIHOP setting , where fairly small sets of candidates are provided , the model is at least 5 times faster to train than BiDAF .
+1 Interestingly , when we substitute ELMo with simple pre-trained word embeddings , Entity - GCN still performs on par with many techniques that use expensive questionaware recurrent document encoders .
+Despite not using recurrent document encoders , the full Entity - GCN model achieves over 2 % improvement over the best previously - published results .
+As our model is efficient , we also reported results of an ensemble which brings further 3.6 % of improvement and only 3 % below the human performance reported by Welbl et al . ( 2018 ) .
+Our contributions can be summarized as follows : ? we present a novel approach for multi-hop QA that relies on a ( pre-trained ) document encoder and information propagation across multiple documents using graph neural networks ; ? we provide an efficient training technique which relies on a slower offline and a faster on - line computation that does not require expensive document processing ; ? we empirically show that our algorithm is effective , presenting an improvement over previous results .
+Method
+In this section we explain our method .
+We first introduce the dataset we focus on , WIKIHOP by Welbl et al . ( 2018 ) , as well as the task abstraction .
+We then present the building blocks that make up our Entity - GCN model , namely , an entity graph used to relate mentions to entities within and across documents , a document encoder used to obtain representations of mentions in context , and a relational graph convolutional network that propagates information through the entity graph .
+Dataset and Task Abstraction Data
+The WIKIHOP dataset comprises of tuples q , S q , C q , a where : q is a query / question , S q is a set of supporting documents , C q is a set of candidate answers ( all of which are entities mentioned in S q ) , and a ?
+C q is the entity that correctly answers the question .
+WIKIHOP is assembled assuming that there exists a corpus and a knowledge base ( KB ) related to each other .
+The KB contains triples s , r , o where s is a subject entity , o an object entity , and r a unidirectional relation between them .
+Welbl et al. ( 2018 ) used WIKIPEDIA as corpus and WIKIDATA ( Vrande ? i? , 2012 ) as KB .
+The KB is only used for constructing WIKIHOP : Welbl et al. ( 2018 ) retrieved the supporting documents S q from the corpus looking at mentions of subject and object entities in the text .
+Note that the set S q ( not the KB ) is provided to the QA system , and not all of the supporting documents are relevant for the query but some of them act as distractors .
+Queries , on the other hand , are not expressed in natural language , but instead consist of tuples s , r , ? where the object entity is unknown and it has to be inferred by reading the support documents .
+Therefore , answering a query corresponds to finding the entity a that is the object of a tuple in the KB with subject s and relation r among the provided set of candidate answers C q .
+Task
+The goal is to learn a model that can identify the correct answer a from the set of supporting documents S q .
+To that end , we exploit the available supervision to train a neural network that computes scores for candidates in C q .
+We estimate the parameters of the architecture by maximizing the likelihood of observations .
+For prediction , we then output the candidate that achieves the highest probability .
+In the following , we present our model discussing the design decisions that enable multi-step reasoning and an efficient computation .
+Reasoning on an Entity Graph Entity graph
+In an offline step , we organize the content of each training instance in a graph connecting mentions of candidate answers within and across supporting documents .
+For a given query q = s , r , ? , we identify mentions in S q of the entities in C q ? {s } and create one node per mention .
+This process is based on the following heuristic : 1 . we consider mentions spans in S q exactly matching an element of C q ? { s}.
+Admittedly , this is a rather simple strategy which may suffer from low recall .
+2 . we use predictions from a coreference resolution system to add mentions of elements in C q ? { s} beyond exact matching ( including both noun phrases and anaphoric pronouns ) .
+In particular , we use the end-to - end coreference resolution by Lee et al . ( 2017 ) . 3 . we discard mentions which are ambiguously resolved to multiple coreference chains ; this may sacrifice recall , but avoids propagating ambiguity .
+Figure 2 : Supporting documents ( dashed ellipses ) organized as a graph where nodes are mentions of either candidate entities or query entities .
+Nodes with the same color indicates they refer to the same entity ( exact match , coreference or both ) .
+Nodes are connected by three simple relations : one indicating co-occurrence in the same document ( solid edges ) , another connecting mentions that exactly match ( dashed edges ) , and a third one indicating a coreference ( bold - red line ) .
+To each node v i , we associate a continuous annotation x i ?
+R D which represents an entity in the context where it was mentioned ( details in Section 2.3 ) .
+We then proceed to connect these mentions i ) if they co-occur within the same document ( we will refer to this as DOC - BASED edges ) , ii ) if the pair of named entity mentions is identical ( MATCH edges - these may connect nodes across and within documents ) , or iii ) if they are in the same coreference chain , as predicted by the external coreference system ( COREF edges ) .
+Note that MATCH edges when connecting mentions in the same document are mostly included in the set of edges predicted by the coreference system .
+Having the two types of edges lets us distinguish between less reliable edges provided by the coreference system and more reliable ( but also more sparse ) edges given by the exact-match heuristic .
+We treat these three types of connections as three different types of relations .
+See Figure 2 for an illustration .
+In addition to that , and to prevent having disconnected graphs , we add a fourth type of relation ( COMPLEMENT edge ) between any two nodes that are not connected with any of the other relations .
+We can think of these edges as those in the complement set of the entity graph with respect to a fully connected graph .
+Multi-step reasoning
+Our model then approaches multi-step reasoning by transforming node representations ( Section 2.3 for details ) with a differentiable message passing algorithm that propagates information through the entity graph .
+The algorithm is parameterized by a graph convolutional network ( GCN ) ( Kipf and Welling , 2017 ) , in particular , we employ relational - GCNs ( Schlichtkrull et al. , 2018 ) , an extended version that accommodates edges of different types .
+In Section 2.4 we describe the propagation rule .
+Each step of the algorithm ( also referred to as a hop ) updates all node representations in parallel .
+In particular , a node is updated as a function of messages from its direct neighbours , and a message is possibly specific to a certain relation .
+At the end of the first step , every node is aware of every other node it connects directly to .
+Besides , the neighbourhood of a node may include mentions of the same entity as well as others ( e.g. , samedocument relation ) , and these mentions may have occurred in different documents .
+Taking this idea recursively , each further step of the algorithm allows a node to indirectly interact with nodes already known to their neighbours .
+After L layers of R - GCN , information has been propagated through paths connecting up to L + 1 nodes .
+We start with node representations { h ( 0 ) i } N i=1 , and transform them by applying L layers of R -GCN obtaining { h ( L ) i } N i=1 .
+Together with a representation q of the query , we define a distribution over candidate answers and we train maximizing the likelihood of observations .
+The probability of selecting a candidate c ?
+C q as an answer is then P ( c|q , C q , S q ) ?
+exp max i? Mc f o ( [ q , h ( L ) i ] ) , ( 1 ) where f o is a parameterized affine transformation , and M c is the set of node indices such that i ?
+M c only if node v i is a mention of c .
+The max operator in Equation 1 is necessary to select the node with highest predicted probability since a candidate answer is realized in multiple locations via different nodes .
+Node Annotations
+Keeping in mind we want an efficient model , we encode words in supporting documents and in the query using only a pre-trained model for contextualized word representations rather than training our own encoder .
+Specifically , we use ELMo 2 ( Peters et al. , 2018 ) , a pre-trained bi-directional lan-guage model that relies on character - based input representation .
+ELMo representations , differently from other pre-trained word - based models ( e.g. , word2vec ( Mikolov et al. , 2013 ) or GloVe ( Pennington et al. , 2014 ) ) , are contextualized since each token representation depends on the entire text excerpt ( i.e. , the whole sentence ) .
+We choose not to fine tune nor propagate gradients through the ELMo architecture , as it would have defied the goal of not having specialized RNN encoders .
+In the experiments , we will also ablate the use of ELMo showing how our model behaves using non-contextualized word representations ( we use GloVe ) .
+Documents pre-processing ELMo encodings are used to produce a set of representations { x i } N i=1 , where x i ?
+R D denotes the ith candidate mention in context .
+Note that these representations do not depend on the query yet and no trainable model was used to process the documents so far , that is , we use ELMo as a fixed pre-trained encoder .
+Therefore , we can pre-compute representation of mentions once and store them for later use .
+Query - dependent mention encodings ELMo encodings are used to produce a query representation q ?
+R K as well .
+Here , q is a concatenation of the final outputs from a bidirectional RNN layer trained to re-encode ELMo representations of words in the query .
+The vector q is used to compute a query -dependent representation of mentions { x i } N i=1 as well as to compute a probability distribution over candidates ( as in Equation 1 ) .
+Querydependent mention encodings xi = f x ( q , x i ) are generated by a trainable function f x which is parameterized by a feed-forward neural network .
+Entity Relational Graph Convolutional Network
+Our model uses a gated version of the original R- GCN propagation rule .
+At the first layer , all hidden node representation are initialized with the query - aware encodings h ( 0 ) i = xi .
+Then , at each layer 0 ? ? L , the update message u ( ) i to the ith node is a sum of a transformation f s of the current node representation h ( ) i and transformations of its neighbours : u ( ) i = f s ( h ( ) i ) + 1 | N i | j?N
+i r?R ij f r ( h ( ) j ) , ( 2 ) where N i is the set of indices of nodes neighbouring the ith node , R ij is the set of edge annotations between i and j , and f r is a parametrized function specific to an edge type r ? R. Recall the available relations from Section 2.2 , namely , R = { DOC - BASED , MATCH , COREF , COMPLEMENT } .
+A gating mechanism regulates how much of the update message propagates to the next step .
+This provides the model a way to prevent completely overwriting past information .
+Indeed , if all necessary information to answer a question is present at a layer which is not the last , then the model should learn to stop using neighbouring information for the next steps .
+Gate levels are computed as a ( ) i = ? f a [ u ( ) i , h ( ) i ] , ( 3 ) where ?(? ) is the sigmoid function and f a a parametrized transformation .
+Ultimately , the updated representation is a gated combination of the previous representation and a non-linear transformation of the update message : h ( + 1 ) i = ?( u ( ) i ) a ( ) i + h ( ) i ( 1 ? a ( ) i ) , ( 4 ) where ?(? ) is any nonlinear function ( we used tanh ) and stands for element - wise multiplication .
+All transformations f * are affine and they are not layer - dependent ( since we would like to use as few parameters as possible to decrease model complexity promoting efficiency and scalability ) .
+Experiments
+In this section , we compare our method against recent work as well as preforming an ablation study using the WIKIHOP dataset ( Welbl et al. , 2018 )
+We do not use coreference systems in the masked version as they rely crucially on lexical realization of mentions and cannot operate on masked tokens .
+Comparison
+In this experiment , we compare our Enitity - GCN against recent prior work on the same task .
+We present test and development results ( when present ) for both versions of the dataset in Table 2 . From Welbl et al. ( 2018 ) , we list an oracle based on human performance as well as two standard reading comprehension models , namely BiDAF ( Seo et al. , 2016 ) and FastQA ( Weissenborn et al. , 2017 ) .
+We also compare against Coref-GRU ( Dhingra et al. , 2018 ) , MHPGM ( Bauer et al. , 2018 ) , and Weaver ( Raison et al. , 2018 ) .
+Additionally , we include results of MHQA - GRN ( Song et al. , 2018 ) , from a recent arXiv preprint describing concurrent work .
+They jointly train graph neural networks and recurrent encoders .
+We report single runs of our two best single models and an ensemble one on the unmasked test set ( recall that the test set is not publicly available and the task organizers only report unmasked results ) as well as both versions of the validation set .
+Entity - GCN ( best single model without coreference edges ) outperforms all previous work by over 2 % points .
+We additionally re-ran BiDAF baseline to compare training time : when using a single Titan X GPU , BiDAF and Entity - GCN process 12.5 and 57.8 document sets per second , respectively .
+Note that Welbl et al . ( 2018 ) had to use BiDAF with very small state dimensionalities
+Model Unmasked Masked Test Dev Test Dev Human ( Welbl et al. , 2018 ) 74.1 ---FastQA ( Welbl et al. , 2018 ) 25.7 - 35.8 - BiDAF ( Welbl et al. , 2018 ) 42.9 - 54.5 - Coref-GRU ( Dhingra et al. , 2018 ) 59.3 56.0 --MHPGM ( Bauer et al. , 2018 ) - 58.2 -- Weaver / Jenga ( Raison et al. , 2018 ) 65.3 64.1 --MHQA-GRN
+( Song et al. , 2018 ) 65 ( 20 ) , and smaller batch size due to the scalability issues ( both memory and computation costs ) .
+We compare applying the same reductions .
+3 Eventually , we also report an ensemble of 5 independently trained models .
+All models are trained on the same dataset splits with different weight initializations .
+The ensemble prediction is obtained as arg max c 5 i=1 P i ( c|q , C q , S q ) from each model .
+Ablation Study
+To help determine the sources of improvements , we perform an ablation study using the publicly available validation set ( see Table 3 ) .
+We perform two groups of ablation , one on the embedding layer , to study the effect of ELMo , and one on the edges , to study how different relations affect the overall model performance .
+Embedding ablation
+We argue that ELMo is crucial , since we do not rely on any other context encoder .
+However , it is interesting to explore how our R - GCN performs without it .
+Therefore , in this experiment , we replace the deep contextualized embeddings of both the query and the nodes with GloVe ( Pennington et al. , 2014 ) vectors ( insensitive to context ) .
+Since we do not have any component in our model that processes the documents , we expect a drop in performance .
+In other words , in this ablation our model tries to answer questions 3 Besides , we could not run any other method we compare with combined with ELMo without reducing the dimensionality further or having to implement a distributed version .
+without reading the context at all .
+For example , in Figure 1 , our model would be aware that " Stockholm " and " Sweden " appear in the same document but any context words , including the ones encoding relations ( e.g. , " is the capital of " ) will be hidden .
+Besides , in the masked case all mentions become ' unknown ' tokens with GloVe and therefore the predictions are equivalent to a random guess .
+Once the strong pre-trained encoder is out of the way , we also ablate the use of our R - GCN component , thus completely depriving the model from inductive biases that aim at multi-hop reasoning .
+The first important observation is that replacing ELMo by GloVe ( GloVe with R-GCN in Table 3 ) still yields a competitive system that ranks far above baselines from ( Welbl et al. , 2018 ) and even above the Coref-GRU of Dhingra et al . ( 2018 ) , in terms of accuracy on ( unmasked ) validation set .
+The second important observation is that if we then remove R-GCN ( GloVe w/ o R-GCN in Table 3 ) , we lose 8.0 points .
+That is , the R-GCN component pushes the model to perform above Coref - GRU still without accessing context , but rather by updating mention representations based on their relation to other ones .
+These results highlight the impact of our R - GCN component .
+Graph edges ablation
+In this experiment we investigate the effect of the different relations available in the entity graph and processed by the R-GCN module .
+We start off by testing our stronger encoder ( i.e. , ELMo ) in absence of edges connecting mentions in the supporting documents ( i.e. , us -
+The full model is our Entity - GCN with all of its components and other rows indicate models trained without a component of interest .
+We also report baselines using GloVe instead of ELMo with and without R-GCN .
+For the full model we report mean ?1 std over 5 runs .
+Model ing only self-loops - No R -GCN in Table 3 ) .
+The results suggest that WIKIPHOP genuinely requires multihop inference , as our best model is 6.1 % and 8.4 % more accurate than this local model , in unmasked and masked settings , respectively .
+4
+However , it also shows that ELMo representations capture predictive context features , without being explicitly trained for the task .
+It confirms that our goal of getting away with training expensive document encoders is a realistic one .
+We then inspect our model 's effectiveness in making use of the structure encoded in the graph .
+We start naively by fully - connecting all nodes within and across documents without distinguishing edges by type ( No relation types in Table 3 ) .
+We observe only marginal improvements with respect to ELMo alone ( No R -GCN in Table 3 ) in both the unmasked and masked setting suggesting that a GCN operating over a naive entity graph would not add much to this task and a more informative graph construction and / or a more sophisticated parameterization is indeed needed .
+Next , we ablate each type of relations independently , that is , we either remove connections of mentions that co-occur in the same document ( DOC - BASED ) , connections between mentions matching exactly ( MATCH ) , or edges predicted by the coreference system ( COREF ) .
+The first thing to note is that the model makes better use of DOC - BASED connections than MATCH or COREF connections .
+This is mostly because i ) the majority of the connections are indeed between mentions in the same document , and ii ) without connecting mentions within the same document we remove important information since the model is unaware they appear closely in the document .
+Secondly , we notice that coreference links and complement edges seem to play a more marginal role .
+Though it may be surprising for coreference edges , recall that the MATCH heuristic already captures the easiest coreference cases , and for the rest the out-of- domain coreference system may not be reliable .
+Still , modelling all these different relations together gives our Entity - GCN a clear advantage .
+This is our best system evaluating on the development .
+Since Entity - GCN seems to gain little advantage using the coreference system , we report test results both with and without using it .
+Surprisingly , with coreference , we observe performance degradation on the test set .
+It is likely that the test documents are harder for the coreference system .
+5
+We do perform one last ablation , namely , we replace our heuristic for assigning edges and their labels by a model component that predicts them .
+The last row of Table 3 ( Induced edges ) shows model performance when edges are not predetermined but predicted .
+For this experiment , we use a bilinear function f e ( x i , xj ) = ?
+x i W e xj that predicts the importance of a single edge connecting two nodes i , j using the query - dependent representation of mentions ( see Section 2.3 ) .
+The performance drops below ' No R - GCN ' suggesting that it cannot learn these dependencies on its own .
+Most results are stronger for the masked settings even though we do not apply the coreference resolution system in this setting due to masking .
+It is not surprising as coreferred mentions are labeled with the same identifier in the masked version , even if their original surface forms did not match ( Welbl et al . ( 2018 ) used WIKIPEDIA links for masking ) .
+Indeed , in the masked version , an entity is always referred to via the same unique surface form ( e.g. , MASK1 ) within and across documents .
+In the unmasked setting , on the other hand , mentions to an entity may differ ( e.g. , " US " vs " United States " ) and they might not be retrieved by the coreference system we are employing , mak -
+Relation Accuracy P@2 P@5
+Avg ing the task harder for all models .
+Therefore , as we rely mostly on exact matching when constructing our graph for the masked case , we are more effective in recovering coreference links on the masked rather than unmasked version .
+6
+Error Analysis
+In this section we provide an error analysis for our best single model predictions .
+First of all , we look at which type of questions our model performs well or poorly .
+There are more than 150 query types in the validation set but we filtered the three with the best and with the worst accuracy that have at least 50 supporting documents and at least 5 candidates .
+We show results in Table 4 .
+We observe that questions regarding places ( birth and death ) are considered harder for Entity - GCN .
+We then inspect samples where our model fails while assigning highest likelihood and noticed two principal sources of failure i ) a mismatch between what is written in WIKIPEDIA and what is annotated in WIKIDATA , and ii ) a different degree of granularity ( e.g. , born in " London " vs " UK " could be considered both correct by a human but not when measuring accuracy ) .
+See Table 6 in the supplement material for some reported samples .
+Secondly , we study how the model performance degrades when the input graph is large .
+In particular , we observe a negative Pearson 's correlation ( - 0.687 ) between accuracy and the number of candidate answers .
+However , the performance does not decrease steeply .
+The distribution of the number of candidates in the dataset peaks at 5 and has an average of approximately 20 .
+Therefore , the model 6
+Though other systems do not explicitly link matching mentions , they similarly benefit from masking ( e.g. , masks essentially single out spans that contain candidate answers ) .
+does not see many samples where there are a large number of candidate entities during training .
+Differently , we notice that as the number of nodes in the graph increases , the model performance drops but more gently ( negative but closer to zero Pearson 's correlation ) .
+This is important as document sets can be large in practical applications .
+See Figure 3 in the supplemental material for plots .
+Related Work
+In previous work , BiDAF ( Seo et al. , 2016 ) , FastQA ( Weissenborn et al. , 2017 ) , Coref-GRU ( Dhingra et al. , 2018 ) , MHPGM ( Bauer et al. , 2018 ) , and Weaver / Jenga ( Raison et al. , 2018 ) have been applied to multi-document question answering .
+The first two mainly focus on single document QA and Welbl et al . ( 2018 ) adapted both of them to work with WIKIHOP .
+They process each instance of the dataset by concatenating all d ?
+S q in a random order adding document separator tokens .
+They trained using the first answer mention in the concatenated document and evaluating exact match at test time .
+Coref - GRU , similarly to us , encodes relations between entity mentions in the document .
+Instead of using graph neural network layers , as we do , they augment RNNs with jump links corresponding to pairs of corefereed mentions .
+MHPGM uses a multi-attention mechanism in combination with external commonsense relations to perform multiple hops of reasoning .
+Weaver is a deep coencoding model that uses several alternating bi-LSTMs to process the concatenated documents and the query .
+Graph neural networks have been shown successful on a number of NLP tasks Bastings et al. , 2017 ; Zhang et al. , 2018a ) , including those involving document level modeling ( Peng et al. , 2017 ) .
+They have also been applied in the context of asking questions about knowledge contained in a knowledge base ( Zhang et al. , 2018 b ) .
+In Schlichtkrull et al. ( 2018 ) , GCNs are used to capture reasoning chains in a knowledge base .
+Our work and unpublished concurrent work by Song et al . ( 2018 ) are the first to study graph neural networks in the context of multidocument QA .
+Besides differences in the architecture , Song et al . ( 2018 ) propose to train a combination of a graph recurrent network and an RNN encoder .
+We do not train any RNN document encoders in this work .
+Conclusion
+We designed a graph neural network that operates over a compact graph representation of a set of documents where nodes are mentions to entities and edges signal relations such as within and cross-document coreference .
+The model learns to answer questions by gathering evidence from different documents via a differentiable message passing algorithm that updates node representations based on their neighbourhood .
+Our model outperforms published results where ablations show substantial evidence in favour of multistep reasoning .
+Moreover , we make the model fast by using pre-trained ( contextual ) embeddings .
+query : country Thorildsplan candidates : { Denmark , Finland , Sweden , Italy , ...} answer : Sweden Thorildsplan is a small park in Kristineberg in Stockholm , named in 1925 after the writer [..]
+Stockholm is the capital of Sweden and the most populous city in [..]

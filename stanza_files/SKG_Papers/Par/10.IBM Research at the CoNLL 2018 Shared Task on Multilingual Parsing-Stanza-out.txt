@@ -1,0 +1,186 @@
+title
+IBM Research at the CoNLL 2018 Shared Task on Multilingual Parsing
+abstract
+This paper presents the IBM Research AI submission to the CoNLL 2018 Shared Task on Parsing Universal Dependencies .
+Our system implements a new joint transition - based parser , based on the Stack - LSTM framework and the Arc-Standard algorithm , that handles tokenization , part- of-speech tagging , morphological tagging and dependency parsing in one single model .
+By leveraging a combination of character - based modeling of words and recursive composition of partially built linguistic structures we qualified 13th overall and 7th in low resource .
+We also present a new sentence segmentation neural architecture based on Stack - LSTMs that was the 4th best overall .
+Introduction
+The CoNLL 2018 Shared Task on Parsing Universal dependencies consists of parsing raw text from different sources and domains into Universal Dependencies ( Nivre et al. , 2016 ( Nivre et al. , , 2017a for more than 60 languages and domains .
+1
+The task includes extremely low resource languages , like Kurmanji or Buriat , and high- resource languages like English or Spanish .
+The competition therefore invites to learn how to make parsers for lowresource language better by exploiting resources available for the high- resource languages .
+The task also includes languages from almost all language families , including Creole languages like Nigerian Pidgin 2 and completely different scripts ( i.e. Chinese , Latin alphabet , Cyrillic alphabet , or Arabic ) .
+For further description of the task , data , framework and evaluation please refer to ( Nivre et al. , , 2017 b Zeman et al. , 2018 ; Potthast et al. , 2014 ; Nivre and Fang , 2017 ) .
+In this paper we describe the IBM Research AI submission to the Shared Task on Parsing Universal Dependencies .
+Our starting point is the Stack - LSTM 3 parser Ballesteros et al. , 2017 ) with character - based word representations , which we extend to handle tokenization , POS tagging and morphological tagging .
+Additionally , we apply the ideas presented by Ammar et al . ( 2016 ) to all low resource languages since they benefited from high- resource languages in the same family .
+Finally , we also present two different ensemble algorithms that boosted our results ( see Section 2.4 ) .
+Participants are requested to obtain parses from raw texts .
+This means that , sentence segmentation , tokenization , POS tagging and morphological tagging need to be done besides parsing .
+Participants can choose to use the baseline pipeline ( UDPipe 1.2 ( Straka et al. , 2016 ) ) for those steps besides parsing , or create their own implementation .
+We choose to use our own implementation for most of the languages .
+However , in a few treebanks with very hard tokenization , like Chinese and Japanese , we rely on UDPipe 1.2 and a run of our base parser ( section 2.1 ) , since this produces better results .
+For the rest of languages , we produce parses from raw text that may be in documents ( and thus we need to find the sentence markers within those documents ) ; for some of the treebanks we adapted Ballesteros and Wanner ( 2016 ) punctuation prediction system ( which is also based in the Stack - LSTM framework ) to predict sentence markers .
+Given that the text to be segmented into sentences can be of a significant length , we implemented a sliding - window extension of the punctuation prediction system where the Stack - LSTM is reinitialized and primed when the window is advanced ( see Section 3 for details ) .
+Our system ranked 13th overall , 7th for low resource languages and 4th in sentence segmentation .
+It was also the best qualifying system in low resource language , Kurmanji , evidencing the effectiveness of our adaptation of Ammar et al . ( 2016 ) approach ( see Section 2.3 ) .
+Our Parser
+In this Section we present our base parser ( see Section 2.1 ) , our joint architecture ( see Section 2.2 ) and our cross-lingual approach ( see Section 2.3 ) .
+Stack-LSTM Parser
+Our base model is the Stack - LSTM parser Ballesteros et al. , 2017 ) with character - based word representations .
+This parser implements the Arc-Standard with SWAP parsing algorithm ( Nivre , 2004 ( Nivre , , 2009 and it uses Stack - LSTMs to model three data structures : a buffer B initialized with the sequence of words to be parsed , a stack S containing partially built parses , and a list A of actions previously taken by the parser .
+This parser expects tokenized input and a unique POS tag associated with every token .
+We use version of the parser which means that we compute characterbased word vectors using bidirectional LSTMs ( Graves and Schmidhuber , 2005 ) ; but , in addition , we also add pretrained word embeddings for all languages .
+The intention is to improve in morphologically rich languages and compensate for the rest of languages in which modeling characters is not that important .
+Joint tokenization , tagging and dependency parsing Inspired by joint models like the ones by Bohnet et al . ( 2013 ) , Zhang and Clark ( 2008 ) , Rasooli and Tetreault ( 2013 ) ; Alberti et al. ( 2015 ) ; Swayamdipta et al. ( 2016 ) , among others , we extend the transition - based parser presented in 2.1 with extra actions that handle tokenization , UPOS tagging and morphological tagging .
+Actions : Actions RIGHT - ARC ( r ) , LEFT - ARC ( r ) and SWAP remain unchanged , where r represents the label assigned to the arc .
+The following actions are modified or added for the joint transition - based system .
+1 . SHIFT is extended to SHIFT ( p , f ) in which p is the UPOS tag assigned to the token being shifted , f is the Morphological tag .
+This is the same as in ( Bohnet et al. , 2013 ) . 2 . A new action TOKENIZE ( i ) is added to handle tokenization within the sentence .
+TOKENIZE ( i ) tokenizes the string at the top of the buffer at offset i .
+The resulted two tokens are put at the top of the buffer .
+When a string needs to be tokenized into more than two tokens , a series of TOKENIZE and SHIFT actions will do the work .
+3 . A new action SPLIT is added to handle splitting of a string which is more complicated than inserting whitespace , for example , the word " des " in French is splitted into " de " and " les " , as shown in Figure 2 . SPLIT splits the top of the buffer token into a list of new tokens .
+The resulted tokens are then put at the top of the buffer .
+4 . A new action MERGE is added to handle the " compound " form of token that appears sometimes in training data .
+For example , in the French treebank , " 200 000 " ( with a whitespace ) is often treated as one token .
+In our parser , this is obtained by applying MERGE when " 200 " is at the top of stack , and " 000 " is at the top of buffer .
+Figure 1 describes 1 ) parser transitions applied to the stack and buffer and 2 ) the resulting stack and buffer states .
+Figure 2 gives an example of transition sequence in our joint system .
+Modules :
+Our joint system extends the transition - based parser in Section 2.1 with extra modules to handle tokenization , UPOS and morphological tagging .
+The final loss function is the sum of the loss functions from the parser itself and these extra modules .
+Due to time limitation we did not introduce weights in the sum .
+action from the set of other ( applicable ) actions , and transit accordingly .
+? ? ? Ulis LEFTARC ( case ) [ canton - 2 , Ulis - 5 ] [ compte - 6 , 25 - 7 , 785 - 8 , habitants .- 9 ] de case ? ? ? Ulis RIGHTARC ( nmod ) [ canton - 2 ] [ compte - 6 , 25 - 7 , 785 - 8 , habitants .- 9 ] canton nmod ? ? ? Ulis SHIFT ( compte , VERB ) [ canton - 2 , compte - 6 ] [ 25 - 7 , 785 - 8 , habitants .- 9 ] ( compte , VERB ) LEFTARC ( nsubj ) [ compte - 6 ] [ 25 - 7 , 785 - 8 , habitants .- 9 ] canton nsubj ? ? ? compte SHIFT ( 25 , NUM ) [ compte - 6 , 25 - 7 ] [ 785 - 8 , habitants .- 9 ] ( 25 , NUM ) MERGE [ compte - 6 ] [ 25 785 - 7 , habitants .-8 ] SHIFT ( 25 785 , NUM ) [ compte - 6 , 25 785 - 7 ] [ habitants .-8 ] ( 25 785 , NUM ) TOKENIZE ( offset=9 ) [ compte - 6 , 25 785 - 7 ] [ habitants - 8 , .-9 ] SHIFT ( habitants , NOUN ) [ compte - 6 , 25 785 - 7 , habitants - 8 ] [ .- 9 ] ( habitants , NOUN ) LEFTARC ( nummod ) [ compte - 6 , habitants - 8 ] [ .- 9 ] compte nummod ? ? ? 25 785 RIGHTARC ( obj ) [ compte - 6 ] [ .- 9 ] compte obj ? ? ? habitants SHIFT ( . , PUNCT ) [ compte - 6 , .-9 ] [ ] ( . , PUNCT ) RIGHTARC ( punct ) [ compte - 6 ] [ ] compte punct ? ? ? . 2 . Tagging module .
+If SHIFT is predicted as the next action , a sub-routine will call classifiers to predict POS and morph-features .
+The joint system could also predict lemma , but experiment results lead to the decision of not predicting lemma .
+3 . Split module .
+If SPLIT is predicted as the next action , a sub-routine will call classifiers to predict the output of SPLIT .
+Word embeddings : Parser state representation is composed by three Stack - LSTM's : stack , buffer , actions , as in ( Ballesteros et al. , 2017 ) .
+To represent each word in the stack and the buffer , we use character - based word embeddings together with pretrained embeddings and word embeddings trained in the system .
+The character - based word embeddings are illustrated in Figure 3 .
+For tokenization module , we deployed a character - based embeddings to represent not only the string to tokenize , but also the offset , as illustrated in Figure 4 .
+Cross-Lingual Parser We
+We take a third approachwe pretrain language embeddings on raw text ( explained in next section ) and then keep them fixed during parser training .
+In our implementation , pretrained language embeddings are concatenated with word representation and with parser state .
+We use cross-lingual version of our parser for all zero-shot languages ( these are : Breton , Naija , Faroese and Thai ) , most low resource languages ( these are : Buryat , Kurmanji , Kazakh , Sorbian Upper , Armenian , Irish , Vietnamese , Northern Sami and Uyghur ) , and some other languages in which we observed strong improvements on development data when parsing with a cross-lingual model trained in the same language family ( these are : Ancient Greek - grc_proiel and grc_perseus , Swedish - sv_pud , Norwegian Nynorsk - no_nynorsklia ) .
+In zero-shot setup , we observed that language embeddings in fact hurt parser performance 4 .
+This is consistent with the findings of Ammar et al . ( 2016 ) for a similar setup as noted in footnote 30 .
+In such cases , we trained multilingual parser without language embeddings , relying only on multilingual word embeddings .
+Language embeddings : Ammar et al. ( 2016 ) architecture utilizes language embeddings that capture language nuances and allow generalization .
+We adapt the method of ?stling and Tiedemann ( 2017 ) to pretrain language embeddings .
+This method is essentially a character - level language model , where a 2 - layered LSTM predicts next character at each time step given previous character inputs .
+A language vector is concatenated to each input as well as the hidden layer before final softmax .
+The model is trained on a raw corpus containing texts from different languages .
+Language vectors are shared within the same language .
+The model of ?stling and Tiedemann ( 2017 ) operates at the level of characters ;
+They restrict their experiments to the languages that are written in Latin , Cyrillic or Greek scripts .
+However , the shared task data spanned a variety of languages with scripts not included in this set .
+Moreover , there are languages in the shared task that are closely related yet written in different scriptsexamples include Hindi-Urdu and Hebrew -Arabic pairs .
+In preliminary experiments , we found that the language vectors learned via the characterbased model , fail to capture language similarities when the script is different .
+We therefore employ three variations of ?stling and Tiedemann ( 2017 ) model that differ in granularity of input units : we use 1 ) characters , 2 ) words and 3 ) subword units ( Byte Pair Encodings , BPEs , Sennrich et al . ( 2015 ) ) as inputs .
+Table 1 shows the nearest neighbors of a variety of languages based on the language vectors from each model .
+Notice that the nearest neighbor of Hindi is Urdu only when model operates on word and sub-word levels .
+The vectors learned from the three versions are concatenated to form final language embeddings .
+This method requires a multilingual corpus for training .
+We take the first 20 K tokens from each training corpus - for the corpora that had fewer tokens , additional raw text is taken from OPUS resources .
+For BPE inputs , we limit the size of BPE vocabulary to 100,000 symbols .
+Multilingual word embeddings :
+The crosslingual parser of Ammar et al . ( 2016 ) requires word vectors for each language to be in the same universal space .
+To this end , we use alignment matrices provided by for Bojanowski et al . ( 2017 ) word embeddings .
+However , for several low-resource languages , pre-computed alignment matrices were not available .
+These include Naija , Faroese , Kurmanji , Northern Sami , Uyghur , Buryat and Irish .
+For these languages , to map monolingual embeddings to multilingual space , we seed the mapping algorithm of Smith et al . ( 2017 ) with freely available dictionaries 5 combined with shared vocabulary with one of the already mapped languages .
+Sentence - based Ensemble and MST Ensemble
+Graph - based ensemble
+We adapt Sagae and Lavie ( 2006 ) ensemble method to our Stack - LSTM only models ( see Section 2.1 ) to obtain the final parses of Chinese , Japanese , Hebrew , Hungarian , Turkish and Czech .
+Kuncoro et al. ( 2016 ) already tried an ensemble of several Stack - LSTM parser models achieving state - of- the - art in English , German and Chinese , which motivated us to improve the results of our greedy decoding method .
+6 5 Bilingual dictionaries used for multilingual mapping of word embeddings , https://people.uta.fi/
+km56049/same/svocab.html
+https://github.com/apertium/apertium-kmr-eng https://github.com/apertium/apertium-fao-nor
+6 Kuncoro et al. ( 2016 ) developed ensemble distillation into a single model which we did not attempt to try for the Shared Task but we leave for future developments .
+Model Rescoring : Sentence Level Ensemble
+For all of the languages and treebank combinations except for Chinese , Japanese , Hebrew , Hungarian , Turkish and Czech , we apply a sentence - level ensemble technique to obtain the final parses .
+We train 10 - 20 parsing models per languagetreebank ( see Section 4.2 ) .
+For an input sentence , with each model we generate a parsing output and a parsing score by adding up the scores of all the actions along the transition sequence ( see Figure 1 ) .
+Then for each input sentence , we choose the parsing output with the highest model score .
+The joint model handles tokenization before considering other parsing actions , and makes tokenization decision on every offset ; this means that we need to include the normalized score for each tokenization decision .
+The score assigned to tokenizing a string S at offset n is ( i=1 ...n?1
+Score keep ( S , i ) + Score tok ( S , n ) ) / n , and the score assigned to keeping S as a whole is ( i=1 ... le n ( S ) Score keep ( S , i ) ) / len ( S ) .
+This simple technique worked fairly well , leading to significant LAS F1 improvement compared with the single model output .
+From 77.53 LAS in average on single model output of 58 treebanks dev set , 10 - model ensemble improves LAS to 78.75 and 20 - model ensemble improves LAS to 79.79 .
+Due to time limitation , we only ran a 20 model sentence - level ensemble on 15 treebanks ( ar_padt , ca_ancora , cs_fictree , cu_proiel , da_ddt , el_gdt , en_ewt , fr_sequoia , fro_srcmf , gl_ctg , hi_hdtb , ko_gsd , ko_kaist , pl_sz , pt_bosque ) while in the rest we ran a 10 - model ensemble .
+In multi-lingual setting , we ran 5 - model ensemble in most cases except grc_proiel , grc_perseus and sv_lines where 10 - models ensembles were used for decoding and no_nynorsklia where a single model was used for decoding .
+Sentence Segmentation
+For sentence segmentation we adapted the punctuation prediction system by Ballesteros and Wanner ( 2016 ) .
+This model is derived from the Stack - LSTM parser introduced in Section 2.1 and it uses the same architecture ( including a stack , a buffer and a stack containing the transitions already taken ) but it is restricted to two distinct transitions , either SHIFT or BREAK ( which adds a sentence marker between two tokens ) .
+The system is therefore context dependent and it makes decisions about sentence boundaries regardless of punctuation symbols or other typical indicative markers .
+7
+We only applied our sentence segmentation system for the datasets in which we surpassed the development sets baseline numbers provided by the organizers of the Shared Task by a significant margin , these are : bg_btb , es_ancora , et_edt , fa_seraji , id_gsd , it _postwita , la_proiel , and ro_rrt .
+Handling document segmentation :
+In 58 of the 73 datasets with training data , the train .
+txt file contains less than 10 paragraphs , and 53 of these contain no paragraph breaks .
+Thus , if we assumed ( incorrectly ) that paragraph breaks occur at sentence boundaries and na?vely used paragraphs as training units for the sentence break detector , we would face a huge computational hurdle : we would accumulate the loss over hundreds of thousands of words before computing backpropagation .
+We addressed this issue by adopting a sliding window approach .
+The data is segmented into windows containing W words with an overlap of O words .
+Each window is treated as a training unit , where the loss is computed , the optimizer is invoked and the stack LSTM state is reset .
+The main challenge of a sliding window approach is to compensate for edge effects : a trivial implementation would ignore the right and left context , which results in diminished ability of detecting sentence breaks near the beginning and the end of the window .
+Since we desire to keep W to a manageable size , we cannot ignore edge effects .
+We use two different approaches to provide left and right context to the stack LSTM .
+The right context is provided by the last O words of the window ( with the obvious exception of the last window ) .
+Thus , the sentence segmentation algorithm predicts sentence breaks for the first W ? O words .
+To provide left context , we snapshot the stack and action buffer after the last prediction in the window , we slide the window to the right by W ?
+O words , we reset the LSTM state , and we prime the input buffer with the L words to the left of the new window , the action buffer with the most recent L actions , and the stack with the L topmost entries from the snapshot .
+We explored using different parameter for the window overlap and the size of the left context , and concluded that asymmetric ap-proaches did not provide an advantage over selecting L = O .
+The parameters for the system used for the evaluation are W = 100 , L = O = 30 .
+Models
+Stack-LSTM
+For 6 treebanks ( cs_pdt , he_htb , ja_gsd , hu_szeged , tr_imst , zh_gsd ) , we trained 20 baseline Stack - LSTM models for parsing ( utilizing UDPipe pre-processing for sentence segmentation , tokenization and UPOS tagging ) per treebank .
+And the 20 parsing model outputs are rescored with graph - based ensemble ( see Section 2.4.2 ) .
+Independent LSTM models are trained on each treebank for labeling .
+All models for the 6 treebanks are trained with dimension 200 .
+Except for ja_gsd and zh_gsd , the models are trained with character embeddings .
+We utilized diverse set of word embeddings for Stack - LSTM and graph- based models : cs_pdt , he_htb and tr_imst ( CoNLL2017 embedding with dimension 100 ) , ja_gsd ( in- house cross-lingual embeddings with dimension 300 ) , hu_szeged and zh_gsd ( Facebook embeddings with dimension 300 ) .
+Joint Models
+We set input and hidden- layer dimension to 100 and action vector dimension to 20 .
+CoNLL 2017 pretrained embeddings ( dimension 100 ) were used wherever available .
+We used Facebook embeddings ( dimension 300 ) for af_afribooms , got_proiel and sr_set .
+For en_pud and fi_pud where no training and dev set is available , the models trained from the biggest treebank in the same language ( en_ewt and fi_tdt ) are used to parse the testset .
+ru_syntagrus model is used to parse ru_taiga testset because of higher score .
+For gl_treegal and la_perseus where no development data is available , 1/10 of training data is set aside as development set .
+We use sentence - based ensemble ( see Section 2.4.2 ) for all models since the parser presented in Section 2.2 may produce a different number of tokens in the output due to tokenization .
+Cross Lingual Cross-lingual models are trained with input and hidden layers of dimension 100 each , and action vectors of dimension 20 .
+Pretrained multilingual word embeddings are of dimension 300 and pretrained language embeddings are of dimension 192 ( concatenation of three 64 length vectors ) .
+For each target language , cross-lingual parser is trained on a set of treebanks from related languages .
+Table 2 details the sets of source treebanks used to train the parser for each target treebank .
+In the case of low resource languages , training algorithm is modified to sample from each language equally often .
+This is to ensure that the parser is still getting most of its signal from the language of interest .
+In all cross-lingual experiments , sentence level ensemble ( see Section 2.4.2 ) is used .
+Segmentation Sentence segmentation models have hidden layer dimension equal to 100 .
+It relies on the fast - Text embeddings ( Bojanowski et al. , 2017 ) , which have dimension equal to 300 .
+The sliding window width is of 100 words , and the overlap between adjacent windows is 30 words .
+Results
+Table 4 presents the average F1 LAS results grouped by treebank size and type of our system compared to the baseline UDPipe 1.2 ( Straka and Strakov ? , 2017 ) .
+Table 3 presents the F1 LAS results for all languages compared to the baseline UDPipe 1.2 .
+Our system substantially surpassed the baseline but it is far from the best system of the task in most cases .
+Some exceptions are the low resource languages like kmr_mg in which our system is the best , bxr_bdt in which it is the second best and hsb_ufal in which it is the 3rd best ; probably due to our cross-lingual approach ( see Section 2.3 ) .
+In ko_gsd and ko_kaist our scores are 17.61 and 13.56 higher than the baseline UDPipe 1.2 as a result of character - based embeddings ( similar result as ) , but still far from the best system .
+It is worth noting that , on most treebanks our system used joint model to do tokenization in one pass together with parsing , and we trained with no more than UD - 2.2 training data .
+Our overall tokenization score is 97.30 , very close ( - 0.09 ) to the baseline UDPipe 1.2 , our tokenization score on big treebanks is 99.24 , the same as the baseline .
+For sentence segmentation , as explained in Section 3 , we only used our system for the treebanks in which it performed better than the baseline in the development set .
+We ranked 4th , 0.5 above the baseline and 0.36 below the top-ranking system .
+Table 5 shows the results of our system for the 8 treebanks for which we submitted a run with our own sentence segmenter .
+For the other treebanks we used the baseline UDPipe 1.2 .
+We remark that for la_projel , where no punctuation marks are available , our system outperformed UDPipe Future by 3.79 and UDPipe 1.2 by 3.99 .
+Finally , for it_postwita , a dataset where the punctuation is as indicative of sentence breaks and other character patterns , our system outperformed UDPipe future ( Fares et al. , 2018 ) runs in collaboration with the 2018 Shared Task on Multilingual Parsing .
+Parsers are evaluated against the three EPE downstream systems : biological event extraction , fine - grained opinion analysis , and negation resolution .
+This provides op-portunities for correlating intrinsic metrics with downstream effects on the three relevant applications .
+Our system qualified 12th overall , being 10th in event extraction , 13th in negation resolution and 14th in opinion analysis .
+Conclusion
+We presented the IBM Research submission to the CoNLL 2018 Shared Task on Universal Dependency Parsing .
+We presented a new transitionbased algorithm for joint ( 1 ) tokenization , ( 2 ) tagging and ( 3 ) parsing that extends the arc-standard algorithm with new transitions .
+In addition , we also used the same Stack - LSTM framework for sentence segmentation achieving good results .
+Figure 2 : 2 Figure 2 : Transition sequence for " Le canton des Ulis compte 25 785 habitants . " with the joint model in Section 2.2 . " habitants . - 8 " means that " habitants . " is the 8th token in the current token stream .
+Morphological tags are omitted in this figure .

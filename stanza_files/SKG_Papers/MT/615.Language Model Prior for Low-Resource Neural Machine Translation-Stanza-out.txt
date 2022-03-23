@@ -1,0 +1,292 @@
+title
+Language Model Prior for Low-Resource Neural Machine Translation
+abstract
+The scarcity of large parallel corpora is an important obstacle for neural machine translation .
+A common solution is to exploit the knowledge of language models ( LM ) trained on abundant monolingual data .
+In this work , we propose a novel approach to incorporate a LM as prior in a neural translation model ( TM ) .
+Specifically , we add a regularization term , which pushes the output distributions of the TM to be probable under the LM prior , while avoiding wrong predictions when the TM " disagrees " with the LM .
+This objective relates to knowledge distillation , where the LM can be viewed as teaching the TM about the target language .
+The proposed approach does not compromise decoding speed , because the LM is used only at training time , unlike previous work that requires it during inference .
+We present an analysis on the effects that different methods have on the distributions of the TM .
+Results on two low-resource machine translation datasets show clear improvements even with limited monolingual data .
+Introduction Neural machine translation ( NMT ) ( Sutskever et al. , 2014 ; Bahdanau et al. , 2015 ; Vaswani et al. , 2017 ) relies heavily on large parallel corpora ( Koehn and Knowles , 2017 ) and needs careful hyperparameter tuning , in order to work in low-resource settings ( Sennrich and Zhang , 2019 ) .
+A popular approach for addressing data scarcity is to exploit abundant monolingual corpora via data augmentation techniques , such as back - translation ( Sennrich et al. , 2016 ) .
+Although back - translation usually leads to significant performance gains ( Hoang et al. , 2018 ) , it requires training separate models and expensive translation of large amounts of monolingual data .
+However , when faced with lack of training data , a more principled approach is to consider exploiting prior information .
+Language models ( LM ) trained on target - side monolingual data have been used for years as priors in statistical machine translation ( SMT ) ( Brown et al. , 1993 ) via the noisy channel model .
+This approach has been adopted to NMT , with the neural noisy channel ( Yu et al. , 2017 ; Yee et al. , 2019 ) .
+However , neural noisy channel models face a computational challenge , because they model the " reverse translation probability " p( x|y ) .
+Specifically , they require multiple passes over the source sentence x as they generate the target sentence y , or sophisticated architectures to reduce the passes .
+LMs have also been used in NMT for reweighting the predictions of translation models ( TM ) , or as additional context , via LM -fusion ( Gulcehre et al. , 2015 ; Sriram et al. , 2018 ; Stahlberg et al. , 2018 ) .
+But , as the LM is required during decoding , it adds a significant computation overhead .
+Another challenge is balancing the TM and the LM , whose ratio is either fixed ( Stahlberg et al. , 2018 ) or requires changing the model architecture ( Gulcehre et al. , 2015 ; Sriram et al. , 2018 ) .
+In this work , we propose to use a LM trained on target -side monolingual corpora as a weakly informative prior .
+We add a regularization term , which drives the output distributions of the TM to be probable under the distributions of the LM .
+This gives flexibility to the TM , by enabling it to deviate from the LM when needed , unlike fusion methods that change the decoder 's distributions , which can introduce translation errors .
+The LM " teaches " the TM about the target language similar to knowledge distillation ( Bucila et al. , 2006 ; Hinton et al. , 2015 ) .
+This method works by simply changing the training objective and does not require any changes to the model architecture .
+Importantly , the LM is separated from the TM , which means that it is needed only during training , therefore we can decode faster than fusion or neural noisy channel .
+We also note that this method is not intended as a replacement to other techniques that use monolingual data , such as back - translation , but is orthogonal to them .
+We make the following contributions : 1 . We propose a simple and principled way for incorporating prior information from LMs in NMT , by adding an extra regularization term ( ? 3 ) .
+Also , this approach enables fast decoding , by requiring the LM only during training .
+2 . We report promising results ( ? 4.2 ) in two lowresource translation datasets .
+We find that the proposed LM - prior yields clear improvements even with limited monolingual data .
+3 . We perform an analysis ( ? 5 ) on the effects that different methods have on the output distributions of the TM , and show how this can lead to translation errors .
+Background NMT models trained with maximum likelihood estimation , model directly the probability p( y|x ) of the target sentence y given the source sentence x : ? = arg max y log p( y | x ) Modeling directly p( y|x ) requires large amounts of parallel sentences to learn a good model and NMT lacks a principled way for leveraging monolingual data .
+In this section we review approaches that exploit prior information encoded in LMs or the signal from the language modeling task .
+Noisy Channel Model SMT ( Koehn , 2010 ) employs Bayes ' rule which offers a natural way for exploiting monolingual data , using a targetside LM based on the so called " noisy channel " model ( Shannon and Weaver , 1949 ) .
+Instead of directly modeling p( y| x ) , it models the " reverse translation probability " p( x|y ) , by rewriting p( y|x ) ? p( x|y ) ? p( y ) .
+It selects words that are both a priori likely with p(y i ) and " explain well " the input with p( x|y i ) .
+This idea has been adopted to NMT with neural noisy channel , but it has two fundamental limitations .
+First , during decoding the model has to alternate between generating the output and scoring the input ( Yu et al. , 2017 or perform multiple forward passes ( Yee et al. , 2019 ) over x .
+And crucially , since the LM is part of the network it has to also be used during inference , which adds a computational constraint on its size .
+Fusion Gulcehre et al. ( 2015 ) proposed to incorporate pretrained LMs in NMT , using shallowand deep-fusion .
+In shallow-fusion , the LM re-weights the TM's scores via log-linear interpolation : log p(y t ) =( 1 ? ? ) log p TM ( y t |y <t , x ) + ? log p LM ( y t |y <t )
+In deep fusion , they alter the model architecture to include the hidden states of a RNN -LM ( Mikolov et al. , 2011 ) as additional features for predicting the next word in the decoder , which are weighted with a controller mechanism ( i.e. , gating ) .
+In both approaches , the TM and LM are first trained independently and are combined later .
+Sriram et al. ( 2018 ) extend these ideas with cold-fusion , where they train the TM from scratch with the LM , using its logits as features , instead of its LM hidden states .
+It is practically the same as shallow-fusion , but with the LM used also during training , instead of used just in inference , and interpolating with ?=1 .
+Fusion methods face the same computational limitation as noisy channel , since the LM needs to be used during inference .
+Also , probability interpolation methods , such as shallow fusion or POST - NORM , use a fixed weight for all time-steps , which can lead to translation errors .
+Gated fusion ( Gulcehre et al. , 2015 ; Sriram et al. , 2018 ) is more flexible , but requires changing the network architecture .
+Other Approaches Transfer-learning is another approach for exploiting pretrained LMs .
+Ramachandran et al. ( 2017 ) , first proposed to use LMs trained on monolingual corpora to initialize the encoder and decoder of a TM .
+Skorokhodov et al. ( 2018 ) extended this idea to Transformer architectures ( Vaswani et al. , 2017 ) .
+This approach requires the TM to have identical architecture to the LM , which can be a limitation if the LM is huge .
+Domhan and Hieber ( 2017 ) used language modeling as extra signal , by training the decoder of a TM also as a LM on target - side monolingual data .
+Sennrich et al. ( 2016 ) replaced the source with a NULL token , while training on monolingual data .
+Both , reported mixed results , with marginal gains .
+Language Model Prior
+We propose to move the LM out of the TM and use it as a prior over its decoder , by employing posterior regularization ( PR ) ( Ganchev et al. , 2010 ) .
+PR incorporates prior information , by imposing soft constraints on a model 's posterior distributions , which is much easier than putting Bayesian priors over all the parameters of a deep neural network .
+L = N t=1 ? log p TM ( y t |y <t , x ) ( 1 ) + ? D KL ( p TM ( y t |y <t , x ) p LM ( y t |y < t ) )
+The first term is the standard translation objective L MT and the second is the regularization term L KL , which we interpret as a weakly informative prior over the TM 's distributions p TM , that expresses partial information about y. L KL is defined as the Kullback - Leibler divergence between the output distributions of the TM and the LM , weighted by ?.
+This formulation gives flexibility to the model , unlike probability interpolation , such as in fusion methods .
+For example , POSTNORM multiplies the probabilities of the LM and TM , which is the same as applying a logical AND operation , where only words that are probable under both distributions will receive non-negligible probabilities .
+This prevents the model from generating the correct word when there is a large " disagreement " between the TM and the LM , which is inevitable as the LM is not aware of the source sentence ( i.e. , unconditional ) .
+However , by using the LM - prior we do not change the outputs of the TM .
+L KL pushes the TM to stay on average close to the prior , but crucially , it enables the TM to deviate from it when needed , for example to copy words from the source .
+Secondly , the LM is no longer part of the network .
+This means that we can do inference using only the TM , unlike fusion or neural noisy channel , which require the LM for both training and decoding .
+By lifting this computational overhead , we enable the use of large pretrained models LMs ( BERT ; Devlin et al . ( 2019 ) , GPT -2 ; Radford et al. ( 2019 ) ) , without compromising speed or efficiency .
+Relation to Knowledge Distillation
+The regularization term in Eq. ( 1 ) resembles knowledge distillation ( KD ) ( Ba and Caruana , 2014 ; Bucila et al. , 2006 ; Hinton et al. , 2015 ) , where the soft output probabilities of a big teacher model are used to train a small compact student model , by min- imizing their D KL .
+However , in standard KD the teacher is trained on the same task as the student , like in KD for machine translation ( Kim and Rush , 2016 ) .
+However , the proposed LM - prior is trained on a different task that requires only monolingual data , unlike TM teachers that require parallel data .
+We exploit this connection to KD and following Hinton et al . ( 2015 ) we use a softmaxtemperature parameter ? ?
+1 to control the smoothness of the output distributions p i = exp( s i / ? ) j exp( s j / ? ) ) , where s i is the un-normalized score of each word i ( i.e. , logit ) .
+Higher values of ? produce smoother distributions .
+Intuitively , this controls how much information encoded in the tail of the LM 's distributions , we expose to the TM .
+Specifically , a well trained LM will generate distributions with high probability for a few words , leaving others with probabilities close to zero .
+By increasing ?
+we expose extra information to the TM , because we reveal more low-probability words that the LM found similar to the predicted word .
+We use ? > 1 only for computing the D KL between the distributions of the TM and the LM and is the same for both .
+The magnitude of D KL scales as 1 / ?
+2 , so it is important to multiply its output with ?
+2 to keep the scale of the L KL loss invariant to ? .
+Otherwise , this would implicitly change the weight to ?
+applied to L KL .
+Finally , we re-write the regularization term of Eq. ( 1 ) as follows : L KL =? 2 D KL ( p TM ( y t |y < t , x ; ? ) p LM ( y t |y <t ;? ) )
+Relation to Label Smoothing Label smoothing ( LS ) ( Szegedy et al. , 2016 ) is a " trick " widely used in machine translation that also uses soft targets .
+Specifically , the target distribution at each step is the weighted average between the one-hot distribution y k of the ground - truth label and a uniform distribution over all other K labels , parameterized by a smoothing parameter ? :
+We note that LS differs from the LM - prior in two ways .
+First , LS encourages the model to assign equal probability to all incorrect words ( M?ller et al. , 2019 ) , which can be interpreted as a form of uninformative prior ( Fig. 1 ) .
+By contrast , the distributions of the LM are informative , because they express the beliefs of the LM at each step .
+Second , LS changes the target distribution ( i.e. , first term in Eq. ( 1 ) ) , whereas the LM - prior involves an additional term , hence the two methods are orthogonal .
+y LS i = y i ( 1 ? ? ) + ?/K.
+Experiments Datasets
+We use two low-resource language pairs ( Table 1 ) : the English - German ( EN - DE ) News Commentary v13 provided by WMT ( Bojar et al. , 2018 ) 1 and the English-Turkish ( EN - TR ) WMT - 2018 parallel data from the SETIMES2 2 corpus .
+We use the official WMT - 2017 and 2018 test sets as the development and test set , respectively .
+As monolingual data for English and German we use the News Crawls 2016 articles ( Bojar et al. , 2016 ) and for Turkish we concatenate all the available News Crawls data from 2010 - 2018 , which contain 3 M sentences .
+For English and German we subsample 3 M sentences to match the Turkish data , as well as 30 M to measure the effect of stronger LMs .
+We remove sentences longer than 50 words .
+Pre-processing
+We perform punctuation normalization and truecasing and remove pairs , in which either of the sentences has more than 60 words or length ratio over 1.5 .
+The text is tokenized with sentencepiece ( SPM ; Kudo and Richardson ( 2018 ) ) with the " unigram " model .
+For each language we learn a separate SPM model with 16 K symbols , trained on its respective side of the parallel data .
+For English , we train SPM on the concatenation of the English-side of the training data from each dataset , in order to have a single English vocabulary and be able to re-use the same LM .
+TMs .
+Table 2 lists all their hyperparameters .
+For the TMs we found that constraining their capacity and applying strong regularization was crucial , otherwise they suffered from over-fitting .
+We also found that initializing all weights with glorotuniform ( Glorot and Bengio , 2010 ) initialization and using pre-norm residual connections ( Xiong et al. , 2020 ; Nguyen and Salazar , 2019 ) , improved stability .
+We also tied the embedding and the output ( projection ) layers of the decoders ( Press and Wolf , 2017 ; Inan et al. , 2017 ) .
+We optimized our models with Adam ( Kingma and Ba , 2015 ) with a learning rate of 0.0002 and a linear warmup for the first 8 K steps , followed by inverted squared decay and with mini-batches with 5000 tokens per batch .
+We evaluated each model on the dev set every 5000 batches , by decoding using greedy sampling , and stopped training if the BLEU score did not increase after 10 iterations .
+Model Configuration
+For the LM training we followed the same optimization process as for the TMs .
+However , we use Transformer - large configuration , in order to obtain a powerful LM -prior .
+Crucially , we did not apply LS during the LM pretraining , because , as discussed , it pushes the models to assign equal probability to all incorrect words ( M?ller et al. , 2019 ) , which will make the prior less informative .
+In Table 3 we report the perplexities achieved by each LM on different scales of monolingual data .
+We developed our models in PyTorch ( Paszke et al. , 2019 ) and we used the Transformer implementation from JoeyNMT ( Kreutzer et al. , 2019 ) .
+We make our code publically available 3 .
+Experiments
+We compare the proposed LM - prior with other approaches that incorporate a pretrained LM or regularize the outputs of the TM .
+First , we consider a vanilla NMT baseline without LS .
+Next , we compare with fusion techniques , namely shallow-fusion ( Gulcehre et al. , 2015 ) and POST -NORM ( Stahlberg et al. , 2018 ) , which in the original paper outperformed other fusion methods .
+We also separately compare with label smoothing ( LS ) , because it is another regularization method that uses soft targets .
+We report detokenized case-sensitive BLEU using sacre- BLEU ( Post , 2018 ) 4 , and decode with beam search of size 5 .
+The LMs are fixed during training for both POSTNORM and the prior .
+We tune the hyper-parameters of each method on the DE?EN dev-set .
+We set the interpolation weight for shallow-fusion to ?=0.1 , the smoothing parameter for LS to ? = 0.1 .
+For the LM - prior we set the regularization weight to ?=0.5 and the temperature for L KL to ? = 2 .
+Results
+First , we use in all methods LMs trained on the same amount of monolingual data , which is 3 M sentences .
+We used the total amount of available Turkish monolingual data ( 3 M ) as the lowest common denominator .
+This is done to remove the effects of the size of monolingual data from the final performance of each method , across language - pairs and translation directions .
+The results are shown in the top section of Table 4 .
+We also report results with recurrent neural networks ( RNN ) based on the attentional encoder-decoder ( Bahdanau et al. , 2015 ) architecture in appendix A. 4 Signature " BLEU+c.mixed+#.1+s.exp+tok.13a+v.1.4.2 "
+Overall , adding the LM - prior consistently improves performance in all experiments .
+Specifically , it yields up to + 1.8 BLEU score gains over the strongest baseline " Base + LS " ( DE?EN and EN?DE ) .
+This shows that the proposed approach yields clear improvements , even with limited monolingual data ( 3M ) .
+As expected , LS proves to be very effective for mitigating over-fitting in such low-resource conditions .
+However , simply penalizing confidence helps up to a point , which is shown by the performance gap between " Base + LS " and " Base+ prior " .
+We explore this further next ( ? 5 ) .
+Shallow-fusion achieves consistent but marginal improvements in all language -pairs .
+It works by making small ( local ) changes to p TM , which primarily helps improve fluency when the TM is very unsure about what to generate next .
+Surprisingly , when training the TM with the POSTNORM objective , it barely reaches the baseline .
+As we show in our analysis ( ? 5 ) , under POSTNORM the TM generates very sharp distributions , which is a result of how it combines p TM and p LM 5 .
+We identify two potential reasons for this result .
+First , in ( Stahlberg et al. , 2018 ) POSTNORM was only tested with LS , which to some extend hid the issue of low-entropy outputs .
+To verify this , we trained POSTNORM with LS .
+We observed that in this case , the scores improve significantly , but it still falls short in comparison with the other methods .
+Second , we note that the LMs used in the original paper were also trained with LS .
+We hypothesize that by using an LM that emitted smoother distribution , it implicitly down-weighted the contribution of p LM , that is similar to the small weight used in shallow-fusion , which works better in our experiments .
+Stronger LMs Next , we test how different variations of the LM - prior affect the translation quality ( bottom section of Table 4 ) .
+First , we lift the monolingual data constraint , in order to evaluate the impact of stronger LM - priors .
+Specifically , for English and German we use LMs trained on 30 M sentences .
+We observe that the stronger LMs yield improvements only in the EN ?
+DE direction .
+This could partially be explained by the fact that German has richer morphology than English .
+Therefore , it is harder for the decoder to avoid grammatical mistakes in low-resource settings while translating into German , and a stronger prior is more helpful for X ?DE than X?EN .
+However , it is still surprising that the stronger English LM does not boost performance .
+We hypothesize that this might be related to the limited capacity of the TMs we used .
+Specifically , in the KD literature it has been found that the student 's performance is affected by the difference between the capacities of the student and teacher networks ( Cho and Hariharan , 2019 ; .
+In preliminary experiments we also used big LMs pretrained on generic large-scale data , such as GPT - 2 ( Radford et al. , 2019 ) , but we failed to achieve any measurable improvements over the baseline .
+Besides the discrepancy in the capacity between the LM and the TM , we suspect that another obstacle in this case is the large vocabulary size used in GPT - 2 ( 50 K symbols ) .
+In particular , Sennrich and Zhang ( 2019 ) showed that in low-resource NMT , using a very small vocabulary ( 2K - 10 K symbols ) is the most important factor that affects translation performance .
+A potential solution could be to finetune GPT - 2 on the small vocabulary of the TM and then use it as a prior , but we leave this exploration for future work .
+Prior + LS
+We also evaluate a combination of the LM -prior with LS .
+We observe that in most experiments it has small but additive effects .
+This implicitly suggests that the two approaches are complementary to each other .
+LS smooths the onehot target distribution , which penalizes confidence , whereas the LM - prior helps improve fluency .
+We further explore their differences in our analysis ( ?. 5 ) , by showing the effects each method has on the TM 's distributions .
+Extremely Low-Resource Experiments
+We also conducted experiments that measure the effect of the LM - prior on different scales of parallel data .
+Specifically , we emulate more low-resource conditions , by training on subsets of the EN ?
+DE parallel data .
+In Fig. 2 we compare the BLEU scores of the " Base + LS " and the " Base + Prior ( 30M ) " .
+Overall , we observe that adding the LM - prior yields consistent improvements , even with as little as 10 K parallel sentences .
+The improvements have a weak correlation with the size of parallel data .
+We hypothesize that by exposing the TM to a larger sample of target - side sentences , it has the opportunity to extract more information from the prior .
+However , we anticipate that in more high- resource settings the improvements will start to diminish .
+Analysis
+The main results show that LS , that simply penalizes confidence , is a very effective form of regularization in low-resource settings .
+We conduct a qualitative comparison to test whether the improvements from the proposed LM - prior are due to penalizing confidence , similar to LS , or from actually using information from the LM .
+Specifically , we evaluate each model on the DE?EN test-set and for each target token we compute the entropy of each model 's distribution .
+In Fig. 3 we plot for each model the density 6 over all its entropy values .
+First , we observe that the un-regularized " Base " model generates very confident ( low-entropy ) distributions , which suggests that it overfits on the small parallel data .
+As expected , the LS regularization successfully makes the TM less confident and therefore more robust to over-fitting .
+For additional context , we plot the entropy density of the LM and observe that , unsurprisingly , it is the most uncertain , since it is unconditional .
+Interestingly , the model trained with the LMprior emits more confident distributions than the " Base + LS " model , although it also achieves significantly better performance .
+This clearly shows that the gains cannot be explained just from smoothing the distributions of the TM and suggests that the model indeed exploits information from the LM .
+Next , we focus on the " Base + POSTNORM " model and observe that it generates the most confident predictions .
+Note that , this finding aligns with a similar analysis in the original paper , where it was shown that under POSTNORM the TM generates lowentropy distributions .
+However , even though this method might improve fluency , it can hurt translation quality in certain cases .
+As described in Sec. 3 , by multiplying the two distributions , only a small subset of words will have non-zero probability in the final distribution .
+This means that when there are " disagreements " between the TM and LM this can lead to wrong predictions .
+We illustrate this with a concrete example in Fig.
+4 .
+Although the TM predicted the correct word , the multiplication with the LM distribution caused the model to finally make a wrong prediction .
+Also , the final distribution assigns a relatively high probability to a word compared to plotting overlapping histograms . ( " more " ) , which is not among the top predictions of neither the LM or the TM .
+By contrast , the LMprior does not change the TM 's predictions , and the model has the flexibility to deviate from the prior .
+L KL Sensitivity Analysis
+The proposed regularization uses two different hyper-parameters in L KL , the weight ? that controls the strength of the regularization , and the temperature ? that controls how much information from the long-tail of the LM to expose to the TM .
+We do a pairwise comparison between them , in order to measure how sensitive the model is to their values .
+In Fig .
+5 we plot a heatmap of the BLEU scores achieved by models trained on the DE?EN dev-set with various combinations .
+Overall , we observe a clear pattern emerging of how the LM - prior affects performance , which suggests that ( 1 ) using ? > 1 indeed helps the TM to acquire more of the knowledge encoded in the prior , and ( 2 ) increasing the strength of the regularization up to a point yields consistent improvements .
+We find that the performance is less sensitive to the value of ? , compared to ? and that by setting ? > 1 , the model becomes also more robust to ?.
+Our explanation is that for ? > 1 , the TM tries to match a larger part of the LM 's distribution and focuses less on its top-scoring words .
+Therefore , it is reasonable to observe that in the extreme case when we set equal weight to the L MT and L KL ( ? = 1 ) and ? = 1 the performance starts to degrade , because we strongly push the TM to match only the top-scoring predictions of the LM , that is unconditional .
+This forces the TM to pay less attention to the source sentence , which leads to translation errors .
+6 Related Work and have different motivation .
+Also , we consider auto-regressive LMs as priors , which have clear interpretation , unlike BERT that is not strictly a LM and requires bidirectional context .
+Note that , large pretrained LMs , such as BERT or have not yet achieved the transformative results in NMT that we observe in natural language understanding tasks ( e.g. , GLUE benchmark ) .
+There are also other approaches that have used posterior regularization to incorporate prior knowledge into NMT .
+Zhang et al. ( 2017 ) exploit linguistic real-valued features , such as dictionaries or length ratios , to construct the distribution for regularizing the TM 's posteriors .
+Recently , Ren et al. ( 2019 ) used posterior regularization for unsupervised NMT , by employing an SMT model , which is robust to noisy data , as a prior over a neural TM to guide it in the iterative back - translation process .
+Finally , LMs have been used in a similar fashion as priors over latent text sequences in discrete latent variable models ( Miao and Blunsom , 2016 ; Havrylov and Titov , 2017 ; Baziotis et al. , 2019 ) .
+Conclusions
+In this work , we present a simple approach for incorporating knowledge from monolingual data to NMT .
+Specifically , we use a LM trained on targetside monolingual data , to regularize the output distributions of a TM .
+This method is more efficient than alternative approaches that used pretrained LMs , because it is not required during inference .
+Also , we avoid the translation errors introduced by LM -fusion , because the TM is able to deviate from the prior when needed .
+We empirically show that while this method works by simply changing the training objective , it achieves better results than alternative LM -fusion techniques .
+Also , it yields consistent performance gains even with modest monolingual data ( 3 M sentences ) across all translation directions .
+This makes it useful for low-resource languages , where not only parallel but also monolingual data are scarce .
+In future work , we intend to experiment with the LM - prior under more challenging conditions , such as when there is domain discrepancy between the parallel and monolingual data .
+Also , we would like to explore how to overcome the obstacles that prevent us from fully exploiting large pretrained LMs ( e.g. , GPT - 2 ) in low-resource settings .
+A Appendix
+Our preliminary experiments were conducted with recurrent neural networks ( RNN ) , because we faced stability problems with the Transformer - based TMs .
+We include those results here for completeness .
+The experiments were conducted with the 3M monolingual data in all translation directions , therefore they match the top section of the main results reported in the paper ( Table 4 ) .
+We observe the same relative performance as with the Transformerbased models , which verifies that the proposed approach transfers across architectures .
+However , the differences are smaller , because the RNN - based models achieved overall worse BLEU scores and perplexities , for the translation and language modeling tasks , respectively .
+Model Configuration
+We employ the attentional encoder-decoder ( Bahdanau et al. , 2015 ) architecture , using the " global " attention mechanism ( Luong et al. , 2015 ) .
+The recurrent cells are implemented using Long short - term memory ( LSTM ; Hochreiter and Schmidhuber ( 1997 ) ) units .
+We use a bidirectional LSTM encoder and a unidirectional LSTM decoder .
+We also tie the embedding and the output ( projection ) layers of the decoders ( Press and Wolf , 2017 ; Inan et al. , 2017 ) . and apply layer normalization ( Ba et al. , 2016 ) to the last decoder representation , before the softmax .
+We did not do any hyperparameter tuning , but selected the hyper-parameter values based on Sennrich and , while also trying to keep approximately the same number of parameters as their Transformer - based counterparts .
+Language Models
+For the LMs we used an identical architecture as the decoder of the TM , but with larger size .
+We also followed the same optimization process .
+Table 5 lists all the RNN - LM hyperparameters .
+A.1 Language Models
+For completeness , we include here some additional information about the training of the LMs .
+In all experiments we paired the TM with LMs with the same architecture , in order to evaluate how the proposed approach generalizes across architectures .
+We train one LM for each language , on its respective monolingual corpus .
+For the Transformer- based LMs we also used a larger corpus for the high resource languages , as a part of our comparison shown in the main body of the paper .
+To evaluate the performance of the LMs and to perform early stopping we used a small held - out development set with 10 K sentences .
+Specifically , we stopped training when the perplexity on the development was not improved on for more than 10 epochs .
+In Table 6 we report the perplexities achieved by the LMs on each monolingual corpus .
+Figure 1 : 1 Figure 1 : Targets with LS and LM - prior .
+Figure 2 : 2 Figure 2 : BLEU scores ( mean of 3 runs ) on the DE?EN test set with different scales of parallel data , using the LM trained on 30M English sentences .
+Figure 3 : 3 Figure 3 : Estimated densities based on each model 's entropy on the DE?EN test set .
+Figure 4 : 4 Figure 4 : Example of failure of probability interpolation between LM and TM , while translating DE?EN .
+Figure 5 : 5 Figure 5 : BLEU scores on the DE-EN dev set of models trained with different ? and ? for the L KL .
+Mean of 3 runs for each combination reported .
+Stahlberg et al. ( 2018 ) simplify this , by training a TM together with a fixed LM , using combinations of the TM's and LM 's outputs .
+By training the TM with the assistance of the LM , the motivation is that the TM will rely on the LM for fluency , whereas the TM will be able to focus on modeling the source .
+They report the best results with the POSTNORM method , outperforming other LM -fusion techniques .
+POSTNORM parameterizes p(y t ) as follows : p( y t ) =softmax ( logp TM ( y t |y < t , x ) +logp LM ( y t ) )
+Table 1 : 1 The purpose of LS is to penalize confidence ( i.e. , low-entropy distributions ) .
+Dataset statistics after preprocessing .
+language -pair train dev test English-Turkish 192,482 3,007 3,000 English - German 275,561 3,004 2,998
+Table 2 : 2 In all experiments , we use the Transformer architecture for both the LMs and Hyperparameters of the TMs and LMs .
+parameter value TM LM Embedding size 512 1024 Transformer hidden size 1024 4096 Transformer layers 6 6 Transformer heads 8 16 Dropout ( all ) 0.3 0.3 language 3 M ( PPL ? ) 30M ( PPL ? ) English 29.70 25.02 German 22.71 19.22 Turkish 22.78 -
+Table 3 : 3 Perplexity scores for LMs trained on each language 's monolingual data , computed on a small heldout validation set per language .
+Table 4 : 4 BLEU scores of each model .
+Mean and stdev of 3 runs reported .
+The top section contains the main results , where all methods use LMs trained on the same amount of data ( 3M ) .
+The bottom section compares different configurations of the LM -prior .
+Underlined scores denote gains over the " Base + Prior ( 3M ) " model .
+Method DE ?EN dev test EN ?
+DE dev test TR ?EN dev test EN ?
+TR dev test
+DE : die Republikaner im Kongress dr?ngen auf eine umfassendere Neufassung der Ozonregeln .
+EN : Republicans in Congress are pushing for a broader rewrite of the ozone rules .
+more TM LM broader 34.3 % new 8.9 % more 44.8 % wider 22.4 % x repeal 7.1 % = wider 31.8 % larger 7.2 % bill 3.7 % larger 11.8 % ? ? ?
+Table 5 lists all the model hyperparameters .
+All models were optimized with the Adam optimizer ( Kingma and Ba , 2015 ) with a learning rate of 0.0002 and with mini-batches with 2000 tokens per batch .
+parameter value TM LM Embedding size ( all ) 256 512
+Embedding dropout ( all ) 0.2 0.2 Encoder size 512 - Encoder layers 2 - Encoder dropout 0.2 - Decoder size 512 1024 Decoder layers 2 2 Decoder dropout 0.2 0.2 Attention function global -
+Table 5 : 5 Hyperparameters of RNN - based TMs and LMs .
+Table 6 : 6 Perplexity ( PPL ? ) scores for LMs trained on each language 's monolingual data , computed on a small held - out validation set per language .
+language model sentences ( PPL ? ) 3 M 30M English LSTM 37.04 - Transformer ( big ) 29.70 25.02 German LSTM 31.26 - Transformer ( big ) 22.71 19.22 Turkish LSTM 31.26 - Transformer ( big ) 22.78 -
+http://www.statmt.org/wmt18/translation-task.html 2 http://opus.nlpl.eu/SETIMES2.php
+github.com/cbaziotis/lm-prior-for-nmt
+By multiplying the probabilities of pTM and pLM , or adding their log-probabilities , very small subset of tokens that have non-negligible probability in both of them , will be assigned very large probability in the final distribution
+We fit a Gaussian kernel with bandwidth 0.3 on the entropy values of each model .
+Density plots are more readable

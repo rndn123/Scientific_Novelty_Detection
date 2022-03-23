@@ -1,0 +1,120 @@
+title
+Revisiting the Weaknesses of Reinforcement Learning for Neural Machine Translation
+abstract
+Policy gradient algorithms have found wide adoption in NLP , but have recently become subject to criticism , doubting their suitability for NMT .
+Choshen et al. ( 2020 ) identify multiple weaknesses and suspect that their success is determined by the shape of output distributions rather than the reward .
+In this paper , we revisit these claims and study them under a wider range of configurations .
+Our experiments on in- domain and cross-domain adaptation reveal the importance of exploration and reward scaling , and provide empirical counterevidence to these claims .
+Introduction
+In neural sequence-to-sequence learning , in particular Neural Machine Translation ( NMT ) , Reinforcement Learning ( RL ) has gained attraction due to the suitability of Policy Gradient ( PG ) methods for the end-to - end training paradigm ( Ranzato et al. , 2016 ; Li et al. , 2016 ; Yu et al. , 2017 ; Li et al. , 2018 ; Flachs et al. , 2019 ; Sankar and Ravi , 2019 ) .
+The idea is to let the model explore the output space beyond the reference output that is used for standard cross-entropy minimization , by reinforcing model outputs according to their quality , effectively increasing the likelihood of higher -quality samples .
+The classic exploration - exploitation dilemma from RL is addressed by sampling from a pretrained model 's softmax distribution over output tokens , such that the model entropy steers exploration .
+For the application of NMT , it was firstly utilized to bridge the mismatch between the optimization for token - level likelihoods during training and the corpus-level held - out set evaluations with nondifferentiable / decomposable metrics like BLEU ( Ranzato et al. , 2016 ; Edunov et al. , 2018 ) , and secondly to reduce exposure bias in autoregressive sequence generators ( Ranzato et al. , 2016 ; Wang and Sennrich , 2020 ) .
+It has furthermore been identified as a promising tool to adapt pretrained models to new domains or user preferences by replacing reward functions with human feedback in humanin-the - loop learning ( Sokolov et al. , 2016 ; Nguyen et al. , 2017 ) .
+Recently , the effectiveness of these methods has been questioned :
+Choshen et al. ( 2020 ) identify multiple theoretical and empirical weaknesses , leading to the suspicion that performance gains with RL in NMT are not due to the reward signal .
+The most surprising result is that the replacement of a meaningful reward function ( giving higher rewards to higher- quality translations ) by a constant reward ( reinforcing all model samples equally ) yields similar improvements in BLEU .
+To explain this counter-intuitive result , Choshen et al . ( 2020 ) conclude that a phenomenon called the peakiness effect must be responsible for performance gains instead of the reward .
+This means that the most likely tokens in the beginning gain probability mass regardless of the rewards they receive during RL training .
+If this hypothesis was true , then the perspectives for using methods of RL for encoding real-world preferences into the model would be quite dire , as models would essentially be stuck with whatever they learned during supervised pretraining and not reflect the feedback they obtain later on .
+However , the analysis by Choshen et al . ( 2020 ) missed a few crucial aspects of RL that have led to empirical success in previous works :
+First , variance reduction techniques such as the average reward baseline were already proposed with the original Policy Gradient by Williams ( 1992 ) , and proved effective for NMT Nguyen et al. , 2017 ) .
+Second , the exploration - exploitation trade - off can be controlled by modifying the sampling function ( Sharaf and Daum ? III , 2017 ) , which in turn influences the peakiness .
+We therefore revisit the previous findings with NMT experiments differentiating model behavior between in- domain and out -of- domain adap-tation , controlling exploration , reducing variance , and isolating the effect of reward scaling .
+This allows us to establish a more holistic view of the previously identified weaknesses of RL .
+In fact , our experiments reveal that improvements in BLEU can not solely be explained by increased peakiness , and that simple methods encouraging stronger exploration can successfully move previously lower - ranked token into higher ranks .
+We observe generally low empirical gains in indomain adaptation , which might explain the surprising success of constant rewards in ( Choshen et al. , 2020 ) .
+However , we find that rewards and their scaling do matter for domain adaptation .
+Furthermore , our results corroborate the auspicious findings of Wang and Sennrich ( 2020 ) that RL mitigates exposure bias .
+Our paper thus reinstates the potential of RL for model adaptation in NMT , and puts previous pessimistic findings into perspective .
+The code for our experiments is publicly available .
+1
+RL for NMT
+The objective of RL in NMT is to maximize the expected reward for the model 's outputs with respect to the parameters ? : arg max ? E p ? ( y|x ) [?(y , y ) ] .
+where y denotes a reference translation , y is the generated translation and ? is a metric ( e.g. BLEU ( Papineni et al. , 2002 ) ) , rewarding similarities to the reference .
+Applying the log derivative trick , the following gradient can be derived : ? ? = E p ? ( y|x ) [?(y , y ) ?
+? log p ? ( y | x ) ] .
+( 1 ) The benefit of Eq. 1 is that it does not require differentiation of ?
+which allows for direct optimization of the BLEU score or human feedback .
+2
+Policy Gradient
+However , computing the gradient requires the summation over all y ?
+V m trg , which is computationally infeasible for large sequence lengths m and vocabulary sizes V trg as they are common in NMT .
+Therefore , Eq. 1 is usually approximated through Monte Carlo sampling ( Williams , 1992 ) resulting in unbiased estimators of the full gradient .
+We draw one sample from the multinomial distribution defined by the model 's softmax to approximate Eq. 1 ( Ranzato et al. , 2016 ; Choshen et al. , 2020 ) , which results in the following update rule with learning rate ? : u k = ? ? log p ? ( y | x ) ?(y , y ) ( 2 ) ? t+1 = ? t + ?u k ( 3 ) 2.2 Softmax Temperature
+The temperature ? of the softmax distribution exp(y i / ? ) / j exp(y j / ? ) can be used to control the amount of exploration during learning .
+Setting 0 < ? < 1 results in less diverse samples while setting ? > 1 increases the diversity and also the entropy of the distribution .
+Lowering the temperature ( i.e. making the distribution peakier ) may be used to make policies more deterministic towards the end of training ( Sutton and Barto , 1998 ; Rose , 1998 ; , while we aim to reduce peakiness by increasing the temperature .
+Modified Rewards Variance reduction techniques were already suggested by Williams ( 1992 ) and found to improve generalization for NMT .
+The simplest option is the baseline reward , which in practice is realized by subtracting a running average of historic rewards from the current reward ? in Eq. 2 .
+It represents an expected reward , so that model outputs get more strongly reinforced or penalized if they diverge from it .
+In addition to variance reduction , subtracting baseline rewards also change the scale of rewards ( e.g. ? ? [ 0 , 1 ] for BLEU becomes ? ? [?0.5 , 0.5 ] ) , allowing updates towards or away from samples by switching the sign of u k ( Eq. 2 ) .
+The same range of rewards can be obtained by rescaling them , e.g. , to ?( y, y ) ?
+min max ? min ? 0.5 with the minimum ( min ) and maximum ( max ) ? within each batch .
+Minimum Risk Training Minimum Risk Training ( MRT ) ( Shen et al. , 2016 ) aims to minimize the empirical risk of task loss over a larger set of n = | S | , n > 1 output samples S( x ) ? Y ( x ) : arg min ? ( x, y ) ? D y?S( x ) Q ? , ? ( y | x ) [ ?(y , y ) ] , Q ? , ? (y | x ( s ) ) = p ? ( y | x ) ? y ?S( x ) p ? ( y | x ) ? .
+As pointed out by Choshen et al . ( 2020 ) objective due to the renormalization of model scores , but that has not hindered its empirical success ( Shen et al. , 2016 ; Edunov et al. , 2018 ; Wieting et al. , 2019 ; Wang and Sennrich , 2020 ) .
+Interestingly , the resulting gradient update includes a renormalization of sampled rewards , yielding a similar effect to the baseline reward ( Shen et al. , 2016 ) .
+It also allows for more exploration thanks to learning from multiple samples per input , but it is therefore less attractive for human - in- the - loop learning and efficient training .
+Exposure Bias
+The exposure bias in NMT arises from the model only being exposed to the ground truth during training , and receiving its own previous predictions during inference - while it might be overly reliant on perfect context , which in turn lets errors accumulate rapidly over long sequences ( Ranzato et al. , 2016 ) .
+Wang and Sennrich ( 2020 ) hypothesize that exposure bias increases the prevalence of hallucinations in domain adaptation and causes the beam search curse ( Koehn and Knowles , 2017 ; Yang et al. , 2018 ) , which describes the problem that the model 's performance worsens with large beams .
+Wang and Sennrich ( 2020 ) find that MRT with multiple samples can mitigate this problem thanks to being exposed to model predictions during training .
+We will extend this finding to other PG variants with single samples .
+Experiments
+We implement PG and MRT ( without enforcing gold tokens in S ; n = 5 ) in Joey NMT ( Kreutzer et al. , 2019 ) for Transformers ( Vaswani et al. , 2017 ) .
+We simulate rewards for training samples from IWSLT14 de-en with sacreBLEU ( Post , 2018 ) , and test on IWSLT14 held - out sets .
+We consider two different domains for pretraining , WMT15 and IWSLT14 .
+This allows us to distinguish the effects of RL in in- domain learning vs domain adaptation scenarios .
+RL experiments are repeated three times and we report mean and standard deviation .
+Remaining experimental details can be found in the Appendix .
+The goal is not to find the best model in a supervised domain adaptation setup ( " Fine-tuning " in Table 2 ) , but to investigate if / how scalar rewards expressing translation preferences can guide learning , mimicking a human - in- the - loop learning scenario .
+Peakiness Choshen et al. ( 2020 ) suspect that PG improvements are due to an increase in peakiness .
+Increased peakiness is indicated by a disproportionate rise of p top10 and p mode , the average token probability of the 10 most likely tokens , and the mode , respectively .
+To test the influence of peakiness on performance , we deliberately increase and decrease the peakiness of the output distribution by adjusting the parameter ? .
+In Tables 1 and 2 we can see that all PG variants generally increase peakiness ( p top10 and p mode ) , but that those with higher temperature ? > 1 show a lower increase .
+Comparing the peakiness with the BLEU scores , we find that BLEU gains are not tied to increasing peakiness in in-domain and cross-domain adaptation experiments .
+This is exemplified by reward scaling ( " PG + scaled " ) , which improves the BLEU but does not lead to an increase in peakiness com-pared to PG .
+These results show that improvements in BLEU can not just be explained by the peakiness effect , contradicting the hypothesis of Choshen et al . ( 2020 ) .
+However , in cross-domain adaptation exploration plays a major role :
+Since the model has lower entropy on the new data , reducing exploration ( lower ? ) helps to improve translation quality .
+Upwards Mobility
+One disadvantage of high peakiness is that previously likely tokens accumulate even more probability mass during RL .
+Choshen et al. ( 2020 ) therefore fear that it might be close to impossible to transport lower - ranking tokens to higher ranks with RL .
+We test this hypothesis under different exploration settings by counting the number of gold tokens in each rank of the output distribution .
+That number is divided by the number of all gold tokens to obtain the probability of gold tokens appearing in each rank .
+We then compare the probability before and after RL .
+Fig. 1 illustrates that training with an increased temperature pushes more gold tokens out of the lowest rank .
+The baseline reward has a beneficial effect to that aim , since it allows down - weighing samples as well .
+This shows that upwards mobility is feasible and not a principled problem for PG .
+Meaningful Rewards Choshen et al. ( 2020 ) observe an increase in peakiness when all rewards are set to 1 , and BLEU improvements even comparable to BLEU rewards .
+While our results with a constant reward of 1 ( " PG + constant " ) also show an increase in peakiness for cross-domain adaptation ( Table 2 ) , we do not observe any improvements over the pretrained model , which contradicts the results of Choshen et al . ( 2020 ) .
+Similarly , domain adaptation via self-training does not show improvements over the baseline , which confirms that gains do not come from being exposed to new inputs alone .
+While the effects in - domain are generally weak with a maximum gain of 0.5 BLEU over the baseline ( with beam size k = 5 , Table 1 ) , the results for domain adaptation ( Table 2 ) show a clear advantage of using informative rewards with up to + 4.7 BLEU for PG and + 6.7 BLEU for MRT ( with beam size k = 5 ) .
+We conclude that rewards do matter for PG for NMT .
+Allowing Negative Rewards
+As described in Section 2.3 , scaling the reward ( " PG + scaled " ) , subtracting a baseline ( " PG + average bl " ) , or normalizing it over multiple samples for MRT , introduces negative rewards , which enables updates away from sampled outputs .
+BLEU under domain shift ( Table 2 ) shows a significant improvement when allowing negative rewards .
+The scaled reward increases the score by almost 1 BLEU , the average reward baseline by almost 2 BLEU and MRT leads to a gain of about 4.5 BLEU over plain PG .
+The Beam Curse
+The results show that improvements of RL over the baseline are higher with lower beam sizes , since RL reduces the need for exploration ( through search ) during inference thanks to the exploration during training .
+These findings are in line with ( Bahdanau et al. , 2017 ) .
+For RL models , BLEU reductions caused by larger beams are weaker than for the baseline model in both settings , which confirms that PG methods are effective at mitigating the beam search problem , and according to Wang and Sennrich ( 2020 ) might also reduce hallucinations .
+Discussion
+Despite the promising empirical gains over a pretrained baseline , all above methods would fail if trained from scratch , as there are no non-zeroreward translation outputs sampled when starting from a random policy .
+Empirical improvements over a strong pretrained model vanish when there is little to learn from the new feedback , e.g. when it is given on the same data which the model was already trained on , as we have shown above , relating to the " failure " cases in ( Choshen et al. , 2020 ) .
+RL methods for MT can be effective at adapting a model to new custom preferences if these preferences can be reflected in an appropriate reward function , which we simulated with in - domain data .
+Model In Table 2 , we observed this effect and gained several BLEU points without revealing reference translations to the model .
+Being exposed to new sources alone ( without rewards ) is not sufficient to obtain improvements , which we tested by self-training ( Table 2 ) .
+Ultimately , the potential to improve MT models with RL methods lies in situations where there are no reference translations but reward signals , and models can be pretrained on existing data .
+Conclusion
+We provided empirical counter -evidence for some of the claimed weaknesses of RL in NMT by untying BLEU gains from peakiness , showcasing the upwards mobility of low-ranking tokens , and re-confirming the importance of reward functions .
+The affirmed gains of PG variants in adaptation scenarios and their responsiveness to reward functions , combined with exposure bias repair and avoidance of the beam curse , rekindle the potential to utilize them for adapting models to human preferences .
+A Data Table 3 lists the sizes of data split for the parallel datasets from WMT15 ( Bojar et al. , 2015 ) and IWSLT14 3 used in the experiments .
+The two datasets are preprocessed using scripts from the Moses toolkit .
+4
+The preprocessing pipeline contains the following steps : ? Tokenization with tokenizer .
+perl ?
+Lowercasing with lowercase .
+perl ?
+Filtering using clean-corpus-n.perl .
+Sentences with more than 80 words are removed from the dataset Additionally , we applied Byte-Pair-Encoding ( Sennrich et al. , 2016 ) using subword - nmt 5 to create subword units .

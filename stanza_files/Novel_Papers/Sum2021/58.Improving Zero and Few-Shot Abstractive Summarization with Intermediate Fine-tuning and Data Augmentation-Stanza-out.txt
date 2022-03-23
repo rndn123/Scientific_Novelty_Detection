@@ -1,0 +1,210 @@
+title
+Improving Zero and Few - Shot Abstractive Summarization with Intermediate Fine-tuning and Data Augmentation
+abstract
+Models pretrained with self-supervised objectives on large text corpora achieve state - of- theart performance on English text summarization tasks .
+However , these models are typically fine-tuned on hundreds of thousands of data points , an infeasible requirement when applying summarization to new , niche domains .
+In this work , we introduce a novel and generalizable method , called WikiTransfer , for fine-tuning pretrained models for summarization in an unsupervised , dataset -specific manner .
+WikiTransfer fine-tunes pretrained models on pseudo-summaries , produced from generic Wikipedia data , which contain characteristics of the target dataset , such as the length and level of abstraction of the desired summaries .
+WikiTransfer models achieve state-ofthe- art , zero-shot abstractive summarization performance on the CNN - DailyMail dataset and demonstrate the effectiveness of our approach on three additional diverse datasets .
+These models are more robust to noisy data and also achieve better or comparable few-shot performance using 10 and 100 training examples when compared to few-shot transfer from other summarization datasets .
+To further boost performance , we employ data augmentation via round -trip translation as well as introduce a regularization term for improved few-shot transfer .
+To understand the role of dataset aspects in transfer performance and the quality of the resulting output summaries , we further study the effect of the components of our unsupervised fine -tuning data and analyze few-shot performance using both automatic and human evaluation .
+Introduction Automatic text summarization aims to distill the most salient content of a given text in a compact form .
+Recent advances in summarization have been driven by the availability of large-scale datasets such as the CNN - DailyMail ( CNNDM ) corpus ( Nallapati et al. , 2016 ) and the New York Times corpus ( Sandhaus , 2008 ) as well as by the introduction of large pretrained models such as BART ( Lewis et al. , 2020 ) and Pegasus ( Zhang et al. , 2019 ) , in some cases resulting in summaries which are even favored over the human-written reference summaries .
+Creating data for every new domain , however , is infeasible and highly costly .
+Thus , the ability to transfer large pretrained models to new domains with little or no in-domain data is necessary , especially as such models make their way into real-world applications .
+Unsupervised summarization approaches include autoencoders to mirror the information compression inherent in summarization ( Baziotis et al. , 2019 ; Chu and Liu , 2019 ; Bra?inskas et al. , 2020 b ) as well as large-scale pretraining for domainspecific adaptation ( Yang et al. , 2020 ) .
+However , little work has focused on domain adaptation in summarization .
+examine domain adaptation for extractive summarization .
+Hua and Wang ( 2017 ) showed that summarization models have difficulty generating text in the style of the target domain , while more recently , Zhang et al . ( 2019 ) report strong performance of pretrained models when trained in few-shot settings and ( Bra?inskas et al. , 2020a ) fine -tune datasetspecific components of a model for few-shot learning .
+We aim to build on recent work in pretrained models and improve zero-shot and few-shot summarization by encoding characteristics of the target summarization dataset in unsupervised , intermediate fine-tuning data .
+Summarization can be seen as a function of subfunctions of the input , called subaspects , which determine the output form .
+Jung et al. ( 2019 ) define three subaspects for summarization : position , importance , and diversity , and study how these subaspects manifest themselves in summarization corpora and model outputs .
+For example , a common subaspect for the CNNDM dataset is position ; earlier sentences tend to constitute a good sum-mary .
+Inspired by this view of summarization as subaspects , we aim to encode subaspects of a target dataset into unlabeled data to allow a model finetuned on this data to learn characteristics of the target dataset to improve zero-shot and few-shot transfer of the model .
+In our work , we focus on the subaspects of extractive diversity , as determined by how well an extractive model performs on the data , compression ratio between the source document and summary , and , in the case of CNNDM , the lead bias .
+We assume knowledge of the target dataset such as the size of input documents , the size of the desired summaries , and the extent to which the summary is abstractive , all of that can be treated as prior knowledge if the task is to be well - defined ( Kryscinski et al. , 2020 ) .
+We encode this knowledge into Wikipedia article data by extracting summaries of the desired output length and filtering examples based on the desired level of abstraction .
+Our contributions are the following : 1 ) We introduce a novel method , called WikiTransfer , which creates pseudo-summaries with subaspects of the target dataset which can be used as unlabeled data for intermediate fine-tuning .
+We show that this method improves zero-shot domain transfer over transfer from other domains , achieving state - of - theart unsupervised abstractive summarization performance on the CNNDM dataset while generalizing to other domains , and we perform extensive hyperparameter studies on the factors influencing zeroshot performance 2 ) We demonstrate the benefits of WikiTransfer in few-shot settings , and show additional improvements when applying WikiTransfer with data augmentation and a regularization term for training with potentially noisy augmented data .
+We show robustness in these settings and analyze differences in performance in both automatic and human assessments .
+Related Work
+While advances have been made in neural techniques for summarization due in part to large datasets , less work has focused on domain adaptation of such methods in the zero and few-shot settings .
+examine domain adaptation , but in extractive summarization .
+Hua and Wang ( 2017 ) examine domain adaptation between opinion and news summarization , observing that models trained on one domain and applied to another domain can capture relevant content but differ in style in generating the summary .
+Bra?inskas et al. ( 2020a ) introduce plug-in networks , small finetune - able layers that aim to reproduce characteristics of the target dataset as seen in a small set of labeled examples .
+In contrast , we aim to encode the characteristics of our target dataset , such as level of extraction and compression , a priori in the intermediate training phase .
+In other work , Lebanoff et al . ( 2018 ) adapt a single-document summarization model to multi-document settings , while Zhu et al . ( 2019 ) use Wikipedia reference data for downstream query - based summarization Several approaches for unsupervised summarization have made use of variational autoencoders ( Baziotis et al. , 2019 ; Chu and Liu , 2019 ; Bra?inskas et al. , 2020 b ) .
+Zhou and Rush ( 2019 ) makes use of pretrained language models for unsupervised text summarization by aligning the coverage of the generated summary to the source document .
+Laban et al. ( 2020 ) train an unsupervised summarization model with reinforcement learning rewards .
+In another line of work , extractive models such as TextRank , ( Mihalcea and Tarau , 2004 ) , LexRank ( Erkan and Radev , 2004 ) , and more recently Pac-Sum ( Zheng and Lapata , 2019 ) , make use of graph centrality for modeling salience .
+The power of pretrained models for few-shot transfer was shown for abstractive summarization in Zhang et al . ( 2019 ) and extractive summarization in Desai et al . ( 2020 ) .
+Our work focuses on the zero-shot abstractive summarization setting and the transferability of models fine-tuned on taskspecific data from a generic corpus , rather than just the transferability of a single pretrained model .
+The closest work to ours for zero-shot transfer is Yang et al . ( 2020 ) , which uses the lead-bias in news to pretrain an unsupervised model on a large dataset of news articles .
+Our approach , however , focuses on fine-tuning an already - pretrained model specifically for summarization on a downstream dataset by leveraging a generic text corpus ( Wikipedia ) to create auxiliary fine-tuning data that transfers across domains , allowing for more fine - grained control over the transfer process .
+We show the generalizability of such fine-tuning across domains .
+BART ( Lewis et al. , 2020 ) is a pretrained denoising autoencoder and achieved state - of - the - art performance when fine-tuned on summarization tasks at the time .
+In this work , we use BART as our base pretrained model but in future work will experiment with other pretrained models .
+Methods WikiTransfer Intermediate Fine-tuning :
+We propose a method for fine-tuning pretrained models using unsupervised Wikipedia data .
+We create dataset -specific unsupervised data for this intermediate fine-tuning , by making use of characteristics of the target dataset such as the average length of input documents , the average summary length , and the general bin of whether the summaries desired are very abstractive or very extractive , as discussed above .
+Assume that we want a summary of M sentences from source documents of N sentences on average , and that we know approximately how extractive the summaries are in the target dataset , as defined as the upper bound ROUGE ( Lin , 2004 ) performance of an extractive model , the extractive oracle , on that dataset .
+We bin the level of extraction of the target summaries into extremely abstractive ( ROUGE oracle 10 - 30 ) , more abstractive ( ROUGE oracle 20 - 30 ) , more extractive ( ROUGE oracle 30 - 50 ) , and extremely extractive ( ROUGE oracle 40 - 60 ) .
+We then iterate the following procedure on all Wikipedia articles available in a Wikipedia dump :
+We remove the first M sentences from the Wikipedia article for use as a summary and the following N sentences for use as a source document .
+Then , we want to check whether this pseudo data point matches the level of extraction of the target dataset .
+We select the M sentences in the pseudo source document with the highest individual ROUGE scores against the pseudo summary and calculate the ROUGE score between those M sentences concatenated and the pseudo summary , which amounts to a greedy upper bound of the performance of an extractive model on this example .
+The example will be kept if this ROUGE score falls into the general range of the extractive oracle of the target dataset defined previously and otherwise discarded .
+We use knowledge of how abstractive a dataset is as a type of summary style which an end-user would know ahead of time .
+We filter the Wikipedia data points so that only those which fall into the bin for a given dataset are used for fine-tuning .
+For datasets that are extremely abstractive , such examples may be hard to find , so we remove high - ROUGE sentences from the input until the desired ROUGE oracle score is reached .
+From here on we refer to data created through this process as WikiTransfer .
+We then fine- tune a pretrained model on this dataset-specific WikiTransfer data to transfer to a target domain .
+Data Augmentation via Round-Trip Translation :
+In addition to fine-tuning on WikiTransfer data for zero-shot domain transfer , we test the ability of our model to transfer when we have few examples and whether data augmentation further improves these results .
+In few-shot fine-tuning , we conduct data augmentation to reduce brute-force memorization and introduce a regularization effect .
+Specifically , we perform round-trip translation ( Yu et al. , 2018 ) to generate paraphrases of both the source documents and summaries , as previous work has found this approach creates diverse paraphrase for augmentation while preserving semantic meaning ( Yu et al. , 2018 ; Xie et al. , 2019 ) .
+Our examination found that round-trip translation increased the number of novel n-grams while preserving semantic meaning .
+Given a dataset of N data points , we translate the source and target sentencewise into a non-English language and keep the top k beam hypotheses from beam search as output .
+We then do likewise for the backtranslation to English .
+This results in N * k 2 augmented data points in addition to the N original supervised data points .
+We align a single beam from the translation to non-English text to a single beam in the backtranslation to English ; using all combinations of beams for augmented data did not result in an improvement in initial experiments .
+We refer to the training setting of N supervised data points with this additional augmented data as N-a. Data Augmentation Consistency :
+While data augmentation may introduce a regularization effect , naively training with augmented data does not necessarily account for noise introduced in the augmented examples .
+To balance learning from the examples while not overfitting to the small number of supervised samples , the model must learn to be robust to small changes in input examples .
+We thus investigate the effect of using a consistency loss ( Xie et al. , 2019 ; Athiwaratkun et al. , 2019 ) for few-shot training which enforces consistency between the original and round-trip translated documents with respect to the original summary .
+Let x = {x 1 , x 2 , ... , x i , ... , x n } be a source document with n words and N sentences , where x i represents the i-th word in x .
+It could also be represented as {s 1 , s 2 , ... , s j , ... , s N } , where s t represents the j-th sentence in x .
+The corresponding target summary y contains m words and M sentences , and y i denotes the i-th token of y.
+Standard training , used in the above sections , minimizes the negative log-likelihood loss using supervised teacher forcing ( Williams and Zipser , 1989 ) , which we label L sup : L sup ( x , y ) = ? m t=1 log ( f ( y t |y 0:t?1 , x , ? ) ) ( 1 ) where f ( ?|? , ? ) represents the distribution among the vocabulary predicted by our model with parameter ?.
+In our formulation , the output ( summary ) distribution given an augmented ( round- trip translated ) example should not diverge much from the distribution given the original document , with teacher forcing , so that the model learns to be resilient to small perturbations .
+Let x be a paraphrase of input document x generated via round -trip translation as described in the previous section .
+In addition to the supervised loss L sup ( x , y ) , we introduce another loss L cons ( x , x , y ) : m t=1 KL ( f ( ?|y 0:t?1 , x ) ||f ( ?|y 0:t?1 , , x ) , ? ) ) ( 2 ) where KL is the KL divergence , which penalizes the model if the probability distribution of the output using the original input is far from the distribution using the round -trip translated input document .
+Following Xie et al. ( 2019 ) , the gradient does not backpropagate through the model for the distribution of the original input while it does propagate through to the round -trip translated input .
+The total loss L for training with consistency then is : L ( x , x , y ) = L sup ( x , y ) + ?L cons ( x , x , y ) ( 3 ) We note that the original formulation of Unsupervised Data Augmentation ( UDA ) ( Xie et al. , 2019 ) enforces consistency in a semi-supervised framework .
+We also experiment with this setup using unlabeled examples from the target dataset with pseudo labels ( for teacher forcing ) generated by a model trained on the associated few -shot subset , although this approach is very sensitive to the quality of the pseudo labels ( see Appendix ) .
+We refer to the training setting of N supervised data points with consistency training as N-c.
+Experimental Settings Datasets :
+We experiment with four datasets , CN - NDM , XSum ( Narayan et al. , 2018 ) , Reddit_tifu ( Reddit ) ( Kim et al. , 2019 ) , and BigPatent ( Sharma et al. , 2019 ) .
+The datasets were chosen as they all differ in their abstractiveness , output length ( from one sentence in XSum to on average four in Big-Patent ) , and cover multiple domains from news ( CNNDM and XSum ) to social media ( Reddit ) to patent documents ( BigPatent ) , to show the generalizability of our results .
+Each of the datasets falls into a different extractive bin , from the most extractive CNNDM to the more abstractive XSum ; we discuss these settings further in the Appendix .
+Model Selection and Metric : For the experiments which follow , we first choose the model with the best zero-shot performance on a given domain .
+We test the zero-shot performance from all four domains onto every other domain .
+For models from our WikiTransfer subset , we choose the best model based on performance on an unsupervised Wiki-Transfer validation subset .
+We find that fine-tuning the model longer does not result in performance gains in few-shot transfer , and the checkpoints chosen were typically fine -tuned from 2 to 5 epochs .
+Results from hyperparameter studies for zero-shot transfer from WikiTransfer data are shown on the validation set of that given target dataset .
+Unless otherwise stated , all results reported are ROUGE -1/2/L .
+We run all few-shot transfer experiments on five subsets of supervised data , and the reported numbers , unless zero-shot , are the average of the top three results of the five runs following previous work ( Gunel et al. , 2020 ) .
+The 10 data point sets are subsets of the 100 data point sets .
+Data Augmentation Parameters :
+For data augmentation via round-trip translation , we use a beam size of 10 and k of 10 on German and Russian translation models ; fairseq provides bidirectional pretrained translation models ( Edunov et al. , 2018 ) from WMT19 for these language pairs .
+For both 10 and 100 data points , this resulted in 2010 and 20100 total data points .
+For consistency loss , we use the same augmented data .
+Model Hyperparameters :
+We use the fairseq codebase for our experiments .
+Our base abstractive text summarization model is BART - large ( Lewis et al. , 2020 ) , a pretrained denoising autoencoder with 336 M parameters that builds off of the sequence - to- sequence transformer of Vaswani et al . ( 2017 ) .
+We fine- tune BART using a polynomial decay learning rate scheduler using the Adam optimizer ( Kingma and Ba , 2015 ) .
+We mainly vary the learning - rate scheduler , warmup updates , and total updates .
+As in the previ-ous few-shot summarization work ( Zhang et al. , 2019 ) and work in unsupervised machine translation ( Conneau and Lample , 2019 ) , we use a subset of the target-domain validation set for early stopping based on the validation loss .
+We used the following ( warmup updates , total updates , learning rate ) parameter tuples based on an examination of the validation curves in initial experiments : 10 : ( 25 , 100 , 3e- 5 ) ; 10 -a : ( 20 , 200 , 3e- 5 ) ; 100 ( 20 , 200 , 3e- 5 ) ; 100 -a : ( 200 , 1000 , 1e - 5 ) .
+For consistency loss experiments , we use the ? values of 0.1 and 0.5 for experiments with 10 and 100 data points , respectively , chosen manually based on Xie et al . ( 2019 ) .
+See the Appendix for more details .
+Zero-shot Transfer Results
+We compare the zero-shot performance of BART fine-tuned on WikiTransfer data to that of one transferred from other summarization datasets .
+We also show the effect of different choices for WikiTransfer fine-tuning data on CNNDM and XSum .
+Zero-shot Transfer Comparison
+We aim to show that a model fine-tuned on Wik-iTransfer data has better zero-shot performance than models transferred from other summarization datasets .
+We fine- tune BART on WikiTransfer data for each of the four target datasets described above and also fine - tune a model on each of the fully - supervised datasets .
+We compare the zeroshot performance of transferring from WikiTransfer against the best zero-shot transfer performance from another dataset in Table 1 . Zero-shot transfer from WikiTransfer notably outperforms transferring from other datasets on CNNDM , XSum , and BigPatent .
+On Reddit , we perform better on ROUGE - 1 and comparably on ROUGE - 2/L , which may be due to distinct writing style on Reddit data , as noted in Zhang et al . ( 2019 ) .
+We also experimented with training a model on data combined from multiple datasets for zero-shot transfer , but this does not report improved results , so for the experiments which follow we use the best performing single -domain transfer model .
+Details of the fullysupervised BART models are in the Appendix .
+We compare our model to the state - of - the - art unsupervised abstractive model on CNNDM in Table 2 .
+We outperform the recently - introduced TED model ( Yang et al. , 2020 ) which was specifically motivated for the news domain .
+We believe the creation of task-specific data from a generic corpus Table 2 : A comparison of our approach to the unsupervised pretraining of TED ( Yang et al. , 2020 ) , showing the superior performance and generalizability of our approach versus the TED model , which focused specifically on the news domain .
+such as Wikipedia allows for more control over the transfer process than relying on the autoencoder objective of TED , and more generalizable crossdomain results .
+Effect of WikiTransfer Hyperparameters
+We study the effect the characteristics of our intermediate fine-tuning data have on downstream zero-shot performance on CNNDM and XSum to compare highly extractive and abstractive datasets .
+Effect of learning rate in intermediate finetuning :
+We examine the extent to which overfitting to the unsupervised WikiTransfer data occurs by examining the effect of the learning rate in intermediate fine-tuning on zero-shot transfer performance .
+We finetune the models on the CNNDM and XSum WikiTransfer data respectively each with a maximum learning rate of 3e - 6 and 3e - 5 .
+Results are shown in Table 3 bin , bin , M=3 40.14 17.71 36.66 27.98 9.59 23.11 Table 3 : Ablation studies on the effect of learning rate , the use of extractive bin for data filtering and the choice of M in intermediate fine-tuning on ROUGE - 1/2/L performance on CNNDM and XSum validation sets .
+transfer results for XSum and a moderate effect on CNNDM .
+This is to be expected , as the model otherwise is missing information about XSum 's distinctive output style .
+We examine how the choice of M affected performance .
+We set M = 1 for CNNDM and M = 3 for XSum and filtered examples in a similar way based on the extractive bin of the target dataset .
+We see that the choice of M has a large impact on CN - NDM performance but no decrease on XSum .
+This result , combined with the effect of filtering examples based on the extractive bin , gives insight into the importance of the subaspect of abstractiveness over compression for XSum performance .
+Effect of intermediate pretraining dataset size :
+We examined the effect of the size of the Wiki-Transfer data on downstream performance .
+Results are shown in Table 4 .
+We see a general increase with the addition of more data , although smaller increases after 100k data points and even a decrease in 250k on XSum , likely due to noise variation .
+The performance with 10 k data points on CNNDM is already much closer to the best performance than the XSum case .
+We believe that this is due to the highly extractive nature of CNNDM , which is especially easy for a model such as BART to learn , as it is pretrained as a denoising autoencoder .
+For XSum , we see a noticeable improvement from 10 k to 100k examples .
+We suspect that the abstractive objective is harder for the model to learn with small datasets .
+As we add more examples , we do not see a noticeable improvement .
+Such observations agree with our observation of the effect of learning rate and overfitting to the easier CNNDM objective .
+For the remaining experiments , we use 400k data points based on initial experiments .
+Effect of summary sentence choice :
+The first M sentences of a given Wikipedia article were chosen as this introduction intuitively form a coherent summary of the article .
+We examine the effect of choosing the first sentences compared to choosing based 2019 ) , we use ROUGE -1 F1 .
+The sentences chosen under this heuristic consistently corresponded to those which were longest , and the resulting summaries were hence longer .
+Thus , we also experimented with choosing important sentences by using ROUGE -1 Precision , IND - ORIG -P .
+The comparison of these methods is shown in Table 5 .
+The choice of the summary sentence has a noticeable impact on performance .
+We hypothesize that the coherence lost in the summaries is especially important for the longer CNNDM summaries .
+Using important sentences other than the first sentence likely adds more diversity in the data , and finding a balance between coherence and output style is an interesting direction for additional work ( Christensen et al. , 2013 ) .
+Effect of lead bias on CNNDM fine-tuning :
+We examined the effect of selecting the M sentences greedily chosen for calculating the extractive oracle and inserting them at the beginning of the unsupervised source document versus leaving them in place for CNNDM intermediate fine-tuning .
+This is meant to mirror the lead bias present in the dataset .
+This had a slight impact on performance ( 40.14 vs 39.74 without this bias ) , and thus we keep the lead bias for CNNDM experiments .
+Wikipedia vs target domain unlabeled data : While Wikipedia is a natural source of unlabeled data , we tested whether creating unsupervised data from unlabeled in -domain data improved results .
+We performed the same dataset creation treating the source data of the target domain as we did the Wikipedia data .
+This resulted in about 60k examples for CNNDM and 200k examples for XSum .
+Fine-tuning on this data , however , resulted in a performance of 38.08/25.83 ROUGE - 1 for CNNDM and XSum ( vs 39.11/31.85 on WikiTransfer data ) .
+The removal of the first sentences may remove too much information in the case of CNNDM , while for XSum , which already has an initial sentence headline removed as the summary , the first sentence may not constitute a very good summary of the remaining document .
+Wikipedia data often contains multi-paragraph introductions ; thus the removal of the first few sentences may still leave a pyramid-structured document with coherent informative content placed at the front .
+This result supports the emphasis on learning the subaspects of the target domain over simply in-domain training .
+An analysis of the output of intermediate fine-tuning on CNNDM reveals that the output was more abstractive , due to information present in the summary not being directly stated in the source , than fine-tuning on Wikipedia .
+We also experiment with further in- domain pretraining of BART before zero-shot transfer , but this does not result in consistent improvements across datasets .
+Few - Shot Transfer Results
+We examine whether zero-shot transfer improvements also carry over to the few-shot setting .
+Also , we explore the effect of data augmentation and consistency regularization techniques .
+The results of our experiments with varying training data sizes and augmentation methods for all 4 datasets are shown in Figure 1 and the Appendix .
+10 and 100 - shot performance with round-trip translation augmentation :
+We see that in fewshot settings , without data augmentation or consistency training , our model outperforms transferring from another domain or vanilla BART .
+In the case of transfer to Reddit , we observe that despite similar zero-shot performance with transfer from CNNDM , there is a more sizeable gap with 10 - shot transfer .
+This suggests that our intermediate finetuning does more closely align the BART model with the target domain .
+Furthermore , when training on augmented data from round -trip translation , we see the best performance in transfer from Wiki- Transfer in all cases except BART transfer to CN - NDM on 10 - aug , which is likely due to the autoencoder pretraining objective of BART which biases it towards copying and lead bias , allowing it to perform well in applications to CNNDM .
+We see improvements when training with augmented data in 10 - example cases and most 100 - example cases for WikiTransfer .
+Less improvement is seen in the 100 - aug setting when transferring from BART or another domain .
+We hypothesize that the noise present in the larger augmented dataset causes this occasional performance drop , while the WikiTransfer models appear more robust to potential noise .
+We also found model robustness as the standard deviation of top-performing WikiTransfer models was least among all models in the majority of cases .
+Interestingly , for transfer from BART and another domain 100 - aug only improves on CNNDM , the most extractive dataset , while the largest drop in performance from augmented data occurs on XSum .
+This XSum performance drop may be caused by the high compression in the XSum summaries which leaves less room for noisy output when compared to the longer CNNDM and BigPatent summaries which may still preserve the main meaning of the original summary better despite backtranslation noise .
+In most cases , 100 - aug with WikiTransfer results in the best performance , only several points from the state - of - the - art supervised performance .
+Transfer with Consistency Training :
+We find contrasting trends with the added consistency loss compared to data augmentation via round -trip translation .
+We note the most sizeable improvements in the more abstractive cases of XSum and Reddit .
+We hypothesize that the consistency loss promotes better abstraction as the model learns to be invariant to noise which does not change the meaning of the text , and is thus equipped with a better notion of paraphrasing .
+formation provided in this subset is sufficient for good performance , thus diminishing the gains from the head-start the WikiTransfer model provides in zero and 10 - shot transfer .
+We leave aspects of the consistency training such as the role of the quality of the round-trip translation data and its relation to the transfer domain to future work .
+Human Quality Assessment
+We examine how the improved performance from WikiTransfer manifests itself in qualitative annotations when varying the amount of training data .
+We collect human judgment annotations for two of the four quality dimensions studied in Kryscinski et al . ( 2019 ) ; Fabbri et al. ( 2020 ) , namely consistency and relevance .
+Consistency is defined as the factual alignment between the summary and the summarized source text , while relevance is defined as the selection of important content ; only relevant information should be included in the summary .
+We did not include fluency as a dimension as an initial inspection of the data found fluency to be of very high quality , and we did not include coherence due to our inclusion of single-sentence XSum summaries where coherence is not a factor .
+We randomly select 50 examples per dataset and collect the model output from the best- performing zeroshot , 10 - aug , 100 - aug , and fully supervised models on CNNDM and XSum .
+The annotator sees the source article and randomly - ordered output from the four models rates the summaries for relevance and consistency on a Likert from 1 - 5 , with 5 being the best score .
+We averaged the score of two native English-speaking annotators on each example and then across examples , and found moderate and strong annotator correlations for relevance and consistency , respectively .
+Results are shown in Table 6 . For CNNDM , we see an increase in consistency as more training data is added but not a statistically significant difference ( using a Student 's t-test with a p-value of 0.05 ) between 100 and full supervision for any of the relevance or consistency results .
+The relevance of the full model does not outperform the others , likely because the model output was more concise and was judged as not including source information , while the zero-shot output more closely resembles the lead - three bias , so was judged as more informative .
+For XSum , we see that relevance improves noticeably as more training data is used .
+We see varied results for consistency , although without statistically significant differences .
+This fluctuation in scores may be due to the transition of the model from using knowledge from pretraining in its output versus knowledge from the target dataset obtained during fine-tuning , which we discuss in the Appendix .
+Conclusion
+We introduced WikiTransfer , a novel and generalizable method for fine-tuning pretrained models on dataset -specific unsupervised data obtained from generic Wikipedia data .
+WikiTransfer models achieve state- of- the - art zero-shot abstractive summarization performance on the CNN - DailyMail dataset and generalize across three additional datasets .
+In few-shot settings , WikiTransfer models are robust to noise introduced through data augmentation and benefit from consistency loss on more abstractive datasets .
+Furthermore , human assessments of the resulting summaries do not show significant differences between the WikiTransfer fewshot summaries and fully - supervised summaries , demonstrating the efficiency of our approach .

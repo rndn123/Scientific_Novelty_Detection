@@ -1,0 +1,254 @@
+title
+mT6 : Multilingual Pretrained Text-to- Text Transformer with Translation Pairs
+abstract
+Multilingual T5 ( MT5 ; Xue et al. 2020 ) pretrains a sequence - to-sequence model on massive monolingual texts , which has shown promising results on many cross-lingual tasks .
+In this paper , we improve multilingual textto-text transfer Transformer with translation pairs ( MT6 ) .
+Specifically , we explore three cross-lingual text - to - text pre-training tasks , namely , machine translation , translation pair span corruption , and translation span corruption .
+In addition , we propose a partially nonautoregressive objective for text - to - text pretraining .
+We evaluate the methods on eight multilingual benchmark datasets , including sentence classification , named entity recognition , question answering , and abstractive summarization .
+Experimental results show that the proposed MT6 improves cross-lingual transferability over MT5 .
+Introduction Multilingual pretrained language models , such as mBERT ( Devlin et al. , 2019 ) , have attracted increasing attention .
+They not only improve the performance on downstream multilingual NLP tasks ( Conneau and Lample , 2019 ; Conneau et al. , 2020 ; Chi et al. , 2021 c ) , but also show an impressive cross-lingual transferability ( Wu and Dredze , 2019 ; K et al. , 2020 ; Hu et al. , 2020 b ; Chi et al. , 2021a ) .
+Multilingual pretrained models are typically trained on multilingual unlabeled text with unsupervised language modeling tasks , e.g. , masked language modeling ( Devlin et al. , 2019 ) , causal language modeling ( Conneau and Lample , 2019 ) , and span corruption ( Raffel et al. , 2020 ) .
+These unsupervised tasks are built upon large-scale monolingual texts .
+In addition , several studies propose cross-lingual tasks that utilize translation data from multilingual parallel corpora , such as translation language modeling ( Conneau and Lample , * Contribution during internship at Microsoft Research . 2019 ) , cross-lingual contrast ( Chi et al. , 2021a ) , and bidirectional word alignment ( Hu et al. , 2020a ) .
+Thanks to the translation data , the pretrained models produce better-aligned cross-lingual representations and obtain better cross-lingual transferability .
+Recently , the multilingual text- to- text transfer Transformer ( MT5 ; Xue et al. 2020 ) achieves stateof - the- art performance on several cross-lingual understanding benchmarks .
+MT5 inherits the benefits of T5 ( Raffel et al. , 2020 ) that treats every text processing problem as a text - to- text problem , i.e. , the problem of generating some target text conditioned on the input text .
+Despite the effectiveness of MT5 , how to improve MT5 with translation data is still an open problem .
+In this paper , we present MT6 , standing for improving multilingual text - to - text transfer Transformer with translation data .
+MT6 differs from MT5 in terms of both pre-training tasks and the training objective .
+We present three cross-lingual tasks for text - to- text Transformer pre-training , i.e. , machine translation , translation pair span corruption , and translation span corruption .
+In the translation span corruption task , the model is trained to predict the text spans based on the input translation pair .
+The cross-lingual tasks encourage the model to align representations of different languages .
+We also propose a new objective for text - to - text pre-training , called partially non-autoregressive ( PNAT ) decoding .
+The PNAT objective divides the target sequence into several groups , and constrains that the predictions should be only conditioned on the source tokens and the target tokens from the same group .
+We conduct experiments on both multilingual understanding and generation tasks .
+Our MT6 model yields substantially better performance than MT5 on eight benchmarks .
+We also provide an empirical comparison of the cross-lingual pre-training tasks , where we evaluate several variants of MT6 under the same pre-training and fine-tuning procedure .
+Moreover , our analysis indicates that the representations produced by MT6 are more cross-lingual transferable and better-aligned than MT5 .
+The contributions are summarized as follows : ?
+We introduce three cross-lingual tasks for textto- text Transformer pre-training , which improves MT5 with translation data . ?
+We propose a partially non-autoregressive objective that pretrains the decoder to use more information from the source sequence .
+?
+We provide extensive evaluation results of various pre-training tasks and training objectives .
+2 Background on T5 and MT5 Multilingual text- to- text transfer Transformer ( MT5 ; Xue et al. 2020 ) is the multilingual variant of T5 ( Raffel et al. , 2020 ) pretrained on the mC4 ( Xue et al. , 2020 ) dataset , which consists of natural text in 101 languages drawn from the public Common Crawl web scrape .
+The backbone architecture of MT5 is the simple encoder-decoder Transformer ( Vaswani et al. , 2017 ) , which is trained in a unified text - to - text manner .
+In specific , text - based NLP problems are formulated as text - to- text transfer , i.e. , the model is trained to predict the target text conditioned on the input source text .
+For example , in text classification , the model predicts the label text rather than a class index .
+This feature enables the MT5 to be fine-tuned with the same training objective for every task .
+Formally , let x and y denote the input sequence and the output sequence , the loss function of training the x ? y transfer is L( x ? y ) = ? | y | i=1 log p(y i |x , y < i ) , ( 1 ) where y < i = y 1 , ? ? ? , y i?1 .
+With the unified textto-text formulation , the pre-training task can be designed by constructing the input and output text sequences .
+Specifically , MT5 employs the span corruption task as the pre-training task , which is an unsupervised masked language modeling task .
+As shown in Figure 1 , we provide an example of constructing the input and output sequences for span corruption .
+Given a natural sentence s , it first randomly selects several spans of s as the spans to be masked .
+Then , the input sequence is constructed by replacing the selected spans with unique mask
+Thanks [ M1 ] invitation [ M2 ] . [ M1 ] for your [ M2 ] last week [ M3 ]
+Inputs
+Targets
+Thanks for your invitation last week .
+Original text Figure 1 : Example of the span corruption task ( Raffel et al. , 2020 ) used in T5 and MT5 .
+tokens .
+The output sequence is the concatenation of the original tokens of the masked spans , each of which starts with a unique mask token to indicate the span to be decoded .
+We denote the above two operations as g i and g o , standing for converting the original sentence s into the input or the output formats of span corruption .
+Thus , the loss function of the span corruption task can be written as L SC ( s ) = L ( g i ( s ) ? g o ( s ) ) . ( 2 )
+Methods
+In this section , we first present three text - to - text pre-training tasks for improving MT5 with translation data .
+Then , we introduce the partially nonautoregressive decoding objective , and provide the detailed fine-tuning procedures for the classification , question answering , and named entity recognition tasks .
+Cross-lingual Pre-training Tasks with Translation Pairs
+As shown in Figure 2 , we illustrate an overview of our cross-lingual text - to - text pre-training tasks .
+Given the same translation pair , the three tasks construct different input and output sequences .
+Machine Translation Machine translation ( MT ) is a typical text - to - text task with the goal of translating a sentence from the source language into a target language .
+It is a natural design to use MT as a text - to - text pre-training task for sequence - to-sequence learning ( Chi et al. , 2020 ) .
+Let e and f denote a sentence and its corresponding translation .
+We directly use e and f as the input and output sequences , respectively .
+The loss function of MT is L MT ( e , f ) = L(e ? f ) . ( 3 )
+Thanks for your invitation last week .
+Merci pour votre invitation la semaine derni?re .
+Thanks for your invitation last week .
+Merci pour votre invitation la semaine derni?re .
+Thanks for your invitation last week .
+Merci pour votre invitation la semaine derni?re .
+Notice that in the translation span corruption task , we mask tokens only in one language .
+Thanks [ M1 ] invitation
+Translation Pair Span Corruption Inspired by the translation masked language modeling ( Conneau and Lample , 2019 ) task , we propose the translation pair span corruption ( TPSC ) task that aims to predict the masked spans from a translation pair instead of a monolingual sentence .
+Let e and f denote a sentence and its corresponding translation .
+We concatenate e and f as a single sentence , and perform the span corruption on the concatenated sentence .
+Formally , we construct the input and output sequences by g i ( [ e ; f ] ) and g o ( [ e ; f ] ) , where [ e ; f ] stands for the concatenation of e and f .
+With the resulting input and output sequences , the loss function of TPSC can be written as L TPSC ( e , f ) = L( g i ( [ e ; f ] ) ? g o ( [ e ; f ] ) ) . ( 4 )
+Translation Span Corruption
+A potential issue of translation pair span corruption is that the spans in the target sequence can be organized in unnatural word order .
+As shown in Figure 2 , the output sequence of TPSC is organized as " [ M 1 ] for your [ M 2 ] last week [ M 3 ] invitation [ M 4 ] " .
+It can be found that the French word " invitation " is after the English word " week " , which could harm the language model of the decoder .
+This motivates us to propose the translation span corruption ( TSC ) task where we only mask and predict the spans in one language .
+Given a translation pair ( e , f ) , we randomly select the e or f to perform span corruption .
+Without loss of generality , we consider e as the sentence for span corruption .
+Then , the input and output sequences are constructed by [ g i ( e ) ; f ] and g o ( e ) , respectively .
+With the resulting input and output sequences , the loss function of TSC can be written as L TSC ( e , f ) = L ( [ g i ( e ) ; f ] ) ? g o ( e ) ) ) . ( 5 )
+Pre-training Objective : Partially Non-autoregressive Decoding Recall that the predictions in MT5 are conditioned on both the source tokens and the target tokens to the left .
+When predicting the tokens closer to the end , the model can use more information from the target sequence , resulting in the insufficient training of the encoder .
+To encourage the model to utilize more information from the encoding side while preserving the ability of autoregressive decoding , we propose a new training objective for text - to - text training , called partially non-autoregressive decoding ( PNAT ) .
+In Figure 3 , we provide an example for PNAT .
+Specifically , given a target sequence containing several spans , we divide the target sequence into groups , and train the model to decode each group separately .
+With the PNAT objective , a prediction is only conditioned on the source tokens and the target tokens from the same group .
+Consider the target sequence consisting of m spans .
+We divide the spans into n g groups , each of which contains m /n g consecutive spans .
+For the j-th group , we denote l j and r j as the start position and the end position , respectively .
+The PNAT objective is defined as L PNAT ( x ? y ) = ? ng j=1 r j i=l j log p(y i |x , y l j . . . y i ?1 ) .
+The text - to- text loss L(x ? y ) is a specially case of L PNAT ( x ? y ) with n g = 1 .
+The MT6 model is jointly pretrained on both monolingual and parallel corpora , where we use the span corruption and one of the three cross-lingual text - to - text tasks .
+For both tasks , we use the partially non-autoregressive decoding as the training objective where we divide the target sequence into
+Thanks [ M1 ] for [ M2 ] me [ M3 ] your party [ M4 ] . [ M1 ] you [ M2 ] inviting [ M3 ]
+Inputs Targets of ? ?
+Thank you for inviting me to your party last week .
+n g groups .
+The overall pre-training objective is to minimize L MT6 = L PNAT SC ( s ) + L PNAT X ( e , f ) , ( 6 ) X ? { MT , TPSC , TSC } , where L PNAT X stands for the one of the loss functions of machine translation ( MT ; Section 3.1.1 ) , translation pair span corruption ( TPSC ; Section 3.1.2 ) and translation span corruption ( TSC ; Section 3.1.3 ) , with PNAT as the training objective .
+Cross-lingual Fine-tuning
+We fine- tune all parameters of the MT6 model with Equation ( 1 ) regardless of the end task .
+Unlike language generation tasks , language understanding tasks should be pre-processed as the text - to - text format .
+We introduce how to convert the following three types of the language understanding task into the text - to- text format , i.e. , constructing the input and output sequences from the original examples .
+Classification
+The goal of the text classification task is to predict the label of a given text .
+Following T5 ( Raffel et al. , 2020 ) , we directly use the label text as the output text sequence .
+We provide an example for the MNLI natural language inference task .
+Given an input sentence pair of " You have access to the facts . " and " The facts are accessible to you . " , the goal is to classify the input into the relationships of " entailment " , " contradiction " , or " neutral " .
+The input and target sequences are constructed as Input : bos You have access to the facts .
+eos
+The facts are accessible to you .
+eos Output : bos entailment eos Since multi-task fine- tuning is not the focus of this work , we do not prepend a task prefix in the input text .
+We also adopt a constrained decoding process , where the decoded text is constrained to be one of the labels .
+Question Answering
+For the extractive question answering ( QA ) task , we concatenate the passage and the question as the input , and directly use the answer text as the target instead of predicting the answer span positions .
+We provide an example of converting a QA training example into the text-totext format .
+Input : bos
+It has offices in Seoul , South Korea .
+eos
+Where is the office in South Korea ?
+eos Output : bos Seoul eos
+We use the constrained decoding for the QA tasks where we use the tokens shown in the input passage as the decoding vocabulary .
+Named Entity Recognition
+In named entity recognition ( NER ) , we do not directly use the original tag sentence as the output .
+We find that the model tends to repeat decoding the " O " tag if the model directly learns to decode the tag sequences .
+Alternately , we construct the target text by concatenating the entity spans , each of which starts with the entity tag and ends with the entity tokens .
+We show an example of converting a NER training example into the text - to - text format .
+Input : bos Italy recalled Marcello Cuttitta .
+Experiments
+Setup Data Following previous work on cross-lingual pre-training ( Conneau et al. , 2020 ; Chi et al. , 2021a ) , we use the natural sentences from CC - Net ( Wenzek et al. , 2019 ) in 94 languages for monolingual text - to - text tasks .
+For crosslingual text - to - text tasks , we use parallel corpora of 14 English-centric language pairs , collected from MultiUN ( Ziemski et al. , 2016 ) , IIT Bombay ( Kunchukuttan et al. , 2018 ) , OPUS ( Tiedemann , 2012 ) , and WikiMatrix .
+Details of the pre-training data are described in Appendix .
+Training Details
+In the experiments , we consider the small- size Transformer model ( Xue et al. , 2020 ) , with d model = 512 , d ff = 1 , 024 , 6 attention heads , and 8 layers for both the encoder and the decoder 1 .
+We use the vocabulary provided by XLM -R ( Conneau et al. , 2020 ) , and extend it with 100 unique mask tokens for the span corruption tasks .
+We pretrain our MT6 for 0.5 M steps with batches of 256 length - 512 input sequences .
+The model is optimized by the Adam optimizer ( Kingma and Ba , 2015 ) with a linear learning rate scheduler .
+The pre-training procedure takes about 2.5 days on an Nvidia DGX -2 Station .
+Details of the pre-training hyperparameters are described in Appendix .
+Results
+XTREME Cross-lingual Understanding
+To validate the performance of MT6 , we evaluate the pretrained models on XTREME ( Hu et al. , 2020 b ) , which is a widely used benchmark for cross-lingual understanding .
+Following MT5 ( Xue et al. , 2020 ) , we consider six downstream tasks included by XTREME : the named entity recognition ( NER ) task on the WikiAnn ( Pan et al. , 2017 ; Rahimi et al. , 2019 ) dataset in 40 languages , the question answering ( QA ) task on MLQA ( Lewis et al. , 2020 b ) , XQuAD ( Artetxe et al. , 2020 ) , and TyDiQA - GoldP ( Clark et al. , 2020 ) , the cross-lingual natural language inference task on XNLI ( Conneau et al. , 2018 ) , and crosslingual paraphrase adversaries on PAWS -X .
+The models are evaluated under the cross-lingual transfer setting ( Conneau et al. , 2020 ; Hu et al. , 2020 b ) .
+Under this setting , the models should be fine-tuned only on English training data but evaluated on all target languages .
+Moreover , for each pretrained model , only one model is used for all languages rather than selecting fine -tuned models separately .
+Details of the fine-tuning hyperparameters are described in Appendix .
+As shown in Table 1 , we present the evaluation results of the pretrained models on the XTREME benchmark .
+We observe that MT6 achieves the best performance on XTREME , improving the average score from 45.0 to 50.4 , as we go from MT5 to MT6 .
+It is worth mentioning that pre-training the model only with the machine translation task performs even worse than MT5 .
+We have noticed that several target languages in TyDiQA and WikiAnn are not covered by our parallel corpora .
+However , the NMT pretrained model still shows poor results on the other four tasks , where all target languages are covered by the training data .
+Detailed results can be found in Appendix .
+Comparison of Pre-training Tasks
+To provide a clear comparison among the pretraining tasks , we implement the text - to - text pretraining methods presented in Section 3 , and pretrain variants of MT6 with the same training data and resources for fair comparisons .
+Table 1 compares the evaluation results of the models pretrained with seven different combinations of span corruption ( SC ) , machine translation ( MT ) , translation pair span corruption ( TPSC ) , translation span corruption ( TSC ) , and partially non-autoregressive decoding ( PNAT ) .
+It can be observed that jointly training SC + TSC with PNAT achieves the best overall performance on the XTREME benchmark , with substantial gains over the models trained on monolingual data only .
+The same trend can be observed for the other models pretrained on both monolingual data and parallel data .
+This demonstrates that introducing translation data to text - to - text pre-training can improve the performance on the end tasks of cross-lingual understanding .
+Moreover , PNAT provides consistent gains over SC and SC + TSC , showing that PNAT is effective on both monolingual and cross-lingual tasks .
+Surprisingly , SC + PNAT obtains comparable results to SC + MT without any parallel data .
+Comparing TSC with MT and TPSC , we observe that SC + TSC brings noticeable improvements on question answering tasks .
+Although SC +MT shows competitive results on XNLI , the results on the other tasks are relatively low , indicating that simply jointly training SC with MT is not the most effective way to pretrain MT6 .
+Abstractive Summarization Multilingual Summarization
+In addition to language understanding tasks , we also evaluate our MT6 model on the abstractive summarization task .
+Abstractive summarization aims to generate a summary of the input document while preserving its original meaning .
+We use the Gigaword dataset provided by Chi et al . ( 2020 ) .
+The dataset is constructed by extracting the first sentences and head - ( Chi et al. , 2020 ) .
+Results of MT5 and MT6 are averaged over three runs .
+lines as the input documents and summaries , respectively .
+The dataset consists of examples in the languages of English , French , and Chinese .
+For each language , it contains 500K , 5K , and 5 K examples for the training , validation , and test , respectively .
+We fine - tune the models for 20 epochs with a batch size of 32 and a learning rate of 0.00001 .
+During decoding , we use the greedy decoding for all evaluated models .
+As shown in Table 2 , we report the ROUGE ( Lin , 2004 ) scores of the models on Gigaword multilingual abstractive summarization .
+We observe that MT6 consistently outperforms MT5 on all the three target languages .
+Comparing with the XLM ( Conneau and Lample , 2019 ) and XNLG ( Chi et al. , 2020 ) models with 800M parameters , our MT6 model achieves a similar performance with only 300M parameters .
+Besides , under the setting with fewer training data , MT6 shows more improvements over MT5 .
+Cross-Lingual Summarization
+The crosslingual summarization task aims to generate summaries in a different language .
+We use the Wikilingua ( Ladhak et al. , 2020 ) dataset containing passage -summary pairs in four language pairs .
+We fine- tune the models for 100K steps with a batch size of 32 and a learning rate of 0.0001 .
+We use the greedy decoding for all evaluated models .
+The evaluation results are shown in Table 3 , where MT6 outperforms MT5 on the test sets of four language pairs .
+Figure 4 : Evaluation results of different layers on Tatoeba cross-lingual sentence retrieval .
+We illustrate the average accuracy@1 scores on the Tatoeba test sets of the 14 language pairs covered by the parallel data .
+Cross-lingual Transfer Gap
+To explore whether our MT6 model achieves better cross-lingual transferability , we compare the crosslingual transfer gap scores of our MT6 with MT5 .
+Cross-lingual transfer gap ( Hu et al. , 2020 b ) is defined as the difference between the performance on the English test set and the average performance on the non-English test sets .
+The transfer gap indicates how much the end-task knowledge preserves when transferring from English to the other target languages .
+Empirically , a lower transfer gap score indicates better cross-lingual transferability .
+Following Hu et al. ( 2020 b ) , we compute the transfer gap scores over the sentence classification and question answering tasks .
+As shown in Table 4 , MT6 consistently reduces the transfer gap across all the five tasks , demonstrating that our model is more effective for cross-lingual transfer than MT5 .
+Cross-lingual Representations
+We analyze the cross-lingual representations produced by our MT6 model .
+Following Chi et al. ( 2021a ) , we evaluate the representations on the Tatoeba ( Artetxe and Schwenk , 2019 ) cross-lingual sentence retrieval task .
+The test sets consist of 14 English-centric language pairs covered by the parallel data in our experiments .
+Figure 4 illustrates the average accuracy@1 scores of cross-lingual sentence retrieval .
+The scores are averaged over 14 language pairs and both the directions of xx ? en and en ? xx .
+From the figure , we observe that MT5 shows a parabolic trend across different layers , which also appears in other cross-lingual encoder models ( Jalili Sabet et al. , 2020 ; Chi et al. , 2021a ) .
+Differently , we obtain better performance Model en-de en-fr en-ro Avg MT5 35.84 19.05 45.24 33.38 MT6 23.69 12.11 42.56 26.12
+Table 5 : Evaluation results on word alignment .
+We report the alignment error rate scores ( lower is better ) .
+We use the hidden vectors from the last encoder layer , and apply the SimAlign ( Jalili Sabet et al. , 2020 ) tool to obtain the resulting word alignments .
+Word Alignment
+In addition to cross-lingual sentence retrieval that evaluates sentence - level representations , we also explore whether the representations produced by MT6 are better -aligned at token - level .
+Thus , we compare our MT6 with MT5 on the word alignment task , where the goal is to find corresponding word pairs in a translation pair .
+We use the hidden vectors from the last encoder layer , and apply the SimAlign ( Jalili Sabet et al. , 2020 ) tool to obtain the resulting word alignments .
+Table 5 shows the alignment error rate ( AER ) scores on the test sets provided by Jalili Sabet et al . ( 2020 ) .
+Among the three language pairs , MT6 achieves lower AER scores than MT5 , indicating that the cross-lingual representations produced by MT6 are also betteraligned at token - level .
+Effects of Noise Density
+In the translation span corruption ( TSC ) task , the input parallel sentences provide redundant information in two languages , which is different from the standard monolingual span corruption task .
+Thus , we explore the effects of noise density by varying the noise density in the translation span corruption task , with the other hyperparameters fixed .
+To reduce the computational load , we do not apply the partially non-autoregressive decoding , i.e. , we pretrain the models with the original text - to - text objective .
+We pretrain MT6 models with the noise density of 0.15 , 0.3 , 0.5 , and 1.0 respectively .
+It means 15 % , 30 % , 50 % , or all of the source or target tokens are replaced with the masked tokens .
+Notice that setting the noise density as 1.0 is identical to machine translation , where the decoder is required to decode the whole target sentence .
+In Table 6 , we report the average scores on the XTREME benchmark .
+From the results , we observe that MT6 achieves the best results with the noise density of 0.5 , rather than a higher noise density such as 1.0 .
+The results indicate that the TSC task prefers a higher noise density , so that the model can learn to use more cross-lingual information .
+This finding is different from that reported by T5 ( Raffel et al. , 2020 ) , where the span corruption task works better with the noise density of 0.15 under the monolingual setting .
+Related Work Cross-lingual LM Pre-training Cross-lingual language models are typically built with the Transformer ( Vaswani et al. , 2017 ) architecture , and pretrained with various pre-training tasks on largescale text data .
+Multilingual BERT ( mBERT ; Devlin et al. 2019 ) and XLM -R ( Conneau et al. , 2020 ) are pretrained with masked language modeling ( MLM ; Devlin et al. 2019 ) on large-scale unlabeled text in about 100 languages .
+MASS ( Song et al. , 2019 ) and mBART are pretrained in an auto-encoding manner , which provides improvements on the neural machine translation tasks .
+MT5 ( Xue et al. , 2020 ) is pretrained with the span corruption ( Raffel et al. , 2020 ) task under the text - to - text formulation ( Raffel et al. , 2020 ) .
+Cross-lingual pretrained models also benefit from translation data .
+XLM ( Conneau and Lample , 2019 ) jointly learns MLM and the translation language modeling ( TLM ) task .
+Unicoder ( Huang et al. , 2019 ) presents three cross-lingual tasks to learn mappings among languages .
+ALM converts the translation pairs into code-switched sequences as the training examples .
+Word- aligned BERT models ( Cao et al. , 2020 ; Zhao et al. , 2020 ) improves the cross-lingual representations by fine-tuning the mBERT with the objective of minimizing the distance between aligned tokens .
+AMBER ( Hu et al. , 2020a ) propose to maximize the agreement between the forward and backward attention matrices of the input translation pair .
+InfoXLM ( Chi et al. , 2021a ) proposes the cross-lingual contrastive learning task that maximizes the InfoNCE ( Oord et al. , 2018 ) lower bound of the mutual information between the input translation pair .
+XLM - Align ( Chi et al. , 2021 b ) leverages token - level alignments implied in translation pairs to improve cross-lingual transfer .
+XNLG ( Chi et al. , 2020 ) introduces the cross-lingual transfer for NLG tasks , and achieves zero-shot cross-lingual transfer for question generation and abstractive summarization .
+VECO ( Luo et al. , 2020 ) pretrains a variable cross-lingual pre-training model that learns unified language representations for both NLU and NLG .
+ERNIE -M ( Ouyang et al. , 2020 ) utilizes the back -translation masked language modeling task that generates pseudo parallel sentence pairs for learning TLM .
+Encoder -Decoder Pre-training Raffel et al. ( 2020 ) use span corruption to pretrain text - to- text Transformer , where both language understanding and generation tasks are formulated as sequenceto-sequence fine-tuning .
+Song et al. ( 2019 ) propose masked sequence - to-sequence pre-training where the model predicts a randomly masked span .
+BART ( Lewis et al. , 2020a ) design various denoised autoencoding tasks to recover the whole original sentence .
+PEGASUS introduces the gap sentence generation task for abstractive summarization pre-training .
+Chi et al. ( 2020 ) use both denoised autoencoding and machine translation for cross-lingual language generation .
+Another strand of research follows unified language model pre-training ( Dong et al. , 2019 ; Bao et al. , 2020 ; Luo et al. , 2020 ) , where the encoder and the decoder share parameters .
+Ma et al. ( 2020 Ma et al. ( , 2021 reuse pretrained multilingual encoder for sequence - to-sequence pre-training .
+Conclusion
+In this paper , we propose MT6 that improves the multilingual text - to - text transfer Transformer with translation data .
+We introduce three text - to - text pre-training tasks that are built on parallel corpora , and a training objective for improving text - to - text pre-training .
+Nonetheless , we present a comprehensive comparison of the text - to - text tasks , and show that our MT6 model outperforms MT5 on both cross-lingual understanding and generation benchmarks .
+For future work , we would like to pretrain MT6 models at a larger scale , and explore more applications , such as machine translation .

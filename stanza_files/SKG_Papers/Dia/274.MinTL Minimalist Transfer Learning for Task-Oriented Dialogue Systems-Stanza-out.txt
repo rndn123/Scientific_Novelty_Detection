@@ -1,0 +1,183 @@
+title
+MinTL : Minimalist Transfer Learning for Task-Oriented Dialogue Systems
+abstract
+In this paper , we propose Minimalist Transfer Learning ( MinTL ) to simplify the system design process of task - oriented dialogue systems and alleviate the over-dependency on annotated data .
+MinTL is a simple yet effective transfer learning framework , which allows us to plug-and - play pre-trained seq2seq models , and jointly learn dialogue state tracking and dialogue response generation .
+Unlike previous approaches , which use a copy mechanism to " carryover " the old dialogue states to the new one , we introduce Levenshtein belief spans ( Lev ) , that allows efficient dialogue state tracking with a minimal generation length .
+We instantiate our learning framework with two pretrained backbones : T5 ( Raffel et al. , 2019 ) and BART ( Lewis et al. , 2019 ) , and evaluate them on MultiWOZ .
+Extensive experiments demonstrate that : 1 ) our systems establish new state - of - the - art results on end-to - end response generation , 2 ) MinTL - based systems are more robust than baseline methods in the low resource setting , and they achieve competitive results with only 20 % training data , and 3 ) Lev greatly improves the inference efficiency 1 .
+Introduction
+Building robust task - oriented dialogue systems is challenging due to complex system design and limited availability of human-annotated data ( Wen et al. , 2017 ; Wu et al. , 2019 b ) .
+A dialogue agent is expected to learn dialogue reasoning , decision making , and language generation , which require a large amount of training data .
+However , collecting and annotating data for training a dialogue system is time - intensive and not transferable among domains ( Young et al. , 2013 ) .
+One possible workaround is to leverage the pre-trained language 1 Code available in https://github.com/zlinao/ MinTL model to reduce human supervision ( Budzianowski and Vuli ? , 2019 ) .
+Recent progress in pre-training language models has been shown to be promising in alleviating the data scarcity problem ( Budzianowski and Vuli ? , 2019 ; Wu et al. , 2020 ) .
+Such models are typically pre-trained on large-scale plain text with self-supervised objectives , e.g. , language modeling ( Radford et al. , 2019 ) and language denoising ( Devlin et al. , 2019 ) .
+Fine tuning pre-trained language models improves a wide range of natural language processing applications Raffel et al. , 2019 ) , notably machine translation ( Conneau and Lample , 2019 ) , and personalized dialogue response generation ( Wolf et al. , 2019 b ) .
+However , adapting pre-trained language models to task - oriented dialogue systems is not trivial .
+Current state - of- the-art ( SOTA ) approaches in task - oriented dialogue rely on several tasks -specific modules , such as State Operation Predictor for dialogue state tracking , and Copy - Net ( Gu et al. , 2016 ) for end-to - end dialogue task completion ( Lei et al. , 2018 ; . Such modules are usually absent in the pre-training stage .
+Therefore , tasks -specific architecture modifications are required in order to adapt pre-trained language models to different dialogue tasks .
+In this work , we aim to simplify the process of transferring the prior knowledge of pre-trained language models for improving task - oriented dialogue systems .
+We propose Minimalist Transfer Learning ( MinTL ) , a simple yet effective transfer learning framework that allows to plug-and - play pre-trained sequence - to-sequence ( Seq2Seq ) models and jointly learn dialogue state tracking ( DST ) and dialogue response generation .
+Unlike previous approaches ( Lei et al. , 2018 ; , which use a copy mechanism to " carryover " the previous dialogue states and generate new dialogue states , we introduce Levenshtein belief spans ( Lev ) which models the difference between old states and new states .
+In practice , MinTL first decodes the Lev for updating the previous dialogue state ; then , the updated state is used to search the external knowledge base ; and finally , a response decoder decodes response by conditioning on the dialogue context and knowledge base match result .
+MinTL is easy to set up by using different pretrained seq2seq backbones .
+We conduct extensive experiments on both DST and end-to - end dialogue response generation tasks with two pre-trained seq2seq models , such as T5 ( Raffel et al. , 2019 ) and BART .
+The experimental result on a large-scale task- oriented dialogue benchmark MultiWOZ Eric et al. , 2019 ) suggests that our proposed method significantly improves SOTA performance in both the full data and simulated low resource setting .
+Our contributions are summarized as follows : ?
+We propose the MinTL framework that efficiently leverages pre-trained language models for task - oriented dialogue without any ad hoc module .
+?
+We propose the novel Lev for efficiently tracking the dialogue state with the minimal length of generation , which greatly reduces the inference latency .
+?
+We instantiate our framework with two different pre-trained backbones , and both of them improve the SOTA results by a large margin . ?
+We demonstrate the robustness of our approach in the low-resource setting .
+By only using 20 % training data , MinTL - based systems achieve competitive results compared to the SOTA .
+Related Work Pre-trained Language Models .
+Language model ( LM ) pre-training ( Radford et al. , 2019 ; Devlin et al. , 2019 ; , has been shown to be beneficial in NLP downstream tasks .
+Generative pre-trained unidirectional LMs ( e.g. , GPT2 ) are effective in language generation tasks ( Radford et al. , 2019 ; Hosseini - Asl et al. , 2020 ; Peng et al. , 2020 ; Lin et al. , 2020 ) .
+Several works have applied a generative pre-training approach in open domain chitchat tasks ( Wolf et al. , 2019 b ; Zhang et al. , 2019 c ) , and achieved promising results .
+On the other hand , bidirectional pre-trained LMs ( Devlin et al. , 2019 ; significantly improve the performance of natural language understanding tasks .
+These models are usually evaluated on classification tasks such as the GLUE benchmark ( Wang et al. , 2018 ) , extractive question answering tasks ( Rajpurkar et al. , 2016 ) , and dialogue context understanding ( Wu et al. , 2020 ) .
+However , their bidirectionality nature makes them difficult to be applied to natural language generation tasks ( Dong et al. , 2019 ) .
+Recent works ( Dong et al. , 2019 ; Raffel et al. , 2019 ; unified unidirectional LM and bidirectional LM pre-training approaches , and proposed a Seq2Seq LM , which are pre-trained with language denoising objectives .
+A systematic study conducted by Raffel et al . ( 2019 ) suggests that the combination of an encoder-decoder architecture and language denoising pre-training objectives yields the best result in both language understanding and generation tasks .
+Notably , the two latest pre-trained chatbots , Meena ( Adiwardana et al. , 2020 ) and BST ( Roller et al. , 2020 ) , are also built on an encoder-decoder architecture .
+In this work , we transfer the prior knowledge of Seq2Seq LMs to task - oriented dialogues , and successfully improve the SOTA result with less human annotation .
+Task - Oriented Dialogue .
+Task - oriented dialogue systems are designed to accomplish a goal described by a user in natural language .
+Such systems are usually built with a pipeline approach .
+The pipeline often requires natural language understanding ( NLU ) for belief state tracking , dialogue management ( DM ) for deciding which actions to take , and natural language generation ( NLG ) for generating responses ( Williams and Young , 2007 ) .
+To simplify the system design and reduce human supervision , several end-to - end trainable systems have been proposed ( Bordes et al. , 2016 ; Wen et al. , 2017 ; Lei et al. , 2018 ; Neelakantan et al. , 2019 ; Madotto et al. , 2018 ) .
+These methods have been shown to achieve promising results in single-domain tasks .
+However , the recently proposed multi-domain taskoriented dialogue datasets Eric et al. , 2019 ) bring new challenges for multi-domain dialogue state tracking and response generation .
+Several follow up works ; Budzianowski and Vuli? , 2019 ; Mehri et al. , 2019 ; Madotto et al. , 2020 b ) improved on the initial baselines with various methodologies .
+proposed the domain aware multi-decoder network and augmented the system act labels by leveraging the user act annotation , achieving the SOTA results in MultiWoz .
+However , the aforementioned works rely on taskspecific design and extensive human annotations .
+To reduce the human effort and simplify the system design , we propose a simple transfer learning framework that can be easily set up with pre-trained Seq2Seq models and obtain decent performance with a small fraction of the training data .
+Methodology
+In this section , we first provide the notations that are used throughout the paper , then we introduce the Lev for efficient DST , and finally , describe the MinTL framework and two backbone models .
+Notations .
+Let us define a dialogue C = { U 1 , R 1 , . . . , U T , R T } as an alternating set of utterances from two speakers , where U and R represent the user utterance and the system response , respectively .
+At turn t , we denote a dialogue context as C t = { U t?w , R t?w , . . . , R t?1 , U t } and system response as R t , where w is the context window size .
+B = { B 1 , . . . , B T } is the dialogue states for each turn .
+We define B t , the dialogue state at turn t , as a dictionary that maps ( domain : d i , slot : s j ) a pair into values v , where D = {d 1 , . . . , d N } are the domains , and S = {s 1 , . . . , s M } are slots to track .
+Thoughtout the paper , we denote the value of a pair ( d i , s j ) in B t as B t ( d i , s j ) = v , and B t ( d i , s j ) = ? when key ( d i , s j ) is not in B t , where ? denotes an empty string , and |?| = 0 .
+Levenshtein Belief Spans
+The goal of DST is to track the slot values for each domain mentioned in dialogue .
+Existing works either perform classifications for each slot over a B t?1 Enc B t = f ( Lev t , B t?1 ) C t H Dec L H Dec R R t KB k t [ hotel ] stars 5 area centre day sunday [ restaurant ] food thai area centre day sunday name bangkok city < EOB >
+Can you help me book a 5 star hotel near the restaurant on the same day ?
+< EOU >
+For how many people ?
+< EOR >10 people < EOU > < SOB > [ hotel ] people 10 < EOB > < KB2 > sorry , there are no matches .
+would you like to try another part of town ?
+< EOR > candidate - value list ( Zhang et al. , 2019a ) or directly generate slot values with a generative model ( Lei et al. , 2018 ; Le et al. , 2020 ) .
+Notably , Lei et al. ( 2018 ) introduce the concept of Belief span that reformats the dialogue states into a text span for allowing models to generate slot values dynamically .
+Compared to classification based DST , generative DST models can predict the slot values without full access to predefined ontology .
+However , the aforementioned generative methods either generate the belief span from scratch ( Lei et al. , 2018 ) or classify the state operations over all the combinations of domain slot pairs for decoding necessary slot values Le et al. , 2020 ) , which is not scalable when interfacing to a large number of services and APIs spanning multiple domains ( Rastogi et al. , 2019 ) .
+The idea of Lev is to generate minimal belief spans at each turn for editing the previous dialogue states .
+As illustrated in Figure 1 , Lev is constructed at training time as the DST training target .
+Given B t?1 , B t , and a pair of ( d i , s j ) , we define the three slot level edit operation conditions , i.e. , insertion ( INS ) , deletion ( DEL ) and substitution ( SUB ) , as : INS ?
+B t ( d i , s j ) = ? ?
+B t?1 ( d i , s j ) = ? ( 1 ) DEL ?
+B t ( d i , s j ) = ? ?
+B t?1 ( d i , s j ) = ? ( 2 ) SUB ?
+B t ( d i , s j ) = B t?1 ( d i , s j ) .
+( 3 ) In domain d i , to update the B t?1 ( d i , s j ) to B t ( d i , s j ) , the minimal slot-value pair needed to be generated is E( d i , s j ) , defined as E( d i , s j ) = ? ? ? ? ? ? ? ? ? ? ? s j ?
+B t ( d i , s j ) if INS s j ?
+NULL if DEL s j ?
+B t ( d i , s j ) if SUB ? otherwise , ( 4 ) where ? denotes string concatenation .
+NULL is the symbol denoting to delete the slot ( d i , s j ) from B t?1 .
+Then , we aggregate all the E( d i , s j ) for domain d i as follows : L( d i ) = E( d i , s 1 ) ? ? ? ? ? E( d i , s M ) . ( 5 ) When the dialogue state of domain d i needs to be updated , i.e. , L( d i ) = ? , we append the domain information [ d i ] at the beginning of L( d i ) to con- struct Lev of domain d i : ?( L , d i ) = [ d i ] ?
+L( d i ) if L( d i ) = ? ? otherwise .
+( 6 ) Finally , we formally define Lev as the following : Lev = ?( L , d 1 ) ? ? ? ? ? ?( L , d N ) . ( 7 )
+At inference time , the model first generates Lev t at turn t , then edits the B t?1 by using a deterministic function f , defined as : B t = f ( Lev t , B t?1 ) .
+( 8 ) This function simply update the B t?1 when new slot-value pairs appear in Lev t , and it delete the corresponding slot-value when the NULL symbol is generated .
+Figure 1 shows an example of editing the dialogue state editing process using Lev .
+In the 6th turn , the generated Lev 6 inserts the value 10 into the slot people .
+In the 7 - th turn , the NULL in Lev 7 triggers the DEL operation , and thus the slot ( hotel , area ) is deleted in B 6 , which is equivalent to B 7 ( hotel , area ) = ?.
+MinTL Framework Figure 2 describes the flow of the MinTL framework with a general encoder-decoder architecture .
+The input of our framework is a dialogue context C t and a previous dialogue state B t?1 .
+All sub-sequences are concatenated with special segment tokens , i.e. , B t?1 < EOB >. . . R t?1 < EOR >U t < EOU > , as input to the encoder .
+H = Encoder ( C t , B t?1 ) , ( 9 ) where the H ?
+R I ?d model is the hidden states of the encoder , and I is the input sequence length .
+Then , the Lev decoder attends to the encoder hidden states H and decodes Lev t sequentially : Lev t = Decoder L ( H ) . ( 10 )
+The learning objective of this generation process is minimizing the negative log-likelihood of Lev t given C t and B t?1 , that is L L = ? log p( Lev t | C t , B t?1 ) . ( 11 )
+The generated Lev t is used for editing the B t?1 with the deterministic function f described in Equation 8 .
+The updated B t is used to query the external knowledge ( KB ) and booking APIs .
+We first categorize the query result k t according to the number of matching entities and the booking availability ( a detailed list of k t values is provided in the Appendix A ) .
+According to the result , we look up one embedding e k ?
+R d model from the set of learnable KB state embeddings E k ?
+R K?d model 2 , where K is the number of possible KB states .
+Then , the looked up embedding e k is used as the starting token embedding of the response decoder for generating the delexicalized response R t : R t = Decoder R ( H , e k ) . ( 12 ) 2 KB state embeddings can be easily constructed by extending token embeddings of pre-trained models .
+The learning objective of response generation is minimizing the negative log-likelihood of R t given B t?1 , C t and k t , L R = ? log p( R t | C t , B t?1 , k t ) .
+( 13 ) Different from previous works ( Lei et al. , 2018 ; , our response generation process is not condition on B t because the dialogue context C t already includes the information of B t .
+During training , all parameters are jointly optimized by minimizing the sum of the Lev generation and response generation losses : L = L L + L R . ( 14 )
+Backbone Models
+Our framework can be easily set up with pre-trained language models by initializing the encoder and decoders with pre-trained weights .
+We briefly introduce the two pre-trained backbones used in this paper : BART and Text-To- Text Transfer Transformer ( T5 ) ( Raffel et al. , 2019 ) . BART is implemented as a standard encoderdecoder Transformer with a bidirectional encoder and an autoregressive decoder .
+It is pre-trained as denoising autoencoders which corrupt documents , and then optimize a reconstruction loss - the crossentropy between the decoder 's output and the original document .
+BART applies five different document corruption methods in the pre-training , including Token Masking ( Devlin et al. , 2019 ) , Token Deletion , Text Infilling ( Joshi et al. , 2020 ) , Sentence Permutation , and Document Rotation .
+T5 is an encoder-decoder Transformer with relative position embeddings ( Shaw et al. , 2018 ) in the corpus span over seven domains ( restaurant , train , attraction , hotel , taxi , hospital , and police ) , and each dialogue session contains one to three domains .
+There are two existing dataset versions : MultiWOZ 2.0 and MultiWOZ 2.1 ( Eric et al. , 2019 ) .
+We test the dialogue state tracking module of our framework on both datasets , and end-to - end models on Multi-WOZ 2.0 .
+Implementation Details
+We set up our framework with three pre-trained models : 1 ) T5 - small ( 60 M parameters ) has 6 encoder-decoder layers and each layer has 8headed attention with hidden size d model = 512 ; 2 ) T5 - base ( 220 M parameters ) has 12 encoderdecoder layers , and each of them has 12 - headed attention with hidden size d model = 768 ; 3 ) BARTlarge ( 400 M parameters ) has 12 encoder- decoder layers , each layer has 16 - headed attention with hidden size d model = 1024 .
+We add special segment token embeddings and KB state embeddings to pretrained models by extending the token embeddings .
+For a fair comparison , we use the pre-processing script released by 3 .
+All the models are fine-tuned with a batch size of 64 and early stop according to the performance on the validation set .
+Our implementation is based on Hug-gingFace Transformers library ( Wolf et al. , 2019a ) .
+We report the training hyper-parameters of each model in Appendix B. 3 https://gitlab.com/ucdavisnlp/damd-multiwoz
+Evaluation Metrics
+For the end-to- end dialogue modeling task , there are three automatic metrics to evaluate the response quality :
+1 ) Inform rate : if the system provides a correct entity , 2 ) Success rate : if the system provides the correct entity and answers all the requested information , 3 ) BLEU ( Papineni et al. , 2002 ) for measuring the fluency of the generated response .
+Following previous work ( Mehri et al. , 2019 ) , we also report the combined score , i.e. , Combined = ( Inform + Success ) ?0.5 + BLEU , as an overall quality measure .
+Joint goal accuracy ( Joint Acc. ) is used to evaluate the performance of the DST .
+The model outputs are only counted as correct when all of the predicted values exactly match the oracle values .
+Baselines
+End-to-end Modeling Oracle DST : Seq2Seq , fine - tuned GPT2 -small , and GPT2 - medium ( Radford et al. , 2019 ) with oracle dialogue state as input .
+HRED - TS : a teacher -student framework with a hierarchical recurrent encoder-decoder backbone ( Peng et al. , 2019 ) . SFN + RL : a seq2seq network comprised of several pre-trained dialogue modules that are connected through hidden states .
+Reinforcement fine tuning is used additionally to train the model ( Mehri et al. , 2019 ) . MD - Sequicity : an extension of the Sequicity ( Lei et al. , 2018 ) framework for multi-domain task - oriented dialogue by .
+DAMD : the domain- aware multi-decoder network proposed by .
+The author also proposed the multi-action data augmentation method by leveraging system act and user act annotations .
+We denote the method as DAMD + multiaction .
+Sequicity + T5 : The Sequicity ( Lei et al. , 2018 ) framework with the T5 backbone model ( Raffel et al. , 2019 ) .
+There are two main differences between Sequicity and our framework :
+1 ) Sequicity generates dialogue states from scratch at each turn , 2 ) MinTL generates responses by conditioning on dialogue context C t instead of new generated dialogue state B t .
+Dialogue State Tracking
+We compare our DST module with both the classification - based DST and generation - based DST baselines .
+The former includes MDBT , GLAD ( Zhong et al. , 2018 ) , GCE ( Nouri and Hosseini , 2018 ) , FJST ( Eric et al. , 2019 ) , HyST , SUMBT , SST , TOD - BERT ( Wu et al. , 2020 ) , and DST - Picklist ( Zhang et al. , 2019a ) ; the latter includes Neural Reading , TRADE , COMER ( Ren et al. , 2019 ) , SOM - DST , DSTQA ( Zhou and Small , 2019 ) , and NADST ( Le et al. , 2020 ) .
+Results
+End-to-end Modeling
+We first compare our systems with baselines in the end-to - end dialogue learning setting , where the generated dialogue states are used for the knowledge base search and response generation .
+The results are shown in Table 1 . MinTL - based systems achieve the best performance in terms of inform rate , success rate , and BLEU .
+With fewer human annotations , our models improve the previous SOTA model by around a 10 % success rate .
+Using T5 - small as the backbone barely improves the overall performance of Sequicity ( Lei et al. , 2018 ) , because the copy mechanism ( Gu et al. , 2016 ) is absent in this pre-trained model .
+Compared to the Sequicity framework , our approach achieves an around 11 % higher success rate with the same backbone model , which suggests that MinTL is able to effectively leverage pre-trained language models .
+Low Resource Settings .
+We evaluate our models in the simulated low resource setting to test if transferring a pre-trained language model to taskoriented dialogue can alleviate the data scarcity problem .
+Specifically , we use 5 % , 10 % , and 20 % of the training set data to train our models and baselines .
+The result is reported in Table 2 . MinTL - based systems consistently outperform the DAMD , MD - Sequicity ( Lei et al. , 2018 ) ( Eric et al. , 2019 ) 40.20 38.00 HyST ? 44.24 - SUMBT ? 46.65 - TOD -BERT
+( Wu et al. , 2020 ) - 48.00 DST - Picklist ( Zhang et al. , 2019a ) - 53.30 SST 51.17 55.23 Neural Reading ? 41.10 - TRADE
+( Wu et al. , data , our models can achieve competitive results compared to the full data trained DAMD model .
+Ablation Study .
+We conduct a simple ablation study with the T5 - small backbone to understand the different variants of MinTL .
+We test our framework with : 1 ) the belief span proposed by Lei et al . ( 2018 ) , and 2 ) sharing the decoder parameter for both Lev generation and response generation .
+The result is reported in Table 3 . Replacing Lev with belief span hurts the overall performance , which shows the effectiveness of Lev .
+In section 4.5.2 , we also show that Lev greatly reduces the inference latency .
+On the other hand , although the Lev generation and response generation are conditioned on different starting tokens , sharing the parameters of the two decoders decreases both inform and success rate .
+It is important to decouple the two decoders because the distributions between the Lev decoder and response decoder are different .
+( Lei et al. , 2018 ) .
+In contrast , our model only generates minimal slotvalue pairs when necessary .
+In our error analysis , we found that our model sometimes generates invalid slot values ( e.g. , the cambridge punte instead of the cambridge punter for the taxi- destination slot ) , which can be avoided with a full ontology constraint .
+Dialogue State Tracking Latency Analysis .
+( Lei et al. , 2018 ) and around 7 times faster than TRADE .
+On the other hand , our model is slower than NADST ( Le et al. , 2020 ) , which is explicitly optimized for inference speed using the non-autoregressive decoding strategy .
+However , it is hard to incorporate NADST into end-to - end response generation models due to its task -specific architecture design ( e.g. , fertility decoder ) .
+Finally , we compare the generative DST modules of two end-to - end models .
+By using same backbone model , MinTL is around 4 times faster than Sequicity by generating only 6 tokens per turn , which suggests that Lev significantly improves the inference efficiency .
+Conclusion
+In this paper , we proposed MinTL , a simple and general transfer learning framework that effectively leverages pre-trained language models to jointly learn DST and dialogue response generation .
+The Lev is proposed for reducing the DST complex-ity and improving inference efficiency .
+In addition , two pre-trained Seq2Seq language models : T5 ( Raffel et al. , 2019 ) and BART are incorporated in our framework .
+Experimental results on MultiWOZ shows that , by using MinTL , our systems not only achieve new SOTA result on both dialogue state tracking and end-to - end response generation but also improves the inference efficiency .
+In future work , we plan to explore taskoriented dialogues domain- adaptive pre-training methods ( Wu et al. , 2020 ; Peng et al. , 2020 ) to enhance our language model backbones , and extend the framework for mixed chit-chat and taskoriented dialogue agents ( Madotto et al. , 2020a ) .

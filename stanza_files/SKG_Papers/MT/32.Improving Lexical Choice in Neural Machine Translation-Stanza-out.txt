@@ -1,0 +1,196 @@
+title
+Improving Lexical Choice in Neural Machine Translation
+abstract
+We explore two solutions to the problem of mistranslating rare words in neural machine translation .
+First , we argue that the standard output layer , which computes the inner product of a vector representing the context with all possible output word embeddings , rewards frequent words disproportionately , and we propose to fix the norms of both vectors to a constant value .
+Second , we integrate a simple lexical module which is jointly trained with the rest of the model .
+We evaluate our approaches on eight language pairs with data sizes ranging from 100k to 8 M words , and achieve improvements of up to + 4.3 BLEU , surpassing phrasebased translation in nearly all settings .
+1
+Introduction Neural network approaches to machine translation Bahdanau et al. , 2015 ; Luong et al. , 2015a ; Gehring et al. , 2017 ) are appealing for their single-model , end- to - end training process , and have demonstrated competitive performance compared to earlier statistical approaches ( Koehn et al. , 2007 ; Junczys - Dowmunt et al. , 2016 ) .
+However , there are still many open problems in NMT ( Koehn and Knowles , 2017 ) .
+One particular issue is mistranslation of rare words .
+For example , consider the Uzbek sentence : Source : Ammo muammolar hali ko 'p , deydi amerikalik olim Entoni Fauchi .
+Reference :
+But still there are many problems , says American scientist Anthony Fauci .
+Baseline NMT : But there is still a lot of problems , says James Chan .
+At the position where the output should be Fauci , the NMT model 's top three candidates are Chan , Fauci , and Jenner .
+All three surnames occur in the training data with reference to immunologists : Fauci is the director of the National Institute of Allergy and Infectious Diseases , Margaret ( not James ) Chan is the former director of the World Health Organization , and Edward Jenner invented smallpox vaccine .
+But Chan is more frequent in the training data than Fauci , and James is more frequent than either Anthony or Margaret .
+Because NMT learns word representations in continuous space , it tends to translate words that " seem natural in the context , but do not reflect the content of the source sentence " ( Arthur et al. , 2016 ) .
+This coincides with other observations that NMT 's translations are often fluent but lack accuracy ( Wang et al. , 2017 b ; Wu et al. , 2016 ) .
+Why does this happen ?
+At each time step , the model 's distribution over output words e is p ( e ) ? exp W e ? h + b e where W e and b e are a vector and a scalar depending only on e , and h is a vector depending only on the source sentence and previous output words .
+We propose two modifications to this layer .
+First , we argue that the term W e ? h , which measures how well e fits into the context h , favors common words disproportionately , and show that it helps to fix the norm of both vectors to a constant .
+Second , we add a new term representing a more direct connection from the source sentence , which allows the model to better memorize translations of rare words .
+Below , we describe our models in more detail .
+Then we evaluate our approaches on eight language pairs , with training data sizes ranging from 100k words to 8 M words , and show improvements of up to + 4.3 BLEU , surpassing phrasebased translation in nearly all settings .
+Finally , we provide some analysis to better understand why our modifications work well .
+Neural Machine Translation Given a source sequence
+We use the global attentional model with general scoring function and input feeding by Luong et al . ( 2015 a ) .
+We provide only a very brief overview of this model here .
+It has an encoder , an attention , and a decoder .
+The encoder converts the words of the source sentence into word embeddings , then into a sequence of hidden states .
+f = f 1 f 2 ? ? ? f m ,
+The decoder generates the target sentence word by word with the help of the attention .
+At each time step t , the attention calculates a set of attention weights a t ( s ) .
+These attention weights are used to form a weighted average of the encoder hidden states to form a context vector c t .
+From c t and the hidden state of the decoder are computed the attentional hidden state ht .
+Finally , the predicted probability distribution of the t'th target word is : p( e t | e <t , f ) = softmax ( W o ht + b o ) .
+( 1 ) The rows of the output layer 's weight matrix W o can be thought of as embeddings of the output vocabulary , and sometimes are in fact tied to the embeddings in the input layer , reducing model size while often achieving similar performance ( Inan et al. , 2017 ; Press and Wolf , 2017 ) .
+We verified this claim on some language pairs and found out that this approach usually performs better than without tying , as seen in Table 1 .
+For this reason , we always tie the target embeddings and W o in all of our models .
+Normalization
+The output word distribution ( 1 ) can be written as : p( e ) ? exp W e h cos ?
+W e , h + b e , where W e is the embedding of e , b e is the e'th component of the bias b o , and ?
+W e , h is the angle between W e and h .
+We can intuitively interpret the terms as follows .
+The term h has the effect of sharpening or flattening the distribution , reflecting whether the model is more or less certain in a particular context .
+The cosine similarity cos ?
+W e , h measures how well e fits into the context .
+The bias b e controls how much the word e is generated ; it is analogous to the language model in a log-linear translation model ( Och and Ney , 2002 ) .
+Finally , W e also controls how much e is generated .
+Figure 1 shows that it generally correlates with frequency .
+But because it is multiplied by cos ?
+W e , h , it has a stronger effect on words whose embeddings have direction similar to h , and less effect or even a negative effect on words in other directions .
+We hypothesize that the result is that the model learns W e that are disproportionately large .
+For example , returning to the example from Section 1 , these terms are :
+Observe that cos ?
+W e , h and even b e both favor the correct output word Fauci , whereas W e favors the more frequent , but incorrect , word Chan .
+The most frequently -mentioned immunologist trumps other immunologists .
+To solve this issue , we propose to fix the norm of all target word embeddings to some value r. Followingthe weight normalization approach of Salimans and Kingma ( 2016 ) , we reparameterize W e as r v e v e , but keep r fixed .
+A similar argument could be made for ht : because a large ht sharpens the distribution , causing frequent words to more strongly dominate rare words , we might want to limit it as well .
+We compared both approaches on a development set and found that replacing ht in equation ( 1 ) with r ht ht indeed performs better , as shown in Table 1 .
+Lexical Translation
+The attentional hidden state h contains information not only about the source word ( s ) corresponding to the current target word , but also the contexts of those source words and the preceding context of the target word .
+This could make the model prone to generate a target word that fits the context but does n't necessarily correspond to the source word ( s ) .
+Count- based statistical models , by contrast , do n't have this problem , because they simply do n't model any of this context .
+Arthur et al. ( 2016 ) try to alleviate this issue by integrating a count-based lexicon into an NMT system .
+However , this lexicon must be trained separately using GIZA ++ ( Och and Ney , 2003 ) , and its parameters form a large , sparse array , which can be difficult to store in GPU memory .
+We propose instead to use a simple feedforward neural network ( FFNN ) that is trained jointly with the rest of the NMT model to generate a target word based directly on the source word ( s ) .
+Let f s ( s = 1 , . . . , m ) be the embeddings of the source words .
+We use the attention weights to form a weighted average of the embeddings ( not the hidden states , as in the main model ) to give an average source - word embedding at each decoding time step t : f t = tanh s a t ( s ) f s .
+Then we use a one-hidden - layer FFNN with skip connections ( He et al. , 2016 ) : h t = tanh ( W f t ) + f t and combine its output with the decoder output to get the predictive distribution over output words at time step t : p( y t | y <t , x ) = softmax ( W o ht + b o + W h t + b ) .
+For the same reasons that were given in Section 3 for normalizing ht and the rows of W o t , we normalize h t and the rows of W as well .
+Note , however , that we do not tie the rows of W with the word embeddings ; in preliminary experiments , we found this to yield worse results .
+Experiments
+We conducted experiments testing our normalization approach and our lexical model on eight language pairs using training data sets of various sizes .
+This section describes the systems tested and our results .
+Data
+We evaluated our approaches on various language pairs and datasets : ? Tamil ( ta ) , Urdu ( ur ) , Hausa ( ha ) , Turkish ( tu ) , and Hungarian ( hu ) to English ( en ) , using data from the LORELEI program .
+?
+English to Vietnamese ( vi ) , using data from the IWSLT 2015 shared task .
+2 ? To compare our approach with that of Arthur et al . ( 2016 ) , we also ran on their English to Japanese ( ja ) KFTT and BTEC datasets .
+3
+We tokenized the LORELEI datasets using the default Moses tokenizer , except for Urdu-English , where the Urdu side happened to be tokenized using Morfessor FlatCat ( w = 0.5 ) .
+We used the preprocessed English -Vietnamese and English - Japanese datasets as distributed by Luong et al. , and Arthur et al. , respectively .
+Statistics about our data sets are shown in Table 2 .
+Systems
+We compared our approaches against two baseline NMT systems : untied , which does not tie the rows of W o to the target word embeddings , and tied , which does .
+In addition , we compared against two other baseline systems :
+Moses :
+The Moses phrase - based translation system ( Koehn et al. , 2007 ) , trained on the same data as the NMT systems , with the same maximum sentence length of 50 .
+No additional data was used for training the language model .
+Unlike the NMT systems , Moses used the full vocabulary from the training data ; unknown words were copied to the target sentence .
+Arthur : Our reimplementation of the discrete lexicon approach of Arthur et al . ( 2016 ) .
+We only tried their auto lexicon , using GIZA ++ ( Och and Ney , 2003 ) , integrated using their bias approach .
+Note that we also tied embedding as we found it also helped in this case .
+Against these baselines , we compared our new systems : fixnorm :
+The normalization approach described in Section 3 . fixnorm + lex : The same , with the addition of the lexical translation module from Section 4 . 2 https://nlp.stanford.edu/projects/nmt/ 3 http://isw3.naist.jp/~philip-a/emnlp2016/
+Details Model
+For all NMT systems , we fed the source sentences to the encoder in reverse order during both training and testing , following Luong et al . ( 2015 a ) .
+Information about the number and size of hidden layers is shown in Table 2 .
+The word embedding size is always equal to the hidden layer size .
+Following common practice , we only trained on sentences of 50 tokens or less .
+We limited the vocabulary to word types that appear no less than 5 times in the training data and map the rest to UNK .
+For the English - Japanese and English - Vietnamese datasets , we used the vocabulary sizes reported in their respective papers ( Arthur et al. , 2016 ; Luong and Manning , 2015 ) .
+For fixnorm , we tried r ? { 3 , 5 , 7 } and selected the best value based on the development set performance , which was r = 5 except for English - Japanese ( BTEC ) , where r = 7 .
+For fixnorm + lex , because W s ht + W h t takes on values in [ ? 2r 2 , 2r 2 ] , we reduced our candidate r values by roughly a factor of ?
+2 , to r ? { 2 , 3.5 , 5 } .
+A radius r = 3.5 seemed to work the best for all language pairs .
+Training
+We trained all NMT systems with Adadelta ( Zeiler , 2012 ) .
+All parameters were initialized uniformly from [?0.01 , 0.01 ] .
+When a gradient 's norm exceeded 5 , we normalized it to 5 .
+We also used dropout on non-recurrent connections only ( Zaremba et al. , 2014 ) , with probability 0.2 .
+We used minibatches of size 32 .
+We trained for 50 epochs , validating on the development set after every epoch , except on English - Japanese , where we validated twice per epoch .
+We kept the best checkpoint according to its BLEU on the development set .
+Inference
+We used beam search with a beam size of 12 for translating both the development and test sets .
+Since NMT often favors short translations ( Cho et al. , 2014 ) , we followed Wu et al . ( 2016 ) in using a modified score s(e | f ) in place of log-probability : s( e | f ) = log p(e | f ) lp ( e ) lp ( e ) = ( 5 + |e | ) ? ( 5 + 1 ) ?
+We set ? = 0.8 for all of our experiments .
+Finally , we applied a postprocessing step to replace each UNK in the target translation with the source word with the highest attention score ( Luong et al. , 2015 b ) . Evaluation
+For translation into English , we report case-sensitive NIST BLEU against detokenized references .
+For English - Japanese and English - Vietnamese , we report tokenized , casesensitive BLEU following Arthur et al . ( 2016 ) and Luong and Manning ( 2015 ) .
+We measure statistical significance using bootstrap resampling ( Koehn , 2004 ) .
+Results and Analysis
+Overall
+Our results are shown in Table 3 . First , we observe , as has often been noted in the literature , that NMT tends to perform poorer than PBMT on low resource settings ( note that the rows of this table are sorted by training data size ) .
+Our fixnorm system alone shows large improvements ( shown in parentheses ) relative to tied .
+Integrating the lexical module ( fixnorm + lex ) adds in further gains .
+Our fixnorm + lex models surpass Moses on all tasks except Urdu-and Hausa - English , where it is 1.6 and 0.7 BLEU short respectively .
+The method of Arthur et al . ( 2016 ) does improve over the baseline NMT on most language pairs , but not by as much and as consistently as our models , and often not as well as Moses .
+Unfortunately , we could not replicate their approach for English - Japanese ( KFTT ) because the lexical table was too large to fit into the computational graph .
+For English - Japanese ( BTEC ) , we note that , due to the small size of the test set , all systems except for Moses are in fact not significantly different from tied ( p > 0.01 ) .
+On all other tasks , however , our systems significantly improve over tied ( p < 0.01 ) .
+Impact on translation In Table 4 , we show examples of typical translation mistakes made by the baseline NMT systems .
+In the Uzbek example ( top ) , untied and tied have confused 34 with UNK and 700 , while in the Turkish one ( middle ) , they incorrectly output other proper names , Afghan and Myanmar , for the proper name Kenya .
+Our systems , on the other hand , translate these words correctly .
+The bottom example is the one introduced in Section 1 .
+We can see that our fixnorm approach does not completely solve the mistranslation issue , since it translates Entoni Fauchi to UNK UNK ( which is arguably better than James Chan ) .
+On the other hand , fixnorm + lex gets this right .
+As we can see , while cos ?
+W e , h might still be confused between similar words , cos ?
+W l e ,h l significantly favors Fauci .
+Alignment and unknown words Both our baseline NMT and fixnorm models suffer from the problem of shifted alignments noted by Koehn and Knowles ( 2017 ) .
+As seen in Figure 2a and 2 b , the alignments for those two systems seem to shift by one word to the left ( on the source side ) .
+For example , n?i should be aligned to said instead of Telekom , and so on .
+Although this is not a problem per se , since the decoder can decide to attend to any position in the encoder states as long as the state at that position holds the information the decoder needs , this becomes a real issue when we need to make use of the alignment information , as in unknown word replacement ( Luong et al. , 2015 b ) .
+As we can see in Figure 2 , because of the alignment shift , both tied and fixnorm incorrectly replace the two unknown words ( in bold ) with But Deutsche instead of Deutsche Telekom .
+In contrast , under fixnorm + lex and the model of Arthur et al . ( 2016 ) , the alignment is corrected , causing the UNKs to be replaced with the correct source words .
+Impact of r
+The single most important hyper-parameter in our models is r.
+Informally speaking , r controls how much surface area we have on the hypersphere to allocate to word embeddings .
+To better understand its impact , we look at the training perplexity and dev BLEUs during training with different values of r.
+Tomorrow a conference for aid will be conducted in Kenya . untied Tomorrow there will be an Afghan relief conference . tied Tomorrow there will be a relief conference in Myanmar . fixnorm Tomorrow it will be a aid conference in Kenya . fixnorm + lex Tomorrow there will be a relief conference in Kenya . input Ammo muammolar hali ko 'p , deydi amerikalik olim Entoni Fauchi . reference
+But still there are many problems , says American scientist Anthony Fauci . untied
+But there is still a lot of problems , says James Chan . tied However , there is still a lot of problems , says American scientists .
+fixnorm
+But there is still a lot of problems , says American scientist UNK UNK . fixnorm + lex
+But there are still problems , says American scientist Anthony Fauci . worse training perplexity , indicating underfitting , whereas if r is too large , the model achieves better training perplexity but decrased dev BLEU , indicating overfitting .
+Lexicon
+One byproduct of lex is the lexicon , which we can extract and examine simply by feeding each source word embedding to the FFNN module and calculating p ( y ) = softmax ( W h + b ) .
+In Table 5 , we show the top translations for some entries in the lexicons extracted from fixnorm + lex for Hungarian , Turkish , and Hausa- English .
+As expected , the lexical distribution is sparse , with a few top translations accounting for the most probability mass .
+Byte Pair Encoding Byte-Pair-Encoding ( BPE ) ( Sennrich et al. , 2016 ) is commonly used in NMT to break words into word-pieces , improving the translation of rare words .
+For this reason , we reran our experiments using BPE on the LORELEI and English - Vietnamese datasets .
+Additionally , to see if our proposed methods work in high- resource scenarios , we run on the WMT 2014 English - German ( en-de ) dataset , 4 using newstest2013 as the development set and reporting tokenized , case-sensitive BLEU on newstest2014 and newstest2015 .
+We validate across different numbers of BPE operations ; specifically , we try { 1 k , 2 k , 3 k } merge operations for ta-en and ur-en due to their small sizes , { 10 k , 12 k , 15 k } for the other LORELEI datasets and en-vi , and 32 k for en-de .
+Using BPE results in much smaller vocabulary sizes , so we do not apply a vocabulary cut-off .
+Instead , we train on an additional copy of the training data in which all types that appear once are replaced with UNK , and halve the number of epochs accordingly .
+Our models , training , and evaluation processes are largely the same , except that for en-de , we use a 4 - layer decoder and 4 - layer bidirectional encoder ( 2 layers for each direction ) .
+Table 7 shows that our proposed methods also significantly improve the translation when used with BPE , for both high and low resource language pairs .
+With BPE , we are only behind Moses on Urdu-English .
+Related Work
+The closest work to our lex model is that of Arthur et al . ( 2016 ) , which we have discussed already in Section 4 .
+Recent work by Liu et al . ( 2016 ) has very similar motivation to that of our fixnorm model .
+They reformulate the output layer in terms of directions and magnitudes , as we do here .
+Whereas we have focused on the magnitudes , they focus on the directions , modifying the loss function to try to learn a classifier that separates the classes ' directions with something like a margin .
+Wang et al . ( 2017a ) also make the same observation that we do for the fixnorm model , but for the task of face verification .
+Handling rare words is an important problem for NMT that has been approached in various ways .
+Some have focused on reducing the number of UNKs by enabling NMT to learn from a larger vocabulary ( Jean et al. , 2015 ; Mi et al. , 2016 ) ; others have focused on replacing UNKs by copying source words ( Gulcehre et al. , 2016 ; Gu et al. , 2016 ; Luong et al. , 2015 b ) .
+However , these methods only help with unknown words , not rare words .
+An approach that addresses both unknown and rare words is to use subword - level information ( Sennrich et al. , 2016 ; Chung et al. , 2016 ; Luong and Manning , 2016 ) .
+Our approach is different in that we try to identify and address the root of the rare word problem .
+We expect that our models would benefit from more advanced UNKreplacement or subword - level techniques as well .
+Recently , Liu and Kirchhoff ( 2018 ) have shown that their baseline NMT system with BPE already outperforms Moses for low-resource translation .
+However , in their work , they use the Transformer network ( Vaswani et al. , 2017 ) , which is quite different from our baseline model .
+It would be interesting to see if our methods benefit the Trans-tied fixnorm fixnorm + lex ta-en 13 15 ( + 2.0 ) 15.9 ( + 2.9 ) ur-en 10.5 12.3 ( + 1.8 ) 13.7 ( + 3.2 ) ha-en 18 21.7 ( + 3.7 ) 22.3 ( + 4.3 ) tu-en 19.3 21 ( + 1.7 ) 22.2 ( + 2.9 ) uz-en 18.9 19.8 ( + 0.9 ) 21 ( + 2.1 ) hu-en 25.8 27.2 ( + 1.4 ) 27.9 ( + 2.1 ) en-vi 26.3 27.3 ( + 1.0 ) 27.5 ( + 1.2 ) en-de ( newstest 2014 ) 19.7 22.2 ( + 2.5 ) 20.4 ( + 0.7 ) en-de ( newstest 2015 ) 22.5 25 ( + 2.5 ) 23.2 ( + 0.7 ) former network and other models as well .
+Conclusion
+In this paper , we have presented two simple yet effective changes to the output layer of a NMT model .
+Both of these changes improve translation quality substantially on low-resource language pairs .
+In many of the language pairs we tested , the baseline NMT system performs poorly relative to phrase - based translation , but our system surpasses it ( when both are trained on the same data ) .
+We conclude that NMT , equipped with the methods demonstrated here , is a more viable choice for low-resource translation than before , and are optimistic that NMT 's repertoire will continue to grow .
+the goal of NMT is to find the target sequence e = e 1 e 2 ? ? ?
+e n that maximizes the objective function : log p( e | f ) = n t=1 log p( e t | e <t , f ) .

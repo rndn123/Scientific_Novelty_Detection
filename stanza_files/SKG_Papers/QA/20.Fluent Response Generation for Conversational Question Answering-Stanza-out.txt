@@ -1,0 +1,245 @@
+title
+Fluent Response Generation for Conversational Question Answering
+abstract
+Question answering ( QA ) is an important aspect of open-domain conversational agents , garnering specific research focus in the conversational QA ( ConvQA ) subtask .
+One notable limitation of recent ConvQA efforts is the response being answer span extraction from the target corpus , thus ignoring the natural language generation ( NLG ) aspect of high-quality conversational agents .
+In this work , we propose a method for situating QA responses within a SEQ2SEQ NLG approach to generate fluent grammatical answer responses while maintaining correctness .
+From a technical perspective , we use data augmentation to generate training data for an end-to - end system .
+Specifically , we develop Syntactic Transformations ( STs ) to produce question -specific candidate answer responses and rank them using a BERT - based classifier .
+Human evaluation on SQuAD 2.0 data ( Rajpurkar et al. , 2018 ) demonstrate that the proposed model outperforms baseline CoQA and QuAC models in generating conversational responses .
+We further show our model 's scalability by conducting tests on the CoQA dataset .
+1
+Introduction Factoid question answering ( QA ) has recently enjoyed rapid progress due to the increased availability of large crowdsourced datasets ( e.g. , SQuAD ( Rajpurkar et al. , 2016 ) , MS MARCO ( Bajaj et al. , 2016 ) , Natural Questions ( Kwiatkowski et al. , 2019 ) ) for training neural models and the significant advances in pre-training contextualized representations using massive text corpora ( e.g. , ELMo ( Peters et al. , 2018 ) , BERT ) .
+Building on these successes , recent work examines conversational QA ( ConvQA ) systems capable of interacting with users over multiple turns .
+1 The code and data are available at https://github.com/abaheti95/QADialogSystem.
+Large crowdsourced ConvQA datasets ( e.g. , CoQA ( Reddy et al. , 2019 ) , QuAC ( Choi et al. , 2018 ) ) consist of dialogues between crowd workers who are prompted to ask and answer a sequence of questions regarding a source document .
+Although these ConvQA datasets support multi-turn QA interactions , the responses have mostly been limited to extracting text spans from the source document and do not readily support abstractive answers ( Yatskar , 2019a ) .
+While responses copied directly from a Wikipedia article can provide a correct answer to a user question , they do not sound natural in a conversational setting .
+To address this challenge , we develop SEQ2SEQ models that generate fluent and informative answer responses to conversational questions .
+To obtain data needed to train these models , rather than constructing yet -another crowdsourced QA dataset , we transform the answers from an existing QA dataset into fluent responses via data augmentation .
+Specifically , we synthetically generate supervised training data by converting questions and associated extractive answers from a SQuADlike QA dataset into fluent responses via Syntactic Transformations ( STs ) .
+These STs over- generate a large set of candidate responses from which a BERT - based classifier selects the best response as shown in the top half of Figure 1 .
+While over-generation and selection generates fluent responses in many cases , the brittleness of the off-the-shelf parsers and the syntatic transformation rules prevent direct use in cases that are not well -covered .
+To mitigate this limitation , we generate a new augmented training dataset using the best response classifier that is used to train end-toend response generation models based on Pointer - Generator Networks ( PGN ) ( See et al. , 2017 ) and pre-trained Transformers using large amounts of dialogue data , DialoGPT ( D- GPT ) .
+In ?3.2 and ?3.3 , we empirically demon-q : where did Hizb ut - Tahrir fail to pull off a bloodless coup in 1974 ? a : egypt parser + syntactic rules r 1 : he failed to egypt to pull off a bloodless coup r 2 : they failed to pull off a bloodless coup in 1974 Egypt ?
+r m : he failed to pull off a bloodless coup egypt best response classifier r m : he failed to pull off a bloodless coup egypt q : where did Hizb ut - Tahrir fail to pull off a bloodless coup in 1974 ? a : egypt Sequence- to- Sequence r : they failed to pull off a bloodless coup in egypt Augment training data for end-to - end setup Over-generate and select the best response : End-to - end response generation : Pointer Generator Network ( PGN ) or DialoGPT ( D- GPT ) Figure 1 : Overview of our method of generating conversational responses for a given QA .
+In the first method , the Syntactic Transformations ( STs ) over- generate a list of responses ( good and bad ) using the question 's parse tree and the best response classifier selects the most suitable response from the list .
+Our second method uses this pipeline to augment training data for training a SEQ2SEQ networks PGN or D-GPT ( ?3.1 ) .
+The final SEQ2SEQ model is end-to-end , scalable , easier to train , and performs better than the first method exclusively .
+strate that our proposed NLG models are capable of generating fluent , abstractive answers on both SQuAD 2.0 and CoQA .
+2 Generating Fluent QA Responses
+In this section , we describe our approach for constructing a corpus of questions and answers that supports fluent answer generation ( top half of Figure 1 ) .
+We use the framework of overgenerate and rank previously used in the context of question generation ( Heilman and Smith , 2010 ) .
+We first overgenerate answer responses for QA pairs using STs in ?2.1 .
+We then rank these responses from best to worst using the response classification models described in ?2.2 .
+Later in ?3 , we describe how we augment existing QA datasets with fluent answer responses using STs and a best response classifier .
+This augmented QA dataset is used for training the PGN and Transformer models .
+Syntactic Transformations ( STs )
+The first step is to apply the Syntactic Transformations ( STs ) to the question 's parse tree along with the expert answer phrase to produce multiple candidate responses .
+For the STs to work effectively accurate question parses are essential .
+We use the Stanford English lexparser 2 ( Klein and Manning , 2003 ) , which is trained on WSJ sections 1 - 21 , QuestionBank ( Judge et al. , 2006 ) , amongst other corpora .
+However , this parser still fails to recognize ? 20 % of the questions ( neither SBARQ nor SQ tag is assigned ) .
+For such erroneous parse trees , we simply output the expert answer phrase as a single 2 https://nlp.stanford.edu/software/parser-faq.html#z response .
+The remaining questions are processed via the following transformations to over- generate a list of candidate answers : ( 1 ) Verb modification : change the tense of the main verb based on the auxiliary verb using SimpleNLG ( Gatt and Reiter , 2009 ) ; ( 2 ) Pronoun replacement : substitute the noun phrase with pronouns from a fixed list ; ( 3 ) Fixing Preposition and Determiner : find the preposition and determiner in the question 's parse tree that connects to the answer phrase and add all possible prepositions and determiners if missing .
+( 4 ) Response Generation : Using Tregex and Tsurgeon ( Levy and Andrew , 2006 ) , compile responses by combining components of all previous steps and the answer phrase .
+In cases where there are multiple options in steps ( 2 ) and ( 3 ) , the number of options can explode and we use the best response classifier ( described below ) to winnow .
+An example ST process is shown in Figure 2 .
+Response Classification and Baselines
+A classification model selects the best response from the list of ST - generated candidates .
+Given the training dataset , D , described in ?2.3 of n question - answer tuples ( q i , a i ) , and their list of corresponding responses , {r i1 , r i2 , ... , r im i } , the goal is to classify each response r ij as bad or good .
+The probability of the response being good is later used for ranking .
+We experiment with two different model objectives described below , Logistic :
+We assume that the responses for each q i are independent of each other .
+The model ( F ( ) ) classifies each response separately and assigns 1 ( or 0 ) if r ij is a good ( or bad ) response for q i .
+The Logistic loss is given by e ?y ij * F ( q i , a i , r ij ) ) , where y ij is the label for r ij .
+Softmax :
+We will discuss in ?2.3 that annotators are expected to miss a few good responses since good and bad answers are often very similar ( may only differ by a single preposition or pronoun ) .
+Therefore , we explore a ranking objective that calculates errors based on the margin with which incorrect responses are ranked above correct ones ( Collins and Koo , 2005 ) .
+Without loss of generality , we assume r i1 to be better than all other responses for ( q i , a i ) .
+Since the model F ( ) should rank r i1 higher than all other responses , we use the margin error M ij ( F ) = F ( q i , a i , r i1 ) ?
+F ( q i , a i , r ij ) to define the Softmax loss as n i=1 log 1 + m i j=2 e ?M ij ( F ) .
+We experiment with the following feature based and neural models with the two loss functions : Language Model Baseline :
+The responses are ranked using the normalized probabilities from a 3 - gram LM trained on the Gigaword corpus with modified Kneser - Ney smoothing .
+3
+The response with the highest score is classified as 1 and others as 0 .
+Linear Model : A linear classifier using features inspired by Heilman and Smith ( 2010 ) and Wan et al . ( 2006 ) , who have implemented similar linear models for other sentence pair classification tasks .
+Specifically , we use the following features : ? Length ( Features 1 - 3 ) : word length of question q i , answer - phrase a i , and response r ij ?
+WH - word ( Features 4 - 12 ) : [ 0 - 1 feat . ]
+what , who , whom , whose , when , where , which , why or how is present in the q i ? Negation ( Features 13 ) : [ 0 - 1 feat . ]
+no , not or none is present in the q i ?
+N-gram LM ( Features 14 - 21 ) : 2 , 3 - gram normalized probability and perplexity of q i and r ij ? Grammar ( Features 22 - 93 ) : node counts of q i and r ij syntactic parse trees ?
+Word overlap ( Features 94 - 96 ) : three features based on fraction of word overlap between q i and r ij . precision = overlap ( q i , r ij ) |q i | , recall = overlap ( q i , r ij ) |r ij | and their harmonic mean Decomposable Attention :
+We use the sentence pair classifier from ( Parikh et al. , 2016 ) , referred as the DA model .
+It finds attention based wordalignment of the input pair ( premise and hypothesis , in our case question q i and response r ij ) and aggregates it using feedforward networks .
+Apart from standard vector embeddings , we also experiment with contextualized ELMo ( Peters et al. , 2018 ) embedding with the DA model using the version implemented in AllenNLP ( Gardner et al. , 2017 ) . BERT : Lastly , we use the BERT - Base , Uncased model for sentence pair classification .
+The model takes question q i and response r ij separated by the special token [ SEP ] and predicts if the response is suitable or unsuitable .
+In some cases , the number of responses generated by the STs for a question could be as high as 5000 + .
+Therefore , when training the DA model with pre-trained contextualized embeddings such as ELMo or the BERT model in the Softmax loss setting , backpropagation requires computing and storing hidden states for 5000 + different responses .
+To mitigate this issue , we use strided negativesampling .
+While training , we first separate all the suitable responses from all the remaining unsuitable responses .
+We then divide all the responses for q i into smaller batches of K or fewer responses .
+Each batch comprises one suitable response ( randomly chosen ) and K ? 1 sampled from the unsuitable responses .
+To ensure that all unsuitable responses are used at least once during the training , we shuffle them and then create smaller batches by taking strides of K ? 1 size .
+We use K = 150 for DA+ELMo and K = 50 for BERT when training with the Softmax loss .
+At test time , we com-pute logits on the CPU and normalize across all responses .
+Training Data for Response Classification
+In this section , we describe the details of the training , validation and testing data used to develop the best response classifier models .
+To create the supervised data , we choose a sample from the train-set of the SQuAD 2.0 dataset ( Rajpurkar et al. , 2018 ) . SQuAD 2.0 contains human-generated questions and answer spans selected from Wikipedia paragraphs .
+Before sampling , we remove all the QA pairs which had answer spans > 5 words as they tend to be non-factoid questions and complete sentences in themselves ( typically " why " and " how " questions ) .
+We also filter out questions that cannot be handled by the parser ( ? 20 % of them had obvious parser errors ) .
+After these filtering , we take a sample of 3000 questions and generate their list of responses using STs ( 1,561,012 total responses ) .
+Next , we developed an annotation task on Amazon Mechanical Turk to select the best responses for the questions .
+For each question , we ask the annotators to select a response from the list of responses that correctly answers the question , sounds natural , and seems human-like .
+Since the list of responses for some questions is as long as 5000 + , the annotators ca n't review all of them before selecting the best one .
+Hence , we implement a search feature within the responses list such that annotators can type in a partial response in the search box to narrow down the options before selection .
+To make their job easier , we also sorted responses by length .
+This encouraged annotators to select relatively short responses which we found to be beneficial , as one would prefer an automatic QA system to be terse .
+To verify that the annotators did n't cheat this annotation design by selecting the first / shortest option , we also test a Shortest Response Baseline as another baseline response classifier model , where first / shortest response in the list is selected as suitable .
+Each question is assigned 5 annotators .
+Therefore , there can be at most 5 unique annotated responses for each question .
+This decreases the recall of the gold truth data ( since there can be more than 5 good ways of correctly responding to a question ) .
+On the other hand , bad annotators may choose a unique yet suboptimal / incorrect response , which decreases the precision of the gold truth .
+After annotating the 3000 questions from SQuAD 2.0 sample , we randomly split the data q and a denotes the question and answer from the SQuAD 2.0 sample and r denotes the responses generated by the STs .
+# q means " number of questions " .
+#r and #r denotes the number of responses which are labeled 1 and 0 respectively after the human annotation process .
+# q/#a # into 2000 train , 300 validation , and 700 test questions .
+We refer to this as the SQuAD Gold annotated ( SG ) data .
+To increase SG training data precision , we assign label 1 only to responses that are marked as best by at least two different annotators .
+Due to this hard constraint , 244 questions from the training data are removed ( i.e. the 5 annotators marked 5 unique responses ) .
+On the other hand , to increase the recall of the SG test and validation sets , we retain all annotations .
+4
+We assign label 0 to all remaining responses ( even if some of them are plausible ) .
+The resulting SG data split is summarized in Table 1 .
+Every response may be marked by zero or more annotators .
+When at least two annotators select the same response from the list we consider it as a match .
+To compute the annotator agreement score , we divide the number of matches with total number of annotations by each annotator .
+Using this formula we find average annotator agreement to be 0.665 , where each annotator 's agreement score is weighted by their number of annotated questions .
+Evaluation of Response Classification
+As previously mentioned in ?2.3 , the SG data does n't contain all true positives since one cannot exhaustively find and annotate all the good responses when the response list is very long .
+Additionally , there is a large class imbalance between good and bad responses , making standard evaluation metrics such as precision , recall , F1 score and accuracy potentially misleading .
+( Parikh et al. , 2016 ) . " + ELMo " refers to adding pre-trained ELMo embeddings to DA model .
+Precision@1 ( P@1 ) , 5 Max. F1 , 6 and Area Under the Precision - Recall Curve ( PR - AUC ) .
+We train all classifier models on the SG training set and evaluate them on SG test data .
+The resulting evaluation is presented in Table 2 .
+The results show that the shortest response baseline ( ShortResp ) performs worse than the ML models ( 0.14 to 0.51 absolute P@1 difference depending on the model ) .
+This verifies that annotation is not dominated by presentation bias where annotators are just selecting the shortest ( first in the list ) response for each question .
+The language model baseline ( LangModel ) performs even worse ( 0.41 to 0.78 absolute difference ) , demonstrating that this task is unlikely to have a trivial solution .
+The feature - based linear model shows good performance when trained with Softmax loss beating many of the neural models in terms of PR - AUC and Max -F1 .
+By inspecting the weight vector , we find that grammar features , specifically the number of prepositions , determiners , and " to " s in the response , are the features with the highest weights .
+This probably implies that the most important challenge in this task is finding the right prepositions and determiners in the response .
+Other important features are the response length and the response 's 3 - gram LM probabilities .
+The ostensible limitation of feature - based models is failing to recognize correct pronouns for unfamiliar named entities in the questions .
+Due to the small size of SG train set , the vanilla 5 P@1 is the % of times the correct response is ranked first 6 Max .
+F1 is the maximum F1 the model can achieve by choosing the optimal threshold in the PR curve Decomposable Attention ( DA ) model is unable to learn good representations on its own and accordingly , performs worse than the linear feature - based model .
+The addition of ELMo embeddings appears to help to cope with this .
+We find that the DA model with ELMo embeddings is better able to predict the right pronouns for the named entities , presumably due to pre-trained representations .
+The best neural model in terms of P@1 is the BERT model fine-tuned with the Softmax loss ( last row of Table 2 ) .
+3 Data-Augmentation and Generation SEQ2SEQ models are very effective in generation tasks .
+However , our 2028 labeled question and response pairs from the SG train set ( Table 1 ) are insufficient for training these large neural models .
+On the other hand , creating a new large-scale dataset that supports fluent answer generation by crowdsourcing is inefficient and expensive .
+Therefore , we augment SQuAD 2.0 with responses from the STs + BERT classifier ( Table 2 ) to create a synthetic training dataset for SEQ2SEQ models .
+We take all the QA pairs from the SQuAD 2.0 train- set which can be handled by the question parser and STs , and rank their candidate responses using the BERT response classifier probabilities trained with Softmax loss ( i.e. ranking loss ( Collins and Koo , 2005 ) ) .
+Therefore , for each question we select the top ranked responses 7 by setting a threshold on the probabilities obtained from the BERT model .
+We refer to the resulting dataset as SQuAD - Synthetic ( SS ) consisting of 59,738 q , a , r instances .
+To increase the size of SS training data , we take the QA pairs from Natural Questions ( Kwiatkowski et al. , 2019 ) and Harvesting QA 8 ( Du and Cardie , 2018 ) and add q , a , r instances using the same STs + BERT classifier technique .
+These new pairs combined with SS result in a dataset of 1,051,938 q , a , r instances , referred to as the SS + dataset .
+PGN , D- GPT , Variants and Baselines Using the resulting SS and SS + datasets , we train Pointer generator networks ( PGN ) ( See et al. , 2017 ) , DialoGPT ( D- GPT ) and their variants to produce a fluent answer response 7 at most three responses per question 8 Harvesting QA is a QA dataset containing 1M QA pairs generated over 10,000 top-ranking Wikipedia articles .
+This dataset is noisy as the questions are automatically generated using an LSTM based encoder- decoder model ( which makes use of coreference information ) and the answers are extracted using a candidate answer extraction module .
+generator .
+The input to the generation model is the question and the answer phrase q , a and the response r is the corresponding generation target .
+PGN : PGNs are widely used SEQ2SEQ models equipped with a copy-attention mechanism capable of copying any word from the input directly into the generated output , making them well equipped to handle rare words and named entities present in questions and answer phrases .
+We train a 2 - layer stacked bi-LSTM PGN using the OpenNMT toolkit ( Klein et al. , 2017 ) on the SS and SS + data .
+We additionally explore PGNs with pre-training information by initializing the embedding layer with GloVe vectors ( Pennington et al. , 2014 ) and pretraining it with q , r pairs from the questions -only subset of the OpenSubtitles corpus 9 ( Tiedemann , 2009 ) .
+This corpus contains about 14 M questionresponse pairs in the training set and 10 K pairs in the validation set .
+We name the pre-trained PGN model as PGN - Pre .
+We also fine- tune PGN - Pre on the SS and SS + data to generate two additional variants .
+D-GPT : DialoGPT ( i.e. dialogue generative pretrained transformer ) ) is a recently released large tunable automatic conversation model trained on 147M Reddit conversationlike exchanges using the GPT - 2 model architecture ( Radford et al. , 2019 ) .
+We fine- tune D- GPT on our task using the SS and SS + datasets .
+For comparison we also train GPT - 2 on our datasets from scratch ( i.e. without any pre-training ) .
+Finally , to assess the impact of pre-training datasets , we pre-train the GPT - 2 on the 14 M questions from questions -only subset of the OpenSubtitles data ( similar to the PGN - Pre model ) to get GPT - 2 - Pre model .
+The GPT - 2 - Pre is later fine-tuned on the SS and SS + datasets to get two corresponding variants .
+CoQA Baseline : Conversational Question Answering ( CoQA ) ( Reddy et al. , 2019 ) is a large-scale ConvQA dataset aimed at creating models which can answer the questions posed in a conversational setting .
+Since we are generating conversational responses for QA systems , it is sensible to compare against such ConvQA systems .
+We pick one of the best performing BERT - based CoQA model from the SMRCToolkit as a baseline .
+10
+We refer to this model as the CoQA baseline .
+QuAC Baseline : Question Answering in Context is another ConvQA dataset .
+We use the modified version of BiDAF model presented in ( Choi et al. , 2018 ) as a second baseline .
+Instead of a SEQ2SEQ generation , it selects spans from passage which acts as responses .
+We use the version of this model implemented in AllenNLP ( Gardner et al. , 2017 ) and refer to this model as the QuAC baseline .
+STs +BERT Baseline :
+We also compare our generation models with the technique that created the SS and SS + training datasets ( i.e. the responses generated by STs ranked with the BERT response classifier ) .
+We validate all the SEQ2SEQ models on the human annotated SG data ( Table 1 ) .
+Evaluation on the SQuAD 2.0 Dev Set
+To have a fair and unbiased comparison , we create a new 500 question sample from the SQuAD 2.0 dev set ( SQuAD - dev-test ) which is unseen for all the models and baselines .
+This sample contains ? 20 % of the questions that cannot be handled by the STs ( parser errors ) .
+For such questions , we default to outputting the answer - phrase as the response for the STs + BERT baseline .
+For the CoQA baseline and the QuAC baseline , we run their models on passages ( corresponding to the questions ) from SQuAD - dev-test to get their responses .
+To demonstrate that our models too can operate in a fully automated setting like the CoQA baseline and the QuAC baseline , we generate their responses using the answer spans selected by a BERTbased SQuAD model ( instead of the gold answer span from the SQuAD - dev-test ) .
+For automatic evaluation we compute validation perplexity of all SEQ2SEQ generation models on SG data ( 3 rd column in Table 3 ) .
+However , validation perplexity is a weak evaluator of generation models .
+Also , due to the lack of human-generated references in SQuAD - dev-test , we cannot use other typical generation based automatic metrics .
+Therefore , we use Amazon Mechanical Turk to do human evaluation .
+Each response is judged by 5 annotators .
+We ask the annotators to identify if the response is conversational and answers the question correctly .
+While outputting answer- phrase to all questions is trivially correct , this style of response generation seems robotic and unnatural in a prolonged conversation .
+Therefore , we also ask the annotators to judge if the response is a completesentence ( e.g. " it is in Indiana " ) and not a sentencefragment ( e.g. " Indiana " ) .
+For each question and response pair , we show the annotators five options based on the three properties ( correctness , grammaticality , and complete-sentence ) .
+These five options ( a to e ) are shown in the Table 3 header .
+The best response is a complete-sentence which is grammatical and answers the question correctly ( i.e. option e ) .
+Other options give us more insights into different models ' behavior .
+For each response , we assign the majority option selected by the annotators and aggregate their judgments into buckets .
+We present this evaluation in Table 3 .
+We compute the inter-annotator agreement by calculating Cohen 's kappa ( Cohen , 1960 ) between individual annotator 's assignments and the aggregated majority options .
+The average Cohen 's kappa ( weighted by the number of annotations for every annotator ) is 0.736 ( i.e. substantial agreement ) .
+The results reveal that CoQA baseline does the worst in terms of option e.
+The main reason for that is because most of the responses generated from this baseline are exact answer spans .
+Therefore , we observe that it does very well in option b ( i.e. correct answer but not a complete-sentence ) .
+The QuAC baseline can correctly select span-based informative response ? 42 % of the time .
+Other times , however , it often selects a span from the passage which is related to the topic but does n't contain the correct answer i.e. ( option c ) .
+Another problem with this baseline is that it is restricted by the input passage and many not always be able to find a valid span that answers the questions .
+Our STs +BERT baseline does better in terms of option e compared to the other baselines but it is limited by the STs and the parser errors .
+As mentioned earlier , ? 20 % of the time this baseline directly copies the answerphrase in the response which explains the high percentage of option b.
+Almost all models perform better when trained with SS + data showing that the additional data from Natural Questions and Harvesting QA is helping .
+Except for the PGN model trained on SS data , all other variants perform better than STs + BERT baseline in terms of option e.
+The GPT - 2 model trained on SS data from scratch does not perform very well because of the small size of training data .
+The pretraining with OpenSubtitiles questions boosts its performance ( option e % for GPT - 2 - Pre model variants > option e % for GPT - 2 model variants ) .
+The best model however is D - GPT when finetuned with SS + dataset .
+While retaining the correct answer , it makes less grammatical errors ( lower % in option c and d compared to other models ) .
+Furthermore with oracle answers it performs even better ( last row in Table 3 ) .
+This shows that D- GPT can generate better quality responses with accurate answers .
+We provide some sample responses from different models in Appendix A .
+Evaluation on CoQA
+In this section , we test our model 's ability to generate conversational answers on the CoQA dev set , using CoQA baseline 's predicted answers .
+The CoQA dataset consists of passages from seven different domains ( out of which one is Wikipedia ) and conversational questions and answers on those passages .
+Due to the conversational nature of this dataset , some of the questions are one word ( ? 3.1 % ) , like " what ? " , " why ? " etc .
+Such questions are out - of- domain for our models as they require the entire context over multiple turns of the conversation to develop their response .
+Other out - of- domain questions include unanswerable ( ? 0.8 % ) and yes / no ( ? 18.4 % ) questions .
+We also do n't consider questions with answers > 5 words ( ? 11.6 % ) as they are typically non-factoid questions .
+We take a random sample of 100 from the remaining questions .
+This sample contains questions from a diverse set of domains outside of the Wikipedia ( on which our models are trained ) .
+This includes questions taken from the middle of a conversation ( for example , " who did they meet ? " ) which are unfamiliar for our models .
+We perform a human evaluation similar to ?3.2 on this sample .
+We compare CoQA against D- GPT trained on the SS + dataset ( with CoQA 's predictions input as answer-phrases ) .
+The results are shown in Table 4 .
+This evaluation reveals that the D-GPT model is able to successfully convert the CoQA answer spans into conversational responses 57 % of the time ( option e ) .
+D-GPT gets the wrong answer 18 % of the time ( option a and c ) , because the input answer predicted by the CoQA baseline is also incorrect 17 % of the time .
+However with oracle answers , it is able to generate correct responses 77 % of the times ( option e ) .
+The weighted average Cohen 's kappa ( Cohen , 1960 ) score for all annotators in this evaluation is 0.750 ( substantial agreement ) .
+This result demonstrates ability of our model to generalize over different domains and generate good conversational responses for questions when provided with correct answer spans .
+Related Work Question Generation ( QG ) is a well studied problem in the NLP community with many machine learning based solutions ( Rus et al. , 2010 ; Heilman and Smith , 2010 ; Yao et al. , 2012 ; Labutov et al. , 2015 ; Serban et al. , 2016 ; Reddy et al. , 2017 ; Cardie , 2017 , 2018 ) .
+In comparison , our work explores the opposite direction , i.e. ( generating conversational humanlike answers given a question ) .
+Fu and Feng ( 2018 ) also try to solve fluent answer response generation task but in a restricted setting of movie related questions with 115 question patterns .
+In contrast , our generation models can deal with human generated questions from any domain .
+Learning to Rank formulations for answer selection in QA systems is common practice , most frequently relying on pointwise ranking models ( Severyn and Moschitti , 2015 ; Garg et al. , 2019 ) .
+Our use of discriminative re-ranking ( Collins and Koo , 2005 ) with softmax loss is closer to learning a pairwise ranking by maximizing the multiclass margin between correct and incorrect answers ( Joachims , 2002 ; Burges et al. , 2005 ; K?ppel et al. , 2019 ) .
+This is an important distinction from TREC - style answer selection as our ST - generated candidate responses have lower semantic , syntactic , and lexical variance , making pointwise methods less effective .
+Question Answering Using crowd- sourcing methods to create QA datasets ( Rajpurkar et al. , 2016 ; Bajaj et al. , 2016 ; Rajpurkar et al. , 2018 ) , conversational datasets ( Dinan et al. , 2018 ) , and ConvQA datasets ( Choi et al. , 2018 ; Reddy et al. , 2019 ; Elgohary et al. , 2018 ; Saha et al. , 2018 ) has largely driven recent methodological advances .
+However , models trained on these ConvQA datasets typically select exact answer spans instead of generating them ( Yatskar , 2019 b ) .
+Instead of creating another crowd-sourced dataset for our task , we augment existing QA datasets to include such conversational answer responses using the STs + BERT trained with softmax loss .
+Conclusion
+In this work , we study the problem of generating fluent QA responses in the context of building fluent conversational agents .
+To this end , we propose an over-generate and rank data augmentation procedure based on Syntactic Transformations and a best response classifier .
+This method is used to modify the SQuAD 2.0 dataset such that it includes conversational answers , which is used to train SEQ2SEQ based generation models .
+Human evaluations on SQuAD - dev-test show that our models generate significantly better conversational responses compared to the baseline CoQA and QuAC models .
+Furthermore , the D-GPT model with oracle answers is able to generate conversational responses on the CoQA dev set 77 % of the time showcasing the model 's scalability .

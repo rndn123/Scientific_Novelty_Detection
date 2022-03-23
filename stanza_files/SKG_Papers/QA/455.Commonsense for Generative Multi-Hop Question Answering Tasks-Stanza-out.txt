@@ -1,0 +1,212 @@
+title
+Commonsense for Generative Multi-Hop Question Answering Tasks
+abstract
+Reading comprehension QA tasks have seen a recent surge in popularity , yet most works have focused on fact-finding extractive QA .
+We instead focus on a more challenging multihop generative task ( NarrativeQA ) , which requires the model to reason , gather , and synthesize disjoint pieces of information within the context to generate an answer .
+This type of multi-step reasoning also often requires understanding implicit relations , which humans resolve via external , background commonsense knowledge .
+We first present a strong generative baseline that uses a multi-attention mechanism to perform multiple hops of reasoning and a pointer - generator decoder to synthesize the answer .
+This model performs substantially better than previous generative models , and is competitive with current state - of - the - art span prediction models .
+We next introduce a novel system for selecting grounded multi-hop relational commonsense information from Con-ceptNet via a pointwise mutual information and term-frequency based scoring function .
+Finally , we effectively use this extracted commonsense information to fill in gaps of reasoning between context hops , using a selectivelygated attention mechanism .
+This boosts the model 's performance significantly ( also verified via human evaluation ) , establishing a new state - of - the - art for the task .
+We also show that our background knowledge enhancements are generalizable and improve performance on QAngaroo-WikiHop , another multi-hop reasoning dataset .
+Introduction
+In this paper , we explore the task of machine reading comprehension ( MRC ) based QA .
+This task tests a model 's natural language understanding capabilities by asking it to answer a question * Equal contribution ( published at EMNLP 2018 ) .
+We publicly release all our code , models , and data at : https://github.com/yicheng-w/CommonSenseMultiHopQA based on a passage of relevant content .
+Much progress has been made in reasoning - based MRC - QA on the bAbI dataset ( Weston et al. , 2016 ) , which contains questions that require the combination of multiple disjoint pieces of evidence in the context .
+However , due to its synthetic nature , bAbI evidences have smaller lexicons and simpler passage structures when compared to humangenerated text .
+There also have been several attempts at the MRC - QA task on human-generated text .
+Large scale datasets such as CNN / DM ( Hermann et al. , 2015 ) and SQuAD ( Rajpurkar et al. , 2016 ) have made the training of end-to - end neural models possible .
+However , these datasets are fact - based and do not place heavy emphasis on multi-hop reasoning capabilities .
+More recent datasets such as QAngaroo ( Welbl et al. , 2018 ) have prompted a strong focus on multi-hop reasoning in very long texts .
+However , QAngaroo is an extractive dataset where answers are guaranteed to be spans within the context ; hence , this is more focused on fact finding and linking , and does not require models to synthesize and generate new information .
+We focus on the recently published Narra-tiveQA generative dataset ( Ko?isk ?
+et al. , 2018 ) that contains questions requiring multi-hop reasoning for long , complex stories and other narratives , which requires the model to go beyond fact linking and to synthesize non-span answers .
+Hence , models that perform well on previous reasoning tasks ( Dhingra et al. , 2018 ) have had limited success on this dataset .
+In this paper , we first propose the Multi-Hop Pointer - Generator Model ( MHPGM ) , a strong baseline model that uses multiple hops of bidirectional attention , self-attention , and a pointer - generator decoder to effectively read and reason within a long passage and synthesize a coherent response .
+Our model achieves 41.49 Rouge -L and 17.33 METEOR on the summary subtask of NarrativeQA , substantially better than the performance of previous generative models .
+Next , to address the issue that understanding human- generated text and performing longdistance reasoning on it often involves intermittent access to missing hops of external commonsense ( background ) knowledge , we present an algorithm for selecting useful , grounded multi-hop relational knowledge paths from ConceptNet ( Speer and Havasi , 2012 ) via a pointwise mutual information ( PMI ) and term-frequency - based scoring function .
+We then present a novel method of inserting these selected commonsense paths between the hops of document-context reasoning within our model , via the Necessary and Optional Information Cell ( NOIC ) , which employs a selectivelygated attention mechanism that utilizes commonsense information to effectively fill in gaps of inference .
+With these additions , we further improve performance on the NarrativeQA dataset , achieving 44.16 Rouge -L and 19.03 METEOR ( also verified via human evaluation ) .
+We also provide manual analysis on the effectiveness of our commonsense selection algorithm .
+Finally , to show the effectiveness and generalizability of our multi-hop reasoning and commonsense methods , we also tested our MH - PGM and MHPGM + NOIC models on QAngaroo-WikiHop ( Welbl et al. , 2018 ) , which is an extractive dataset for multi-hop reasoning on humangenerated documents .
+We found that our background commonsense knowledge enhanced model achieved 1.5 % higher accuracy than our strong baseline .
+Related Work Machine Reading Comprehension : MRC has long been a task used to assess a model 's ability to understand and reason about language .
+Large scale datasets such as CNN / Daily Mail ( Hermann et al. , 2015 ) and SQuAD ( Rajpurkar et al. , 2016 ) have encouraged the development of many advanced , high performing attention - based neural models ( Seo et al. , 2017 ; Dhingra et al. , 2017 ) .
+Concurrently , datasets such as bAbI ( Weston et al. , 2016 ) have focused specifically on multi-step reasoning by requiring the model to reason with disjoint pieces of information .
+On this task , it has been shown that iteratively updating the query representation with information from the context can effectively emulate multi-step reason-ing ( Sukhbaatar et al. , 2015 ) .
+More recently , there has been an increase in multi-paragraph , multi-hop inference QA datasets such as QAngaroo ( Welbl et al. , 2018 ) and Narra-tiveQA ( Ko?isk ?
+et al. , 2018 ) .
+These datasets have much longer contexts than previous datasets , and answering a question often requires the synthesis of multiple discontiguous pieces of evidence .
+It has been shown that models designed for previous tasks ( Seo et al. , 2017 ; Kadlec et al. , 2016 ) have limited success on these new datasets .
+In our work , we expand upon Gated Attention Network ( Dhingra et al. , 2017 ) to create a baseline model better suited for complex MRC datasets such as NarrativeQA by improving its attention and gating mechanisms , expanding its generation capabilities , and allowing access to external commonsense for connecting implicit relations .
+Commonsense / Background Knowledge : Commonsense or background knowledge has been used for several tasks including opinion mining ( Cambria et al. , 2010 ) , sentiment analysis ( Poria et al. , 2015 ( Poria et al. , , 2016 , handwritten text recognition ( Wang et al. , 2013 ) , and more recently , dialogue ( Young et al. , 2018 ; Ghazvininejad et al. , 2018 ) .
+These approaches add commonsense knowledge as relation triples or features from external databases .
+Recently , largescale graphical commonsense databases such as ConceptNet ( Speer and Havasi , 2012 ) use graphical structure to express intricate relations between concepts , but effective goal-oriented graph traversal has not been extensively used in previous commonsense incorporation efforts .
+Knowledgebase QA is a task in which systems are asked to find answers to questions by traversing knowledge graphs ( Bollacker et al. , 2008 ) .
+Knowledge path extraction has been shown to be effective at the task ( Bordes et al. , 2014 ; Bao et al. , 2016 ) .
+We apply these techniques to MRC - QA by using them to extract useful commonsense knowledge paths that fully utilize the graphical nature of databases such as ConceptNet ( Speer and Havasi , 2012 ) .
+Incorporation of External Knowledge :
+There have been several attempts at using external knowledge to boost model performance on a variety of tasks :
+Chen et al. ( 2018 ) showed that adding lexical information from semantic databases such as WordNet improves performance on NLI ; Xu et al . ( 2017 ) used a gated recall - LSTM mechanism to incorporate commonsense information into to -ken representations in dialogue .
+In MRC , Weissenborn et al. ( 2017 ) integrated external background knowledge into an NLU model by using contextually - refined word embeddings which integrated information from Con-ceptNet ( single - hop relations mapped to unstructured text ) via a single layer bidirectional LSTM .
+Concurrently to our work , Mihaylov and Frank ( 2018 ) showed improvements on a cloze-style task by incorporating commonsense knowledge via a context- to- commonsense attention , where commonsense relations were extracted as triples .
+This work represented commonsense relations as keyvalue pairs and combined context representation and commonsense via a static gate .
+Differing from previous works , we employ multi-hop commonsense paths ( multiple connected edges within ConceptNet graph that give us information beyond a single relationship triple ) to help with our MRC model .
+Moreover , we use this in tandem with our multi-hop reasoning architecture to incorporate different aspects of the commonsense relationship path at each hop , in order to bridge different inference gaps in the multi-hop QA task .
+Additionally , our model performs synthesis with its external , background knowledge as it generates , rather than extracts , its answer .
+Methods
+Multi-Hop Pointer-Generator Baseline
+We first rigorously state the problem of generative QA as follows : given two sequences of input tokens : the context , X C = {w C 1 , w C 2 , . . . , w C n } and the query , X Q = {w Q 1 , w Q 2 , . . . , w Q m } , the system should generate a series of answer tokens X a = {w a 1 , w a 2 , . . . , w a p }.
+As outlined in previous sections , an effective generative QA model needs to be able to perform several hops of reasoning over long and complex passages .
+It would also need to be able to generate coherent statements to answer complex questions while having the ability to copy rare words such as specific entities from the reading context .
+With these in mind , we propose the Multi-Hop Pointer - Generator Model ( MHPGM ) baseline , a novel combination of previous works with the following major components : ? Embedding Layer :
+The tokens are embedded into both learned word embeddings and pretrained context - aware embeddings ( ELMo ( Peters et al. , 2018 ) ) . ? Reasoning Layer :
+The embedded context is then passed through k reasoning cells , each of which iteratively updates the context representation with information from the query via BiDAF attention ( Seo et al. , 2017 ) , emulating a single reasoning step within the multi-step reasoning process .
+?
+Self-Attention Layer :
+The context representation is passed through a layer of self-attention ( Cheng et al. , 2016 ) to resolve long-term dependencies and co-reference within the context .
+? Pointer-Generator Decoding Layer : A attention - pointer - generator decoder ( See et al. , 2017 ) that attends on and potentially copies from the context is used to create the answer .
+The overall model is illustrated in Fig. 1 , and the layers are described in further detail below .
+Embedding layer :
+We embed each word from the context and question with a learned embedding space of dimension d .
+We also obtain contextaware embeddings for each word via the pretrained embedding from language models ( ELMo ) ( 1024 dimensions ) .
+The embedded representation for each word in the context or question , e C i or e Q i ?
+R d+1024 , is the concatenation of its learned word embedding and ELMo embedding .
+Reasoning layer :
+Our reasoning layer is composed of k reasoning cells ( see Fig. 1 ) , where each incrementally updates the context representation .
+The t th reasoning cell 's inputs are the previous step 's output ( { c t?1 i } n i=1 ) and the embedded question ( { e Q i } m i = 1 ) .
+It first creates step-specific context and query encodings via cell-specific bidirectional LSTMs : u t = BiLSTM ( c t?1 ) ; v t = BiLSTM ( e Q ) Then , we use bidirectional attention ( Seo et al. , 2017 ) to emulate a hop of reasoning by focusing on relevant aspects of the context .
+Specifically , we first compute context- to- query attention : S t ij = W t 1 u t i + W t 2 v t j + W t 3 ( u t i v t j ) p t ij = exp ( S t ij ) m k=1 exp ( S t ik ) ( c q ) t i = m j=1 p t ij v t j where W t 1 , W t 2 , W t 3 are trainable parameters , and is elementwise multiplication .
+We then compute a query- to- context attention vector : m t i = max 1 ?j?m
+S t ij ... + p sel Attention Distribution x t p t i = exp( m t i ) n j=1 exp( m t j ) q c t = n i=1 p t i u t i
+We then obtain the updated context representation : c t i = [ u t i ; ( c q ) t i ; u t i ( c q ) t i ; q c t ( c q ) t i ] where ; is concatenation , c t is the cell 's output .
+The initial input of the reasoning layer is the embedded context representation , i.e. , c 0 = e C , and the final output of the reasoning layer is the output of the last cell , c k .
+Self-Attention Layer :
+As the final layer before answer generation , we utilize a residual static selfattention mechanism to help the model process long contexts with longterm dependencies .
+The input of this layer is the output of the last reasoning cell , c k .
+We first pass this representation through a fully - connected layer and then a bi-directional LSTM to obtain another representation of the context c SA .
+We obtain the self attention representation c : S SA ij = W 4 c SA i +
+W 5 c SA j + W 6 ( c SA i c SA j ) p SA ij = exp ( S SA ij ) n k=1 exp ( S SA ik ) c i = n j=1 p SA ij c SA j where W 4 , W 5 , and W 6 are trainable parameters .
+The output of the self-attention layer is generated by another layer of bidirectional LSTM .
+At decoding step t , the decoder receives the input x t ( embedded representation of last timestep 's output ) , the last time step 's hidden state s t?1 and context vector a t?1 .
+The decoder computes the current hidden state s t as : s t = LSTM ( [ x t ; a t?1 ] , s t?1 )
+This hidden state is then used to compute a probability distribution over the generative vocabulary : P gen = softmax ( W gen s t + b gen )
+We employ Bahdanau attention mechanism ( Bahdanau et al. , 2015 ) to attend over the context ( c being the output of self-attention layer ) : ?
+i = v tanh ( W c c i + W s s t + b attn ) " What a t = n i=1 ? i c i
+We utilize a pointer mechanism that allows the decoder to directly copy tokens from the context based on ?i .
+We calculate a selection distribution p sel ?
+R 2 , where p sel 1 is the probability of generating a token from P gen and p sel 2 is the probability of copying a word from the context : o = ?( W a a t + W x x t + W s s t + b ptr ) p sel = softmax ( o )
+Our final output distribution at timestep t is a weighted sum of the generative distribution and the copy distribution : P t ( w ) = p sel 1 P gen ( w ) + p sel 2 i:w C i =w ?i 3 .
+Commonsense Selection and Representation
+In QA tasks that require multiple hops of reasoning , the model often needs knowledge of relations not directly stated in the context to reach the correct conclusion .
+In the datasets we consider , manual analysis shows that external knowledge is frequently needed for inference ( see Table 1 ) .
+Even with a large amount of training data , it is very unlikely that a model is able to learn every nuanced relation between concepts and apply the correct ones ( as in Fig. 2 ) when reasoning about a question .
+We remedy this issue by introducing grounded commonsense ( background ) information using relations between concepts from ConceptNet ( Speer and Havasi , 2012 ) 1 that help inference by introducing useful connections between concepts in the context and question .
+Due to the size of the semantic network and the large amount of unnecessary information , we need an effective way of selecting relations which provides novel information while being grounded by the context-query pair .
+Our commonsense selection strategy is twofold : ( 1 ) collect potentially relevant concepts via a tree construction method aimed at selecting with high recall candidate reasoning paths , and ( 2 ) rank and filter these paths to ensure both the quality and variety of added information via a 3 - step scoring strategy ( initial node scoring , cumulative node scoring , and path selection ) .
+We will refer to Fig. 2 as a running example throughout this section .
+2
+Tree Construction Given context C and question Q , we want to construct paths grounded in the pair that emulate reasoning steps required to answer the question .
+In this section , we build ' prototype ' paths by constructing trees rooted in concepts in the query with the following branching steps 3 to emulate multihop reasoning process .
+For each concept c 1 in the question , we do : Direct Interaction :
+In the first level , we select relations r 1 from ConceptNet that directly link c 1 to a concept within the context , c 2 ? C , e.g. , in Fig. 2 , we have lady ? church , lady ? mother , lady ? person .
+Multi-Hop :
+We then select relations in Concept - Net r 2 that link c 2 to another concept in the context , c 3 ? C .
+This emulates a potential reason-ing hop within the context of the MRC task , e.g. , church ? house , mother ? daughter , person ? lover .
+Outside Knowledge :
+We then allow an unconstrained hop into c 3 's neighbors in ConceptNet , getting to c 4 ? nbh ( c 3 ) via r 3 ( nbh ( v ) is the set of nodes that can be reached from v in one hop ) .
+This emulates the gathering of useful external information to complete paths within the context , e.g. , house ? child , daughter ? child .
+Context - Grounding :
+To ensure that the external knowledge is indeed helpful to the task , and also to explicitly link 2nd degree neighbor concepts within the context , we finish the process by grounding it again into context by connecting c 4 to c 5 ? C via r 4 , e.g. , child ? their .
+Rank and Filter
+This tree building process collects a large number of potentially relevant and useful paths .
+However , this step also introduces a large amount of noise .
+For example , given the question and full context ( not depicted in the figure ) in Fig. 2 , we obtain the path " between ? hard ? being ? cottage ? country " using our tree building method , which is not relevant to our question .
+Therefore , to improve the precision of useful concepts , we rank these knowledge paths by their relevance and filter out noise using the following 3 - step scoring method : Initial Node Scoring :
+We want to select paths with nodes that are important to the context , in order to provide the most useful commonsense relations .
+We approximate importance and saliency for concepts in the context by their termfrequency , under the heuristic that important concepts occur more frequently .
+Thus we score c ? {c 2 , c 3 , c 5 } by : score ( c ) = count ( c ) / |C| , where | C | is the context length and count ( ) is the number of times a concept appears in the context .
+In Fig. 2 , this ensures that concepts like daughter are scored highly due to their frequency in the context .
+For c 4 , we use a special scoring function as it is an unconstrained hop into ConceptNet .
+We want c 4 to be a logically consistent next step in reasoning following the path of c 1 to c 3 , e.g. , in Fig. 2 , we see that child is a logically consistent next step after the partial path of mother ? daughter .
+We approximate this based on the heuristic that logically consistent paths occur more frequently .
+Therefore , we score this node via Pointwise Mutual Information ( PMI ) between the partial path c 1?3 and c 4 : PMI ( c 4 , c 1?3 ) = log ( P ( c 4 , c 1?3 ) / P( c 4 ) P ( c 1?3 ) ) , where P(c 4 , c 1?3 ) = # of paths connecting c 1 , c 2 , c 3 , c 4 # of distinct paths of length 4 P( c 4 ) = # of nodes that can reach c 4 | ConceptNet | P ( c 1?3 ) = # of paths connecting c 1 , c 2 , c 3 # of paths of length 3 Further , it is well known that PMI has high sensitivity to low-frequency values , thus we use normalized PMI ( NPMI ) ( Bouma , 2009 ) : score ( c 4 ) = PMI ( c 4 , c 1?3 ) /(? log P ( c 4 , c 1 ? 3 ) ) .
+Since the branching at each juncture represents a hop in the multi-hop reasoning process , and hops at different levels or with different parent nodes do not ' compete ' with each other , we normalize each node 's score against its siblings : n-score ( c ) = softmax siblings ( c ) ( score ( c ) ) .
+Cumulative Node Scoring :
+We want to add commonsense paths consisting of multiple hops of relevant information , thus we re-score each node based not only on its relevance and saliency but also that of its tree descendants .
+We do this by computing a cumulative node score from the bottom up , where at the leaf nodes , we have c-score = n-score , and for c l not a leaf node , we have c-score ( c l ) = n-score( c l ) + f ( c l ) where f of a node is the average of the c-scores of its top 2 highest scoring children .
+For example , given the paths lady ? mother ? daughter , lady ? mother ?
+married , and lady ? mother ? book , we start the cumulative scoring at the leaf nodes , which in this case are daughter , married , and book , where daughter and married are scored much higher than book due to their more frequent occurrences .
+Then , to cumulatively score mother , we would take the average score of its two highest scoring children ( in this case married and daughter ) and compound that with the score of mother itself .
+Note that the poor scoring of the irrelevant concept book does not affect the scoring of mother , which is quite high due to the concept 's frequent occurrence and the relevance of its top scoring children .
+Path Selection :
+We select paths in a top-down breath - first fashion in order to add information relevant to different parts of the context .
+Starting at the root , we recursively take two of its children with the highest cumulative scores until we reach a leaf , selecting up to 2 4 = 16 paths .
+For example , if we were at node mother , this allows us to select the child node daughter and married over the child node book .
+These selected paths , as well as their partial sub-paths , are what we add as external information to the QA model , i.e. , we add the complete path lady , AtLocation , church , Relat-edTo , house , RelatedTo , child , RelatedTo , their , but also truncated versions of the path , including lady , AtLocation , church , RelatedTo , house , Re-latedTo , child .
+We directly give these paths to the model as sequences of tokens .
+4 Overall , our sampling strategy provides the knowledge that a lady can be a mother and that mother is connected to daughter .
+This creates a logical connection between lady and daughter which helps highlight the importance of our second piece of evidence ( see Fig. 2 ) .
+Likewise , the commonsense information we extracted create a similar connection in our third piece of evidence , which states the explicit connection between daughter and Esther .
+We also successfully extract a more story context-centric connection , in which commonsense provides the knowledge that a lady is at the location church , which directs to another piece of evidence in the context .
+Additionally , this path also encodes a relation between lady and child , by way of church , which is how lady and Esther are explicitly connected in the story .
+Commonsense Model Incorporation
+Given the list of commonsense logic paths as sequences of words : X CS = {w CS 1 , w CS 2 , . . . , w CS l } where w CS i represents the list of tokens that make up a single path , we first embed these commonsense tokens into the learned embedding space used by the model , giving us the embedded commonsense tokens , e CS ij ?
+R d .
+We want to use these commonsense paths to fill in the gaps of reasoning between hops of inference .
+Thus , we propose Necessary and Optional Information Cell ( NOIC ) , a variation of our base reasoning cell used in the reasoning layer that is capable of incorporating optional helpful information .
+NOIC
+This cell is an extension to the base reasoning cell that allows the model to use commonsense information to fill in gaps of reasoning .
+An example of this is on the bottom left of Fig. 1 , where we see that the cell first performs the operations done in the base reasoning cell and then adds optional , commonsense information .
+At reasoning step t , after obtaining the output of the base reasoning cell , c t , we create a cell-specific representation for commonsense information by concatenating the embedded commonsense paths so that each path has a single vector representation , u CS i .
+We then project it to the same dimension as c t i : v CS i = ReLU ( W u CS i + b) where W and b are trainable parameters .
+We use an attention layer to model the interaction between commonsense and the context : S CS ij = W CS 1 c t i +
+W CS 2 v CS j + W CS 3 ( c t i v CS j ) p CS ij = exp ( S CS ij ) l k=1 exp ( S CS ij ) c CS i = l j=1 p CS ij v CS j Finally , we combine this commonsense - aware context representation with the original c t i via a sigmoid gate , since commonsense information is often not necessary at every step of inference : z i = ?( W z [ c CS i ; c t i ] + b z ) ( c o ) t i = z i c t i + ( 1 ? z i ) c CS i We use c o t as the output of the current reasoning step instead of c t .
+As we replace each base reasoning cell with NOIC , we selectively incorporate commonsense at every step of inference .
+Experimental Setup Datasets :
+We report results on two multi-hop reasoning datasets : generative NarrativeQA ( Ko?isk ?
+et al. , 2018 ) ( summary subtask ) and extractive QAngaroo WikiHop ( Welbl et al. , 2018 ) .
+For multiple -choice WikiHop , we rank candidate responses by their generation probability .
+Similar to previous works ( Dhingra et al. , 2018 ) , we use the non-oracle , unmasked and not-validated dataset .
+Evaluation Metrics :
+We evaluate NarrativeQA on the metrics proposed by its original authors : Bleu -1 , Bleu -4 ( Papineni et al. , 2002 ) , ME-TEOR ( Banerjee and Lavie , 2005 ) and Rouge -L ( Lin , 2004 ) .
+We also evaluate on CIDEr ( Vedantam et al. , 2015 ) which emphasizes annotator consensus .
+For WikiHop , we evaluate on accuracy .
+5 More dataset , metric , and all other training details are in the supplementary .
+Table 3 : Results of our models on WikiHop dataset .
+Results
+Main Experiment
+The results of our model on both NarrativeQA and WikiHop with and without commonsense incorporation are shown in Table 2 and Table 3 .
+We see empirically that our model outperforms all generative models on NarrativeQA , and is competitive with the top span prediction models .
+Furthermore , with the NOIC commonsense integration , we were able to further improve performance ( p < 0.001 on all metrics 6 ) , establishing a new state - of - the - art for the task .
+We also see that our model performs well on WikiHop , 7 and is further improved via the addition of commonsense ( p < 0.001 ) , demonstrating the generalizability of both our model and commonsense addition techniques .
+8
+Model Ablations
+We also tested the effectiveness of each component of our architecture as well as the effectiveness of adding commonsense information on the NarrativeQA validation set , with results shown in et al. , 2018 ) were also important for the model 's performance and that self-attention is able to contribute significantly to performance on top of other components of the model .
+Finally , we see that effectively introducing external knowledge via our commonsense selection algorithm and NOIC can improve performance even further on top of our strong baseline .
+Commonsense Ablations
+We also conducted experiments testing the effectiveness of our commonsense selection and incorporation techniques .
+We first tried to naively add ConceptNet information by initializing the word embeddings with the ConceptNet-trained embeddings , NumberBatch ( Speer and Havasi , 2012 ) ( we also change embedding size from 256 to 300 ) .
+Then , to verify the effectiveness of our commonsense selection and grounding algorithm , we test our best model on in- domain noise by giving each context - query pair a set of random relations grounded in other context- query pairs .
+This should teach the model about general commonsense relations present in the domain of Narra-tiveQA but does not provide grounding that fills in specific hops of inference .
+We also experimented with a simpler commonsense extraction method of using a single hop from the query to the context .
+The results of these are shown in whereas our commonsense selection and incorporation mechanism improves performance significantly across all metrics .
+We also present several examples of extracted commonsense and its model attention visualization in the supplementary .
+Human Evaluation Analysis
+We also conduct human evaluation analysis on both the quality of the selected commonsense relations , as well as the performance of our final model .
+Commonsense Selection :
+We conducted manual analysis on a 50 sample subset of the NarrativeQA test set to check the effectiveness of our commonsense selection algorithm .
+Specifically , given a context- query pair , as well as the commonsense selected by our algorithm , we conduct two independent evaluations : ( 1 ) was any external commonsense knowledge necessary for answering the question ? ; ( 2 ) were the commonsense relations provided by our algorithm relevant to the question ?
+The result for these two evaluations as well as how they overlap with each other are shown in Table 6 , where we see that 50 % of the cases required external commonsense knowledge , and on a majority ( 34 % ) of those cases our algorithm was able to select the correct / relevant commonsense information to fill in gaps of inference .
+We also see that in general , our algorithm was able to provide useful commonsense 48 % of the time .
+Model Performance :
+We also conduct human evaluation to verify that our commonsense incorporated model was indeed better than MHPGM .
+We randomly selected 100 examples from the Nar-rativeQA test set , along with both models ' predicted answers , and for each datapoint , we asked 3 external human evaluators ( fluent English speakers ) to decide ( without knowing which model produced each response ) if one is strictly better than the other , or that they were similar in quality ( bothgood or both - bad ) .
+As shown in Table 7 , we see that the human evaluation results are in agreement with that of the automatic evaluation metrics : our commonsense incorporation has a reasonable impact on the overall correctness of the model .
+The inter-annotator agreement had a Fleiss ? = 0.831 , indicating ' almost- perfect ' agreement between the annotators ( Landis and Koch , 1977 ) .
+Conclusion
+We present an effective reasoning - generative QA architecture that is a novel combination of previous work , which uses multiple hops of bidirectional attention and a pointer - generator decoder to effectively perform multi-hop reasoning and synthesize a coherent and correct answer .
+Further , we introduce an algorithm to select grounded , useful paths of commonsense knowledge to fill in the gaps of inference required for QA , as well a Necessary and Optional Information Cell ( NOIC ) which successfully incorporates this information during multi-hop reasoning to achieve the new state - of- the - art on NarrativeQA .
+Figure 1 : 1 Figure 1 : Architecture for our Multi-Hop Pointer -Generator Model , and the NOIC commonsense reasoning cell .

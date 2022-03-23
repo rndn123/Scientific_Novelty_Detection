@@ -1,0 +1,197 @@
+title
+Event Extraction by Answering ( Almost ) Natural Questions
+abstract
+The problem of event extraction requires detecting the event trigger and extracting its corresponding arguments .
+Existing work in event argument extraction typically relies heavily on entity recognition as a preprocessing / concurrent step , causing the well - known problem of error propagation .
+To avoid this issue , we introduce a new paradigm for event extraction by formulating it as a question answering ( QA ) task that extracts the event arguments in an end-to - end manner .
+Empirical results demonstrate that our framework outperforms prior methods substantially ; in addition , it is capable of extracting event arguments for roles not seen at training time ( i.e. , in a zeroshot learning setting ) .
+1
+Introduction Event extraction is a long-studied and challenging task in Information Extraction ( IE ) ( Sundheim , 1992 ; Grishman and Sundheim , 1996 ; Riloff , 1996 ) .
+Its goal is to extract structured information -" what is happening " and the persons / objects that are involved - from unstructured text .
+The task is illustrated via an example in Figure 1 , which depicts an ownership transfer event ( the event type ) , triggered by the word " sale " ( the event trigger ) and accompanied by its extracted arguments - text spans denoting entities that fill a set of ( semantic ) roles associated with the event type ( e.g. , BUYER , SELLER and ARTIFACT for ownership transfer events ) .
+Recent successful approaches to event extraction have benefited from dense features extracted by neural models ( Chen et al. , 2015 ; Nguyen et al. , 2016 ; Liu et al. , 2018 ) as well as contextualized lexical representations from pretrained language models ( Zhang et al. , 2019 b ; Wadden et al. , 2019 ) . 1 Our code and question templates for the work are open sourced at https://github.com/xinyadu/eeqa for reproduction purpose .
+Input :
+As part of the 11 - billion - dollar sale of USA Interactive 's film and television operations to the French company and its parent company in December 2001 , USA Interactive received 2.5 billion dollars in preferred shares in Vivendi Universal Entertainment .
+Event type Transaction - Transfer-Ownership Trigger " sale " Args .
+Buyer " French company " , " parent company " Seller " USA Interactive " Artifact " operations " Place -
+The approaches , however , exhibit two key weaknesses .
+First , they rely heavily on entity information for argument extraction .
+In particular , event argument extraction generally consists of two steps - first identifying entities and their general semantic class with trained models ( Wadden et al. , 2019 ) or a parser ( Sha et al. , 2018 ) , then assigning argument roles ( or no role ) to each entity .
+Although joint models ( Yang and Mitchell , 2016 ; Nguyen and Nguyen , 2019 ; Zhang et al. , 2019a ; Lin et al. , 2020 ) have been proposed to mitigate this issue , error propagation ( Li et al. , 2013 ) still occurs during event argument extraction .
+Extracted Event : A second weakness of neural approaches to event extraction is their inability to exploit the similarities of related argument roles across event types .
+For example , the ACE 2005 ( Doddington et al. , 2004 ) CONFLICT.ATTACK events and JUS-TICE.EXECUTE events have TARGET and PERSON argument roles , respectively .
+Both roles , however , refer to a human being ( who ) is affected by an action .
+Ignoring the similarity can hurt performance , especially for argument roles with few / no examples at training time ( e.g. , similar to the zero-shot setting in Levy et al . ( 2017 ) ) .
+In this paper , we propose a new paradigm for the event extraction task - formulating it as a question answering ( QA ) / machine reading comprehension ( MRC ) task ( Contribution 1 ) .
+The general framework is illustrated in Figure 2 . Using BERT ( Devlin For each , we design one or more Question Templates that map the input sentence into the standard BERT input format .
+Thus , trigger detection becomes a request to identify " the action " or the " verb " in the input sentence and determine its event type ; and argument extraction becomes a sequence of requests to identify the event 's arguments , each of which is a text span in the input sentence .
+Details will be explained in Section 2 .
+To the best of our knowledge , this is the first attempt to cast event extraction as a QA task .
+Treating event extraction as QA overcomes the weaknesses in existing methods identified above ( Contribution 2 ) : ( 1 ) Our approach requires no entity annotation ( gold or predicted entity information ) and no entity recognition pre-step ; event argument extraction is performed as an end-to - end task ; ( 2 ) The question answering paradigm naturally permits the transfer of argument extraction knowledge across semantically related argument roles .
+We propose rule-based question generation strategies ( including incorporating descriptions in annotation guidelines ) for templates creation , and conduct extensive experiments to evaluate our framework on the Automatic Content Extraction ( ACE ) event extraction task and show empirically that the performance on both trigger and argument extraction outperform prior methods ( Section 3.2 ) .
+Finally , we show that our framework extends to the zero-shot setting - it is able to extract event arguments for unseen roles ( Contribution 3 ) .
+Methodology
+In this section , we first provide an overview for the framework ( Figure 2 ) , then go deeper into details of its components : question generation strategies for template creation , as well as training and inference of QA models .
+Framework Overview
+Our QA framework for event extraction relies on two sets of Question Templates that map an input sentence to a suitable input sequence for two instances of a standard pre-trained bidirectional transformer ( BERT ) .
+The first of these , BERT_QA_Trigger ( green box in Figure 2 ) , extracts from the input sentence the event trigger which is a single token , and its type ( one of a fixed set of pre-defined event types ) .
+The second QA model , BERT_QA_Arg ( orange box in Figure 2 ) , is applied to the input sequence , the extracted event trigger and its event type to iteratively identify candidate event arguments ( spans of text ) in the input sentence .
+Finally , a dynamic threshold is applied to the extracted candidate arguments , and only the arguments with probability above the threshold are retained .
+The input sequences for the two QA models share a standard BERT - style format : [ CLS ] < question > [ SEP ] < sentence > [ SEP ] where [ CLS ] is BERT 's special classification token , [ SEP ] is the special token to denote separation , and < sentence > is the tokenized input sentence .
+We provide details on how to obtain the < question > in Section 2.2 .
+Details on the QA models and the inference process will be explained in Section 2.3 .
+What is the destination ?
+Where the transporting is directed ?
+Table 1 : Arguments ( of event type MOVEMENT.TRANSPORT ) and corresponding questions from three templates .
+" in < trigger > " is not added to the questions in this example .
+Question Generation Strategies
+For our QA - based framework for event extraction to be easily moved from one domain to the other , we concentrated on developing question generation strategies that not only worked well for the task , but can be quickly and easily implemented .
+For event trigger detection , we experiment with a set of four fixed templates -" what is the trigger " , " trigger " , " action " , " verb " .
+Basically , we use the fixed literal phrase as the question .
+For example , if we choose the " action " template , the input sequence for the example sentence in Figures 1 and 2 is instantiated as : [ CLS ] action [ SEP ]
+As part of the 11billion - dollar sale ..
+. [ SEP ]
+As for event argument extraction , we design three templates with argument role name , basic argument based question and annotation guideline based question , respectively : ? Template 1 ( Role Name )
+For this template , < question > is simply instantiated with the argument role name ( e.g. , artifact , agent , place ) .
+?
+Template 2 ( Type + Role ) Instead of directly using the argument role name ( < role name > ) as the question , we first determine the argument role 's general semantic type - one of person , place , other ; and construct the associated " WH " word question - who for person , where for place and what for all other cases , of the following form : < WH_word > is the < role name > ?
+Examples are shown in Table 1 for the arguments of event type MOVE-MENT.TRANSPORT .
+By adding the WH word , more semantic information is included as compared to Template 1 .
+? Template 3 ( Incorporating Annotation Guidelines )
+To incorporate even more semantic information and make the question more natural sounding , we utilize the descriptions of each argument role provided in the ACE annotation guidelines for events ( Linguistic Data Consortium , 2005 ) for generating the questions .
+? + " in < trigger > "
+Finally , for each template type , it is possible to encode the trigger information by adding " in < trigger > " at the end of the question ( where < trigger > is instantiated with the real trigger token obtained from the trigger detection phase ) .
+For example , the Template 2 question incorporating trigger information would be : < WH_word > is the < argument > in < trigger >?
+To help better understand all the strategies above , Table 1 presents an example for argument roles of event type MOVEMENT.TRANSPORT .
+We see that the annotation guideline based questions are more natural and encode more semantics about a given argument role , than the simple Type + Role question " what is the artifact ? " .
+Question Answering Models
+We use BERT as the base model for getting contextualized representations for the input sequences for both BERT_QA_Trigger and BERT_QA_Arg .
+After the instantiation with question templates the sequences are of format [ CLS ] < question > [ SEP ] < sentence > [ SEP ] .
+Then we get the contextualized representations of each token for trigger detection and argument extraction with BERT T r and BERT Arg , respectively .
+For the input sequence ( e 1 , e 2 , ... , e N ) prepared for trigger detection , we have : E = [ e 1 , e 2 , ... , e N ] e 1 , e 2 , ... , e N = BERT T r ( e 1 , e 2 , ... , e N ) For the input sequence ( a 1 , a 2 , ... , a M ) prepared for argument span extraction , we have : A = [ a 1 , a 2 , ... , a M ] a 1 , a 2 , ... , a M = BERT Arg ( a 1 , a 2 , ... , a M )
+The output layer of each QA model , however , differs : BERT_QA_Trigger predicts the event type for each token in sentence ( or None if it is not an event trigger ) , while BERT_QA_Arg predicts the start and end offsets for the argument span with a different decoding strategy .
+More specifically , for trigger prediction , we introduce a new parameter matrix W tr ?
+R H?T , where H is the hidden size of the transformer and T is the number of event types plus one ( for nontrigger tokens ) .
+softmax normalization is applied across the T types to produce P tr , the probability distribution across the event types : P tr = softmax ( EW tr ) ? R T ? N
+At test time , for trigger detection , to obtain the type for each token e 1 , e 2 , ... , e N , we simply apply argmax to P tr .
+For argument span prediction , we introduce two new parameter matrices W s ?
+R H?1 and W e ? R H?1 ; softmax normalization is then applied across the input tokens a 1 , a 2 , ... , a M to produce the probability of each token being selected as the start / end of the argument span : P s ( i ) = softmax ( a i W s ) P e ( i ) = softmax ( a i W e ) To train the models ( BERT_QA_Trigger and BERT_QA_Arg ) , we minimize the negative loglikelihood loss for both models , parameters are updated during the training process .
+In particular , the loss for the argument extraction model is the sum of two parts : the start token loss and end end token loss .
+For the training examples with no argument span ( no answer case ) , we minimize the start and end probability of the first token of the sequence ( [ CLS ] ) .
+L arg = L arg_start + L arg_end Inference with Dynamic Threshold for Argument Spans
+At test time , predicting the argument spans is more complex - for each argument role , there can be several or no spans to be extracted .
+After the output layer , we have the probability of each token a i ?
+( a 1 , a 2 , ... , a M ) being the start ( P s ( i ) ) and end ( P e ( i ) ) of the argument span .
+Firstly , we run an algorithm to harvest all valid argument spans candidates for each argument role ( Algorithm 1 ) .
+Basically , we : 1 . Enumerate all the possible combinations of start offset ( start ) and end offset ( end ) of the argument spans ( line 1 - 2 ) ;
+2 . Eliminate the spans not satisfying the constraints : start and end token must be within the sentence ; the length of the span should be shorter than a maximum length constraint ; Argument spans should have larger probability than the probability of " no argument " ( which is stored at the [ CLS ] token ) ( line 3 - 5 ) ;
+3 . Calculate the relative no answer score ( no_ans_score ) for the candidate span and add the candidate to list ( line 6 - 8 ) .
+Then we run another algorithm to filter out candidate arguments that should not be included ( Algorithm 2 ) .
+More specifically , we obtain a probability threshold ( best_thresh ) that helps achieve best evaluation results on the dev set ( line 1 - 9 ) and keep only those arguments with no_ans_score smaller than the threshold ( line 10 - 13 ) .
+With the dynamic threshold for determining the number of arguments to be extracted for each role , we avoid adding a ( hard ) hyperparameter for this purpose .
+Another easier way to get final argument predictions is to directly include all the candidates with no_ans_score < 0 , which does not require tuning the dynamic threshold best_thresh .
+Experiments
+Dataset and Evaluation Metric
+We conduct experiments on the ACE 2005 corpus ( Doddington et al. , 2004 ) , it contains documents crawled between year 2003 and 2005 from a variety of areas such as newswire ( nw ) , weblogs ( wl ) , broadcast conversations ( bc ) and broadcast news ( bn ) .
+The part that we use for evaluation is fully annotated with 5,272 event triggers and 9,612 arguments .
+We use the same data split and preprocessing step as in the prior works ( Zhang et al. , 2019 b ; Wadden et al. , 2019 ) .
+As for evaluation , we adopt the same criteria defined in Li et al . ( 2013 ) :
+An event trigger is correctly identified ( ID ) if its offsets match those of a gold-standard trigger ; and it is correctly classified if its event type ( 33 in total ) also match the type of the gold -standard trigger .
+An event argument is correctly identified ( ID ) if its offsets and event type match those of any of the reference argument mentions in the document ; and it is correctly classified if its semantic role ( 22 in total ) is also correct .
+Though our framework does not involve the trigger / argument identification step and tackles the identification + classification in an end-to - end way .
+We still report the trigger / argument identification 's results to compare to prior work .
+It could be seen as a more lenient eval metric , as compared to the final trigger detection and argument extraction metric ( ID + Classification ) , which requires both the offsets and the type to be correct .
+All the aforementioned elements are evaluated using precision ( denoted as P ) , recall ( denoted as R ) and F1 scores ( denoted as F1 ) .
+Results Evaluation on ACE Event Extraction
+We compare our framework 's performance to a number of prior competitive models : dbRNN ( Sha et al. , 2018 ) is an LSTM - based framework that leverages the dependency graph information to extract event triggers and argument roles .
+Joint3EE ( Nguyen and Nguyen , 2019 ) is a multi-task model that performs entity recognition , trigger detection and argument role assignment by shared BiGRU hidden representations .
+GAIL ( Zhang et al. , 2019 b ) is an ELMo - based model that utilizes generative adversarial network to help the model focus on harderto-detect events .
+DYGIE ++ ( Wadden et al. , 2019 ) is a BERT - based framework that models text spans and captures within-sentence and cross-sentence context .
+OneIE ( Lin et al. , 2020 ) is a joint neural model for extraction with global features .
+2 In Table 2 , we present the comparison of models ' performance on trigger detection .
+We also implement a BERT fine-tuning baseline and it reaches nearly same performance as its counterpart in the DYGIE ++.
+We observe that our BERT_QA_Trigger model with best trigger questioning strategy reaches comparable ( better ) performance with the baseline models .
+3 Table 3 shows the comparison between our model and baseline systems on argument extraction .
+Notice that the performance of argument extraction is directly affected by trigger detection .
+Because argument extraction correctness requires the trigger to which the argument refers to be correctly identified and classified .
+We observe , ( 1 ) This once again demonstrates the benefit of our new formulation for the task as question answering .
+To better understand how the dynamic threshold is affecting our framework 's performance .
+We conduct an ablation study on this ( Table 3 ) and find that the threshold increases the precision and the general F1 substantially .
+The last row in the table shows the test time ensemble performance of the predictions from BERT_QA_Arg trained with template 2 question , and another BERT_QA_Arg trained with template 3 question .
+The ensemble system outperforms the non-ensemble system in both precision and recall , demonstrating the benefit from both templates .
+target event ontology .
+This framework 's argument extraction 's results are affected by the AMR results and their reported F1 is around 20 - 30 % in their evaluation setting .
+Evaluation on Unseen Argument Roles Using our QA - based framework , as we leverage more semantic information and naturalness into the question ( from question template 1 to 2 , to 3 ) , both the precision and recall increase substantially .
+Further Analysis
+Influence of Question Templates
+To investigate how the question generation strategies affect the performance of event extraction , we perform experiments on trigger and argument extractions with different strategies , respectively .
+In Table 6 , we try different fixed questions for trigger detection .
+By " leaving empty " , we mean instantiating the question with empty string .
+4
+There 's no substantial gap between different alternatives .
+By using " verb " as the question , our BERT_QA_Trigger model achieves best performance ( measured by F1 score ) .
+The QA model also encodes the semantic interactions between the fixed question ( " verb " ) and the sentence , this explains why BERT_QA_Trigger is better than BERT FineTune in trigger detection .
+The comparison between different question generation strategies for argument extraction is even more interesting .
+In Table 5 , we present the results in two settings : event argument extraction with predicted triggers ( the same setting as in Table 3 ) , and with gold triggers .
+In summary , we finds that : ? Adding " in < trigger > " afterwards the question consistently improve the performance .
+the " in < trigger > " , for each template ( 1 , 2 & 3 ) , the F1 of models ' predictions drop around 3 percent when given predicted triggers , and more when given gold triggers .
+?
+Our template 3 questioning strategy which is most natural achieves the best performance .
+As we mentioned earlier , template 3 questions are based on descriptions for argument roles in the annotation guideline , thus encoding more semantic information about the role name .
+And this corresponds to the accuracy of models ' predictions - template 3 outperforms template 1&2 in both with " in < trigger > " and without " in < trigger > " setting .
+What 's more , we observe that template 2 ( adding a WH_word to form the questions ) achieves better performance than the template 1 ( directly using argument role name ) .
+Error Analysis
+We further conduct error analysis and provide a number of representative examples .
+3 , where the precision of our models are higher .
+In around 30 % of the cases , our framework extracts same number of argument spans as in the gold data , half of them match exactly the gold arguments .
+After examining the example predictions , we find that reasons for errors can be mainly divided into the following categories : ?
+More complex sentence structures .
+In the following example , where the input sentence has multiple clauses , each with trigger and arguments ( such as when triggers are partial or elided ) .
+Our model is capable of also extracting " Tom " as another ENTITY of the CONTACT .MEET event .
+[ She ] ENTITY visited the store and [ Tom ] ENTITY did too .
+But in the second example , when there is a higher - order event expressed spanning events in nested clauses : Canadian authorities arrested two Vancouver - area men on Friday and charged them in the deaths of [ 329 passengers and crew members of an Air-India Boeing 747 that blew up over the Irish Sea in 1985 , en route from Canada to London ]
+VICTIM .
+Our model did not extract the entire VICTIM correctly , which proves the difficulty of handling complex clauses structures .
+?
+Lack of reasoning with document- level context .
+In sentence " MCI must now seize additional assets owned by Ebbers , to secure the loan . "
+There is a TRANSFER - MONEY event triggered by loan , with MCI being the GIVER and Ebbers being the RECIPIENT .
+In the previous paragraph , it 's men-tioned that " Ebbers failed to make repayment of certain amount of money on the loan from MCI . "
+Without this context , it is hard to determine that Ebbers should be the recipient of the loan .
+?
+Lack of knowledge for obtaining exact boundary for the argument span .
+For example , in " Negotiations between Washington and Pyongyang on their nuclear dispute have been set for April 23 in Beijing ... " , for the ENTITY role , two argument spans should be extracted ( " Washington " and " Pyongyang " ) .
+While our framework predicts the entire " Washington and Pyongyang " as the argument span .
+Although there 's an overlap between the prediction and gold - data , the model gets no credit for it .
+These methods generally perform trigger detection ? entity recognition ? argument role assignment during decoding .
+Different from the works above , our framework completely bypasses the entity recognition stage ( thus no annotation resources for NER needed ) , and directly tackles event argument extraction .
+Also related to our work includes Wadden et al . ( 2019 ) , they model the entity / argument spans ( with start and end offset ) instead of labeling with BIO scheme .
+Different from our work , their learned span representations are later used to predict the entity / argument type .
+While our QA model directly extract the spans for certain argument role type .
+Contextualized representations produced by pre-trained language models ( Peters et al. , 2018 ; have been proved to be helpful for event extraction ( Zhang et al. , 2019 b ; Wadden et al. , 2019 ) and question answering ( Rajpurkar et al. , 2016 ) .
+The attention mechanism helps capture relationships between tokens in question and input sequence .
+We use BERT in our framework for capturing semantic relationship between question and input sentence .
+Machine Reading Comprehension ( MRC ) Span-based MRC tasks involve extracting a span from a paragraph ( Rajpurkar et al. , 2016 ) or multiple paragraphs ( Joshi et al. , 2017 ; Kwiatkowski et al. , 2019 ) .
+Recently , there have been explorations on formulating NLP tasks as a question answering problem .
+McCann et al. ( 2018 ) propose natural language decathlon challenge ( decaNLP ) , which consists of ten tasks ( e.g. , machine translation , summarization , question answering , etc . )
+They cast all tasks as question answering over a context and propose a general model for this .
+In the information extraction literature , Levy et al . ( 2017 ) propose the zero-shot relation extraction task and reduce the task to answering crowd-sourced reading comprehension questions .
+Li et al. ( 2019 ) casts entity -relation extraction as a multi-turn question answering task .
+Their questions lack diversity and naturalness .
+For example for the PART - WHOLE relation , the template questions is " find Y that belongs to X " , where X is instantiated with the pre-given entity .
+The follow - up work from Li et al . ( 2020 ) propose better query strategies incorporating synonyms and examples for named entity recognition .
+Different from the works above , we focus on the more complex event extraction task , which involves both trigger detection and argument extraction .
+Our generated questions for extracting event arguments are more natural ( incorporating descriptions from annotation guidelines ) and leverage trigger information .
+Question Generation
+To generate question templates 2&3 ( Type + Role question and annotation guideline based question ) which are more natural , we draw insights from literature of automatic rule- based question generation ( Heilman and Smith , 2010 ) . Heilman ( 2011 ) propose to use linguistically motivated rules for WH word ( question phrase ) selection .
+In their more general case of question generation from sentences , answer phrases can be noun phrases , prepositional phrases , or subordinate clauses .
+Complicated rules are designed with help from superTagger ( Ciaramita and Altun , 2006 ) .
+In our case , event arguments are mostly noun phrases and the rules are simpler -" who " for person , " where " for place and " what " for all other types of entities .
+We sample around 10 examples from the development set to determine the entity type of each argument role .
+In the future , it is interesting to investigate how to utilize machine learning - based question generation method ( Du et al. , 2017 ) , which would be more beneficial for schema / ontology containing a large number of event argument types .
+Conclusion
+In this paper , we introduce a new paradigm for event extraction based on question answering .
+We investigate how the question generation strategies affect the performance of our framework on both trigger detection and argument span extraction , and find that more natural questions lead to better performance .
+Our framework outperforms prior works on the ACE 2005 benchmark , and is capable of extracting event arguments of roles not seen at training time .
+For future work , it would be interesting to try incorporating broader context ( e.g. , paragraph / document - level context ( Ji and Grishman , 2008 ; Huang and Riloff , 2011 ; Du and Cardie , 2020 ) in our methods to improve the accuracy of the predictions .
+Figure 1 : 1 Figure 1 : Event extraction example from the ACE 2005 corpus ( Doddington et al. , 2004 ) .

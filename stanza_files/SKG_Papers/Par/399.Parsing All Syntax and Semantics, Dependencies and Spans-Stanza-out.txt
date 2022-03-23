@@ -1,0 +1,240 @@
+title
+Parsing All : Syntax and Semantics , Dependencies and Spans
+abstract
+Both syntactic and semantic structures are key linguistic contextual clues , in which parsing the latter has been well shown beneficial from parsing the former .
+However , few works ever made an attempt to let semantic parsing help syntactic parsing .
+As linguistic representation formalisms , both syntax and semantics may be represented in either span ( constituent / phrase ) or dependency , on both of which joint learning was also seldom explored .
+In this paper , we propose a novel joint model of syntactic and semantic parsing on both span and dependency representations , which incorporates syntactic information effectively in the encoder of neural network and benefits from two representation formalisms in a uniform way .
+The experiments show that semantics and syntax can benefit each other by optimizing joint objectives .
+Our single model achieves new state - of - the - art or competitive results on both span and dependency semantic parsing on Propbank benchmarks and both dependency and constituent syntactic parsing on Penn Treebank .
+Introduction
+This work makes the first attempt to fill the gaps on syntactic and semantic parsing from jointly considering its representation forms and their linguistic processing layers .
+First , both span ( constituent ) and dependency are effective formal representations for both semantics and syntax , which have been well studied and discussed from both linguistic and computational perspective , though few works comprehensively considered the impact of either / both representation styles over the respective parsing ( Chomsky , 1981 ; Li et al. , 2019 b ) .
+Second , as semantics is usually considered as a higher layer of linguistics over syntax , most previous studies focus on how the latter helps the former .
+Though there comes a trend that syntactic clues show less impact on enhancing semantic parsing since neural models were introduced .
+In fact , recent works ( He et al. , 2017 ; propose syntax - agnostic models for semantic parsing and achieve competitive and even state - of - the - art results .
+However , semantics may not only benefit from syntax which has been well known , but syntax may also benefit from semantics , which is an obvious gap in explicit linguistic structure parsing and few attempts were ever reported .
+To our best knowledge , few previous works focus on the relationship between syntax and semantic which only based on dependency structure ( Swayamdipta et al. , 2016 ; Henderson et al. , 2013 ; Shi et al. , 2016 ) .
+To fill such a gap , in this work , we further exploit both strengths of the span and dependency representation of both semantic role labeling ( SRL ) ( Strubell et al. , 2018 ) and syntax , and propose a joint model 1 with multi-task learning in a balanced mode which improves both semantic and syntactic parsing .
+Moreover , in our model , semantics is learned in an end-to - end way with a uniform representation and syntactic parsing is represented as a joint span structure ( Zhou and Zhao , 2019 ) relating to head - driven phrase structure grammar ( HPSG ) ( Pollard and Sag , 1994 ) which can incorporate both head and phrase information of dependency and constituent syntactic parsing .
+We verify the effectiveness and applicability of the proposed model on Propbank semantic parsing 2 in both span style ( CoNLL - 2005 ) ( Carreras and M?rquez , 2005 ) and dependency style ( CoNLL - 2009 ) ( Haji ?
+et al. , 2009 ) and Penn Treebank ( PTB ) ( Marcus et al. , 1993 ) for both constituent and dependency syntactic parsing .
+Our empirical results show that semantics and syntax can indeed benefit each other , and our single model reaches new stateof - the - art or competitive performance for all four tasks : span and dependency SRL , constituent and dependency syntactic parsing .
+Structure Representation
+In this section , we introduce a preprocessing method to handle span and dependency representation , which have strong inherent linguistic relation for both syntax and semantics .
+For syntactic representation , we use a formal structure called joint span following ( Zhou and Zhao , 2019 ) to cover both constituent and head information of syntactic tree based on HPSG which is a highly lexicalized , constraint - based grammar ( Pollard and Sag , 1994 ) .
+For semantic ( SRL ) representation , we propose a unified structure to simplify the training process and employ SRL constraints for span arguments to enforce exact inference .
+Syntactic Representation
+The joint span structure which is related to the HEAD FEATURE PRINCIPLE ( HFP ) of HPSG ( Pollard and Sag , 1994 ) consists of all its children phrases in the constituent tree and all dependency arcs between the head and children in the dependency tree .
+For example , in the constituent tree of Figure 1 ( a ) , Federal Paper Board is a phrase ( 1 , 3 ) assigned with category NP and in dependency tree , Board is parent of Federal and Paper , thus in our joint span structure , the head of phrase ( 1 , 3 ) is Board .
+The node S H ( 1 , 9 ) in Figure 1 ( b ) as a joint span is : S H ( 1 , 9 ) = { S H ( 1 , 3 ) , S H ( 4 , 8 ) , S H ( 9 , 9 ) , l ( 1 , 9 , < S > ) , d( Board , sells ) , d(. , sells ) } , where l( i , j , < S > ) denotes category of span ( i , j ) with category S and d(r , h ) indicates the dependency between the word r and its parent h .
+At last , the entire syntactic tree T being a joint span can be represented as : S H ( T ) = { S H ( 1 , 9 ) , d( sells , root ) }
+3 . Following most of the recent work , we apply the PTB -SD representation converted by version 3.3.0 ( 5,7 ) ( 5,8 ) ( 4,8 ) ( 1,9 ) ( 1,3 ) ( b) Joint span structure .
+Figure 1 : Constituent , dependency , and joint span structures from ( Zhou and Zhao , 2019 ) , which is indexed from 1 to 9 and assigned interval range for each node .
+The dotted box represents the same part .
+The special category # is assigned to divide the phrase with multiple heads .
+Joint span structure contains constitute phrase and dependency arc .
+Categ in each node represents the category of each constituent , and HEAD indicates the head word .
+of the Stanford parser .
+However , this dependency representation results in around 1 % of phrases containing two or three head words .
+As shown in Figure 1 ( a ) , the phrase ( 5,8 ) assigned with a category NP contains 2 head words of paper and products in dependency tree .
+To deal with the problem , we introduce a special category # to divide the phrase with multiple heads to meet the criterion that there is only one head word for each phrase .
+After this conversion , only 50 heads are errors in PTB .
+Moreover , to simplify the syntactic parsing algorithm , we add a special empty category ? to spans to binarize the n-ary nodes and apply a unary atomic category to deal with the nodes of the unary chain , which is popularly adopted in constituent syntactic parsing ( Stern et al. , 2017 ; Gaddy et al. , 2018 ) ( 5,7 ) ( 5,8 ) ( 4,8 ) ( 1,9 ) ( 1,3 ) Federal Paper Board sells paper and wood products .
+Semantic Representation Similar to the semantic representation of ( Li et al. , 2019 b ) , we use predicate - argument-relation tuples Y ? P ? A ? R , where P = {w 1 , w 2 , ... , w n } is the set of all possible predicate tokens , A = {( w i , . . . , w j ) |1 ? i ? j ? n} includes all the candidate argument spans and dependencies , and R is the set of the semantic roles and employ a null label to indicate no relation between predicate - argument pair candidate .
+The difference from that of ( Li et al. , 2019 b ) is that in our model , we predict the span and dependency arguments at the same time which needs to distinguish the single word span arguments and dependency arguments .
+Thus , we represent all the span arguments A = {( w i , . . . , w j ) |1 ? i ? j ? n} as span S( i ? 1 , j ) and all the dependency arguments A = {( w i ) |1 ? i ? n} as span S ( i , i ) .
+We set a special start token at the beginning of sentence .
+3 Our Model
+Overview
+As shown in Figure 2 , our model includes four modules : token representation , self-attention encoder , scorer module , and two decoders .
+Using an encoder-decoder backbone , we apply self-attention encoder ( Vaswani et al. ) that is modified by position partition ( Kitaev and Klein , 2018 ) .
+We take multi-task learning ( MTL ) approach sharing the parameters of token representation and self-attention encoder .
+Since we convert two syntactic representations as joint span structure and apply uniform semantic representation , we only need two decoders , one for syntactic tree based on joint span syntactic parsing algorithm ( Zhou and Zhao , 2019 ) , another for uniform SRL .
+Token Representation
+In our model , token representation x i is composed of characters , words , and part-of-speech ( POS ) representation .
+For character - level representation , we use CharLSTM ( Ling et al. , 2015 ) .
+For word- level representation , we concatenate randomly initialized and pre-trained word embeddings .
+We concatenate character representation and word representation as our token representation x i =[ x char ;x word ;x P OS ] .
+In addition , we also augment our model with BERT ( Devlin et al. , 2019 ) or XLNet ( Yang et al. , 2019 ) as the sole token representation to compare with other pre-training models .
+Since BERT and XLNet are based on sub-word , we only take the last sub-word vector of the word in the last layer of BERT or XLNet as our sole token representation x i .
+Self-Attention Encoder
+The encoder in our model is adapted from ( Vaswani et al. ) and factor explicit content and position information in the self-attention process .
+The input matrices X = [ x 1 , x 2 , . . . , x n ] in which x i is concatenated with position embedding are transformed by a self-attention encoder .
+We factor the model between content and position information both in self-attention sub-layer and feed -forward network , whose setting details follow ( Kitaev and Klein , 2018 ) .
+Scorer Module Since span and dependency SRL share uniform representation , we only need three types of scores : syntactic constituent span , syntactic dependency head , and semantic role scores .
+We first introduce the span representation s ij for both constituent span and semantic role scores .
+We define the left end-point vector as concatenation of the adjacent token ? ? pl i = [ ? ? y i ; ? ? ? y i +1 ] , which ? ? y i is constructed by splitting in half the outputs from the self-attention encoder .
+Similarly , the right endpoint vector is ? ? pr i = [ ? ? ? y i +1 ; ? ? y i ] .
+Then , the span representation s ij is the differences of the left and right end-point vectors s ij = [ ? ? pr j ? ? ? pl i ]
+4 . Constituent Span Score
+We follow the constituent syntactic parsing ( Zhou and Zhao , 2019 ; Kitaev and Klein , 2018 ; Gaddy et al. , 2018 ) to train constituent span scorer .
+We apply one - layer feedforward networks to generate span scores vector , taking span vector s ij as input : S( i , j ) = W 2 g( LN ( W 1 s ij + b 1 ) ) + b 2 , where LN denotes Layer Normalization , g is the Rectified Linear Unit nonlinearity .
+The individual score of category is denoted by S categ ( i , j , ) = [ S ( i , j ) ] , where [ ] indicates the value of corresponding the lth element of the score vector .
+The score s( T ) of the constituent parse tree T is obtained by adding all scores of span ( i , j ) with category : s( T ) = ( i , j , ) ?T
+S categ ( i , j , ) .
+The goal of constituent syntactic parsing is to find the tree with the highest score : T = arg max T s( T ) .
+We use CKY - style algorithm ( Gaddy et al. , 2018 ) to obtain the tree T in O(n 3 ) time complexity .
+This structured prediction problem is handled with satisfying the margin constraint : s( T * ) ? s( T ) + ?( T , T * ) , where T * denotes correct parse tree , and ? is the Hamming loss on category spans with a slight modification during the dynamic programming search .
+4 Since we use the same end-point span sij = [ ? ? prj ? ? ? pli ] to represent the dependency arguments for our uniform SRL , we distinguish the left and right end-point vector ( ? ? pli and ? ? pri ) to avoid having the zero vector as a span representation sij .
+The objective function is the hinge loss , J 1 ( ? ) = max ( 0 , max T [ s ( T ) +?( T , T * ) ]?s( T * ) ) .
+Dependency Head Score
+We predict a the possible heads and use the biaffine attention mechanism ( Dozat and Manning , 2017 ) to calculate the score as follow : ? ij = h T i W g j + U T h i + V T g j + b , where ?
+ij indicates the child - parent score , W denotes the weight matrix of the bi-linear term , U and V are the weight vectors of the linear term , and b is the bias item , h i and g i are calculated by a distinct one - layer perceptron network .
+We minimize the negative log-likelihood of the golden dependency tree Y , which is implemented as a cross-entropy loss : J 2 ( ? ) = ?
+( logP ? ( h i |x i ) + logP ? ( l i |x i , h i ) ) , where P ? ( h i |x i ) is the probability of correct parent node h i for x i , and P ?
+( l i |x i , h i ) is the probability of the correct dependency label l i for the childparent pair ( x i , h i ) .
+Semantic Role Score
+To distinguish the currently considered predicate from its candidate arguments in the context , we employ one - layer perceptron to contextualized representation for argument a ij 5 candidates : a ij = g( W 3 s ij + b 1 ) , where g is the Rectified Linear Unit nonlinearity and s ij denotes span representation .
+And predicate candidates p k is simply represented by the outputs from the self-attention encoder : p k = y k .
+For semantic role , different from ( Li et al. , 2019 b ) , we simply adopt concatenation of predicates and arguments representations , and one- layer feedforward networks to generate semantic role score : ? r ( p , a ) = W 5 g( LN ( W 4 [ p k ; a ij ] + b 4 ) ) + b 5 , and the individual score of semantic role label r is denoted by : ? r ( p , a , r ) = [? r ( p , a ) ]
+r .
+Since the total of predicate - argument pairs are O(n 3 ) , which is computationally impractical .
+We apply candidates pruning method in ( Li et al. , 2019 b ; . First of all , we train separate scorers ( ?
+p and ? a ) for predicates and arguments by two one - layer feedforward networks .
+Then , the predicate and argument candidates are ranked according to their predicted score ( ?
+p and ? a ) , and we select the top n p and n a predicate and argument candidates , respectively : n p = min ( ?
+p n , m p ) , n a = min (?
+a n , m a ) , where ? p and ?
+a are pruning rate , and m p and m a are maximal numbers of candidates .
+Finally , the semantic role scorer is trained to optimize the probability P ? ( ?|s ) of the predicateargument -relation tuples ?( p, a , r ) ?
+Y given the sentence s , which can be factorized as :
+At last , we train our scorer for simply minimizing the overall loss : J 3 ( ? ) = J overall ( ? ) = J 1 ( ? ) + J 2 ( ? ) + J 3 ( ? ) .
+Decoder Module
+Decoder for Joint Span Syntax
+As the joint span is defined in a recursive way , to score the root joint span has been equally scoring all spans and dependencies in syntactic tree .
+During testing , we apply the joint span CKYstyle algorithm ( Zhou and Zhao , 2019 ) , as shown in Algorithm 1 to explicitly find the globally highest score S H ( T ) of our joint span syntactic tree T 6 . Also , to control the effect of combining span and dependency scores , we apply a weight ?
+H 7 : s( i , j , ) = ?
+H S categ ( i , j , ) , d( i , j ) = ( 1 ? H ) ?
+ij , 6
+For further details , see ( Zhou and Zhao , 2019 ) which has discussed the different between constituent syntactic parsing CKY - style algorithm , how to binarize the joint span tree and the time , space complexity .
+7
+We also try to incorporate the head information in constituent syntactic training process , namely max-margin loss Algorithm 1 Joint span syntactic parsing algorithm Input : sentence leng n , span and dependency score s( i , j , ) , d( r , h ) , 1 ? i ? j ? n , ?r , h , Output : maximum value SH ( T ) of tree T Initialization : sc [ i ] [ j ] [ h ] = si [ i ] [ j ] [ h ] = 0 , ?i , j , h for len = 1 to n do for i = 1 to n ? len + 1 do j = i + len ?
+1 if len = 1 then sc [ i ] [ j ] [ i ] = si [ i ] [ j ] [ i ] = max s( i , j , ) else for h = i to j do split l = max i?r<h { max r?k<h { sc [ i ] [ k ] [ r ] + si [ k + 1 ] [ j ] [ h ] } + d( r , h ) } splitr = max h<r ? j { max h?k<r { si [ i ] [ k ] [ h ] + sc [ k + 1 ] [ j ] [ r ] } + d( r , h ) } sc [ i ] [ j ] [ h ] = max { split l , splitr }+ max =? s( i , j , ) si [ i ] [ j ] [ h ] = max { split l , splitr }+ max s( i , j , ) end for end if end for end for SH ( T ) = max 1?h?n { sc [ 1 ] [ n ] [ h ] + d( h , root ) } where ?
+H in the range of 0 to 1 .
+In addition , we can merely generate constituent or dependency syntactic parsing tree by setting ?
+H to 1 or 0 , respectively .
+Decoder for Uniform Semantic Role Since we apply uniform span for both dependency and span semantic role , we use a single dynamic programming decoder to generate two semantic forms following the non-overlapping constraints : span semantic arguments for the same predicate do not overlap ( Punyakanok et al. , 2008 ) .
+Experiments
+We evaluate our model on CoNLL -2009 shared task ( Haji ?
+et al. , 2009 ) for dependency - style SRL , CoNLL - 2005 shared task ( Carreras and M?rquez , 2005 ) for span-style SRL both using the Propbank convention ( Palmer et al. , 2005 ) , and English Penn Treebank ( PTB ) ( Marcus et al. , 1993 ) for constituent syntactic parsing , Stanford basic dependencies ( SD ) representation ( de Marneffe et al. , 2006 ) converted by the Stanford parser 8 for dependency syntactic parsing .
+We follow standard data splitting : for both two scores , but it makes the training process become more complex and unstable .
+Thus we employ a parameter to balance two different scores in joint decoder which is easily implemented with better performance .
+8 http://nlp.stanford.edu/software/lex-parser.html semantic ( SRL ) and syntactic parsing take section 2 - 21 of Wall Street Journal ( WSJ ) data as training set , SRL takes section 24 as development set while syntactic parsing takes section 22 as development set , SRL takes section 23 of WSJ together with 3 sections from Brown corpus as test set while syntactic parsing only takes section 23 .
+POS tags are predicted using the Stanford tagger ( Toutanova et al. , 2003 ) .
+In addition , we use two SRL setups : end-to-end and pre-identified predicates .
+For the predicate disambiguation task in dependency SRL , we follow and use the off-the-shelf disambiguator from ( Roth and Lapata , 2016 ) .
+For constituent syntactic parsing , we use the standard evalb 9 tool to evaluate the F1 score .
+For dependency syntactic parsing , following previous work ( Dozat and Manning , 2017 ) , we report the results without punctuations of the labeled and unlabeled attachment scores ( LAS , UAS ) .
+Setup Hyperparameters
+In our experiments , we use 100D GloVe ( Pennington et al. , 2014 ) pre-trained embeddings .
+For the self-attention encoder , we set 12 self-attention layers and use the same other hyperparameters settings as ( Kitaev and Klein , 2018 ) .
+For semantic role scorer , we use 512 - dimensional MLP layers and 256 - dimensional feed -forward networks .
+For candidates pruning , we set ? p = 0.4 and ? a = 0.6 for pruning predicates and arguments , m p = 30 and m a = 300 for max numbers of predicates and arguments respectively .
+For constituent span scorer , we apply a hidden size of 250 - dimensional feed -forward networks .
+For dependency head scorer , we employ two 1024 dimensional MLP layers with the ReLU as the activation function for learning specific representation and a 1024 - dimensional parameter matrix for biaffine attention .
+In addition , when augmenting our model with BERT and XLNet , we set 2 layers of self-attention for BERT and XLNet .
+Training Details we use 0.33 dropout for biaffine attention and MLP layers .
+All models are trained for up to 150 epochs with batch size 150 on a single NVIDIA GeForce GTX 1080 Ti GPU with Intel i7- 7800X CPU .
+We use the same training settings as ( Kitaev and Klein , 2018 ) and ( Kitaev et al. , 2019 ) .
+Joint Span Syntactic Parsing
+This subsection examines joint span syntactic parsing decoder 3.5 with semantic parsing both of dependency and span .
+The weight parameter ?
+H plays an important role to balance the syntactic span and dependency scores .
+When ?
+H is set to 0 or 1 , the joint span parser works as the dependencyonly parser or constituent -only parser respectively . ?
+H set to between 0 to 1 indicates the general joint span syntactic parsing , providing both constituent and dependency structure prediction .
+We set the ?
+H parameter from 0 to 1 increased by 0.1 step as shown in Figure 3 .
+The best results are achieved when ?
+H is set to 0.8 which achieves the best performance of both syntactic parsing .
+In addition , we compare the joint span syntactic parsing decoder with a separate learning constituent syntactic parsing model which takes the same token representation , self-attention encoder and joint learning setting of semantic parsing on PTB dev set .
+The constituent syntactic parsing results are also converted into dependency ones by PTB - SD for comparison .
+Table 1 shows that joint span decoder benefit both of constituent and dependency syntactic parsing .
+Besides , the comparison also shows that the directly predicted dependencies from our model are better than those converted from the predicted constituent parse trees in UAS term .
+Joint Learning Analysis
+Table 2 compares the different joint setting of semantic ( SRL ) and syntactic parsing to examine whether semantics and syntax can enjoy their joint learning .
+In the end-to - end mode , we find that constituent syntactic parsing can boost both styles of semantics while dependency syntactic parsing cannot .
+Moreover , the results of the last two rows indicate that semantics can benefit syntax simply by optimizing the joint objectives .
+While in the given predicate mode , both constituent and dependency syntactic parsing can enhance SRL .
+In addition , joint learning of our uniform SRL performs better than separate learning of either dependency or span SRL in both modes .
+Overall , joint semantic and constituent syntactic parsing achieve relatively better SRL results than the other settings .
+Thus , the rest of the experiments are done with multi-task learning of semantics and constituent syntactic parsing ( wo / dep ) .
+Since semantics benefits both of two syntactic formalisms and two syntactic parsing can benefit each other , we also compare the results of joint learning with semantics and two syntactic parsing models ( w / dep ) .
+Syntactic Parsing Results
+In the wo / dep setting , we convert constituent syntactic parsing results into dependency ones by PTB - SD for comparison and set ?
+H described in 3.5 to UAS LAS Dozat and Manning ( 2017 ) 95.74 94.08 Ma et al. ( 2018 ) 95.87 94.19 Strubell et al. ( 2018 ) 94.92 91.87 Fern?ndez-Gonz?lez and G?mez-Rodr?guez ( 2019 )
+Compared to the existing state - of - the - art models without pre-training , our performance exceeds ( Zhou and Zhao , 2019 ) nearly 0.2 in LAS of dependency and 0.3 F1 of constituent syntactic parsing which are considerable improvements on such strong baselines .
+Compared with ( Strubell et al. , 2018 ) shows that our joint model setting boosts both of syntactic parsing and SRL which are consistent with ( Shi et al. , 2016 ) that syntactic parsing and SRL benefit relatively more from each other .
+We augment our parser with a larger version of BERT and XLNet as the sole token representation to compare with other models .
+Our single model in XLNet setting achieving 96.18 F1 score of constituent syntactic parsing , 97.23 % UAS and 95.65 % LAS of dependency syntactic parsing .
+Semantic Parsing Results
+We present all results using the official evaluation script from the CoNLL -2005 and CoNLL - 2009 shared tasks , and compare our model with previous state - of - the - art models in
+Related Work
+In the early work of SRL , most of the researchers focus on feature engineering based on training corpus .
+The traditional approaches to SRL focused on developing rich sets of linguistic features templates and then employ linear classifiers such as SVM ( Zhao et al. , 2009a ) .
+With the impressive success of deep neural networks in various NLP tasks ( Luo and Zhao , 2020 ; Li et al. , 2020 ; He et al. , 2019 ; Luo et al. , 2020 b ; Zhang et al. , 2018a ; Li et al. , 2018a ; Luo et al. , 2020a ; Zhang et al. , 2019 ; Li et al. , 2019a ; Zhao and Kit , 2008 ; Zhao et al. , 2009 b
+Zhao et al. , , 2013 , considerable attention has been paid to syntactic features ( Strubell et al. , 2018 ; Kasai et al. , 2019 ; . ( Lewis et al. , 2015 ; Strubell et al. , 2018 ; Kasai et al. , 2019 ; modeled syntactic parsing and SRL jointly , ( Lewis et al. , 2015 ) jointly modeled SRL and CCG parsing , and ( Kasai et al. , 2019 ) combined the supertags extracted from dependency parses with SRL .
+There are a few studies on joint learning of syntactic and semantic parsing which only focus on dependency structure ( Swayamdipta et al. , 2016 ; Henderson et al. , 2013 ; Shi et al. , 2016 ) . Such as ( Henderson et al. , 2013 ) based on dependency structure only focus on shared representation without explicitly analyzing whether syntactic and semantic parsing can benefit each other .
+The ablation studies results show joint learning can benefit semantic parsing while the single syntactic parsing model was insignificantly worse ( 0.2 % ) than the joint model .
+( Shi et al. , 2016 ) only made a brief attempt on Chinese Semantic Treebank to show the mutual benefits between dependency syntax and semantic roles .
+Instead , our work focuses on whether syntactic and semantic parsing can benefit each other both on span and dependency in a more general way .
+Besides , both span and dependency are effective formal representations for both semantics and syntax .
+On one hand , researchers are interested in two forms of SRL models that may benefit from each other rather than their separated development , which has been roughly discussed in ( Johansson and Nugues , 2008 ) . is the first to apply span-graph structure based on contextualized span representations to span SRL and ( Li et al. , 2019 b ) built on these span representations achieves state - of - art results on both span and dependency SRL using the same model but training individually .
+On the other hand , researchers have discussed how to encode lexical dependencies in phrase structures , like lexicalized tree adjoining grammar ( LTAG ) ( Schabes et al. , 1988 ) and headdriven phrase structure grammar ( HPSG ) ( Pollard and Sag , 1994 ) .
+Conclusions
+This paper presents the first joint learning model which is evaluated on four tasks : span and dependency SRL , constituent and dependency syntactic parsing .
+We exploit the relationship between semantics and syntax and conclude that not only syntax can help semantics but also semantics can improve syntax performance .
+Besides , we propose two structure representations , uniform SRL and joint span of syntactic structure , to combine the span and dependency forms .
+From experiments on these four parsing tasks , our single model achieves state - of - the - art or competitive results .
+Figure 2 : 2 Figure 2 : The framework of our joint parsing model .
+p?P , a?A , r?R ?logP ? ( y ( p , a , r ) | s ) = p?P , a?A , r?R
+?log exp ?( p , a , r ) r?R exp ?( p , a , r ) where ? represents the model parameters , and ?( p , a , r ) = ? p + ? a + ? r ( p , a , r ) is the score by the predicate - argument-relation tuple including predicate score ?
+p , argument score ?
+a and semantic role label score ? r ( p , a , r ) .
+In addition , we fix the score of null label ?( p , a , ) = 0 .
+Figure 3 : 3 Figure 3 : Syntactic parsing performance of different parameter ?
+H on PTB dev set .
+. Federal 1 . . ROOT HEAD sells Categ < S > NNP 1 Dependency Head Score HEAD Board Categ < NP > HEAD sells Categ < VP > Paper NNP . Federal NNP 1 Paper NNP 2 Board NNP 3 sells VBZ 4 HEAD products Categ < NP > 9 . . . . Constituent Span Score 0 Label score 0 Joint Span Structure wood NN 7 Categ < # > paper NN and CC 5 6 HEAD paper products NNS 8 wood NN . Broadcast + products Predicate score .
+0 Softmax NNS Semantic Role Score Argument score Span and Dependency SRL Input Token Representation Self-Attention Layers Scoring Layer Decoder Layer
+Table 1 : 1 PTB dev set performance of joint span syntactic parsing .
+The converted means the corresponding dependency syntactic parsing results are from the corresponding constituent parse tree using head rules .
+Model F1 UAS LAS separate constituent converted dependency 93.98 ? 95.38 ? 94.06 separate dependency ? 95.80 94.40 joint span ?H = 1.0 93.89 ? ? joint span ?H = 0.0 ? 95.90 94.50 joint span ?H = 0.8 converted dependency 93.98 95.99 95.70 94.53 94.60
+Table 2 : 2 Joint learning analysis on CoNLL -2005 , CoNLL -2009 , and PTB dev sets .
+System SEM span SEM dep SYN con SYN dep F 1 F 1 F 1 UAS LAS End-to- end SEM span 82.27 ? ? ? ? SEM dep ? 84.90 ? ? ? SEM span , dep 83.50 84.92 ? ? ? SEM span , dep , SYN con 83.81 84.95 93.98 ? ? SEM span , dep , SYN dep 83.13 84.24 ? 95.80 94.40 SYN con , dep ? ? 93.78 95.92 94.49 SEM span , dep , SYN con , dep 83.12 83.90 93.98 95.95 94.51 Given predicate SEM span 83.16 ? ? ? ? SEM dep ? 88.23 ? ? ? SEM span , dep 84.74 88.32 ? ? ? SEM span , dep , SYN con 84.46 88.40 93.78 ? ? SEM span , dep , SYN dep 84.76 87.58 ? 95.94 94.54 SEM span , dep , SYN con , dep 84.43 87.58 94.07 96.03 94.65
+Table 4 : 4 Constituent syntactic parsing on WSJ test set 1 for generating constituent syntactic parsing only .
+96.04 94.43
+Table 5 , 6 . The upper part of the tables presents results from end-to- end mode System WSJ Brown P R F 1 P R F 1 End-to-end He et al . ( 2018a ) 81.2 83.9 82.5 69.7 71.9 70.8 Li et al. ( 2019 b ) - - 83.0 - - - Strubell et al . ( 2018 ) 84.07 83.16 83.61 73.32 70.56 71.91 Strubell et al. ( 2018 ) * 85.53 84.45 84.99 75.8 73.54 74.66 Ours ( wo / dep ) 83.65 85.48 84.56 72.02 73.08 72.55 Ours ( w / dep ) 83.54 85.30 84.41 71.84 72.07 71.95 + Pre-training
+He et al. ( 2018a ) 84.8 87.2 86.0 73.9 78.4 76.1 Li et al. ( 2019 b ) 85.2 87.5 86.3 74.7 78.1 76.4 Strubell et al. ( 2018 ) 86.69 86.42 86.55 78.95 77.17 78.05 Strubell et al. ( 2018 ) * 87.13 86.67 86.90 79.02 77.49 78.25 Ours ( wo / dep ) + BERT 86.77 88.49 87.62 79.06 81.67 80.34 Ours ( w/ dep ) + BERT 86.46 88.23 87.34 77.26 80.20 78.70 Ours ( wo / dep ) + XLNet 87.65 89.66 88.64 80.77 83.92 82.31 Ours ( w/ dep ) + XLNet 87.48 89.51 88.48 80.46 84.15 82.26
+Given predicate Tan et al . ( 2017 ) 84.5 85.2 84.8 73.5 74.6 74.1
+He et al . ( 2018 a ) - - 83.9 - - 73.7 Ouchi et al. ( 2018 ) 84.7 82.3 83.5 76.0 70.4 73.1 Strubell et al. ( 2018 ) 84.72 84.57 84.64 74.77 74.32 74.55 Strubell et al. ( 2018 ) *
+86.02 86.05 86.04 76.65 76.44 76.54 Ours ( wo / dep ) 85.93 85.76 85.84 76.92 74.55 75.72 Ours ( w/ dep ) 85.61 85.39 85.50 73.9 73.22 73.56 + Pre-training
+He et al . ( 2018 a ) - - 87.4 - - 80.4 Ouchi et al. ( 2018 ) 88.2 87.0 87.6 79.9 77.5 78.7 Li et al. ( 2019 b ) 87.9 87.5 87.7 80.6 80.4 80.5 Ours ( wo / dep ) + BERT 89.04 88.79 88.91 81.89 80.98 81.43 Ours ( w/ dep ) + BERT 88.94 88.53 88.73 81.66 80.80 81.23 Ours ( wo / dep ) + XLNet 89.89 89.74 89.81 85.35 84.57 84.96 Ours ( w/ dep ) + XLNet 89.62 89.82 89.72 85.08 84.84 84.96
+Table 5 : 5 Span SRL results on CoNLL -2005 test sets .
+* represents injecting state - of- the - art predicted parses .
+System WSJ Brown P R F1 P R F1 End-to- end Li et al. ( 2019 b ) - - 85.1 - - - Ours ( wo / dep ) 84.24 87.55 85.86 76.46 78.52 77.47 Ours ( w / dep ) 83.73 86.94 85.30 76.21 77.89 77.04 + Pre-training
+He et al. ( 2018 b ) 83.9 82.7 83.3 - - - Cai et al. ( 2018 ) 84.7 85.2 85.0 - - 72.5 Li et al. ( 2019 b ) 84.5 86.1 85.3 74.6 73.8 74.2 Ours ( wo / dep ) + BERT 87.40 88.96 88.17 80.32 82.89 81.58 Ours ( w/ dep ) + BERT 86.77 89.14 87.94 79.71 82.40 81.03 Ours ( wo / dep ) + XLNet 86.58 90.40 88.44 80.96 85.31 83.08 Ours ( w/ dep ) + XLNet 86.35 90.16 88.21 80.90 85.38 83.08
+Given predicate ( Kasai et al. , 2019 ) 89.0 88.2 88.6 78.0 77.2 77.6 Ours ( wo / dep ) 88.73 89.83 89.28 82.46 83.20 82.82 Ours ( w/ dep ) 88.02 89.03 88.52 80.98 82.10 81.54 + Pre-training
+He et al. ( 2018 b ) 89.7 89.3 89.5 81.9 76.9 79.3 Cai et al . ( 2018 ) 89.9 89.2 89.6 79.8 78.3 79.0 Li et al. ( 2019 b ) 89.6 91.2 90.4 81.7 81.4 81.5 Kasai et al . ( 2019 ) 90.3 90.0 90.2 81.0 80.5 80.8
+Lyu et al. ( 2019 ) - - 90.99 - - 82.18
+Chen et al. ( 2019 ) 90.74 91.38 91.06 82.66 82.78 82.72 Cai and Lapata ( 2019 ) 91.7 90.8 91.2 83.2 81.9 82.5 Ours ( wo / dep ) + BERT 91.21 91.19 91.20 85.65 86.09 85.87 Ours ( w/ dep ) + BERT 91.14 91.03 91.09 85.18 85.41 85.29 Ours ( wo / dep ) + XLNet 91.16 91.60 91.38 87.04 87.54 87.29 Ours ( w/ dep ) + XLNet 90.80 91.74 91.27 86.43 87.25 86.84
+Table 6 : 6 Dependency SRL results on CoNLL-2009
+Propbank test sets .
+while the lower part shows the results of given predicate mode to compare to more previous works with pre-identified predicates .
+In given predicate mode , we simply replace predicate candidates with the gold predicates without other modification on the input or encoder .
+Span SRL Results
+Table 5 shows results on CoNLL -2005 in-domain ( WSJ ) and out-domain ( Brown ) test sets .
+It is worth noting that ( Strubell et al. , 2018 ) injects state - of - the - art predicted parses in terms of setting of ( Dozat and Manning , 2017 ) at test time and aims to use syntactic information to help SRL .
+While our model not only excludes other auxiliary information during test time but also benefits both syntax and semantics .
+We ob- tain comparable results with the state - of - the - art method ( Strubell et al. , 2018 ) and outperform all recent models without additional information in test time .
+After incorporating with pre-training contextual representations , our model achieves new state - of - the - art both of end-to - end and given predi- cate mode and both of in-domain and out-domain .
+Dependency SRL Results
+Table 6 presents the results on CoNLL -2009 .
+We obtain new state - of - the - art both of end-to -end and given predicate mode and both of in-domain and out-domain text .
+These results demonstrate that our improved uni- form SRL representation can be adapted to perform dependency SRL and achieves impressive perfor - mance gains .
+Our code : https://github.com/DoodleJZ/ParsingAll.
+2
+It is also called semantic role labeling ( SRL ) for the semantic parsing task over the Propbank .
+For dependency label of each word , we train a separated multi-class classifier simultaneously with the parser by optimizing the sum of their objectives .
+When i=j , it means a uniform representation of dependency semantic role .
+http://nlp.cs.nyu.edu/evalb/

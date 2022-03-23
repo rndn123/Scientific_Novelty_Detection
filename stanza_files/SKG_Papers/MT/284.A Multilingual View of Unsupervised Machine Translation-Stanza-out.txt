@@ -1,0 +1,257 @@
+title
+A Multilingual View of Unsupervised Machine Translation
+abstract
+We present a probabilistic framework for multilingual neural machine translation that encompasses supervised and unsupervised setups , focusing on unsupervised translation .
+In addition to studying the vanilla case where there is only monolingual data available , we propose a novel setup where one language in the ( source , target ) pair is not associated with any parallel data , but there may exist auxiliary parallel data that contains the other .
+This auxiliary data can naturally be utilized in our probabilistic framework via a novel cross-translation loss term .
+Empirically , we show that our approach results in higher BLEU scores over state - of- the - art unsupervised models on the WMT '14 English - French , WMT '16 English - German , and WMT '16 English -Romanian datasets in most directions .
+Introduction
+The popularity of neural machine translation systems ( Kalchbrenner and Blunsom , 2013 ; Sutskever et al. , 2014 ; Bahdanau et al. , 2015 ; Wu et al. , 2016 ) has exploded in recent years .
+Those systems have obtained state - of - the - art results for a wide collection of language pairs , but they often require large amounts of parallel ( source , target ) sentence pairs to train ( Koehn and Knowles , 2017 ) , making them impractical for scenarios with resourcepoor languages .
+As a result , there has been interest in unsupervised machine translation ( Ravi and Knight , 2011 ) , and more recently unsupervised neural machine translation ( UNMT ) ( Lample et al. , 2018 ; Artetxe et al. , 2018 ) , which uses only monolingual source and target corpora for learning .
+Unsupervised NMT systems have achieved rapid progress recently ( Lample and Conneau , 2019 ; Artetxe et al. , 2019 ; Ren et al. , 2019 ; Li et al. , 2020a ) , largely thanks to two key ideas : one - the-fly back - translation ( i.e. , minimizing round- trip translation inconsistency ) ( Bannard and Callison - Burch , ? Work done as part of the Google AI Residency .
+Fr En Ro 2005 ; Sennrich et al. , 2015 ; He et al. , 2016 ; Artetxe et al. , 2018 ) and pretrained language models ( Lample and Conneau , 2019 ; Song et al. , 2019 ) .
+Despite the difficulty of the problem , those systems have achieved surprisingly strong results .
+In this work , we investigate Multilingual UNMT ( M- UNMT ) , a generalization of the UNMT setup that involves more than two languages .
+Multilinguality has been explored in the supervised NMT literature , where it has been shown to enable information sharing among related languages .
+This allows higher resource language pairs ( e.g. English - French ) to improve performance among lower resource pairs ( e.g. , English - Romanian ) ( Johnson et al. , 2017 ; Firat et al. , 2016 ) .
+Yet multilingual translation has only received little attention in the unsupervised literature , and the performance of preliminary works ( Sen et al. , 2019 ; is considerably below that of state - of- theart bilingual unsupervised systems ( Lample and Conneau , 2019 ; Song et al. , 2019 ) .
+Another line of work has studied zero-shot translation in the presence of a " pivot " language , e.g. , using French - English and English -Romanian corpora to model French -Romanian ( Johnson et al. , 2017 ; Arivazhagan et al. , 2019 ; Gu et al. , 2019 ; Al - Shedivat and Parikh , 2019 ) .
+However , zero-shot translation is not unsupervised since one can perform two -step supervised translation through the pivot language .
+We introduce a novel probabilistic formulation of multilingual translation , which encompasses not only existing supervised and zero-shot setups , but also two variants of Multilingual UNMT : ( 1 ) a strict M-UNMT setup in which there is no parallel data for any pair of language , and ( 2 ) a novel , looser setup where there exists parallel data that contains one language in the ( source , target ) pair but not the other .
+We illustrate those two variants and contrast them to existing work in Figure 1 . As shown in Figures 1 ( c ) and 1 ( d ) , the defining feature of M-UNMT is that the ( source , target ) pair of interest is not connected in the graph , precluding the possibility of any direct or multi-step supervised solution .
+Leveraging auxiliary parallel data for UNMT as shown in Figure 1 ( d ) has not been well studied in the literature .
+However , this setup may be more realistic than the strictly unsupervised case since it enables the use of high resource languages ( e.g. En ) to aid translation into rare languages .
+For the strict M- UNMT setup pictured in Figure 1 ( c ) , our probabilistic formulation yields a multi-way back - translation objective that is an intuitive generalization of existing work ( Artetxe et al. , 2018 ; Lample et al. , 2018 ; He et al. , 2020 ) .
+We provide a rigorous derivation of this objective as an application of the Expectation Maximization algorithm ( Dempster et al. , 1977 ) .
+Effectively utilizing the auxiliary parallel corpus pictured in Figure 1 ( d ) is less straightforward since the common approaches for UNMT are explicitly designed for the bilingual case .
+For this setting , we propose two algorithmic contributions .
+First , we derive a novel cross-translation loss term from our probabilistic framework that enforces cross -language pair consistency .
+Second , we utilize the auxiliary parallel data for pre-training , which allows the model to build representations better suited to translation .
+Empirically , we evaluate both setups , demonstrating that our approach of leveraging auxiliary parallel data offers quantifiable gains over existing state - of - the - art unsupervised models on 3 language pairs : En?Ro , En?Fr , and En?De.
+Finally , we perform a series of ablation studies that highlight the impact of the additional data , our additional loss terms , as well as the choice of auxiliary language .
+Background and Overview Notation : Before discussing our approach , we introduce some notation .
+We denote random variables by capital letters X , Y , Z , and their realizations by their corresponding lowercase version x , y , z .
+We abuse this convention to compactly write objects like the conditional density ppY " y|X " xq as ppy |xq or the marginalized distributions ppX " xq as ppxq , with the understanding that the lowercase variables are connected to their corresponding uppercase random variables .
+Given a random variable X , we write E x" X to mean the expectation with respect to x , where x follows the distribution of X .
+We use a similar convention for conditional distributions e.g. we write E y" pp ?
+| xq to denote the expectation of Y conditioned on X " x. Similarly , we write HpXq or Hpppxqq to denote the entropy of the random variable X i.e. HpXq " E x" X r?log ppxqs .
+We reserve the use of typewriter font for languages e.g. X. Neural Machine Translation :
+In bilingual supervised machine translation we are given a training dataset D x,y .
+Each px , yq P D x,y is a ( source , target ) pair consisting of a sentence x in language X and a semantically equivalent sentence y in language Y .
+We train a translation model using maximum likelihood : L sup p?q " ? px , yqPDx , y log p ?
+py|xq
+In neural machine translation , p ?
+py|xq is modelled with the encoder-decoder paradigm where x is encoded into a set of vectors via a neural network enc ? and a decoder neural network defines p ? py|enc ? pxqq .
+In this work , we use a transformer ( Vaswani et al. , 2017 ) as the encoder and decoder network .
+At inference time , computing the most likely target sentence y is intractable since it requires enumerating over all possible sequences , and is thus approximated via beam search .
+Unsupervised Machine Translation :
+The requirement of a training dataset D x,y with sourcetarget pairs can often be prohibitive for rare or low resource languages .
+Bilingual unsupervised translation attempts to learn p ?
+py |xq using monolingual corpora D x and D y .
+For each sentence x P D x , D y may not contain an equivalent sentence in Y , and vice versa .
+State of the art unsupervised methods typically work as follows .
+They first perform pre-training and learn an initial set of parameters ? based on a variety of language modeling or noisy reconstruction objectives ( Lample and Conneau , 2019 ; Lewis et al. , 2019 ; Song et al. , 2019 ) over D x and D y .
+A fine-tuning stage then follows which typically uses back - translation ( Sennrich et al. , 2016 ; Lample and Conneau , 2019 ; He et al. , 2016 ) that involves translating x to the target language Y , translating it back to a sentence x 1 in X , and penalizing the reconstruction error between x and x 1 . Overview of our Approach :
+The following sections describe a probabilistic MT framework that justifies and generalizes the aforementioned approaches .
+We first model the case where we have access to several monolingual corpora , pictured in Figure 1 ( c ) .
+We introduce light independence assumptions to make the joint likelihood tractable and derive a lower bound , obtaining a generalization of the back - translation loss .
+We then extend our model to include the auxiliary parallel data pictured in Figure 1 ( d ) .
+We demonstrate the emergence of a cross-translation loss term , which binds distinct pairs of languages together .
+Finally , we present our complete training procedure , based on the EM algorithm .
+Building upon existing work ( Song et al. , 2019 ) , we introduce a pre-training step that we run before maximizing the likelihood to obtain good representations .
+Multilingual Unsupervised Machine Translation
+In this section , we formulate our approach for M- UNMT .
+We restrict ourselves to three languages , but the arguments naturally extend to an arbitrary number of languages .
+Inspired by the recent style transfer literature ( He et al. , 2020 ) and some approaches from multilingual supervised machine translation ( Ren et al. , 2018 ) , we introduce a generative model of which the available data can be seen as partially - observed samples .
+We first investigate the strict unsupervised case , where only monolingual data is available .
+Our framework naturally leads to an aggregate back -translation loss that generalizes previous work .
+We then incorporate the auxiliary corpus , introducing a novel crosstranslation term .
+To optimize our loss , we leverage the EM algorithm , giving a rigorous justification for the stop-gradient operation that is usually applied in the UNMT and style transfer literature ( Lample and Conneau , 2019 ; Artetxe et al. , 2019 ; He et al. , 2020 ) .
+M-UNMT - Monolingual Data Only
+We begin with the assumption that we have three sets of monolingual data , D x , D y , D z for languages X , Y and Z respectively .
+We take the viewpoint that these datasets form the visible parts of a larger dataset D x,y , z of triplets px , y , zq which are translations of each other .
+We think of these translations as samples of a triplet pX , Y , Zq of random variables and write the observed data log-likelihood as : Lp?q " L Dx ` LDy ` LDz
+Our goal however is to learn a conditional translation model p ? .
+We thus rewrite the log likelihood as a marginalization over the unobserved variables for each dataset as shown below : Lp?q " ? xPDx log E py , zq " pY , Zq p ? px|y , zq ( 1 ) `?
+yPDy log E px , zq " pX , Zq p ? py|x , zq ( 2 ) `?
+zPDz log E px , yq " pX , Y q p ? pz|x , yq ( 3 ) Learning a model for p ?
+px|y , zq is not practical since the translation task is to translate z ?
+x without access to y , or y ?
+x without access to z .
+Thus , we make the following structural assumption : given any variable in the triplet pX , Y , Zq , the remaining two are independent .
+We implicitly think of the conditioned variable as detailing the content and the two remaining variables as independent manifestations of this content in the respective languages .
+Using the fact that p ? px|y , zq " p ? px|yq " p ?
+px|zq under this assumption , we rewrite the summand in p1q as follows : log E py , zq " pY , Zq p ? px|y , zq " log E py , zq " pY , Zq a p ? px|yqp ? px|zq .
+Next , note that all these expectations in Eq. 1 , 2 , and 3 are intractable to compute due to the number of possible sequences in each language .
+We address this problem through the Expectation Maximization ( EM ) algorithm ( Dempster et al. , 1977 ) .
+We first use Jensen 's inequality enforce that reciprocal translation models are consistent .
+The joint terms e.g. E px , yq " p ? p? , ?|zq log ppx , yq will vanish in our optimization procedure , as explained next .
+We use the EM algorithm to maximize Eq. 4 .
+In our setup , the E-step at iteration t amounts to computing the expectations against the conditional distributions evaluated at the current set of parameters ? " ? ptq .
+We approximate this by removing the expectations and replacing the random variable with the mode of its distribution i.e. E y" p ? ptq p?|xq log p ? ptq px|yq ? p ? ptq px |?q where ? " arg max y p ? ptq py|xq .
+In practice , this amounts to running a greedy decoding procedure for the relevant translation models .
+The M-step then corresponds to choosing the ?
+which maximizes the resulting terms after we perform the E-step .
+Notice that for this step , the last three terms in Eq. 4 no longer possess a ? dependence , as the expectation was computed in the E-step with a dependence on ? ptq .
+These terms can therefore be safely ignored , leaving us with only the back -translation terms .
+By our approximation to the E-step , these expressions become exactly the loss terms that appear in the current UNMT literature ( Artetxe et al. , 2019 ; Lample and Conneau , 2019 ; Song et al. , 2019 ) , see Figure 2 ( a ) for a graphical depiction .
+Since computing the argmax is a difficult task , we perform a single gradient update for the M-step and define ?
+pt`1q inductively this way .
+Auxiliary parallel data
+We now extend our framework with an auxiliary parallel corpus ( Figure 1 ( d ) ) .
+We assume that we wish to translate from X to Z , and that we have access to a parallel corpus D x,y that maps sentences from X to Y .
+To leverage this source of data , we augment the log-likelihood L as follows : L aug p?q " Lp?q `? px , yq PDx , y log E z" Z p ? px , y|zq ( 6 ) Similar to how we handled the monolingual terms , we can utilize the EM algorithm to obtain an objective amenable to gradient optimization .
+By using the EM algorithm , we can substitute the distribution of Z in Eq. 6 with the one given by p ? pz|x , yq .
+The structural assumption we made in the case of monolingual data still holds : given any variable in the triplet pX , Y , Zq , the remaining two are independent .
+Using this assumption , we can rewrite the distribution p ? pz|x , yq as either p ? pz|xq or p ? pz|yq .
+Since we can decompose log p ? px , y|zq " log p ?
+px|zq `log p ?
+py|zq , we can leverage both formulations with an argument analogous to the one in ?3.1 : log E z" Z p ? px , y|zq " log E z" Z p ? px|zqp ? py|zq ? E z" p ? p?|yq log p ? px|zq `E z" p ? p?|xq log p ? py|zq `E z" p ? p?|yq log ppzq ` E z" p ? p?| xq log ppzq ( 7 ) A key feature of this lower bound is the emergence of the expressions : ( 8 ) Intuitively , those terms ensure that the models can accurately translate from Y to Z , then Z to X ( resp .
+X to Z , then Z to Y ) .
+Because they enforce crosslanguage pair consistency , we will refer to them as cross-translation terms .
+In contrast , the backtranslation terms , e.g. , Eq. 5 , only enforced monolingual consistency .
+We provide a graphical depiction of these terms in Figure 2 ( b ) .
+As in the case of monolingual data , we optimize the full likelihood with EM .
+During the E-step , we approximate the expectation with evaluation of the expectant at the mode of the distribution .
+As with ?3.1 , the last two terms in Eq. 7 disappear in the M-step .
+Connections with supervised and zero shot methods
+So far , we have only discussed multilingual unsupervised neural machine translation setups .
+We now derive the other configurations of Figure 1 , that is , supervised and zero-shot translation , through our framework .
+Supervised translation : Deriving supervised translation is straightforward .
+Given the parallel data dataset D x,y , we can rewrite the likelihood as : where the second term is a language model that does not depend on ?.
+Zero-shot translation :
+We can also connect the cross-translation term to the zero-shot MT approach from Al - Shedivat and Parikh ( 2019 ) .
+Simplifying their setup , they consider three languages X , Y and Z with parallel data between X and Y as well as X and Z .
+In addition to the usual crossentropy objective , they also add agreement terms i.e. E z" p ? p?|xq log ppz|yq and E z" p ? p?|yq log ppz|xq .
+We show that these agreement terms are operationally equivalent to the cross-translation terms i.e. Eq. 8 . We first obtain the following equality by a simple application of Bayes ' theorem : log p ? py|zq " log p ?
+pz|yq `log ppyq ? log ppzq .
+We then apply the expectation operation E z" p ? p?|xq to both sides of this equation .
+From an optimization perspective , we are only interested in terms involving the learnable parameters so we can dispose of the term involving log ppyq on the right .
+Applying the same argument to log p ?
+px|zq , we obtain : log ppzq to both sides of this inequality , the left - hand side becomes the lower bound introduced in the previous subsection , consisting of the cross-translations terms .
+The right - hand side consists of the agreement terms from Al - Shedivat and Parikh ( 2019 ) .
+We tried using this term instead of our cross-translation terms , but found it to be unstable .
+This could be attributed to the fact that we lack X ?
+Z parallel data , which is available in the setup of Al - Shedivat and Parikh ( 2019 ) . E z "
+Algorithm 1 PRE-TRAINING Input : Datasets
+D , number of steps N 1 : Initialize ? ? ?0 2 : for step in 1 , 2 , 3 , ... , N do 3 : Choose dataset D at random from D .
+4 : if D consists of monolingual data then
+5 : Sample batch x from D .
+6 : Masked version of x : x M ? MASKpxq
+7 : MASS Loss : ml ? log p ? px|x M q 8 : Update : ? ? optimizer updatepml , ?q
+9 : else if D consists of parallel data then 10 : Sample batch px , yq from D .
+11 : tl ? log p ?
+py |xq `log p ? px|yq 12 : ? ? optimizer updateptl , ?q
+13 : end if
+14 : end for 4 Training algorithms
+We now discuss how to train the model end-to-end .
+We introduce a pre-training phase that we run before the EM procedure to initialize the model .
+Pretraining is known to be crucial for UNMT ( Lample and Conneau , 2019 ; Song et al. , 2019 ) .
+We make use of an existing method , MASS , and enrich it with the auxiliary parallel corpus if available .
+We refer to the EM algorithm described in ?3 as finetuning for consistency with the literature .
+Pre-training
+The aim of the pre-training phase is to produce an intermediate translation model p ? , to be refined during the fine-tuning step .
+We pre-train the model differently based on the data available to us .
+For monolingual data , we use the MASS objective ( Song et al. , 2019 ) .
+The MASS objective consists of masking randomly -chosen contiguous segments 2 of the input then reconstructing the masked portion .
+We refer to this operation as MASK .
+If we have auxiliary parallel data , we use the traditional cross-entropy translation objective .
+We describe the full procedure in Algorithm 1 .
+Fine-tuning During the fine-tuning phase , we utilize the objectives derived in Section 3 .
+At each training step we choose a dataset ( either monolingual or bilingual ) , sample a batch , compute the loss , and update the weights .
+If the corpus is monolingual , we use the back- translation loss i.e. Eq. 5 .
+If the corpus is bilingual , we compute the cross-translation terms i.e.
+Eq. 8 in both directions and perform one update 2
+We choose the starting index to be 0 or the total length of the input divided by two with 20 % chance for either scenario otherwise we sample uniformly at random then take the segment starting from this index and replace all tokens with a [ MASK ] token .
+6 : Sample batch x from D .
+7 : for l in L , l ?
+l D do 8 : ?l ? Decode p ? p? l | xq .
+9 : bt l D ,l ? log p ? px |?
+l q.
+10 : ? ? optimizer updatepbt l D ,l , ?q.
+11 : end for
+12 : else if D consists of parallel data then
+13 : Sample batch px , yq from D .
+14 : lx ?
+Language of x .
+15 : ly ?
+Language of y.
+16 : for l in L , l ? lx , ly do
+22 : end for 23 : end while for each term .
+We detail the steps in Algorithm 2 .
+Experiments
+We conduct experiments on the language triplets English - French -Romanian with English - French parallel data , English - Czech - German with English - Czech parallel data and English - Spanish - French with English - Spanish parallel data , with the unsupervised directions chosen solely for the purposes of comparing with previous recent work ( Lample and Conneau , 2019 ; Song et al. , 2019 ; Ren et al. , 2019 ; Artetxe et al. , 2019 ) .
+Datasets and preprocessing We use the News Crawl datasets from WMT as our sole source of monolingual data for all the languages considered .
+We used the data from years 2007 - 2018 for all languages except for Romanian , for which we use years 2015 - 2018 .
+We ensure the monolingual data is properly labeled by using the fastText language classification tool ( Joulin et al. , 2016 ) and keep only the lines of data with the appropriate language classification .
+For parallel data , we used the UN Corpus ( Ziemski et al. , 2016 ) for English - Spanish , the 10 9 French -English Gigaword corpus 3 for the English - French and the CzEng 1.7 dataset ( Bojar et al. , 2016 ) for English - Czech .
+We preprocess all text by using the tools from Moses ( Koehn et al. , 2007 ) , and apply the Moses tokenizer to separate the text inputs into tokens .
+We normalize punctuation , remove non-printing characters , and replace unicode symbols with their non-unicode equivalent .
+For Romanian , we also use the scripts from Sennrich 4 to normalize the scripts and remove diacretics .
+For a given language triplet , we select 10 million lines of monolingual data from each language and use Senten-cePiece ( Kudo and Richardson , 2018 ) to create vocabularies containing 64,000 tokens of each .
+We then remove lines with more than 100 tokens from the training set .
+Model architectures
+We use Transformers ( Vaswani et al. , 2017 ) for our translation models p ? with a 6 - layer encoder and decoder , a hidden size of 1024 and a 4096 feedforward filter size .
+We share the same encoder for all languages .
+Following XLM ( Lample and Conneau , 2019 ) , we use language embeddings to differentiate between the languages by adding these embeddings to each token 's embedding .
+Unlike XLM , we only use the language embeddings for the decoder side .
+We follow the same modification as done in Song et al . ( 2019 ) and modify the output transformation of each attention head in each transformer block in the decoder to be distinct for each language .
+Besides these modifications , we share the parameters of the decoder for every language .
+Training configuration
+For pre-training , we group the data into batches of 1024 examples each , where each batch consists of either monolingual data of a single language or parallel data , but not both at once .
+We pad sequences up to a maximum length of 100 SentencePiece tokens .
+During pre-training , we used the Adam optimizer ( Kingma and Ba , 2015 ) with initial learning rate of 0.0002 and weight decay parameter of 0.01 , as well as 4,000 warmup steps and a linear decay schedule for 1.2 million steps .
+For fine-tuning , we used Adamax ( Kingma and Ba , 2015 ) with the same learning rate and warmup steps , no weight decay , and trained the models until convergence .
+We used Google Cloud TPUs for pre-training and 8 NVIDIA V100 GPUs with a batch size of 3,000 tokens per GPU for fine-tuning .
+Results Evaluation
+We use tokenized BLEU to measure the performance of our models , using the multibleu .pl script from Moses .
+Recent work ( Post , 4 https://github.com/rsennrich/wmt16-scripts 2018 ) has shown that the choice of tokenizer and preprocessing scheme can impact BLEU scores tremendously .
+Bearing this in mind , we chose to follow the same evaluation procedures used 6 by the majority of the baselines that we consider , which involves the use of tokenized BLEU as opposed to the scores given by sacreBLEU .
+Given the rise of popularity of SacreBLEU ( Post , 2018 ) , we also include BLEU scores computed from sacreBLEU 7 on the detokenized text for French and German .
+We exclude Romanian since most works in the literature traditionally use additional tools from Sennrich not used in sacreBLEU .
+Baselines
+We list our results in Table 1 .
+We also include the results of six strong unsupervised baselines : ( 1 ) XLM ( Lample and Conneau , 2019 ) , a cross-lingual language model fine-tuned with backtranslation ; ( 2 ) MASS ( Song et al. , 2019 ) , which uses the aforementioned pre-training task with back - translation during fine-tuning ; ( 3 ) D2 GPo ( Li et al. , 2020a ) , which builds on MASS and leverages an additional regularizer by use of a data-dependent Gaussian prior ; ( 4 ) The recent work of Artetxe et al . ( 2019 ) which leverages tools from statistical MT as well subword information to enrichen their models ; ( 5 ) the work of Ren et al . ( 2019 ) that explicitly attempts to pre-train for UNMT by building cross-lingual n-gram tables and building a new pretraining task based on them ; ( 6 ) mBART ( Liu et al. , 2020 ) , which pre-trains on a variety of language configurations and fine-tunes with traditional onthe-fly back - transaltion .
+mBART also leverages Czech-English data for the Romanian - English language pair .
+Furthermore , we include concurrent work that also uses auxiliary parallel data : ( 8 ) The work of Bai et al . ( 2020 ) , which performs pre-training and fine-tuning in one stage and replaces MASS with a denoising autoencoding objective ; ( 9 ) the work of Li et al . ( 2020 b ) which also leverage a crosstranslation term and additionally include a knowledge distillation objective .
+We also include the results of our model after pre-training i.e. no backtranslation or cross-translation objective , under the title M-UNMT ( Only Pre-Train ) .
+Our models with auxiliary data obtain better scores for almost all translation directions .
+Pretraining with the auxiliary data by itself gives com- petitive results in two of the three X ? En directions .
+Moreover , our approach outperforms all the baselines which also which also leverage auxiliary parallel data .
+This suggests that our improved performance comes from both our choice of objectives and the additional data .
+Ablations
+We perform a series of ablation studies to determine which aspects of our formulation explain the improved performance .
+Impact of the auxiliary data
+We first examine the value provided by the inclusion of the auxiliary data , focusing on the triplet English - French -Romanian .
+To that end , we study four types of training configurations : ( 1 ) Our implementation of MASS ( Song et al. , 2019 ) Sennrich et al. , 2016 ) 28.2 33.9 mBART ( Liu et al. , 2020 ) 38.5 39.9 fine -tuning , with superior performance when the auxiliary data is available in both training phases .
+Impact of the additional objectives
+Given the strong performance of our model just after the pretraining phase , it would be plausible that the gains from multilinguality arise exclusively during the pre-training phase .
+To demonstrate that this is not the case , we investigate three types of finetuning configurations : ( 1 ) Disregard the auxiliary language and fine- tune using only back -translation with English and Romanian data as per Song et al . ( 2019 ) .
+( 2 ) Finetune with our multi-way backtranslation objective .
+( 3 ) Finetune with our multi- way back -translation objective and leverage the auxiliary parallel data through the cross-translation terms .
+We name these configurations BT , M-BT , and Full respectively .
+We plot the results of training for 100k steps in Figure 3 , reporting the numbers on a modified version of the dev set from the WMT '16 Romanian - English competition where all samples with more than 100 tokens were removed .
+In the Ro ?
+En direction , the BLEU score of the Full setup dominates the score of the other approaches .
+Furthermore , the performance of BT decays after a few training steps .
+In the En ? Ro direction , the BLEU score for the BT and M-BT reach a plateau about 1 point under Full .
+Those charts illustrate the positive effect of the crosstranslation terms .
+We contrast the BLEU curves with the back- translation loss curves in Figure 3 ( c ) and 3 ( d ) .
+We see that even that though the BT configuration achieves the lowest back - translation loss , it does not attain the largest BLEU score .
+This demonstrates that using back -translation for the desired ( source , target ) pair alone is not the best task for the fine-tuning phase .
+We see that the multilinguality helps , as adding more back -translation terms with other languages involved improves the BLEU score at the cost of higher back - translation errors .
+From this viewpoint , the multilinguality acts as a regularizer , as it does for traditional supervised machine translation .
+Impact of the choice of auxiliary language
+In this study , we examine the impact of the choice of auxiliary language .
+We perform the same pretraining and fine-tuning procedure using either French , Spanish or Czech as the auxiliary language for the English -Romanian pair , with relevant parallel data of this auxiliary language into English .
+To isolate the effect of the language choice , we fixed the amount of monolingual data of the auxiliary language to roughly 40 million examples , as well as roughly 12.5 million lines of parallel data in the X-English direction .
+Table 3 shows the results , indicating that using French or Spanish yields similar BLEU scores .
+Using Czech induces inferior performance , demonstrating that choosing a suitable auxiliary language plays an important role for optimal performance .
+The configuration using Czech still outperforms the baselines , showing the value of having any auxiliary parallel data at all .
+Conclusion and Future Work
+In this work , we explored a simple multilingual approach to UNMT and demonstrated that multilinguality and auxiliary parallel data offer quantifiable gains over strong baselines .
+We hope to explore massively multilingual unsupervised machine translation in the future .
+Figure 1 : 1 Figure 1 : Different setups for English ( En ) , French ( Fr ) and Romanian ( Ro ) .
+The dashed edge indicates the target language pair .
+Full edges indicate the existence of parallel training data .

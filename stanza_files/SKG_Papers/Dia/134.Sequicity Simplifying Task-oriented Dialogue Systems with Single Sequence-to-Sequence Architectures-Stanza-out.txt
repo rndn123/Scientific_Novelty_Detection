@@ -1,0 +1,277 @@
+title
+Sequicity : Simplifying Task-oriented Dialogue Systems with Single Sequence-to-Sequence Architectures
+abstract
+Existing solutions to task - oriented dialogue systems follow pipeline designs which introduce architectural complexity and fragility .
+We propose a novel , holistic , extendable framework based on a single sequence - to-sequence ( seq2seq ) model which can be optimized with supervised or reinforcement learning .
+A key contribution is that we design text spans named belief spans to track dialogue believes , allowing task - oriented dialogue systems to be modeled in a seq2seq way .
+Based on this , we propose a simplistic Two Stage CopyNet instantiation which demonstrates good scalability : significantly reducing model complexity in terms of number of parameters and training time by an order of magnitude .
+It significantly outperforms state - of- the - art pipeline - based methods on two datasets and retains a satisfactory entity match rate on out- of- vocabulary ( OOV ) cases where pipeline - designed competitors totally fail .
+Introduction
+The challenge of achieving both task completion and human-like response generation for taskoriented dialogue systems is gaining research interest .
+Wen et al . ( 2017 b
+Wen et al. ( , 2016a
+Wen et al. ( , 2017a ) pioneered a set of models to address this challenge .
+Their proposed architectures follow traditional pipeline designs , where the belief tracking component is the key component .
+In the current paradigm , such a belief tracker builds a complex multi-class classifier for each slot ( See ?3.2 ) which can suffer from high complexity , especially when the number of slots and their values grow .
+Since all the possible slot values have to be pre-defined as classification labels , such trackers also cannot handle the requests that have out - of- vocabulary ( OOV ) slot values .
+Moreover , the belief tracker requires delexicalization , i.e. , replacing slot values with their slot names in utterances ( Mrk ?i? et al. , 2017 ) .
+It does not scale well , due to the lexical diversity .
+The belief tracker also needs to be pre-trained , making the models unrealistic for end-to - end training ( Eric and Manning , 2017a ) .
+While Eric and Manning ( 2017 a , b ) investigated building task - oriented dialogue systems by using a seq2seq model , unfortunately , their methods are rather preliminary and do not perform well in either task completion or response generation , due to their omission of a belief tracker .
+Questioning the basic pipeline architecture , in this paper , we re-examine the tenets of belief tracking in light of advances in deep learning .
+We introduce the concept of a belief span ( bspan ) , a text span that tracks the belief states at each turn .
+This leads to a new framework , named Sequicity , with a single seq2seq model .
+Sequicity decomposes the task- oriented dialogue problem into the generation of bspans and machine responses , converting this problem into a sequence optimization problem .
+In practice , Sequicity decodes in two stages : in the first stage , it decodes a bspan to facilitate knowledge base ( KB ) search ; in the second , it decodes a machine response on the condition of knowledge base search result and the bspan .
+Our method represents a shift in perspective compared to existing work .
+Sequicity employs a single seq2seq model , resulting in a vastly simplified architecture .
+Unlike previous approaches with an overly parameterized delexicalization - based belief tracker , Sequicity achieves much less train-ing time , better performance on larger a dataset and an exceptional ability to handle OOV cases .
+Furthermore , Sequicity is a theoretically and aesthetically appealing framework , as it achieves true end-to - end trainability using only one seq2seq model .
+As such , Sequicity leverages the rapid development of seq2seq models ( Gehring et al. , 2017 ; Vaswani et al. , 2017 ; Yu et al. , 2017 ) in developing solutions to task - oriented dialogue scenarios .
+In our implementation , we improve on CopyNet ( Gu et al. , 2016 ) to instantiate Sequicity framework in this paper , as key words present in bspans and machine responses recur from previous utterances .
+Extensive experiments conducted on two benchmark datasets verify the effectiveness of our proposed method .
+Our contributions are fourfold : ( 1 ) We propose the Sequicity framework , which handles both task completion and response generation in a single seq2seq model ; ( 2 ) We present an implementation of the Sequicity framework , called Two Stage CopyNet ( TSCP ) , which has fewer number of parameters and trains faster than state - of - the - art baselines ( Wen et al. , 2017 b
+( Wen et al. , , 2016a ( Wen et al. , , 2017a ; ( 3 )
+We demonstrate that TSCP significantly outperforms state - of - the - art baselines on two large-scale datasets , inclusive of scenarios involving OOV ; ( 4 ) We release source code of TSCP to assist the community to explore Sequicity 1 .
+Related Work Historically , task- oriented dialog systems have been built as pipelines of separately trained modules .
+A typical pipeline design contains four components : 1 ) a user intent classifier , 2 ) a belief tracker , 3 ) a dialogue policy maker and a 4 ) response generator .
+User intent detectors classify user utterances to into one of the pre-defined intents .
+SVM , CNN and RNN models ( Silva et al. , 2011 ; Hashemi et al. , 2016 ; Shi et al. , 2016 ) perform well for intent classification .
+Belief trackers , which keep track of user goals and constraints every turn ( Henderson et al. , 2014 a , b ; Kim et al. , 2017 ) are the most important component for task accomplishment .
+They model the probability distribution of values over each slot ( Lee , 2013 ) .
+Dialogue policy makers then generate the next available system action .
+Recent experiments suggest that reinforcement learning is a promising paradigm to accomplish this task ( Young et al. , 1 http://github.com/WING-NUS/sequicity 2013a ; Cuay?huitl et al. , 2015 ; Liu and Lane , 2017 ) , when state and action spaces are carefully designed ( Young et al. , 2010 ) .
+Finally , in the response generation stage , pipeline designs usually pre-define fixed templates where placeholders are filled with slot values at runtime ( Dhingra et al. , 2017 ; Henderson et al. , 2014 b , a ) .
+However , this causes rather static responses that could lower user satisfaction .
+Generating a fluent , human- like response is considered a separate topic , typified by the topic of conversation systems .
+Preliminaries
+Encoder-Decoder Seq2seq Models Current seq2seq models adopt encoder-decoder structures .
+Given a source sequence of tokens X = x 1 x 2 ...x n , an encoder network represent X as hidden states : x ) , a decoder network generates a target sequence of tokens Y = y 1 y 2 ...y m whose likelihood should be maximized given the training corpus .
+H ( x ) = h ( x ) 1 h ( x ) 2 ...h ( x ) n .
+Based on H ( As of late , the recurrent neural network with attention ( Att - RNN ) is now considered a baseline encoder-decoder architecture .
+Such networks employ two ( sometimes identical ) RNNs , one for encoding ( i.e. , generating H ( x ) ) and another for decoding .
+Particularly , for decoding y j , the decoder RNN takes the embedding y j?1 to generate a hidden vector h ( y ) j .
+Afterwards , the decoder attends to X : calculating attention scores between all h ( x ) i ? H ( x ) and h ( y ) j ( Eq. ( 1 ) ) , and then sums all h ( x ) i , weighted by their corresponding attention scores ( Eqs . ( 2 ) ) .
+The summed result h( x ) j concatenates h ( y ) j as a single vector which is mapped into an output space for a sof tmax operation ( Eq. ( 3 ) ) to decode the current token : u ij = v T tanh ( W 1 h ( x ) i + W 2 h ( y ) j ) ( 1 ) h( x ) j = n i=1 e u ij i e u ij h ( x ) i ( 2 ) y j = sof tmax ( O h( x ) j h ( y ) j ) ( 3 ) where v ? R 1?l ; W 1 , W 2 ? R l?d and O ? R | V |?d . d is embedding size and V is vocabulary set and | V | is its size .
+Belief Trackers
+In the multi-turn scenarios , a belief tracker is the key component for task completion as it records key information from past turns ( Wen et al. , 2017 b ; Henderson et al. , 2013 Henderson et al. , , 2014a .
+Early belief trackers are designed as Bayesian networks where each node is a dialogue belief state ( Paek and Horvitz , 2000 ; Young et al. , 2013 b ) .
+Recent work successfully represents belief trackers as discriminative classifiers ( Henderson et al. , 2013 ; Williams , 2012 ; Wen et al. , 2017 b ) .
+Wen et al. ( 2017 b ) apply discrimination approaches ( Henderson et al. , 2013 ) to build one classifier for each slot in their belief tracker .
+Following the terminology of ( Wen et al. , 2017 b ) , a slot can be either informable or requestable , which have been annotated in CamRes676 and KVRET .
+Individually , an informable slot , specified by user utterances in previous turns , is set to a constraint for knowledge base search ; whereas a requestable slot records the user 's need in the current dialogue .
+As an example of belief trackers in CamRes676 , food type is an informable slot , and a set of food types is also predefined ( e.g. , Italian ) as corresponding slot values .
+In ( Wen et al. , 2017 b ) , the informable slot food type is recognized by a classifier , which takes user utterances as input to predict if and which type of food should be activated , while the requestable slot of address is a binary variable .
+address will be set to true if the slot is requested by the user .
+Method
+We now describe the Sequicity framework , by first explaining the core concept of bspans .
+We then instantiate the Sequicity framework with our introduction of an improved CopyNet ( Gu et al. , 2016 ) .
+Belief Spans for Belief Tracking
+The core of belief tracking is keeping track of informable and requestable slot values when a dialogue progresses .
+In the era of pipeline - based methods , supervised classification is a straightforward solution .
+However , we observe that this traditional architecture can be updated by applying seq2seq models directly to the problem .
+In contrast to ( Wen et al. , 2017 b ) which treats slot values as classification labels , we record them in a text span , to be decoded by the model .
+This leverages the state- of - the - art neural seq2seq models to learn and dynamically generate them .
+Specifically , our bspan has an information field ( marked with < Inf ></ Inf > ) to store values of informable slots since only values are important for knowledge base search .
+Bspans can also feature a requested field ( marked with < Req ></ Req > ) , storing requestable slot names if the corresponding value is True .
+At turn t , given the user utterance U t , we show an example of both bspan B t and machine response R t generation in Figure 1 , where annotated slot values at each turn are decoded into bspans .
+B 1 contains an information slot Italian because the user stated " Italian food " in U 1 .
+During the second turn , the user adds an additional constraint cheap resulting in two slot values in B 2 's information field .
+In the third turn , the user further asks for the restaurant 's phone and address , which are stored in requested slots of B 3 .
+Our bspan solution is concise : it simplifies multiple sophisticated classifiers with a single sequence model .
+Furthermore , it can be viewed as an explicit data structure that expedite knowledge base search as its format is fixed : following ( Wen et al. , 2017 b ) , we use the informable slots values directly for matching fields of entries in databases .
+The Sequicity Framework
+We make a key observation that at turn t , a system only needs to refer to B t?1 , R t?1 and U t to generate a new belief span B t and machine response R t , without appealing to knowing all past utterances .
+Such Markov assumption allows Sequicity to concatenate B t?1 , R t?1 and U t ( denoted as B t?1 R t?1 U t ) as a source sequence for seq2seq modeling , to generate B t and R t as target output sequences at each turn .
+More formally , we represent the dialogue utterances as { ( B 0 R 0 U 1 ; B 1 R 1 ) ; ( B 1 R 1 U 2 ; B 2 R 2 ) ; ... ; ( B t?1 R t?1 U t ; B t R t ) } where B 0 and R 0 are initialized as empty sequences .
+In this way , Sequicity fulfills both task accomplishment and response generation in an unified seq2seq model .
+Note that we process B t and R t separately , as the belief state B t depends only on B t?1 R t?1 U t , while the response R t is additionally conditioned on B t and the knowledge base search results ( denoted as k t ) ; that is , B t informs the R t 's contents .
+For example , R t must include all the request slots from B t when communicating the entities fulfilling the requests found in the knowledge base .
+Here , k t helps generate R t pragmatically .
+Generally , k t has three possibilities : 1 ) multiple matches , 2 ) exact match and 3 ) no match , while the machine responses differ accordingly .
+As an example , let 's say a user requests an Italian restaurant .
+In the scenario of multiple matches , the system should prompt for additional constraints for disambiguation ( such as restaurant price range ) .
+In the second exact match scenario where a single target ( i.e. , restaurant ) has been found , the system should inform the user their requested information ( e.g. , restaurant address ) .
+If no entity is obtained , the system should inform the user and perhaps generate a cooperative response to retry a different constraint .
+We thus formalize Sequicity as a seq2seq model which encodes B t?1 R t?1 U t jointly , but decodes B t and R t separately , in two serial stages .
+In the first stage , the seq2seq model decodes B t unconditionally ( Eq. 4a ) .
+Once B t obtained , the decoding pauses to perform the requisite knowledge base search based on B t , resulting in k t .
+Afterwards , the seq2seq model continues to the second decoding stage , where R t is generated on the additional conditions of B t and k t ( Eq. 4 b ) .
+B t = seq2seq ( B t?1 R t?1 U t |0 , 0 ) ( 4a ) R t = seq2seq ( B t?1 R t?1 U t | B t , k t ) ( 4 b )
+Sequicity is a general framework suitably implemented by any of the various seq2seq models .
+The additional modeling effort beyond a general seq2seq model is to add the conditioning on B t and k t to decode the machine response R t .
+Fortunately , natural language generation with specific conditions has been extensively studied ( Wen et al. , 2016 b ; Karpathy and Fei-Fei , 2015 ; Mei et al. , 2016 ) which can be employed within this framework .
+Sequicity Instantiation : A Two Stage CopyNet
+Although there are many possible instantiations , in this work we purposefully choose a simplistic architecture , leaving more sophisticated modeling for future work .
+We term our instantiated model a Two Stage CopyNet ( TSCP ) .
+We denote the first m tokens of target sequence Y are B t and the rests are R t , i.e .
+B t = y 1 ...y m and R t = y m + 1 ...y m .
+Two - Stage CopyNet .
+We choose to improve upon CopyNet ( Gu et al. , 2016 ) as our seq2seq model .
+This is a natural choice as we observe that target sequence generation often requires the copying of tokens from the input sequence .
+Let 's discuss this in more detail .
+From a probabilistic point of view , the traditional encoder-decoder structure learns a language model .
+To decode y j , we can employ a sof tmax ( e.g. , Eq. 3 ) to calculate the probability distribution over V i.e. , P g j ( v ) where v ?
+V , and then choose the token with the highest generation probability .
+However , in our case , tokens in the target sequence Y might be exactly copied from the input X ( e.g. , " Italian " ) .
+These copied words need to be explicitly modeled .
+CopyNet ( Gu et al. , 2016 ) is a natural fit here , as it enlarges the decoding output space from V to V ? X. For y j , it considers an additional copy probability P c j ( v ) , indicating the likelihood of y j copied from v ?
+X. Following ( Gu et al. , 2016 ) , the simple summation of both probabilities P j ( v ) = P g j ( v ) + P c j ( v ) , v ? V ?
+X is treated as the final probability in the original paper .
+In Sequicity , simply applying original CopyNet architecture is insufficient , since B t and R t have different distributions .
+We here employ two separate RNN ( GRU in our implementation ) in decoder : one for B t and the other for R t .
+In the first decoding stage , we have a copy-attention mechanism on X to decode B t ; then calculate the generation probability through attending to X as introduced in Sec 3.1 , as well as the copy probability for each word v ?
+X following ( Gu et al. , 2016 ) by Eq. 5 : P c j ( v ) = 1 Z | X | i:x i =v e ?( x i ) , j m ( 5 ) where Z is a normalization term and ?( x i ) is the score of " copying " word x i and is calculated by : ?( x i ) = ?( h ( x ) i T W c ) h ( y ) j , j m ( 6 ) where W c ? R d?d .
+In the second decoding stage ( i.e. , decoding R t ) , we apply the last hidden state of B t as the initial hidden state of the R t GRU .
+However , as we need to explicitly model the dependency on B t , we have copy-attention mechanism on B t instead of on X : treating all tokens of B t as the candidate for copying and attention .
+Specifically , we use hidden state generated by B t GRU , i.e. , h ( y ) 1 , ... , h ( y ) m , to calculate copying using Eqs. 7 and 8 and attention score as introduced in Sec 3.1 .
+It helps to reduce search space because all key information of X for task completion has been included in B t .
+P c j ( v ) = 1 Z i:y i =v e ?(y i ) , i m < j m ( 7 ) ?( y i ) = ?( h ( y ) i T W c ) h ( y ) j , i m < j m ( 8 )
+In contrast to recent work ( Eric and Manning , 2017a ) that also employs a copy-attention mechanism to generate a knowledge - base search API and machine responses , our proposed method advances in two aspects : on one hand , bspans reduce the search space from U 1 R 1 ... U t R t to B t?1 R t?1
+U t by compressing key points for the task completion given past dialogues ; on the other hand , because bspans revisit context by only handling the B t with a fixed length , the time complexity of TSCP is only O( T ) , comparing O( T 2 ) in ( Eric and Manning , 2017a ) .
+Involving k t when decoding R t .
+As k t has three possible values : obtaining only one , multiple or no entities .
+We let k t be a vector of three dimensions , one of which signals a value .
+We append k t to the embeddings y j , as shown in Eq. ( 9 ) that is fed into an GRU for generating h ( y ) j + 1 .
+This approach is also referred to as Language Model Type condition ( Wen et al. , 2016 b ) y j = y j k t , j ? [ m + 1 , m ] ( 9 )
+Training
+The standard cross entropy is adopted as our objective function to train a language model : m j=1 y j logP j ( y j )
+In response generation , every token is treated equally .
+However , in our case , tokens for task completion are more important .
+For example , when a user asks for the address of a restaurant , it matters more to decode the placeholder < address > than decode words for language fluency .
+We can employ reinforcement learning to fine tune the trained response decoder with an emphasis to decode those important tokens .
+Inspired by ( Wen et al. , 2017a ) , in the context of reinforcement learning , the decoding network can be viewed as a policy network , denoted as ? ? ( y j ) for decoding y j ( m + 1 j m ) .
+Accordingly , the choice of word y j is an action and its hidden vector generated by decoding GRU is the corresponding state .
+In reinforcement tuning stage , the trained response decoder is the initial policy network .
+By defining a proper reward function r ( j ) for decoding y j , we can update the trained 1 m ? m m j=m + 1 r ( j ) ?log ? ? ( y j ) ? ( 11 ) where r ( j ) = r ( j ) + ?r ( j+ 1 ) + ? 2 r ( j+ 2 ) + ... + ? m?j+1 r ( m ) .
+To encourage our generated response to answer the user requested information but avoid long -winded response , we set the reward at each step r ( j ) as follows : once the placeholder of requested slot has been decoded , the reward for current step is 1 ; otherwise , current step 's reward is - 0.1 .
+? is a decay parameter .
+Sec 5.2 for ? settings .
+Experiments
+We assess the effectiveness of Sequicity in three aspects : the task completion , the language quality , and the efficiency .
+The evaluation metrics are listed as follows : ? BLEU to evaluate the language quality ( Papineni et al. , 2002 ) of generated responses ( hence top - 1 candidate in ( Wen et al. , 2017 b ) ) . ?
+Entity match rate evaluates task completion .
+According to ( Wen et al. , 2017 b ) , it determines if a system can generate all correct constraints to search the indicated entities of the user .
+This metric is either 0 or 1 for each dialogue .
+?
+Success
+F 1 evaluates task completion and is modified from the success rate in ( Wen et al. , 2017 b
+( Wen et al. , , 2016a
+( Wen et al. , , 2017a .
+The original success rate measures if the system answered all the requested information ( e.g. address , phone number ) .
+However , this metric only evaluates recall .
+A system can easily achieve a perfect task success by always responding all possible request slots .
+Instead , we here use success F 1 to balance both recall and pre-cision .
+It is defined as the F 1 score of requested slots answered in the current dialogue .
+?
+Training time .
+The training time is important for iteration cycle of a model in industry settings .
+Datasets
+We adopt the CamRest676 ( Wen et al. , 2017a ) and KVRET ( Eric and Manning , 2017 b ) datasets .
+Both datasets are created by a Wizard - of - Oz ( Kelley , 1984 ) method on Amazon Mechanical Turk platform , where a pair of workers are recruited to carry out a fluent conversation to complete an assigned task ( e.g. restaurant reservation ) .
+During conversation , both informable and requestable slots are recorded by workers .
+CamRest676 's dialogs are in the single domain of restaurant searching , while KVRET is broader , containing three domains : calendar scheduling , weather information retrieval and point of interest ( POI ) Navigation .
+Detailed slot information in each domain are shown in Table 1 .
+We follow the data splits of the original papers as shown in 1 .
+Parameter Settings
+For all models , the hidden size and the embedding size d is set to 50 .
+| V | is 800 for CamRes676 and 1400 for KVRET .
+We train our model with an Adam optimizer ( Kingma and Ba , 2015 ) , with a learning rate of 0.003 for supervised training and 0.0001 for reinforcement learning .
+Early stopping is performed on developing set .
+In reinforcement learning , the decay parameter ? is set to 0.8 .
+We also use beam search strategy for decoding , with a beam size of 10 .
+Baselines and Comparisons
+We first compare our model with the state - of- theart baselines as follow : ? NDM ( Wen et al. , 2017 b ) .
+As described in Sec 1 , it adopts pipeline designs with a belief tracker component depending on delexicalization .
+? NDM + Att+SS .
+Based on the NDM model , an additional attention mechanism is performed on the belief trackers and a snapshot learning mechanism ( Wen et al. , 2016a ) is adopted .
+? LIDM ( Wen et al. , 2017a ) .
+Also based on NDM , this model adopts neural variational inference with reinforcement learning . ) .
+CamRes676 KVRET Mat. BLEU Succ. F 1 T ime f ull T ime N.B. Mat. BLEU Succ. F 1 T ime f ull T ime N.B. ( ? KVRN ( Eric and Manning , 2017 b ) uses one seq2seq model to generate response as well as interacting with knowledge base .
+However , it does not incorporate a belief tracking mechanism .
+For NDM , NDM + Att+SS , LIDM , we run the source code released by the original authors 2 . For KVRN , we replicate it since there is no source code available .
+We also performed an ablation study to examine the effectiveness of each component .
+?
+TSCP\k t .
+We removed the conditioning on k t when decoding R t . ? TSCP \RL .
+We removed reinforcement learning which fine tunes the models for response generation .
+?
+Att- RNN .
+The standard seq2seq baseline as described in the preliminary section ( See ?3.1 ) .
+? TSCP\B t .
+We removed bspans for dialogue state tracking .
+Instead , we adopt the method in ( Eric and Manning , 2017a ) : concatenating all past utterance in a dialogue into a CopyNet to generate user information slots for knowledge base search as well as machine response .
+Experimental Results
+As shown in Table 2 , TSCP outperforms all baselines ( Row 5 vs. Rows 1 - 4 ) in task completion ( entity match rate , success F1 ) and language quality ( BLEU ) .
+The more significant performance of TSCP in KVRET dataset indicates the scalability Importantly , ablation studies validate the necessity of bspans .
+With bspans , even a standard seq2seq model ( Att - RNN , Row 6 ) beats sophisticated models such as attention copyNets ( TSCP\B t , Row 9 ) in KVRET .
+Furthermore , TSCP ( Row 5 ) outperforms TSCP\B t ( Row 9 ) in all aspects : task completion , language quality and training speed .
+This validate our theoretical analysis in Sec 4.3 .
+Other components of TSCP are also important .
+If we only use vanilla Attention - based RNN instead of copyNet , all metrics for model effectiveness decrease , validating our hypothesize that the copied words need to be specifically modeled .
+Secondly , BLEU score is sensitive to knowl- edge base search result k t ( Row 7 vs. Row 5 ) .
+By examining error cases , we find that the system is likely to generate common sentences like " you are welcome " regardless of context , due to corpus frequency .
+Finally , reinforcement learning effectively helps both BLEU and success F 1 although it takes acceptable additional time for training .
+OOV Tests Previous work predefines all slot values in a belief tracker .
+However , a user may request new attributes that has not been predefined as a classification label , which results in an entity mismatch .
+TSCP employs copy mechanisms , gaining an intrinsic potential to handle OOV cases .
+To conduct the OOV test , we synthesize OOV test instances by adding a suffix unk to existing slot fillers .
+For example , we change " I would like Chinese food " into " I would like Chinese unk food . "
+We then randomly make a proportion of testing data OOV and measure its entity match rate .
+For simplicity , we only show the three most representative models pre-trained in the in-vocabulary data : TSCP , TSCP\B t and NDM .
+Compared with NDM , TSCP still performs well when all slot fillers are unknown .
+This is because TSCP actually learns sentence patterns .
+For example , CamRes676 dataset contains a frequent pattern " I would like [ food type ] food " where the [ food type ] should be copied in B t regardless what exact word it is .
+In addition , the performance of TSCP\B t decreases more sharply than TSCP as more instances set to be OOV .
+This might be because handling OOV cases is much harder when search space is large .
+Empirical Model Complexity Traditional belief trackers like ( Wen et al. , 2017 b ) are built as a multi-class classifier , which models each individual slot and its corresponding values , introducing considerable model complexities .
+This is especially severe in large datasets with a number of slots and values .
+In contrast , Sequicity reduces such a complex classifier to a language model .
+To compare the model complexities of two approaches , we empirically measure model size .
+We split KVRET dataset by their domains , resulting in three sub-datasets .
+We then accumulatively add the sub-datasets into training set to examine how the model size grows .
+We here selectively present TSCP , NDM and its separately trained belief tracker , since Wen et al . 's set of models share similar model sizes .
+As shown in Figure 3 , TSCP has a magnitude less number of parameters than NDM and its model size is much less sensitive to distinct slot values increasing .
+It is because TSCP is a seq2seq language model which has a approximate linear complexity to vocabulary size .
+However , NDM employs a belief tracker which dominates its model size .
+The belief tracker is sensitive to the increase of distinct slot values because it employs complex structures to model each slot and corresponding values .
+Here , we only perform empirical evaluation , leaving theoretically complexity analysis for future works .
+Discussions
+In this section we discuss if Sequicity can tackle inconsistent user requests , which happens when users change their minds during a dialogue .
+Inconsistent user requests happen frequently and are dif-ficult to tackle in belief tracking ( Williams , 2012 ; Williams et al. , 2013 ) .
+Unlike most of previous pipeline - based work that explicitly defines model actions for each situation , Sequicity is proposed to directly handle various situations from the training data with less manual intervention .
+Here , given examples about restaurant reservation , we provide three different scenarios to discuss : ?
+A user totally changes his mind .
+For example , the user request a Japanese restaurant first and says " I dont want Japanese food anymore , I 'd like French now . "
+Then , all the slot activated before should be invalid now .
+The slot annotated for this turn is only French .
+Sequicity can learn this pattern , as long as it is annotated in the training set .
+?
+User requests cannot be found in the KB ( e.g. , Japanese food ) .
+Then the system should respond like " Sorry , there is no Japanese food ... " .
+Consequently , the user can choose a different option : " OK , then French food . "
+The activated slot Japanese will be replaced as French , which our system can learn .
+Therefore , an important pattern is the machine - response ( e.g. , " there is no [ XXX constraint ] " ) in the immediate previous utterance .
+?
+Other cases .
+Sequicity is expected to generate both slot values in a belief span if it does n't know which slot to replace .
+To maintain the belief span , we run a simple postprocessing script at each turn , which detects whether two slot values have the same slot name ( e.g. , food type ) in a pre-defined slot name - value table .
+Then , such script only keeps the slot value in the current turn of user utterance .
+Given this script , Sequicity can accurately discover the slot requested by a user in each utterance .
+However , this script only works when slot values are pre-defined .
+For inconsistent OOV requests , we need to build another classifier to recognize slot names for slot values .
+To sum up , Sequicity , as a framework , is able to handle various inconsistent user input despite its simple design .
+However , detailed implementations should be customized depends on different applications .
+Conclusion
+We propose Sequicity , an extendable framework , which tracks dialogue believes through the decoding of novel text spans : belief spans .
+Such belief spans enable a task - oriented dialogue system to be holistically optimized in a single seq2seq model .
+One simplistic instantiation of Sequicity , called Two Stage CopyNet ( TSCP ) , demonstrates better effectiveness and scalability of Sequicity .
+Experiments show that TSCP outperforms the state- ofthe - art baselines in both task accomplishment and language quality .
+Moreover , our TSCP implementation also betters traditional pipeline architectures by a magnitude in training time and adds the capability of handling OOV .
+Such properties are important for real- world customer service dialog systems where users ' inputs vary frequently and models need to be updated frequently .
+For our future work , we will consider advanced instantiations for Sequicity , and extend Sequicity to handle unsupervised cases where information and requested slots values are not annotated .
+Figure 1 : 1 Figure 1 : Sequicity overview .
+The left shows a sample dialogue ; the right illustrates the Sequicity .
+B t is employed only by the model , and not visible to users .
+During training , we substitute slot values with placeholders bearing the slot names for machine response .
+During testing , this is inverted : the placeholders are replaced by actual slot values , according to the item selected from the knowledge base .

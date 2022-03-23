@@ -1,0 +1,195 @@
+title
+Beyond Noise : Mitigating the Impact of Fine-grained Semantic Divergences on Neural Machine Translation
+abstract
+While it has been shown that Neural Machine Translation ( NMT ) is highly sensitive to noisy parallel training samples , prior work treats all types of mismatches between source and target as noise .
+As a result , it remains unclear how samples that are mostly equivalent but contain a small number of semantically divergent tokens impact NMT training .
+To close this gap , we analyze the impact of different types of fine- grained semantic divergences on Transformer models .
+We show that models trained on synthetic divergences output degenerated text more frequently and are less confident in their predictions .
+Based on these findings , we introduce a divergent - aware NMT framework that uses factors to help NMT recover from the degradation caused by naturally occurring divergences , improving both translation quality and model calibration on EN ?
+FR tasks .
+Introduction
+While parallel texts are essential to Neural Machine Translation ( NMT ) , the degree of parallelism varies widely across samples in practice , for reasons ranging from noise in the extraction process ( Roziewski and Stokowiec , 2016 ) to nonliteral translations ( Zhai et al. , 2019 b ( Zhai et al. , , 2020a .
+For instance ( Figure 1 ) , a French SOURCE could be paired with an exact translation into English ( EQ ) , with a mostly equivalent translation where only a few tokens convey divergent meaning ( fine - DIV ) , or with a semantically unrelated , noisy reference ( coarse - DIV ) .
+Yet , prior work treats parallel samples in a binary fashion : coarse- grained divergences are viewed as noise to be excluded from training , whilst others are typically regarded as gold-standard equivalent translations .
+As a result , the impact of fine- grained divergences on NMT remains unclear .
+This paper aims to understand and mitigate the impact of fine- grained semantic divergences in NMT .
+We first contribute an analysis of how finegrained divergences in training data affect NMT quality and confidence .
+Starting from a set of equivalent English - French WikiMatrix sentence pairs , we simulate divergences by gradually " corrupting " them with synthetic fine - grained divergences .
+Following - who , in contrast , study the impact of noise on MT - we control for different types of fine- grained semantic divergences and different ratios of equivalent vs. divergent data .
+Our findings indicate that these imperfect training references : hurt translation quality ( as measured by BLEU and METEOR ) once they overwhelm equivalents ; output degenerated text more frequently ; and increase the uncertainty of models ' predictions .
+Based on these findings , we introduce a divergent - aware NMT framework that incorporates information about which tokens are indicative of semantic divergences between the source and target side of a training sample .
+Source-side divergence tags are integrated as feature factors ( Haddow and Koehn , 2012 ; Sennrich and Haddow , 2016 ; Hoang et al. , 2016 ) , while target - side divergence tags form an additional output sequence generated in a multi-task fashion ( Garc? a- Mart ? nez et al. , 2016 . Results on EN ?
+FR translation show that our approach is a successful mitigation strategy : it helps NMT recover from the negative impact of fine- grained divergences on translation quality , with fewer degenerated hypotheses , and more confident and better calibrated predictions .
+We make our code publicly available :
+https://github.com/Elbria/xling-SemDiv-NMT.
+Background & Motivation Cross-lingual Semantic Divergences
+We use this term to refer to meaning differences in aligned bilingual text ( Vyas et al. , 2018 ; Carpuat et al. , 2017 ) .
+Divergences in manual translation might arise due to the translation process ( Zhai et al. , 2018 ) and result in non-literal translations ( Zhai et al. , 2020a ) .
+Divergences might also arise in parallel text extracted from multilingual comparable resources .
+For instance , in Wikipedia , documents aligned across languages might contain parallel segments that share important content , yet they are not perfect translations of each other , yielding fine - grained semantic divergences ( Smith et al. , 2010 ) .
+Finally coarse-grained divergences might result from the process of automatically mining and aligning corpora from monolingual data ( Fung and Cheung , 2004 ; Munteanu and Marcu , 2005 ) , or web-scale parallel text ( Smith et al. , 2013 ; Espl ? et al. , 2019 ) . Noise vs. Semantic Divergences
+In the context of MT , noise often refers to mismatches in webcrawled parallel corpora that are collected without guarantees about their quality .
+define five frequent types of noise found in the German-English Paracrawl corpus : misaligned sentences , disfluent text , wrong language , short segments , and untranslated sentences .
+They examine the impact of noise on translation quality and find that untranslated training instances cause NMT models to copy the input sentence at inference time .
+Their findings motivated a shared task dedicated to filtering noisy samples from webcrawled data at WMT , since 2018 ( Koehn et al. , , 2019 .
+This work moves beyond such coarse divergences and focuses instead on finegrained divergences that affect a small number of tokens within mostly equivalent pairs and that can be found even in high-quality parallel corpora .
+Training Assumptions NMT models are typically trained to maximize the log-likelihood of the training data , D ? { ( x ( n ) , y ( n ) ) }
+N n=1 , where ( x ( n ) , y ( n ) ) is the n-th sentence pair consisting of sentences that are assumed to be translations of each other .
+Under this assumption , model parameters are updated to maximize the token - level crossentropy loss : J ( ? ) = N n=1 T t=1 log p(y ( n ) t | y ( n ) <t , x ( n ) ; ? ) ( 1 ) In Figure 1 , we illustrate how semantic divergences interact with NMT training .
+In the case of coarse divergences , both the prefixes y ( n ) t< 1 and targets y ( n ) t , yield a noisy training signal at each time step t , which motivates excluding them from the training pool entirely .
+In the case of fine- grained divergences , the assumption of semantic equivalence is only partially broken .
+Depending on the time step t , we might thus condition the prediction of the next token on partially corrupted prefixes , encourage the model to make a wrong prediction , or do a combination of the above .
+This suggests that fine- grained divergent samples provide a noisy yet potentially useful training signal depending on the time step .
+Meanwhile , fine- grained divergences increase uncertainty in the training data , and as a result might impact models ' confidence in their predictions , as noisy untranslated samples do ( Ott et al. , 2018 ) .
+This work seeks to clarify and mitigate their impact on NMT , accounting for both translation quality and model confidence .
+3 Analyzing the Impact of Divergences
+Method
+We evaluate the impact of semantic divergences on NMT by injecting increasing amounts of synthetic divergent samples during training , following the methodology of for noise .
+We focus on three types of divergences , which were found to be frequent in parallel corpora .
+They are fine- grained as they represent discrepancies between the source and target segments at a word or phrase level : LEXICAL SUBSTITU -TION aims at mimicking particularization and generalization operations resulting from non-literal translations ( Zhai et al. , 2019a ( Zhai et al. , , 2020b ; PHRASE REPLACEMENT mimics phrasal mistranslations ; SUBTREE DELETION simulates missing phrasal content from the source or target side .
+Synthetic divergent samples are automatically generated by corrupting semantically equivalent sentence pairs , following the methodology introduced by Briakou and Carpuat ( 2020 ) .
+Equivalents are identified by their Divergent mBERT classifier that yields an F1 score of 84 , on manually annotated WikiMatrix data , despite being trained on synthetic data .
+For LEXICAL SUBSTITUTION we corrupt equivalents by substituting words with their hypernyms or hyponyms from WordNet , for PHRASE REPLACEMENT we replace sequences of words with phrases of matching POS tags , and for SUBTREE DELETION we randomly delete subtrees in the dependency parse tree of either the source or the target .
+Having access to those 4 versions of the same corpus ( one initial equivalent and three synthetic divergences ) , we mix equivalents and divergent pairs introducing one type of divergence at a time ( corpora statistics are included in D ) .
+Finally , we evaluate the translation quality and uncertainty of the resulting translation models .
+Experimental Set- Up Training Data
+We train our models on the parallel WikiMatrix French - English corpus , which consists of sentence pairs mined from Wikipedia pages using languageagnostic sentence embeddings ( LASER ) ( Artetxe and Schwenk , 2019 ) .
+Previous annotations show that 40 % of sentence pairs in a random sample contain fine- grained divergences ( Briakou and Carpuat , 2020 ) .
+After cleaning noisy samples using simple rules ( i.e. , exclude pairs that are a ) too short or too long , b ) mostly numbers , c ) almost copies based on edit distance ) , we extract equivalent samples using the Divergent mBERT model .
+Table 1 presents statistics on the extracted pairs , along with the corpus created if we threshold the LASER score at 1.04 , as suggested by .
+Development and Test data
+We use the official development and test splits of the TED corpus ( Qi et al. , 2018 ) share the same BPE vocabulary .
+We average results across runs with 3 different random seeds .
+Preprocessing
+We use the standard Moses scripts ( Koehn et al. , 2007 ) for punctuation normalization , true-casing , and tokenization .
+We learn 32 K BPEs ( Sennrich et al. , 2016 c ) using Sentence -Piece ( Kudo and Richardson , 2018 ) . Models
+We use the base Transformer architecture ( Vaswani et al. , 2017 ) , with embedding size of 512 , transformer hidden size of 2,048 , 8 attention heads , 6 transformer layers , and dropout of 0.1 .
+Target embeddings are tied with the output layer weights .
+We train with label smoothing ( 0.1 ) .
+We optimize with Adam ( Kingma and Ba , 2015 ) with a batch size of 4,096 tokens and checkpoint models every 1,000 updates .
+The initial learning rate is 0.0002 , and it is reduced by 30 % after 4 checkpoints without validation perplexity improvement .
+We stop training after 20 checkpoints without improvement .
+We select the best checkpoint based on validation BLEU ( Papineni et al. , 2002 ) .
+All models are trained on a single GeForce GTX 1080 GPU .
+Findings Translation Quality Table 2 Token Uncertainty
+We measure the impact of divergences on model uncertainty at training time and at test time .
+For the first , we extract the probability of a reference token conditioned on reference prefixes at each time step .
+For the latter , we compute the probability of the token predicted by the model given its own history of predictions .
+Figure 2 shows that models trained on EQUIVALENTS are more confident in their token level predictions both at inference and training time .
+SUBTREE DELE -TION mismatches affect models ' confidence less than other types , while PHRASE REPLACEMENT hurts confidence the most both at inference and at training time .
+Finally , we observe that differences across divergence types are larger in early decoding steps , while at later steps , they all converge below the EQUIVALENTS .
+Degenerated Hypotheses
+When models are trained on 50 % or more divergent samples , the total length of their hypotheses is longer than the references .
+Manual analysis on models trained with 100 % of divergent samples suggests that this length effect is partially caused by degenerated text .
+Following Holtzman et al. ( 2019 ) - who study this phenomenon for unconditional text generation - we define degenerations as " output text that is bland , incoherent , or gets stuck in repetitive loops " .
+1
+We automatically detect degenerated text in model outputs by checking whether they contain repetitive loops of n-grams that do not appear in the reference ( details on the algorithm are in C ) .
+Figure 3 shows that exposing NMT to divergences increases the percentage of degenerated outputs .
+Even with large beams , the models trained on divergent data yield more repetitions than the EQUIV - ALENTS .
+Moreover , divergences due to phrasal mismatches ( PHRASE REPLACEMENT and SUB - TREE DELETION ) yield more frequent repetitions than token - level mismatches ( LEXICAL SUBSTI - TUTION ) .
+Interestingly , the latter almost matches the frequency of repetitions in EQUIVALENTS with larger beams ( ? 5 ) .
+Summary Synthetic divergences hurt translation quality , as expected .
+More surprisingly , our study also reveals that this degradation is partially due to more frequent degenerated outputs , and that divergences impact models ' confidence in their predictions .
+Different types of divergences have different effects : LEXICAL SUBSTITUTION causes the largest degradation in translation quality , SUB - TREE DELETION and PHRASE REPLACEMENT increase the number of degenerated beam hypotheses , while PHRASE REPLACEMENT also hurts the models ' confidence the most .
+Nevertheless , the impact of divergences on BLEU appears to be smaller than that of noise .
+2
+This suggests that noise filtering techniques are suboptimal to deal with fine- grained divergences .
+Mitigating the Impact of Fine-grained Divergences
+We now turn to naturally occurring divergences in WikiMatrix .
+We will see that their impact on model quality and uncertainty is consistent with that of synthetic divergences ( ? 4.3 ) .
+We propose a divergent - aware framework for NMT ( ? 4.1 ) that successfully mitigates their impact ( ? 4.3 ) .
+Factorizing Divergences for NMT
+We use semantic factors to inform NMT of tokens that are indicative of meaning differences in each sentence pair .
+We tag divergent source and target tokens in parallel segments as equivalent ( EQ ) or divergent ( DIV ) using an mBERT - based classifier trained on synthetic data .
+2
+While the absolute scores are not directly comparable across settings , report that noise has a more striking impact of ?8 to ?25 BLEU .
+The classifier has a 45 F1 score on a fine-grained divergence test set ( Briakou and Carpuat , 2020 ) .
+The predicted tags are thus noisy , as expected on this challenging task , yet we will see that they are useful .
+An example is illustrated below : SRC TOKENS votre p?re est francais FACTORS EQ DIV EQ EQ TGT TOKENS your parent is french FACTORS EQ DIV EQ EQ Source Factors
+We follow Sennrich and Haddow ( 2016 ) who represent the encoder input as a combination of token embeddings and linguistic features .
+Concretely , we look up separate embeddings vectors for tokens and source-side divergent predictions , which are then concatenated .
+The length of the concatenated vector matches the total embedding size .
+Target Factors Target - side divergence tags are an additional output sequence , as in Garc?a- Mart ? nez et al. ( 2016 ) .
+At each time step the model produces two distributions : one over the token target vocabulary and one over the target factors .
+The model is trained to minimize a divergent - aware loss ( Equation 2 ) .
+Terms in red ( also , underlined ) correspond to modifications to the traditional NMT loss .
+At time step t , the model is rewarded to match the reference target y ( n ) t , conditioned on the source sequence of tokens ( x ( n ) ) , the source factors ( ? ( n ) ) , the token target prefix ( y ( n ) <t ) , and the target factors prefix ( z ( n ) < t ) .
+At the same time ( t ) , the model is rewarded to match the factored predictions for the previous time step ? = t ?
+1 . The time shift between the two target sequences is introduced so that the model learns to firstly predict the reference token at ? and then its corresponding EQ vs.
+DIV label , at the same time step .
+The factored predictions are conditioned again on x ( n ) , ? ( n ) , the target factor prefix z ( n ) <? and the token prefix ( y ( n ) ? ) .
+L = ? N n=1 T t=1 log p(y ( n ) t | y ( n ) <t , z ( n ) <t , x ( n ) , ? ( n ) ; ? ) L( n ) MT + T ? =t?1 log p( z ( n ) ? | z ( n ) <? , y ( n ) ? , x ( n ) , ? ( n ) ; ? ) L ( n ) f actor ( 2 ) Inference
+At test time , input tokens are tagged with EQ to encourage the model to predict an equivalent translation .
+We decode using beam search for predicting the translation sequence .
+The token predictions are conditioned on both the token and the factors prefixes .
+The factor prefixes are greedily decoded and thus do not participate in beam search .
+Experimental Set- Up Divergences
+We conduct an extensive comparison of models exposed to different amounts of equivalent and divergent WikiMatrix samples .
+Starting from the pool of examples identified as divergent at ?3.2 , we rank and select the most fine - grained divergences by thresholding the bicleaner score ( Ram?rez-S?nchez et al. , 2020 ) at 0.5 , 0.7 and 0.8 .
+For details , see A .
+Models
+We compare the factored models ( DIV - FACTORIZED ) for incorporating divergent tokens ( ?4.1 ) against : 1 . LASER models are trained on WikiMatrix pairs with a LASER score greater than 1.04 - the noise filtering strategy recommended by .
+Our prior work shows that thresholding LASER might introduce a number of divergent data in the training pool varying from fine to coarse mismatches ( Briakou and Carpuat , 2020 ) . 2 . EQUIVALENTS models are trained on Wiki-Matrix pairs detected as exact translations ( ?3.2 ) ; 3 . DIV-AGNOSTIC models are trained on equivalent and fine- grained divergent data without incorporating information that distinguishes between them ; 4 . DIV-TAGGED models distinguish equivalences from divergences by appending < EQ > vs. < DIV > tags as source-side constraints ( Sennrich et al. , 2016a ) . Models ' details
+Our models are implemented in the Sockeye2 toolkit ( Domhan et al. , 2020 ) .
+3
+We set the size of factor embeddings to 8 , the source token embeddings to 504 and target embeddings to 514 , yielding equal model sizes across experiments .
+All other parameters are kept the same across models , as discussed in ?3.2 , except that target embeddings are not tied with output layer weights for factored models .
+More details are included in B .
+Other Data & Preprocessing
+We use the same preprocessing as well as development and test sets as in ?3.2 , except we learn 5 K BPEs as in 3 https://github.com/awslabs/sockeye . DIV-FACTORIZED , DIV-AGNOSTIC , and DIV-TAGGED models are compared in controlled setups that use the same training data .
+We also evaluate out -of- domain on the khresmoi-summary test set for the WMT2014 medical translation task ( Bojar et al. , 2014 ) . Evaluation
+We evaluate translation quality with BLEU ( Papineni et al. , 2002 ) and METEOR ( Banerjee and Lavie , 2005 ) .
+4 , 5 We compute Inference Expected Calibration Error ( InfECE ) as Wang et al . ( 2020 ) , which measures the difference in expectation between confidence and accuracy .
+6
+We measure token - level translation accuracy based on Translation Error Rate ( TER ) alignments between hypotheses and references .
+7 Unless mentioned otherwise , we decode with a beam size of 5 .
+Results
+We discuss the impact of real divergences along the dimensions surfaced by the synthetic data analysis .
+Translation Quality
+Table 3 presents BLEU and METEOR scores across model configurations and data settings on the TED test sets .
+First , the model trained on EQUIVALENTS represents a very competitive baseline as it performs better or statistically comparable to all models .
+This result is in line with prior evidence of Vyas et al . ( 2018 ) who show that filtering out the most divergent pairs in noisy corpora ( e.g. , OpenSubtitles and Com-monCrawl ) does not hurt translation quality .
+Interestingly , the EQUIVALENTS model outperforms LASER across metrics and translation directions , despite the fact that it is exposed to only about half of the training data .
+Gradually adding divergent data ( DIV - AGNOSTIC ) hurts translation quality across the board compared to the EQUIVALENTS model .
+The drops are significantly larger when divergences overwhelm the equivalent translations , which is consistent with our findings on synthetic data .
+Second , DIV-FACTORIZED is the most effective mitigation strategy .
+With segment - level constraints ( DIV - TAGGED ) , models can recover from the degradation caused by divergences ( DIV - AGNOSTIC ) , but not consistently .
+By contrast , token - level factors ( DIV - FACTORIZED ) help NMT recover from the impact of divergences across data setups and reach Third , when translating the out-of- domain test set , DIV -FACTORIZED improves over the EQUIV-ALENTS model , as presented in Table 4 . DIV-AGNOSTIC models perform comparably to EQUIV - ALENTS , while factorizing divergences improves on the latter by ? + 1 BLEU , for both directions .
+8 Mitigating the impact of divergences is thus important for NMT to benefit from the increased coverage of out - of- domain data provided by the divergent samples .
+Degenerated Hypotheses
+We check for degenerated outputs across models , data setups ( we account for different percentages of divergences in the training data ) , and different beam sizes ( Table 5 ) .
+As with synthetic divergences , we observe that when real divergences overwhelm the training data ( 55 % ) , degenerated loops are almost twice as frequent for all beam sizes .
+This phenomenon is consistently mitigated by DIV-FACTORIZED models across the board .
+9 Furthermore , in some settings ( 20 % , 33 % ) , DIV -FACTORIZED models decrease the amount of degenerated text by half compared to the EQUIVALENTS models .
+10 7243 Uncertainty Figures 4a and 4 c show that the gold-standard references are assigned lower probabilities by the DIV-AGNOSTIC models than all other models , especially in early time steps ( t < 30 ) .
+We observe similar drops in confidence based on the probabilities of predicted tokens at inference time ( 4 b and 4d ) .
+This confirms that exposing models to fine- grained semantic divergences hurts their confidence , whether the divergences are synthetic or not .
+Furthermore , factorizing divergences helps mitigate the impact of naturally occurring divergences on uncertainty in addition to translation quality .
+We conduct a calibration analysis to measure the differences between the confidence ( i.e. , probability ) and the correctness ( i.e. , accuracy ) of the generated tokens in expectation .
+Given that deep neural networks are often mis-calibrated in the direction of over-estimation ( confidence > accuracy ) ( Guo et al. , 2017 ) , we check whether the increased confidence of DIV-FACTORIZED hurts calibration ( Table 6 ) .
+DIV -FACTORIZED models are on average more confident and more accurate than their DIV -AGNOSTIC counterparts .
+Interestingly , DIV-AGNOSTIC has smaller calibration errors than EQUIVALENTS and LASER models across the board .
+Related Work
+We discuss work related to cross-lingual semantic divergences and noise effects in Section 2 and now turn to the literature that connects with the methods used in this paper .
+Factored Models Factored models are introduced to inject word-level linguistic annotations ( e.g. , Part- of - Speech tags , lemmas ) in translation .
+Source-side factors have been used in statistical MT ( Haddow and Koehn , 2012 ) and in NMT ( Sennrich et al. , 2016 b ; Hoang et al. , 2016 ) .
+Target -side factors are used by Garc?a- Mart ? nez et al. ( 2017 ) as an extension to the traditional NMT framework that outputs multiple sequences .
+Although their main motivation is to enable models to handle larger vocabularies , Wilken and Matusov ( 2019 ) propose a list of novel applications of target - side factors beyond their initial purpose , such as wordcase prediction and subword segmentation .
+Our approach draws inspiration from all the aforementioned works , yet it is unique in its use of both source and target factors to incorporate semantics in NMT .
+Calibration Kumar and Sarawagi ( 2019 ) find that NMT models are miscalibrated , even when conditioned on gold-standard prefixes .
+They attribute this behavior to the poor calibration of the EOS token and the uncertainty of attention and design a recalibration model to improve calibration .
+Ott et al. ( 2018 ) argue that miscalibration can be attributed to the " extrinsic " uncertainty of the noisy , untranslated references found in the training data .
+M?ller et al. ( 2019 ) investigate the effect of label smoothing on calibration .
+On a similar spirit , Wang et al . ( 2020 ) propose graduated label smoothing to improve calibration at inference time .
+They also link miscalibration to linguistic properties of the data ( e.g. , frequency , position , syntactic roles ) .
+Our work , in contrast , focuses on the semantic properties of the training data that affect calibration .
+Conclusion
+This work investigates the impact of semantic mismatches beyond noise in parallel text on NMT quality and confidence .
+Our experiments on EN ?
+FR tasks show that fine- grained semantic divergences hurt translation quality when they overwhelm the training data .
+Models exposed to fine- grained divergences at training time are less confident in their predictions , which hurts beam search and produces degenerated text ( repetitive loops ) more frequently .
+Furthermore , we also show that , unlike noisy samples , fine - grained divergences can still provide a useful training signal for NMT when they are modeled via factors .
+Evaluated on EN ?
+FR translation tasks , our divergent - aware NMT framework mitigates the negative impact of divergent references on translation quality , improves the confidence and calibration of predictions , and produces degenerated text less frequently .
+More broadly , this work illustrates how understanding the properties of training data can help build better NMT models .
+In future work , we will extend our analysis to other properties of parallel text and to other language pairs , focusing on low-resource conditions where divergences are expected to be even more prevalent .

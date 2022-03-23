@@ -1,0 +1,195 @@
+title
+Continual Learning in Task-Oriented Dialogue Systems
+abstract
+Continual learning in task - oriented dialogue systems allows the system to add new domains and functionalities over time after deployment , without incurring the high cost of retraining the whole system each time .
+In this paper , we propose a first-ever continual learning benchmark for task - oriented dialogue systems with 37 domains to be learned continuously in both modularized and end-to - end learning settings .
+In addition , we implement and compare multiple existing continual learning baselines , and we propose a simple yet effective architectural method based on residual adapters .
+We also suggest that the upper bound performance of continual learning should be equivalent to multitask learning when data from all domain is available at once .
+Our experiments demonstrate that the proposed architectural method and a simple replay - based strategy perform better , by a large margin , compared to other continuous learning techniques , and only slightly worse than the multitask learning upper bound while being 20X faster in learning new domains .
+We also report several trade- offs in terms of parameter usage , memory size and training time , which are important in the design of a task - oriented dialogue system .
+The proposed benchmark is released to promote more research in this direction 1 .
+Introduction
+Task-oriented dialogue systems ( ToDs ) are the core technology of the current state - of - the - art smart assistants ( e.g. Alexa , Siri , Portal , etc. ) .
+These systems are either modularized as a pipeline of multiple components , namely , natural language understanding ( NLU ) , dialogue state tracking ( DST ) , dialogue policy ( DP ) and natural language generation ( NLG ) , or end-to-end , where a single model implicitly learns how to issue APIs and system responses .
+These systems are continuously updated with new features based on the user 's needs , e.g. , adding new slots and intents , or even completely new domains .
+However , existing dialogue models are trained with the assumption of having a fixed dataset at the beginning of the training , and they are not designed to add new domains and functionalities through time without incurring the high cost of retraining the whole system .
+The ability to acquire new knowledge continuously , a.k.a. continual learning ( CL ) ( Thrun and Pratt , 2012 ) , represents a common challenge to many production and ondevice dialogue systems where there is a continual growth of 1st and 3rd - party - developer domains that are added after deployment .
+Therefore , it is crucial to design dialogue systems with CL ability .
+Figure 1 shows an high- level intuition of CL in ToDs .
+In the CL setting the main challenge is catastrophic forgetting ( McCloskey and Cohen , 1989 ) .
+This phenomena happens because there is a distributional shift between the tasks in the curriculum which leads to catastrophic forgetting of the previously acquired knowledge .
+To overcome this challenge three kinds of methods are usually deployed : loss regularization , for avoiding interference with the previously learned tasks , rehearsal , which use episodic memory to recall previously learned tasks , and architectural , which add task - specific parame - ters for each learned task .
+However , architectural methods are usually not considered as a baseline , especially in sequence - to-sequence ( Seq2Seq ) generation tasks ( Sun et al. , 2019 ) , because they usually require an additional step during testing to select which parameter to use for the given task .
+To the best our knowledge , continual learning in task - oriented dialogue systems ( Lee , 2017 ) is mostly unexplored or has been studied only in limited settings ( e.g. , NLG ( Mi et al. , 2020 ) ) using only a few tasks learned continuously .
+Given the importance of the task in the dialogue setting , we believe that a more comprehensive investigation is required , especially by comparing multiple settings and baselines .
+Therefore , in this paper , we make the following contributions : 1 . We propose a benchmark for continual learning in ToDs , with 37 tasks to be learned continuously on four settings .
+2 . We propose a simple yet effective architectural CL method based on residual adapters ( Houlsby et al. , 2019 ) that can continuously learn tasks without the need of a task classifier at testing time .
+3 . We analyse the trade- off between number-ofparameters , episodic memory sizes , and training time of the three main categories of CL methods ( regularization , rehearsal , architectural ) .
+Background
+Task - Oriented Dialogue Modelling
+In this paper , we model task - oriented dialogue systems as a seq2seq generation task ( Lei et al. , 2018 ; Lin et al. , 2020 b ; Byrne et al. , 2020 ; Lin et al. , 2021 ) that generates both API - calls and system responses .
+As shown in Figure 2 , the model takes as input a dialogue history , which is the concate-nation of user intents and current dialogue states , and then uses its API - call returns , which can be empty or system speech-acts , to generate its system response .
+This modelling choice is guided by the existing annotated dialogue datasets , which provide the intent and the dialogue state of the user at every turn , and the speech - act of the system ; and it allows us to define four distinct settings for studying CL : intent recognition ( INTENT ) , dialogue state tracking ( DST ) , natural language generation ( NLG ) and end-to-end ( E2E ) .
+In the coming paragraphs , we formally describe the four settings as different input-out pairs for a seq2seq model .
+Data-Formatting
+Let us define the dialogue history H as a single sequence of tokens from the concatenation of the alternating utterances from the user and the system turns respectively .
+Without loss of generality , we assume that H has all the dialogue history without the last system utterance , denoted as S .
+To distinguish between speakers , we add two special tokens at the beginning of every utterance : USER : for the user utterance and SYSTEM : for the system utterance .
+Then , we define an API - call , denoted by S AP I , as the concatenation of the API - name , i.e. , the user-intent , and its arguments , i.e. , slot-value pairs from the DST .
+The following syntax is used : S AP I = I Intent ( s 1 = v 1 , . . . , s k = v p Slot-value pairs ) ( 1 ) where I is an intent or the API - name , s i the slotname and v i one of the possible values for the slot s i .
+The return of the API - call is either an empty string , thus the model uses the dialogue history to generate a response , or a speech- act , denoted as S OU T , in the same format as the API -call in Equation 1 .
+Similar to the dialogue history , we define two special tokens API : and OUT : for triggering the model to generate the API - call and for distinguishing the return of the API from the dialogue history respectively .
+Based on this pre-processing , we define the four settings used in this paper .
+Without loss of generality , we define the three modularized settings by their input-out pairs : H ? I ( INTENT ) H ? I(s 1 = v 1 , . . . , s k = v p ) ( DST ) I(s 1 = v 1 , . . . , s k = v p ) S OU T ? S ( NLG ) whereas for the end-to-end ( E2E ) setting we define the pairs as : H ? I (s 1 = v 1 , . . . , s k = v p ) S AP I H + I(s 1 = v 1 , . . . , s k = v p ) S OU T ? S Often , S OU T is empty and thus the model maps the dialogue history to the response ( H ? S ) .
+An example of input-out pairs is shown in Figure 2 . Finally , we define a dialogue dataset as D K = { ( X i , Y i ) }
+n i , where ( X i , Y i ) is a general input-out pair from one of the four settings in consideration , and K is the dialogue domain under consideration ( e.g. , hotel ) .
+Model
+In this paper , we employ decoder-only language models ( e.g. , GPT - 2 ) , which are often used in the current state - of - the - art task - oriented dialogue models as in Peng et al . ( 2020 ) and Hosseini - Asl et al . ( 2020 ) .
+Then , given the concatenation of the input X = {x 0 , . . . , x n } and output Y = {x n+ 1 , . . . , x m } sequences , we compute the conditional language model distribution using the chain rule of probability as p ?
+( Y |X ) = n+ m i=0 p ? ( x i |x 0 , ? ? ? , x i?1 ) , ( 2 ) where ? are the model 's parameters .
+The parameters are trained to minimize the negative loglikelihood over a dataset D of input-out pairs , which in our case is the data of the four settings .
+Formally , we define the loss L ? as : L ? ( D ) = ?
+| D| j n+m i=0 log p ? ( x ( j ) i |x ( j ) 0 , ? ? ? , x ( j ) i?1 ) , ( 3 ) where n + m is a maximum sequence length in D .
+At inference time , given the input sequence X , the model parameterized by ?
+autoregressively generates the output sequence Y .
+Continual learning
+The goal of continual learning is to learn a set of tasks sequentially without catastrophically forgetting the previously learned tasks .
+In task - oriented dialogue systems , we cast CL as learning a sequence of domains sequentially , ( as opposed to multitask learning where all domains are assumed to be present and learned together ) .
+Let us define a curriculum of T domains as an ordered set D = { D 1 , ? ? ? , D T } , where D K is a dataset under the domain K .
+In addition , we denote the models ' parameters after learning the task K by ?
+K . Following the recently defined taxonomy for CL ( Wortsman et al. , 2020 ) , we study the settings in which the task - id is provided during training , but not during testing 2 , meaning that , during training the model is aware of which domain it is currently learning , but during testing , the model is evaluated without specifying the dialogue domain .
+This assumption makes our CL setting more challenging but more realistic , since during inference times users do not explicitly specify in which domain they want to operate .
+In this paper , we consider three continual learning approaches : ?
+Regularization methods add a regularization term to the current learned ?
+t to avoid interfering with the previously learned ?
+t?1 . Formally , the loss at task t is : L ?t ( D t ) = L ?t ( D t ) + ?(?
+t ? ? * t?1 ) 2 , ( 4 ) where ? * t?1 are copies of the previously learned parameters frozen at this stage .
+In our experiments , we consider two kind of ? : the identity function ( L2 ) and the Fisher information matrix ( Kirkpatrick et al. , 2017 ) ( EWC ) .
+?
+Rehearsal methods use an episodic memory M to store examples from the previously learned domains , and re-use them while learning new tasks .
+The most straightforward method is to add the content of the memory M to the current task data D t .
+Following our notation , the model is optimized using L ?t ( D t + M ) , and we refer to this method as REPLAY .
+Another rehearsal method is to constrain the gradients updates so that the loss of the samples in memory never increases .
+More formally , L ?t ( D t ) s.t. L ?t ( M ) ? L ? t?1 ( M ) . ( 5 ) Of this kind , the method Gradient Episodic Memory ( GEM ) ( Lopez -Paz and Ranzato , 2017 ) computes the gradient constraint via a quadratic programming solver that scales with the number of parameters of the model .
+After our first investigation , we discover that it is impractical for large - language models to use GEM , since they have millions of parameters and the constraints are computed for each batch .
+To cope with this computational complexity , Chaudhry et al . ( 2018 ) proposed A- GEM , which efficiently computes the gradient constraints while being effective in CL tasks .
+Finally , a rehearsal method specific to language tasks is LAMOL ( Sun et al. , 2019 ) ( Yoon et al. , 2017 ) and Learnto - Grow ( Li et al. , 2019 b ) .
+On the other hand , there are fixed - capacity methods , that do not add specific parameters , but learn parameter masks ( Fernando et al. , 2017 ) , usually binary ( Mallya et al. , 2018 ) , to select subnetworks that are task-specific .
+To the best of our knowledge , these models have been tested mostly on computer vision tasks , and they can not easily handle our CL setting ( i.e. , no task - id during testing ) .
+AdapterCL
+Motivated by the lack of architectural baselines for CL in Seq2Seq modelling , we propose a novel architectural method called AdapterCL .
+Our proposed method parameterizes each task using residual adapters ( Houlsby et al. , 2019 ; Lin et al. , 2020a ) and uses an entropy - based classifier to select which adapter to use at testing time .
+This method is designed for large pre-trained language models , e.g. , GPT - 2 , since only the task -specific parameters are trained , while the original weights are left frozen .
+Residual adapters are trainable parameters added on top of each transformer layer , which steer the output distribution of a pre-trained model without modifying its original weights .
+An adapter block consists of layer normalization ( Ba et al. , 2016 ) , followed by two linear layers ( Hinton and Zemel , 1994 ) with a residual connection .
+Given the hidden representation at layer l , denoted as H ?
+R p?d , of a transformer ( Vaswani et al. , 2017 ) , where d is the hidden size and p is the sequence length , the residual adapter computes Adapter ? l i ( H ) = ReLU ( LN ( x ) W E l ) W D l + H , ( ? i = { W E 0 , W D 0 , ? ? ? , W E L , W D L } as the set of parameters for the adapter i for a model with L layers .
+To continuously learn new tasks , we first spawn a new adapter , parameterized by ? , and then we train its parameters as in Equation 3 .
+For instance , given the dataset D t and the model with its corresponding adapter ?
+t , the loss is defined as : L ?t ( D t ) = ?
+| Dt | j n+m i=0 log p ?t ( x ( j ) i |x ( j ) 0 , ? ? ? x ( j ) i?1 ) .
+( 7 ) Importantly , the loss is optimized over ?
+t to guarantee that each task is independently learned .
+An high- level representation of AdapterCL is shown in Figure 3 . Perplexity - Based Classifier
+In our CL setting the task - id is provided during training and thus each ?
+t is optimized over D t .
+During testing , however , the task - id is not provided and thus the model has to predict which adapter to use for accomplishing the task .
+This step is not required in regularization and rehearsal approaches since a single set of parameters is optimised during training .
+Inspired by Wortsman et al . ( 2020 ) , we propose to utilize the perplexity of each adapter over the input X as a measure of uncertainty .
+Thus , by selecting the adapter with the lowest perplexity , we select the most confident model to generate the output sequence .
+The perplexity of an input sequence X = x 0 , ? ? ? , x n is defined as PPL ?
+( X ) = n n i=1 1 p ? ( x i | x 0 , ? ? ? , x i?1 ) ( 8 )
+Therefore , given the set of adapters parameterized by ?
+0 , . . . , ?
+N , each of which is trained respectively with D 0 , . . . , D N , and an input sample X , we compute : ? t = PPL ?t ( X ) ?t ? 1 , ? ? ? , N , ( 9 ) where each ?
+t represents the confidence of the adapter t for the input X .
+The task - id t is thus selected as t * = argmin ?
+0 , ? ? ? , ? N ( 10 )
+The perplexity - based selector requires a linear number of forwards with respect to the number of adapters ( Equation 9 ) , but it has the advantage of not requiring a further classifier , which itself would suffer from catastrophic forgetting .
+In Section 5.1 , we analyze the time required for the adapter selection .
+Experimental Settings
+In this section we describe 1 ) the datasets used for creating the learning curriculum , 2 ) the evaluation metric used to evaluate the different settings , and 3 ) the experimental setups .
+Datasets
+To the best of our knowledge , there is no benchmark for CL in dialogue systems with a high number of tasks to be learned sequentially and with multiple training settings .
+The closest to ours is the work of Mi et al . ( 2020 ) , which continuously learns five domains in the NLG setting .
+In general , NLP benchmarks for continual learning use no more than 10 tasks or domains ( Sun et al. , 2019 ; d'Autume et al. , 2019 ) .
+Consequently , in this paper , we propose a CL benchmark by jointly pre-processing four task - oriented datasets : Task - Master 2019 ( TM19 ) ( Byrne et al. , 2019 ) , Task - Master 2020 ( TM20 ) ( Byrne et al. , 2019 ) , Schema Guided Dialogue ( SGD ) ( Rastogi et al. , 2019 ) and MultiWoZ ( Budzianowski et al. , 2018 ) .
+This results in a curriculum of 37 domains to be learned continuously under four settings : INTENT classification , DST , NLG , and finally end2end ( E2E ) .
+This is possible because the four datasets provide the speech act annotation for both the user and the system turns , and the dialogue state as well .
+To avoid any domain overlapping during learning , we select only dialogues with a single domain at a time for 1 ) having a controlled setting to better studying the continual learning problem in ToDs and 2 ) having a long and diverse curriculum ( 37 domains , which is x8 larger than any existing previous benchmark ) instead of fewer domains but mixed .
+Given the difficulty of the problem , we also believe this is a starting point for stimulating new research in CL for ToDs .
+Finally , the datasets are pre-processed as in Section 2.1 to form the four settings , and the main statistics are shown in Table 5 in the appendix .
+In Appendix Table 4 , we report the number of samples by each domain and setting , where we notice the that the domains are hugely imbalanced , with sample sizes ranging from a few hundred samples ( e.g. , SGD - travel ) to 15 K ( e.g. , TM19 - flight ) .
+Importantly , since not all the datasets provide a delexicalized version of the responses , we decide to keep all the datasets in their plain text form .
+Evaluation Metrics Automatic evaluations for E2E task - oriented dialogue systems are challenging , especially for the response generation task .
+To overcome this issue , in this paper we use well - defined metrics based on the three modularized settings .
+In all of the three sub-tasks , we define the relevant metrics as : ? INTENT recognition is evaluated using the accuracy between the generated intents and the gold labels .
+? DST is evaluated with the Joint Goal Accuracy ( JGA ) ( Wu et al. , 2019 ) over the gold dialogue states .
+?
+NLG is evaluated using both the BLEU score ( Papineni et al. , 2002 ) and the slot error rate ( EER ) ( Wen et al. , 2015 ) which is computed as the ratio between the total number of slots and the values not appearing in the response .
+In datasets such as SGD , the slot has binary values , e.g. , yes or no , and thus we exclude these from the count , as in Kale and Rastogi ( 2020 ) .
+Independently of these metrics , we also compute CL -specific metrics such as the average metrics through time ( Avg. Metric ) , as in Lopez-Paz and Ranzato ( 2017 ) .
+We consider access to the test set for each of the T tasks , and after the model finishes learning the task t i , we evaluate its test performance on all tasks in the curriculum .
+To elaborate , we construct the matrix R ? R T ?T , where R i , j is the test metric ( e.g. , BLEU , JGA ) of the model on task t j after observing the last sample from task t i .
+Then we define the average accuracy as Avg.Metric = 1 T T i=1 R T , i ( 11 ) The Avg. Metric score is useful for understanding the learning dynamics through time of different baselines .
+Further metrics such as Backward -Transfer and Forward-Transfer ( Lopez-Paz and Ranzato , 2017 ) are available to distinguish baselines with similar Avg. Metric scores , but in this paper we limit our evaluation to this metric , since there is a large gap among the baselines .
+Finally , to evaluate the adapter selection , we use the accuracy over the gold task - id .
+Baselines and Settings
+The main goal of this paper is to compare the performance of different CL approaches and to understand the trade - offs between them .
+Therefore , following the definition provided in Section 2.2 , we compare 1 ) EWC and L2 , 2 ) A-GEM , LAMOL , and REPLAY , and 3 ) AdapterCL .
+Additionally , we provide baselines trained on each task continuously , namely , VANILLA , without any regularization or memory , and a multitask baseline ( MULTI ) , which is trained on all the data in the curriculum at the same time .
+In L2 , EWC , and A- GEM we tune different ? in the range 0.0001 to 100 , and in rehearsal - based methods , such as REPLAY and GEM , we keep 50 samples per task , for a total of 1,850 sample in M at the end of the curriculum .
+This is particularly important since if we store in memory all the samples of the seen tasks , the model would incur a high training cost .
+Arguably , this could be an option if the per-task sample size is small , but this is not always possible , e.g , large language models ( Brown et al. , 2020 ) .
+Therefore , the assumption of minimizing the number of samples in memory is valid and widely used in the CL literature ( Mi et al. , 2020 ) .
+Finally , for the AdapterCL , we tune the bottleneck size b between 10 , 50 , 100 , and 200 .
+Interested readers can refer to the Appendix for further details of the selected hyper-parameters .
+In continual learning the model is not able decide the order of tasks .
+Therefore , we create five learning curricula by randomly permuting the 37 tasks .
+Results & Analysis
+The main results in the E2E setting are summarized in Table 1 , while the results for the modularized settings are in Table 2 in the Appendix .
+Due to space constraints in these tables , we report the Avg. Metric at the end of the curriculum , which is equivalent to the average test set performance in all the tasks , and the resources used by each model .
+The results on the full curriculum of 37 tasks are reported in Figure 4 and 5 .
+Main Results
+From the tables , we can observe that 1 ) both regularization - based methods ( L2 / EWC ) and some rehearsal - based methods ( AGEM / LAMOL ) cannot continually learn tasks without incurring in catastrophic forgetting , 2 ) RE - PLAY and AdapterCL perform comparably well on the Intent and DST tasks , 3 ) REPLAY works the best on the NLG task , showing that transferring knowledge between tasks is needed , and 4 ) no CL methods can reach the performance of the multi-task baseline , especially on the DST task .
+In addition , the adapter selection accuracy based on Equation 10 is 95.44?0.2 % in E22 , 98.03?0.1 % in Intent Recognition , 98.19?0.1 % in DST , and 93.98?0.1 % in the NLG .
+Although these numbers are meaningful , they do not describe the entire learning history of the curriculum .
+To better understand these dynamics , we plot the Avg. Metric in Equation 11 after each task is learned ( t = T in the equation ) .
+Figure 4 , 5 shows the plot for two of the considered metrics and all the baselines .
+From this figure we can better understand how REPLAY and AdapterCL outperform the other baselines and , interestingly , that LAMOL performs as well as REPLAY on the first 12 tasks .
+This is because LAMOL learns to generate training samples instead of using an explicit memory , and thus the generation becomes harder when more and more task are shown .
+This result further strengthens our motivation to have a benchmark with a long curriculum .
+In the Appendix , Figure 13 and 14 show the remaining two metrics for the E2E setting and Figure 16 , 17 , 18 , and 19 show the same plots for the individual module training .
+Training Time Analysis From Figure 6 new domains , while in AdapterCL and VANILLA the time remains constant across the curriculum .
+This is even more evident when the entire trainingset of all the previous tasks is used for training ( REPLAY - ALL ) , which lead to an expensive retraining process to add new domains .
+The average time across domain for all the baseline is shown in Table 1 . AdapterCL requires also an additional cost in selecting which parameters to use during testing .
+By using a single NVIDIA 2080 ti , the average time to select the adapter is 0.069 ? 0 , 003 seconds , which is as expensive as decoding 4 tokens .
+No Free Lunch Finally , based on the results shown in Table 1 , and especially based on the resources used by each method , we conclude that there is a no free lunch in terms of resources needed to avoid the catastrophic forgetting problem .
+To elaborate , in both REPLAY and AdapterCL , the resources used grow linearly with the number of tasks ; i.e. , in REPLAY the number of samples stored in the episodic memory grows linearly ( 50 times the number of tasks ) , and in AdapterCL the number of parameters grows linearly ( number of adapter parameters times the number of tasks ) .
+Figure 11 in the Appendix describes the high- level intuition behind this concept by plotting the number of tasks and parameters and the episodic memory sizes needed .
+Analysis : Episodic Memory Size
+In this section , we analyze the effect of increasing the episodic memory size for the REPLAY method .
+Trivially , by including all the training samples in the memory , the model , at the last task , converges to the multitask baseline .
+Then , the question of how many samples to keep per task to avoid catastrophic forgetting is important .
+In light of this , Figure 7 shows the performance of the model at different episodic memory sizes on the DST task .
+Here , we observe that by storing only a few samples per task ( 10 - 50 ) the model still greatly suffers from catastrophic forgetting , where with around 500 samples , which is equivalent to a total of 18,500 samples in our setting , the performance is closer to that of the multitask baseline ( i.e. , a possible upper bound ) .
+Similar observations are shown for the other two tasks in Figure 8 , 9 , and 10 in the Appendix .
+2019 ) for an overview of the existing approaches , and to Section 2.2 for more details on the three main CL approaches studied in this paper .
+Continual learning has also been studied in the Long Life Learning ( LLL ) scenario , where a learner continuously accumulates knowledge and makes use of it in the future ( Chen and Liu , 2018 ; Liu and Mei , 2020 ) .
+In this paper , we study the setting in which a series of tasks is learned continuously .
+Related Work CL in NLP has been explored for both classification ( d' Autume et al. , 2019 ; Sprechmann et al. , 2018 ; Wang et al. , 2020 ) and generation ( Sun et al. , 2019 ; Hu et al. , 2020 ) 2018 ) is not suitable for interactive systems as dialogue systems , since their methods require local adaptation ( i.e. , a fine- tuning step ) during inference .
+Finally , continual learning has been used for sentence encoding , composition language learning ( Li et al. , 2019 c ) and relation learning ( Han et al. , 2020 ) .
+However , these methods are specific to particular applications not generalizable to ToDs .
+CL in Dialogue Systems
+The very early work on CL for Task - Oriented dialogue is from Lee ( 2017 ) , who used EWC to avoid catastrophic forgetting on three domains learned sequentially .
+Continual learning has also been studied in the NLG setting , where a single model was trained to learn one domain at the time in MWoZ ( Mi et al. , 2020 ) .
+The authors used episodic memory to replay the example in combination with EWC .
+In this paper , we compare similar baselines but on a larger benchmark that also includes MWoZ and the NLG setting .
+For the DST setting , CL was studied by ( Wu et al. , 2019 ) using MWoZ , where several baselines such as L2 , EWC and GEM were compared .
+Differently , Li et al. ( 2019a ) leveraged CL for evaluating the quality of chat - bot models , and He et al . ( 2019 ) studied the catastrophic forgetting problem in chitchat systems .
+Finally , Shuster et al. ( 2020 ) showed that by training models on humans -machine conversations in an open-domain fantasy world game ( Fan et al. , 2020 ) the models progressively improved .
+Conclusion
+In this paper , we proposed a benchmark for continual learning in task - oriented dialogue systems , with 37 tasks to be learned sequentially on four settings : intent recognition , dialogue state tracking , natural language generation , and end-to-end .
+Then , we implemented three continual learning methodologies , namely regularization , rehearsal and architectural .
+For the latter , we proposed a simple yet effective method based on residual adapters and a perplexitybased classifier to select which adapter to use at inference time .
+Finally , we analyzed the trade- off between the performance , the number of parameters , training time and the episodic memory sizes of the evaluated baselines .

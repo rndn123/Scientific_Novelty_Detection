@@ -1,0 +1,200 @@
+title
+Extremely Low Bit Transformer Quantization for On-Device Neural Machine Translation
+abstract
+The deployment of widely used Transformer architecture is challenging because of heavy computation load and memory overhead during inference , especially when the target device is limited in computational resources such as mobile or edge devices .
+Quantization is an effective technique to address such challenges .
+Our analysis shows that for a given number of quantization bits , each block of Transformer contributes to translation quality and inference computations in different manners .
+Moreover , even inside an embedding block , each word presents vastly different contributions .
+Correspondingly , we propose a mixed precision quantization strategy to represent Transformer weights by an extremely low number of bits ( e.g. , under 3 bits ) .
+For example , for each word in an embedding block , we assign different quantization bits based on statistical property .
+Our quantized Transformer model achieves 11.8 ?
+smaller model size than the baseline model , with less than - 0.5 BLEU .
+We achieve 8.3 ? reduction in run-time memory footprints and 3.5 ? speed up ( Galaxy N10 + ) such that our proposed compression strategy enables efficient implementation for on-device NMT .
+Introduction Transformer ( Vaswani et al. , 2017 ) is one of the state - of - the - art approaches for Neural Machine Translation ( NMT ) , and hence , being widely accepted .
+For example , in WMT19 machine translation tasks , it is reported that 80 % of submitted systems have adopted the Transformer architecture ( Barrault et al. , 2019 ) .
+Note that high translation quality of Transformer models entails a large number of parameters .
+Moreover , the Transformer model is inherently much slower than conventional * Equal Contribution .
+machine translation approaches ( e.g. , statistical approaches ) mainly due to the auto-regressive inference scheme ( Graves , 2013 ) incrementally generating each token .
+As a result , deploying the Transformer model to mobile devices with limited resources involves numerous practical implementation issues .
+To address such implementation challenges with little degradation in translation quality , we study a low- bit quantization strategy for Transformer to accomplish high- performance on -device NMT .
+We note that most previous studies to compress Transformer models utilize uniform quantization ( e.g. INT8 or INT4 ) .
+While uniform quantization may be effective for memory footprint savings , it would face various issues to improve inference time and to maintain reasonable BLEU score .
+For example , even integer arithmetic units for inference operations present limited speed up ( Bhandare et al. , 2019 ) and resulting BLEU score of quantized Transformer can be substantially degraded with low- bit quantization such as INT4 ( Prato et al. , 2019 ) .
+While determining the number of quantization bits for Transformer , it is crucial to consider that each component of Transformer may exhibit varied sensitivity of quantization error toward degradation in translation quality ( Wang and Zhang , 2020 ) .
+Accordingly , a mixed precision quantization can be suggested as an effort to assign different numbers of quantization bits depending on how each component after quantization is sensitive to the loss function .
+In addition , as we illustrate later , even assigning different quantization bits for each row of an embedding block can further reduce the overall number of quantization bits of the entire Transformer model .
+Our proposed quantization strategy , thus , provides a finer- grained mixed precision approach compared to previous methods , such as ( Dong et al. , 2019 ; Wu et al. , 2018 ; Zhou et al. , 2017 ; Wang and Zhang , 2020 ) that consider layerwise or matrix -wise mixed precision .
+Accommodating distinguished implementation properties ( e.g. , latency and translation quality drop ) of each component in Transformer , we propose the following methodologies to decide precision of a block : 1 ) in the case of embedding block , statistical importance of each word is taken into account and 2 ) for encoder and decoder blocks , sensitivity of each quantized sub-layer is considered .
+The main contributions of this paper are as follows : ?
+We propose a mixed precision quantization strategy while embedding block allows another level of mixed precision in word level according to statistical properties of natural language .
+?
+Our proposed quantization scheme allows the number of quantization bits to be as low as under 3 bits for the Transformer with little BLEU score degradation ( under - 0.5 BLEU ) .
+?
+We demonstrate that our quantization technique reduces a significant amount of run-time memory and enhances inference speed so as to enable fast on -device machine translation by large Transformer models .
+Background
+Transformer
+Transformer adopts an an encoder-decoder architecture ( Cho et al. , 2014 ) composed of three different blocks : encoder , decoder and embedding that account for 31.0 % , 41.4 % , and 27.6 % , respectively , in terms of the number of parameters in a Transformer base model .
+An embedding block is a single weight matrix that serves multiple purposes in the Transformer .
+For example , each row in the embedding block represents a word in a bi-lingual vocabulary .
+Another purpose of the embedding block is to serve as a linear transformation layer which converts decoder outputs to next token probabilities as suggested in Press and Wolf ( 2017 ) .
+Encoder and decoder blocks are composed of multiple layers while each layer employs attention and feed-forward sub-layers .
+Due to auto-regressive operations during inference of Transformer ( Graves , 2013 ) , the correlation between the number of operations and the number of parameters can be vastly different for each component .
+Based on such different correlations , Transformer 's inference scheme can be divided into encoding steps of high parallelism and decoding steps of low parallelism .
+As for encoding steps , given a sequence in the source language , a single forward propagation of the encoder produces a sequence of hidden representations for all words in a given sequence .
+In each decoding step , decoder and embedding blocks produce a probability distribution of possible words , one word at a time .
+Unlike encoding steps , the computation of decoding steps is not parallelizable because each decoding step depends on outputs of all prior decoding steps .
+Note that such lack of parallelism during decoding steps potentially induces the memory wall problem in practice with commodity hardware ; parameters of decoder and embedding blocks are required to be loaded to cache and unloaded from the cache repeatedly throughout decoding steps .
+Furthermore , an embedding block is usually represented by a significantly large matrix that also incurs the memory wall problem .
+Non-uniform Quantization Based on Binary -codes Quantization approximates full precision parameters in neural networks by using a small number of bits ( Gong et al. , 2014 ; Rastegari et al. , 2016 ; Guo et al. , 2017 ; Jacob et al. , 2018 ) .
+One of widely adopted quantization methods is uniform quantization .
+Uniform quantization performs mapping of full precision parameters into one of 2 q values ranging from 0 to 2 q ?1 that correspond to a range between the minimum and the maximum full precision parameters , where q denotes the number of quantization bits .
+Lower precision can reduce the computation cost of arithmetic operation such as multiplication and addition only if all inputs to arithmetic operations ( i.e. , activations ) are also quantized ( Jacob et al. , 2018 ) .
+Furthermore , high quantization error may occur when a parameter distribution involves extreme outliers ( Zhao et al. , 2019 ) .
+As such , non-uniform quantization methods are being actively studied to better preserve expected value of parameters which is critical to maintaining model accuracy ( Courbariaux et al. , 2015 ) .
+By large , non-uniform quantization methods include codebook - based quantization and binarycode based quantization .
+Even though codebookbased quantization reduces off-chip memory footprint , computational complexity is not reduced at all because of mandatory dequantization procedure during inference ( Stock et al. , 2020 ; Guo , 2018 ) .
+On the other hand , quantization based on binary - code ( ?{? 1 , + 1 } ) can achieve both high compression ratio and efficient computation ( Rastegari et al. , 2016 ; Guo et al. , 2017 ; Xu et al. , 2018 ; . In this paper , we adopt non-uniform binary - code based quantization as our method of quantization .
+Non-uniform quantization based on binary - code maps a full precision vector w?R p to a scaling factor ?
+i ?R , and a binary vector b i ?{? 1 , + 1 } p , where ( 1?i? q ) .
+Note that p is the length of a vector and q denotes the number of quantization bits .
+Then , w is approximated as q i=1 ? i b i .
+Scaling factors and binary vectors are obtained as follows : arg min ?
+i , b i w ? q i=1 ? i b i 2 ( 1 ) To minimize the quantization error formulated in Eq. 1 , heuristic approaches have been proposed ( Guo et al. , 2017 ; Xu et al. , 2018 ) .
+For matrix quantization , the binary - code based quantization can be simply applied to each row or column of a matrix .
+With a matrix quantized into binary matrices { B 1 , B 2 , ... , B q } and scaling factor vectors {?
+1 , ? 2 , ... , ? q } , the matrix multiplication with full precision vector x produces an output vector y as follows : y = q i=1 ( ? i ? ( B i ? x ) ) , ( 2 ) where the operation ? denotes element-wise multiplication .
+Figure 1 is an illustration of Eq. 2 .
+Intermediate results of B i ?
+x can be pre-computed for further compute-efficiency .
+This allows the efficient matrix multiplication of quantized Transformer weights and full precision activation .
+3 Quantization Strategy for Transformer For Transformer , we suggest the following two techniques to decide the number of quantization bits for each block : 1 ) in the case of embedding block , frequency of each word is taken into account and 2 ) for encoder and decoder blocks , we find the minimum number of quantization bits for each type of sub-layers that allows reasonable degradation in BLEU score after quantization .
+Embedding
+It has been reported that the word frequency distribution can be approximated as power - law distribution ( Chen et al. , 2018 ) .
+Such power -law distribution is illustrated in Figure 2 that presents word frequency distribution in WMT14 datasets .
+Note that 1 % of word vectors account for around 95 % of word frequency for both En2Fr and En2 De .
+Intuitively , if word vectors are compressed by the same compression ratio , then word vectors with high frequency in a corpus would result in higher training loss after compression , compared to word vectors with low frequency .
+Chen et al. ( 2018 ) utilizes frequency to provide different compression ratios in different groups of words using low-rank approximation .
+To the best of our knowledge , word frequency has not yet been considered for Transformer quantization .
+We assume that highly skewed word frequency distribution would lead to a wide distribution of the number of quantization bits per word .
+In such a case , an embedding block may require a substantially high number of quantization bits that would be the maximum in the distribution of the number of quantization bits per word .
+For example , even though Wang and Zhang ( 2020 ) successfully quantized the parameters in attention and feed-forward sub-layers of the BERT architecture ( Devlin et al. , 2018 ) into 2 - 4 bits , 8 bits or higher number of bits were used to represent a parameter in the embedding block .
+1 Sort E in descending order of word frequency ; 2 idx = 0 ; 3 for i = 0 ... b ?
+1 do 4 Compute number of word-vectors in i-th cluster , c i size = v b?1 k=0 r k ? r i ; 5 Compute target bit-precision for i-th cluster , c i bit = b ? i ; 6 for j = 0 ...c i size do 7 Initialize w idx = idx-th row of E ; The underlying principle to quantize embedding blocks is that the number of quantization bits for each word vector is proportional to the frequency in a corpus .
+To assign a low number of quantization bits to most of the words under such a principle , first , we group word vectors into clusters according to word frequency .
+r acts as an exponential factor in deciding the number of word vectors in each cluster as in line 4 of Algorithm 1 . b denotes the number of clusters and acts as a variable for quantization bits such as line 5 of Algorithm 1 .
+For example , with b=4 and r=2 , word vectors are clustered into clusters of ratio r 0 :r 1 :r 2 :r 3 = 1:2:4:8 , then assigned bits as much as { b , b?1 , b?2 , b?3 } = { 4 , 3 , 2 , 1 } .
+We empirically set b=4 for all of our embedding quantization experiments .
+Figure 3 shows our experimental results with r?{2 , 4 , 8 } .
+For r=2 , the average number of quantization bits in the embedding block is 1.73 , and for r=4 , it becomes 1.32 .
+With our embedding quantization method , higher translation quality in terms of BLEU score can be achieved with lower number of quantization bits as compared to the conventional quantization methods that assign the same number of quantization bits to all word vectors .
+For example , the Transformer model with 1.73 - bit quantized embedding produces more accurate translations than the model with conventional ( fixed ) 2 - bit quantized embedding block .
+Algorithm 1 assigns 1 - bit to the largest cluster .
+For example , using b=4 and r=8 , 87.5 % of word vectors in the embedding block are quantized to 1 - bit .
+We benefit from 1 - bit word vectors in terms of inference speed because memory overhead at matrix multiplications of embedding blocks is potentially minimized .
+One concern is that 1 - bit word vectors may degrade translation performance in a way that is not shown with BLEU score .
+We address such concerns in Section 4.4 and demonstrate that 1 - bit word vectors do not limit the quantized model 's abilities to predict the subsequent tokens .
+Encoder and Decoder Each type of sub-layers in the Transformer yields a wide range of sensitivity to quantization error , and thus , to translation quality drop .
+Within the decoder block , Dec ed sub-layers are more sensitive by quantization than the other sublayers , which is aligned with reports of Michel et al . ( 2019 ) .
+It is interesting that even though the number of parameters in Dec f f n sub-layers is 2 ?
+that of Dec ed sub-layers , BLEU score degradation is greater when Dec ed sub-layers are quantized .
+Among the sub-layers in the encoder block , Enc f f n sub-layers are more sensitive by quantization than Enc ee sub-layers .
+Based on such sensitivity analysis , we assign a proper number of quantization bits to each sub-layer in the encoder and decoder blocks .
+Another vital aspect to consider is the inference efficiency of quantized Transformer models .
+As mentioned in Section 2 , the auto-regressive nature of the Transformer 's inference limits the amount of parallelism in the decoder forward propagation and induces a memory wall problem during inference .
+Therefore , in order to enable fast on - device NMT , we assign a lower number of bits to the decoder block compared to the encoder block .
+Experiments
+Quantization Details
+Before we present our compression results , we describe our quantization method and retraining algorithm in detail .
+Methodology
+To quantize weights in the Transformer with high performance during retraining , we adopt the Greedy approximation algorithm introduced in ( Guo et al. , 2017 ) due to its computational simplicity .
+In our experiments , we first train the base configuration of the Transformer .
+Next , we retrain the full precision parameters 2 while periodically quantizing model parameters to retain the translation quality .
+For retraining , we adopt Non-Regularization period ( pN R ) as a way to control regularization strength while the best period is empirically obtained .
+Variable pN
+R is investigated for our retraining , which denotes the number of mini-batch updates before the quantization is performed .
+For example for pN R=1000 , we first apply quantization to target Transformer weights , and perform 1000 steps of retraining before quantizing the weights again ( i.e , the quantization procedure is periodically executed in an interval of 1000 steps during retraining . ) .
+The advantage of adopting pN R is reduced retraining time , as computation overheads induced by quantization are divided by pN R. Retraining Details Our quantization baselines are retrained warm -starting from our full precision baseline .
+Note that during the retraining , quantization is applied to all layers of the Transformer model every pN R steps where pN R=2000 .
+Quantization baselines are retrained for 400k steps by using 4 ?
+V100 GPUs taking around 1.7 days .
+Our quantized models are retrained over 3 phases in the order of embedding , decoder , and encoder block ; each phase warm-starts from the previous phase .
+Note that in each phase , compressed blocks of previous phases are also targeted for quantization .
+For each phase , we use pN R=1000 .
+We train our quantized models for 300k steps / phase and full retraining time is around 3.8 days with 4 ?
+V100 GPUs .
+The reasoning behind the choices of the pN R values and the number of retraining steps is further supported in Appendix A.4 Quantized Parameters
+Our quantization strategy targets weight matrices that incur heavy matrix multiplications .
+Targeted weight matrices account for 99.9 % of the number of parameters in the Transformer architecture and 99.3 % of on-device inference latency ( Table 4 ) .
+We quantize each row of W as in Figure 1 is implemented as W ?
+x where W is a weight matrix of model .
+We do not quantize bias vectors and layer normalization parameters .
+These parameters account for only a tiny fraction in terms of the total number of parameters and computation overhead , but it is important to retain these parameters in high precision .
+It is commonly acknowledged that quantization error in a bias vector will act as an overall bias ( Jacob et al. , 2018 ) . Also Bhandare et al. ( 2019 ) points out that layer normalization operations will result in high error with low precision parameters as it includes calculations like division , square and square root .
+Experimental Settings Dataset
+We test our quantization strategy in 3 different translation directions : English-to- German ( En2De ) , English -to- French ( En2 Fr ) , and Englishto- Japanese ( En2 Jp ) .
+For En2De and En2Fr , we utilize all of the trainset of WMT2014 and use newstest2013 as devset and newstest2014 as testset ( Bojar et al. , 2014 ) .
+For En2 Jp , we use KFTT ( Neubig , 2011 ) , JESC ( Pryzant et al. , 2018 ) , and WIT 3 ( Cettolo et al. , 2012 ) corpus .
+We combine the respective trainsets and devsets .
+We utilize KFTT testset as our testset .
+All En2 Jp data are detokenized as suggested by Michel and Neubig ( 2018 ) . sentencepiece 0.1.85 ( Kudo and Richardson , 2018 ) is utilized to learn a bi-lingual vocabulary set of size 32768 for each translation direction .
+For data statistics and download links , refer to Appendix A.1 .
+Baseline Model
+We train the base configuration of the Transformer to be utilized as our full precision reference as well as an initial set of model parameters for our quantization experiments .
+Training hyper-parameters are listed in Appendix A.3 .
+BLEU
+We report both tokenized - BLEU and detokenized - BLEU scores .
+We report detokenized - BLEU on devsets using sacrebleu ( Post , 2018 ) .
+While no tokenization is applied to En2De and En2 Fr results and devsets , for En2 Jp , mecab ( Kudo , 2005 ) measure the tokenized - BLEU score .
+Note that in each experiment , we report testset 's BLEU score using the model parameters that describe the highest BLEU score on devset .
+Results
+We compare our quantization strategy to our full precision ( FP ) baseline and quantization baselines in terms of translation quality and inference efficiency .
+Note that for the 2 - bit baselines and 3 - bit baselines , we respectively assign quantization bits of 2 and 3 to all Transformer parameters , and as for the 2 - bit Emb .
+baseline , we assign 2 quantization bits to all word vectors in embedding block .
+Our quantized models are notated as ( average # bits in an embedding parameter , average # bits in a decoder parameter , average # bits in an encoder parameter ) .
+translation quality , and we assign the number of bits for each sub-layer accordingly .
+Each type of sublayers in the decoder block are assigned 2 , 3 , and 1 bits to Dec dd , Dec ed , and Dec f f n respectively .
+In this case , the average of quantization bits for the decoder block is 1.8 .
+For ( 2.5 , 1.8 , FP ) model , considering that we quantize the embedding and decoder blocks , which account for large number of parameters ( 69.0 % ) , into the average of under 3 - bit , BLEU score degradation is moderate ( within - 1 BLEU from the FP baseline ) .
+As we mentioned in Section 2.1 , computations for encoder can be easily parallelizable , and thus , we assign slightly higher number of bits to the encoder block .
+We can improve quantization result of encoder block to be 3.7 - bits per weight by assigning 3 bits to Enc ee sub-layers and 4 bits to more sensitive Enc f f n sub-layers .
+It is interesting that ( 2.5 , 1.8 , 3.7 ) models in various directions show higher BLEU score than ( 2.5 , 1.8 , FP ) models which are of previous retraining phases with higher number of bits to represent the models .
+Our 2.6 - bit Transformer models ( 2.5 , 1.8 , 3.7 ) attain 11.8 ?
+model compression ratio with reasonable - 0.5 BLEU or less in 3 different translation directions .
+Our quantized models outperform the 3 - bit baselines in both BLEU score and model compression ratio .
+Inference Speed Up Let us discuss implementation issues regarding Transformer inference operations for on -device deployment .
+Measurements of the inference latency and the peak memory size on a mobile device is presented in Table 3 . Our 2.6 - bit quantized model ( with ( 2.5 , 1.8 , 3.7 ) configuration ) achieves 3.5 ? speed up compared to the FP baseline .
+Interestingly , our ( 2.5 , 1.8 , FP ) model with the average of 11.3 - bit outperforms the Source Linda Gray , die die Rolle seiner Ehefrau in der Original - und Folgeserie spielte , war bei Hagman , als er im Krankenhaus von Dallas starb , sagte ihr Publizist Jeffrey Lane .
+Reference Linda Gray , who played his wife in the original series and the sequel , was with Hagman when he died in a hospital in Dallas , said her publicist , Jeffrey Lane .
+Generated ( full- precision model , beam =4 ) Linda Gray , who played the role of his wife in the original and subsequent series , was with Hagman when he died at Dallas hospital , said her journalist Jeffrey Lane .
+Generated ( model with embedding quantized to 1.1 bit , beam =4 ) Linda Gray , who played the role of his wife in the original and subsequent series , was with Hagman when he died in Dallas hospital , said her publicist Jeffrey Lane .
+2 - bit baseline in terms of inference speed .
+In other words , as for inference speed up , addressing memory wall problems may be of higher priority rather than attaining a low number of quantization bits .
+For each block , Table 4 shows the number of FLOPs and on- device inference latency .
+The decoder block demands higher FLOPs than the encoder block ( 3 ? ) , and therefore , employs even higher ratio of on-device inference latency than the encoder block ( 11 ? ) .
+Note that while the embedding block requires an amount of FLOPs to be comparable to that of the encoder block , it causes 11 ?
+more inference time than the encoder block .
+This experiment shows that it is essential to address memory inefficiency for fast on -device deployment of the Transformer .
+Comparison Finally , in Table 6 , we compare our quantization strategy to previous Transformer quantization methods .
+All listed methods show results on quantized models based on Transformer base configuration with WMT14 trainsets and report tokenized - BLEU on newstest 2014 with exception of Bhandare et al . ( 2019 ) lacking specific BLEU scoring method .
+Our work outperforms previous quantization studies in terms of compression ratio and achieves reasonable translation quality in terms of BLEU as compared to reported BLEU of full precision models .
+Bhandare et al. ( 2019 ) reports speed up but it is not directly comparable because of the difference in inference settings ( e.g. device used , decoding method , etc. ) and other studies do not mention speed up .
+Qualitative Analysis
+In our strategy , after a large portion of word vectors are quantized by using 1 bit , translation quality degradation may occur even if BLEU does not capture such degradation .
+Correspondingly , as an attempt to empirically assess the quality of generated translation results with 1 - bit quantized word vectors , we investigate how a decoder block predicts the next word .
+In Table 5 , we present translation examples generated by models with full precision embedding block or with quantized embedding block .
+Comparing full precision model and quantized model , we observe that for each word with 1 - bit quantization , a decoder block generates the same next word ( underlined in Table 5 ) .
+We present more examples in Appendix C .
+As such , qualitative analysis suggests that our quantization would not noticeably degrade the prediction capability of a decoder even when an input vector is 1 - bit quantized .
+Related Work Previous researches proposed various model compression techniques to reduce the size of Transformer models .
+Gale et al. ( 2019 ) apply pruning ( Han et al. , 2015 ) to eliminate redundant weights of Transformer and report that higher pruning rates lead to greater BLEU score degradation .
+As for pruning , achieving inference speed up is more challenging because unstructured pruning method is associated with irregular data formats , and hence , low parallelism ( Kwon et al. , 2019 ) .
+Uniform quantization for Transformer is explored within reasonable degradation in BLEU score at INT8 , while BLEU score can be severely damaged at low bit-precision such as INT4 ( Prato et al. , 2019 ) .
+In order to exploit efficient integer arithmetic units with uniformly quantized models , activations need to be quantized as well ( Jacob et al. , 2018 ) .
+Furthermore , probability mapping operations in Transformer , such as layer norm .
+and softmax , could exhibit significant amount of error in computational results with low precision data type ( Bhandare et al. , 2019 ) .
+Conclusion
+In this work , we analyze each block and sub-layer of the Transformer and propose an extremely lowbit quantization strategy for Transformer architecture .
+Our 2.6 - bit quantized Transformer model achieves 11.8 ? model compression ratio with reasonable - 0.5 BLEU .
+We also achieve the compression ratio of 8.3 ?
+in memory footprints and 3.5 ? speed up on a mobile device ( Galaxy N10 + ) .
+have the highest BLEU score on devset to report as our full precision baseline and to warm start from in our retraining for quantization .

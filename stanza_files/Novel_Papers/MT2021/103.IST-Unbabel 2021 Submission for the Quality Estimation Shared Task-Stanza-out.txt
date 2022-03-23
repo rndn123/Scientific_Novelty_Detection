@@ -1,0 +1,176 @@
+title
+IST - Unbabel 2021 Submission for the Quality Estimation Shared Task
+abstract
+We present the joint contribution of IST and Unbabel to the WMT 2021 Shared Task on Quality Estimation .
+Our team participated on two tasks : Direct Assessment and Post-Editing Effort , encompassing a total of 35 submissions .
+For all submissions , our efforts focused on training multilingual models on top of OpenKiwi predictor-estimator architecture , using pre-trained multilingual encoders combined with adapters .
+We further experiment with and uncertainty - related objectives and features as well as training on out-ofdomain direct assessment data .
+Introduction Quality estimation ( QE ) is the task of evaluating a translation system 's quality without access to reference translations ( Blatz et al. , 2004 ; Specia et al. , 2018 ) .
+This paper describes the joint contribution of Instituto Superior T?cnico ( IST ) and Unbabel to the WMT21 Quality Estimation shared task ( Specia et al. , 2021 ) , where systems were submitted to two tasks : 1 ) sentence - level direct assessment ; 2 ) word - and sentence - level post-editing effort .
+This year 's submission combines several ideas built on top of the OpenKiwi framework .
+Motivated by the mixture of blind and seen language pairs in the test sets , we experimented with extensions that would allow us to train multilingual models that maintain good generalization ability and are robust to the presence of epistemic and aleatoric uncertainty .
+For both tasks we trained and submitted an ensemble of multilingual models .
+All submitted models follow the predictor-estimator architecture ( Kim and Lee , 2016 ; Kim et al. , 2017 ) and use pretrained models for feature extraction .
+Also , we fine- tune all models on the provided QE data using stacked adapter layers ( Pfeiffer et al. , 2020 ) . *
+The first three authors have equal contribution .
+We show that we can thus achieve comparable performance across language pairs while minimising the number of trainable parameters ( see Table 1 ) .
+Furthermore , we experimented with different types of uncertainty -related information to leverage it 's benefits , improving performance and robustness of the submitted systems ( see ?3.1.1 ) .
+All related code extensions will be publicly available .
+Our main contributions are : ?
+We build on our OpenKiwi architecture by exploring adapter layers ( Houlsby et al. , 2019 ; Pfeiffer et al. , 2020 ) for quality estimation as these demonstrated to be less amenable to overfitting while presenting the same or superior quality performance than fine-tuning the whole base pre-trained model for different NLP tasks ( He et al. , 2021 ) . ?
+We incorporate different types of uncertainty into our architectures .
+We make use of the glass - box features ( Fomicheva et al. , 2020 ) extracted from the NMT models , the aleatoric ( data ) uncertainty derived from the human annotations and the epistemic ( model ) uncertainty ( Hora , 1996 ; Kiureghian and Ditlevsen , 2009 ; Huellermeier and Waegeman , 2021 ) that originates from the QE model . ?
+We show that training the QE models on additional out - of- domain direct assessment ( DA ) data gives considerable gains in performance for the new language pairs from the blind test sets .
+Quality Estimation Tasks
+In this year 's shared task edition we submitted models for the first two tasks : 1 . Task 1 : sentence - level direct assessment 2 .
+Task 2 : word - and sentence level post-editing effort , comprising of two subtasks : a ) predicting the HTER score of the translated sentence ( hypothesis ) ; and b ) predicting OK / BAD tags for the words and gaps ( both in source and translation )
+We note that this year , both tasks 1 and 2 provided additional blind test sets with language pairs that were not included in the data made available for training / development , providing an interesting challenge and motivating multilingual and generalisable approaches .
+3 Implemented Systems
+Task 1 For Task 1 our final submission consisted of an ensemble of two different multilingual models , that differ in the way they process the input source ( original sentence ) and hypothesis ( machine translation ) .
+Both models are based on the predictor-estimator architecture , using different pre-trained models to extract features and different training approaches to optimise for the QE task .
+The key idea explored with our first model ( denoted by M1 variations in the experiments ) , revolved around pursuing highly generalisable multilingual models , robust to overfitting .
+To this end , we train a cross-lingual transformer ( XLM - RoBERTa ( Conneau et al. , 2020 ) ) on large , multilingual data with direct assessments and then use adapters ( Houlsby et al. , 2019 ; Pfeiffer et al. , 2020 ) to adapt to the domain specific data of the QE task with minimal training effort .
+In line with our efforts for good generalisation , we use only task -specific adapters and refrain from using specific adapters for each language pair .
+For these experiments we build on the OpenKiwi architecture ( Kepler et al. , 2019 ) , using a pre-trained xlm-roberta- large encoder as a feature predictor .
+The source and hypothesis sentences are jointly encoded with hypothesis first .
+Then , source and hypothesis features are generated using average pooling over the hypothesis embeddings and forwarded to the estimator module which corresponds to a feed-forward layer .
+Figure 1 provides the general architecture 1
+The model was first trained on the direct assessment data provided in the Metrics shared tasks ( Mathur et al. , 2020 ) , as described in ?3.1.2 .
+Upon training , the XML -R encoder is frozen and the the model is fine-tuned on sentence regression with the task - specific data , using stacked adapters .
+We hence manage to maintain a low number of trainable parameters during fine-tuning and minimize training time while learning to predict task -specific sentence scores .
+For the second model ( denoted by M2-KL -G - MCD ) we aimed to explore the potential of a large pre-trained multilingual model ( trained with MT objectives ) .
+We use the mBART ( Liu et al. , 2020 ) encoder-decoder architecture to encode the source and force-decode the hypothesis .
+We specifically use the mBART50 model ( Tang et al. , 2020 ) which is trained with multilingual finetuning on 50 languages , including all languages of interest for the QE 2021 task .
+We obtain the features by averaging the decoder embeddings and concatenating with the < eos > token of the sequence .
+The estimator part of the model consists of a bottleneck feed -forward layer that reduces the dimensionality of the decoder output , and is concatenated with a vector with additional glass - box features from the NMT models ( see ?3.1.1 ) .
+The combined vector is then forwarded to a feed-forward estimator and the full model is fine-tuned on the task specific QE data .
+Apart from the glass - box features we experimented further with methods that allow the model to be more robust towards the underlying uncertainty of its predictions .
+We elaborate that in the next section .
+Figure 2 provides a general architecture of the M2 model variations .
+Learning from uncertainty Multiple neural models are involved in the process of obtaining and scoring machine translations , which naturally leads to several sources of uncertainty .
+These sources can be very informative and useful for MT evaluation .
+In this work we try to consider three types of uncertainty : ( 1 ) uncertainty of the NMT models used to obtain the hypotheses , ( 2 ) data ( aleatoric ) uncertainty for which we use the inter-annotator disagreement as a proxy , and ( 3 ) uncertainty of the MT evaluation model itself .
+NMT model uncertainty
+The idea of extracting uncertainty - related features from the MT systems in order to estimate the quality of their predictions , was originally introduced by Fomicheva et al . ( 2020 ) .
+This glass - box approach to QE is mostly focusing on capturing epistemic uncertainty , and the proposed features are extracted either using Monte Carlo ( MC ) dropout on the NMT or using the output probability distributions obtained from a standard deterministic MT system .
+In our last year 's submission ( Moura et al. , 2020 ) the integration of such features proved to be effective , thus we decided to incorporate it into our new model as well .
+We list the extracted features below : ? TP sentence average of word translation probability
+Aleatoric uncertainty
+The noise and complexity of the training data is a source of predictive uncertainty in itself , referred to as data or aleatoric uncertainty ( Kiureghian and Ditlevsen , 2009 ) .
+This uncertainty is often reflected in the disagreement between human annotations for the same sourcehypothesis segment ( Cohn and Specia , 2013 ; Fornaciari et al. , 2021 ) .
+We hypothesize that the direct assessments can be better modelled as normally distributed scores rather than a single score , and that a model trained to predict this distribution ( mean and standard deviation ) could provide better quality estimates 2 .
+We formalise this as a KL divergence objective , using the closed form solution to estimate the KL divergence between the target distribution p( x ) = N (? 1 , ? 1 ) and the predicted distribution q( x ) = N (? 2 , ? 2 ) , as shown in Eq. 1 . KL ( p| |q ) = log ?
+2 ? 1 + ? 2 1 + ( ? 1 ? ? 2 ) 2 2 ?
+2 2 ? 1 2 ( 1 ) where we take the mean and standard deviation ( std ) of the direct assessment z_scores as the target ( ground truth proxy ) values p.
+This way , we account for the annotator disagreement ( reflected in the std value ) during learning .
+QE epistemic uncertainty
+We use MC dropout ( Gal and Ghahramani , 2016 ) to account for the uncertainty of the QE model .
+Specifically , we enable dropout during inference and run multiple forward runs over each test instance .
+Thus we obtain a distribution of quality predictions for each instance instead of a single point estimate .
+We use the estimated mean of the distribution as our predicted quality estimate .
+MC dropout has been shown to improve predictive accuracy and perform on par or even better compared to deep ensembles for MT evaluation tasks ( Glushkova et al. , 2021 ) .
+It thus allows us to simulate ensembling in a cheap and effective way , without the need to train multiple checkpoints .
+Out - of-domain direct assessment data
+The QE data is relatively limited , making it harder to train multilingual models with a large number of parameters without over-fitting .
+Thus , as explained in ?3.1 we aimed to investigate whether we could obtain models that generalise better and are more robust to noise and out -of- distribution data by training the XLM - RoBERTa model first on a larger - yet noisier and out - of- domain dataset .
+To that end we leverage the data provided for the past Metrics shared tasks , which covers the language pairs used in this year 's QE task , including the blind tests for which we had no in-domain data available .
+Altogether , it encompasses 30 language pairs from the news domain ( versus 7 in the QE dataset ) .
+We provide more detailed statistics for each language pair of the Metrics data in Appendix C .
+We refer to experiments using the model initially trained on the Metrics data as M1M - .
+We also show that using the trained XLM - RoBERTa encoder from the M1M model can prove beneficial for the predictions on post-edited data of Task 2 ( see Table 3 ) .
+Task 2 For Task 2 we submitted an ensemble of two variations of the first model ( M1 - ADAPT and M1M - ADAPT ) presented for Task 1 ( see ?3.1 ) .
+In both cases , we use multi-task training and a feedforward for each output types : hypothesis word tags , hypothesis gap tags , source word tags , and sentence regression ( on HTER scores ) .
+Both variations use a pre-trained XLM - RoBERTa ( large ) encoder to extract features as described for Task 1 , but differ in the training of the encoder .
+In the first case we use the pre-trained model 3 and finetune on the QE data using stacked adapters .
+In the second variation we swap the original pre-trained model with the XLM - RoBERTa model that has been trained on the Metrics data as described in ?3.1.2 .
+We note that the two variations favor different language pairs , hence we combine multiple checkpoints from each variation ( ranging training steps ) .
+We use the test - 20 split of the data to optimise the hyper-parameters and following this approach we use the estimated top - 3 checkpoints from each variation using the combined dataset 4 and the top checkpoint for the non-augmented model trained exclusively on the train set , resulting in total 7 checkpoints in our final ensemble .
+Experimental Results
+We present the performance of the implemented models on the test - 20 dataset .
+Task 1
+The results can be seen in Tables 1 and 2 .
+In line with the shared task guidelines we treat Pearson r as the primary performance metric and select the submitted models accordingly .
+We can observe , that while on average the M1 model and its variations outperform the M2 model , their performance is comparable , and M2-KL -G- MCD can even outperform M1M - ADAPT for specific language pairs , hence it made sense to combine them in the final ensemble .
+We can also see that fine-tuning the M1 model on the Metrics data , results in performance gains for the majority of the language pairs .
+Specifically , even applying the M1M directly , without further fine-tuning on QE data , achieves competitive performance for most pairs , which further improves upon fine-tuning .
+It helps in increasing the performance on the blind sets ( denoted as zeroshot in the Appendix B ) .
+1 : Results for Task 1 with the M1 predictorestimator ( XLM - RoBERTa ) and different training / finetuning approaches .
+M1 M is the M1 model trained on the Metrics dataset and M#- ADAPT signifies a model fine-tuned on the QE data with adapters .
+ML stands for MULTILINGUAL , showing the performance averaged over all language pairs .
+Underlined numbers indicate the best result for each language pair and evaluation metric .
+Bold systems were selected for the final ensemble .
+assessments for each segment .
+Thus , the difference in target score range and distribution could affect the magnitude of predicted scores and the distance to the ground truth values , which is reflected in the MAE and RMSE metrics .
+These findings , further supported by the results on Task 2 , is a first step in exploring the underlying connection and bridging the gap between the Metrics and Quality Estimation shared tasks .
+Task 2
+The results can be seen in Table 3 . Similarly to Task 1 , the primary evaluation metric for the sentence level sub-task of Task 2 is the Pearson r coefficient , Table 2 : Results for Task 1 with the M2 predictorestimator ( mBART ) and different uncertainty handling additions .
+" KL " signifies the incorporation of KL loss , " G" the incorporation of glass - box features and MCD the addition of MC dropout .
+ML stands for MULTILIN - GUAL , showing the performance averaged over all language pairs .
+Underlined numbers indicate the best result for each language pair and evaluation metric .
+Bold systems were selected for the final ensemble .
+while the word level sub-task is evaluated using the Matthews correlation coefficient ( MCC , ( Matthews , 1975 ) ) as the primary performance indicator .
+We can see that while HTER scores do not always correlate highly with DAs ( see Table 4 ) , the use of the M1M model encoder that was trained on large data with direct assessments can still prove useful .
+Indeed , when fine-tuning on the Task2 data , the model using the M1M encoder ( M1M - ADAPT in the table 3 ) provides a performance boost for the Pearson correlation in most language pairs , and competitive performance for the rest .
+Based on these results , we deem it worthwhile to include checkpoints trained with this configuration in the ensemble estimating that they will contribute in higher performance , especially on the blind test sets .
+This can be further confirmed when inspecting the results for the blind sets ( en-cs , en-ja , km-en and ps-en ) in the official results on test - 21 as shown in Appendix B .
+Conclusions
+We presented a joint contribution of IST and Unbabel to the WMT 2021 QE shared task .
+Our submissions are ensembles of multilingual checkpoints extending the OpenKiwi framework .
+We found adapter-tuning to be suitable for fine-tuning OpenKiwi on the QE tasks data and less prone to overfitting .
+We showed that pre-training on large , out - of- domain annotated data can prove beneficial both for the direct assessment and the postediting QE tasks .
+We also demonstrated that handling uncertainty - related sources of information improves the performance when integrated into the QE system .
+For Task 2 we do multi-task training based on the models from the previous task and use multiple checkpoints to create the submitted ensemble .
+Yuqing Tang , Chau Tran , Xian Li , Peng-Jen Chen , Naman Goyal , Vishrav Chaudhary , Jiatao Gu , and Angela Fan. 2020 .
+Multilingual translation with extensible multilingual pretraining and finetuning .
+arXiv preprint arXiv:2008.00401 .
+A Hyperparameters A.1 M1 In Table 5
+A.2 M2 In Table 6 is an excerpt of the training configuration used for training the M2 models using the mBART encoder-decoder :
+B Evaluation on test set of WMT21
+We present the performance of the submitted ensembles on the TEST - 21 dataset as calculated in the official QE results 6 for each task and sub-task .
+We also provide the comparison with the organisers ' baseline .
+The results for Task1 on TEST - 21 are presented in Table 7 .
+System
+B.2 Task 2 : HTER prediction at sentence - level
+The results for Task2 on TEST -21TEST - 21 are presented in Table 8 , showing the performance for the sentence level , HTER score predictions .
+B.3 Task 2 : Word-level prediction
+The results for Task2 on TEST - 21 are presented in Table 9 , showing the performance for the word tag predictions .
+C Statistics on the Metrics data
+We present below ( Tables 10 and 11 ) the statistics on the Metrics data used to train the M1M model on direct assessments .
+Figure 1 : 1 Figure 1 : General architecture of M1 model variations .
+Word tag prediction is used only for Task 2 .
+Figure 2 : 2 Figure 2 : General architecture of M2 model variations .
+? Softmax - Ent sentence average of softmax output distribution entropy ?
+Sent - Std sentence standard deviation of word probabilities ?
+D-TP average TP across N ( N = 30 ) stochastic forward - passes ?
+D- Var variance of TP across N stochastic forward - passes ?
+D- Combo combination of D-TP and D- Var defined by 1 ? D ? T P/D ? V ar ?
+D- Lex -Sim lexical similarity - measured by METEOR score ( Lavie and Denkowski , 2009 ) - of MT output generated in different stochastic passes .
+correlation between the z_mean of the direct assessments for the QE Task 1 data and the HTER score for the post edits in QE Task 2 data .
+Table 3 : 3 Results for Task 2 with the M1 predictorestimator ( XLM - RoBERTa ) and different training / finetuning approaches .
+M1 M is the M1 model trained on the Metrics dataset and M#- ADAPT signifies a model fine-tuned on the QE data with adapters .
+ML stands for MULTILINGUAL , showing the performance averaged over all language pairs .
+Underlined numbers indicate the best result for each language pair and evaluation metric .
+Bold systems were selected for the final ensemble .
+Table 5 : 5 is an excerpt of the training configuration used for training OpenKiwi for our M1 models .
+Hyperparameters for M1 models Note that the configurations follow the configura- tion file format of OpenKiwi and any additional configurations are identical to the ones proposed in the sample configuration file of the github repository 5 . System batch_size 2 Encoder hidden_size 1024 Decoder bottleneck_size 1024 dropout 0.05 hidden_size 1024 Optimizer class_name adam encoder_learning _rate 0.0001 learning_rate_decay 1.0 learning _rate_decay_start 0 learning_rate 0.0001
+Trainer training_steps 2180 early_stop_patience 10 validation_steps 0.5 gradient_accumulation_steps 4 gradient_max_norm 1.0
+Table 6 : 6 Hyperparameters for M2 models bottleneck_size 256 dropout 0.1 hidden_size 2048 nr_frozen_epochs 0.333
+Optimizer optimizer adam encoder_learning_rate 6.0e -06 learning_rate 1.0e -05
+Trainer training_steps 5512 early_stopping_patience 2 save_top_k 3 batch_size 4 gradient_accumulation_steps 4 B.1 Task 1 : Direct Assessments prediction at sentence- level
+Table 8 : 8 Results for Task 2 sentence - level system on the held - out evaluation set of WMT 2021 .
+METHOD PEARSON R? MAE ?
+RMSE ?
+METHOD PEARSON R? MAE ?
+RMSE ?
+MULTILINGUAL MULTILINGUAL IST - UNBABEL 0.665 0.627 0.482 IST -UNBABEL 0.597 0.219 0.171 BASELINE 0.541 0.729 0.562 BASELINE 0.502 0.235 0.188 EN -DE EN-DE IST - UNBABEL 0.579 0.567 0.393 IST - UNBABEL 0.617 0.172 0.116 BASELINE 0.403 0.629 0.433 BASELINE 0.529 0.183 0.129 EN -ZH EN-ZH IST - UNBABEL 0.586 0.631 0.499 IST - UNBABEL 0.290 0.266 0.220 BASELINE 0.525 0.683 0.534 BASELINE 0.282 0.287 0.246 RO-EN RO-EN IST - UNBABEL 0.899 0.393 0.289 IST - UNBABEL 0.879 0.122 0.098 BASELINE 0.818 0.556 0.408 BASELINE 0.831 0.142 0.115 ET-EN ET-EN IST - UNBABEL 0.796 0.519 0.404 IST - UNBABEL 0.811 0.153 0.112 BASELINE 0.660 0.700 0.543 BASELINE 0.714 0.195 0.149 NE-EN NE-EN IST - UNBABEL 0.856 0.515 0.401 IST - UNBABEL 0.718 0.161 0.126 BASELINE 0.738 0.657 0.524 BASELINE 0.626 0.205 0.160 SI-EN SI-EN IST - UNBABEL 0.605 0.742 0.583 IST - UNBABEL 0.710 0.178 0.136 BASELINE 0.513 0.797 0.626 BASELINE 0.607 0.204 0.159 RU-EN RU-EN IST - UNBABEL 0.792 0.583 0.412 IST -UNBABEL 0.539 0.224 0.165 BASELINE 0.677 0.702 0.492 BASELINE 0.448 0.255 0.188 ZERO-SHOT LANGUAGE PAIRS ZERO-SHOT LANGUAGE PAIRS EN -CZ EN -CZ IST - UNBABEL 0.577 0.751 0.583 IST - UNBABEL 0.529 0.271 0.200 BASELINE 0.352 0.845 0.686 BASELINE 0.306 0.262 0.206 EN -JA EN-JA IST - UNBABEL 0.355 0.764 0.566 IST - UNBABEL 0.275 0.279 0.224 BASELINE 0.230 0.816 0.617 BASELINE 0.098 0.279 0.232 PS-EN PS-EN IST - UNBABEL 0.628 0.780 0.658 IST - UNBABEL 0.555 0.328 0.284 BASELINE 0.476 0.852 0.711 BASELINE 0.503 0.333 0.290 KM-EN KM-EN IST - UNBABEL 0.650 0.721 0.568 IST - UNBABEL 0.655 0.243 0.199 BASELINE 0.562 0.788 0.614 BASELINE 0.576 0.241 0.196
+Table 7 : Results for Task 1 on the held - out evaluation set of WMT 2021 .
+Table 9 : 9 Results for Task 2 word- level system on the held - out evaluation set of WMT 2021 .
+CS-EN DE-EN FI-EN RU-EN RO-EN TR-EN ZH-EN ET-EN LT-EN GU-EN KK-EN JA-EN KM-EN PL-EN PS-EN TA-EN Total tuples 28887 91584 47205 61505 560 30746 71941 20496 10315 9063 6789 8917 4722 11666 4611 7562 Avg. tokens ( reference ) 31.43 24.61 20.48 23.31 24.35 23.32 31.70 23.93 26.84 17.73 20.65 28.64 19.49 21.93 19.87 19.91 Avg. tokens ( source ) 25.65 22.93 14.49 19.77 24.99 19.01 6.05 18.61 20.61 15.13 16.47 3.27 29.91 18.55 21.87 15.31 Avg. tokens ( MT ) 29.99 24.19 19.95 23.51 24.42 22.97 30.60 24.06 25.44 17.15 20.00 27.41 19.59 21.64 19.37 20.14
+Table 10 : 10 Statistics for the WMT 15 to 20 Direct Assessments corpus into-English language pairs .
+EN - RU EN -CS EN-DE EN-FI EN-LV EN-TR EN-ZH EN-ET EN-LT EN-GU EN -KK EN -JA EN -PL EN-TA Total tuples 63771 60905 55352 30924 5810 5171 66830 13376 8959 6924 8219 9573 10506 7886 Avg. tokens ( reference ) 22.48 23.48 23.96 17.7 20.45 19.74 7.26 18.83 20.61 22.07 19.21 1.4 24.54 19.84 Avg. tokens ( source ) 24.5 25.82 24 23.21 24.99 24.2 28.81 24.23 24.09 24.3 24.13 25.2 25.33 25.15 Avg. tokens ( MT ) 22.14 23 23.84 17.81 21.18 19.24 7.53 18.96 20.62 22.39 19.71 2.29 23.19 19.18
+Table 11 : 11 Statistics for the WMT 15 to 20 Direct Assessments corpus from -English language pairs .
+Note that glass - box features are integrated but not used in this submission as they did not significantly improve performance .
+Note that for this task 's data we only had access to 3 scores per segment so the mean and std values are calculated over these numbers .
+https://huggingface.co/transformers/ model_doc/xlmroberta.html
+The combined dataset in this case refers to the concatenation of the train / dev/test20 annotated data splits provided for the shared task
+https://github.com/Unbabel/OpenKiwi/ blob/master/config/xlmroberta.yaml 6 https://www.statmt.org/wmt21/ quality-estimation-task_results.html

@@ -1,0 +1,233 @@
+title
+Span-Based Constituency Parsing with a Structure -Label System and Provably Optimal Dynamic Oracles
+abstract
+Parsing accuracy using efficient greedy transition systems has improved dramatically in recent years thanks to neural networks .
+Despite striking results in dependency parsing , however , neural models have not surpassed stateof - the - art approaches in constituency parsing .
+To remedy this , we introduce a new shiftreduce system whose stack contains merely sentence spans , represented by a bare minimum of LSTM features .
+We also design the first provably optimal dynamic oracle for constituency parsing , which runs in amortized O( 1 ) time , compared to O(n 3 ) oracles for standard dependency parsing .
+Training with this oracle , we achieve the best F 1 scores on both English and French of any parser that does not use reranking or external data .
+Introduction
+Parsing is an important problem in natural language processing which has been studied extensively for decades .
+Between the two basic paradigms of parsing , constituency parsing , the subject of this paper , has in general proved to be the more difficult than dependency parsing , both in terms of accuracy and the run time of parsing algorithms .
+There has recently been a huge surge of interest in using neural networks to make parsing decisions , and such models continue to dominate the state of the art in dependency parsing ( Andor et al. , 2016 ) .
+In constituency parsing , however , neural approaches are still behind the state - of- the - art ( Carreras et al. , 2008 ; Shindo et al. , 2012 ; Thang et al. , 2015 ) ; see more details in Section 5 .
+To remedy this , we design a new parsing framework that is more suitable for constituency parsing , and that can be accurately modeled by neural networks .
+Observing that constituency parsing is primarily focused on sentence spans ( rather than individual words , as is dependency parsing ) , we propose a novel adaptation of the shift-reduce system which reflects this focus .
+In this system , the stack consists of sentence spans rather than partial trees .
+It is also factored into two types of parser actions , structural and label actions , which alternate during a parse .
+The structural actions are a simplified analogue of shift-reduce actions , omitting the directionality of reduce actions , while the label actions directly assign nonterminal symbols to sentence spans .
+Our neural model processes the sentence once for each parse with a recurrent network .
+We represent parser configurations with a very small number of span features ( 4 for structural actions and 3 for label actions ) .
+Extending Wang and Chang ( 2016 ) , each span is represented as the difference of recurrent output from multiple layers in each direction .
+No pretrained embeddings are required .
+We also extend the idea of dynamic oracles from dependency to constituency parsing .
+The latter is significantly more difficult than the former due to F 1 being a combination of precision and recall ( Huang , 2008 ) , and yet we propose a simple and extremely efficient oracle ( amortized O( 1 ) time ) .
+This oracle is proved optimal for F 1 as well as both of its components , precision and recall .
+Trained with this oracle , our parser achieves what we believe to be the best results for any parser without reranking which was trained only on the Penn Treebank and the French Treebank , despite the fact that it is not only lineartime , but also strictly greedy .
+We make the following main contributions : ?
+A novel factored transition parsing system where the stack elements are sentence spans rather than partial trees ( Section 2 ) .
+?
+A neural model where sentence spans are represented as differences of output from a multilayer bi-directional LSTM ( Section 3 ) .
+?
+The first provably optimal dynamic oracle for constituency parsing which is also extremely efficient ( amortized O( 1 ) time ) ( Section 4 ) .
+?
+The best F 1 scores of any single-model , closed training set , parser for English and French .
+We are also publicly releasing the source code for one implementation of our parser .
+1
+Parsing System
+We present a new transition - based system for constituency parsing whose fundamental unit of computation is the sentence span .
+It uses a stack in a similar manner to other transition systems , except that the stack contains sentence spans with no requirement that each one correspond to a partial tree structure during a parse .
+The parser alternates between two types of actions , structural and label , where the structural actions follow a path to make the stack spans correspond to sentence phrases in a bottom - up manner , while the label actions optionally create tree brackets for the top span on the stack .
+There are only two structural actions : shift is the same as other transition systems , while combine merges the top two sentence spans .
+The latter is analogous to a reduce action , but it does not immediately create a tree structure and is non-directional .
+Label actions do create a partial tree on top of the stack by assigning one or more non-terminals to the topmost span .
+Except for the use of spans , this factored approach is similar to the odd-even parser from Mi and Huang ( 2015 ) .
+The fact that stack elements do not have to be tree-structured , however , means that we can create productions with arbitrary arity , and no binarization is required either for training or parsing .
+This also allows us to remove the directionality inherent in the shift- reduce system , which is at best an imperfect fit for constituency parsing .
+We do follow the practice in that system of labeling unary chains of non-terminals with a single action , which means our parser uses a fixed number of steps , ( 4n ? 2 ) for a sentence of n words .
+Figure 1 shows the formal deductive system for this parser .
+The stack ? is modeled as a list of strictly increasing integers whose first element is always 1 code : https://github.com/jhcross/span-parser input : zero .
+These numbers are word boundaries which define the spans on the stack .
+In a slight abuse of notation , however , we sometimes think of it as a list of pairs ( i , j ) , which are the actual sentence spans , i.e. , every consecutive pair of indices on the stack , initially empty .
+We represent stack spans by trapezoids ( i Some text and the symbol or scaled j ) in the figures to emphasize that they may or not have tree stucture .
+w 0 . . . w n?1 axiom : 0 , [ 0 ] , ? goal : 2 ( 2n ? 1 ) , [ 0 , n ] , t sh z , ? | j , t z + 1 , ? | j | j + 1 , t j < n , even z comb z , ? | i | k | j , t z + 1 , ? | i | j , t even z label - X z , ? | i | j , t z + 1 , ? | i | j , t ?
+{ i X j } odd z nolabel z , ? | i | j , t z + 1 , ? | i | j , t z < ( 4n? 1 ) , odd z
+The parser alternates between structural actions and label actions according to the parity of the parser step z .
+In even steps , it takes a structural action , either combining the top two stack spans , which requires at least two spans on the stack , or introducing a new span of unit length , as long as the entire sentence is not already represented on the stack
+In odd steps , the parser takes a label action .
+One possibility is labeling the top span on the stack , ( i , j ) with either a nonterminal label or an ordered unary chain ( since the parser has only one opportunity to label any given span ) .
+Taking no action , designated nolabel , is also a possibility .
+This is essentially a null operation except that it returns the parser to an even step , and this action reflects the decision that ( i , j ) is not a ( complete ) labeled phrase in the tree .
+In the final step , ( 4n ? 2 ) , nolabel is not allowed not unary chains in our system .
+Each stack is just a list of numbers but is visualized with spans here .
+since the parser must produce a tree .
+Figure 2 shows a complete example of applying this parsing system to a very short sentence ( " I do like eating fish " ) that we will use throughout this section and the next .
+The action in step 2 is label - NP because " I " is a one- word noun phrase ( parts of speech are taken as input to our parser , though it could easily be adapted to include POS tagging in label actions ) .
+If a single word is not a complete phrase ( e.g. , " do " ) , then the action after a shift is nolabel .
+The ternary branch in this tree ( VP ? MD VBP S ) is produced by our parser in a straightforward manner : after the phrase " do like " is combined in step 7 , no label is assigned in step 8 , successfully delaying the creation of a bracket until the verb phrase is fully formed on the stack .
+Note also that the unary production in the tree is created with a single action , label - S- VP , in step 14 .
+The static oracle to train this parser simply consists of taking actions to generate the gold tree with a " short-stack " heuristic , meaning combine first whenever combine and shift are both possible .
+LSTM Span Features
+Long short - term memory networks ( LSTM ) are a type of recurrent neural network model proposed by Hochreiter and Schmidhuber ( 1997 ) which are very effective for modeling sequences .
+They are able to capture and generalize from interactions among their sequential inputs even when separated by a long distance , and thus are a natural fit for analyz-ing natural language .
+LSTM models have proved to be a powerful tool for many learning tasks in natural language , such as language modeling ( Sundermeyer et al. , 2012 ) and translation ( Sutskever et al. , 2014 ) . LSTMs have also been incorporated into parsing in a variety of ways , such as directly encoding an entire sentence ( Vinyals et al. , 2015 ) , separately modeling the stack , buffer , and action history , to encode words based on their character forms , and as an element in a recursive structure to combine dependency subtrees with their left and right children ( Kiperwasser and Goldberg , 2016 a ) .
+For our parsing system , however , we need a way to model arbitrary sentence spans in the context of the rest of the sentence .
+We do this by representing each sentence span as the elementwise difference of the vector outputs of the LSTM outputs at different time steps , which correspond to word boundaries .
+If the sequential output of the recurrent network for the sentence is f 0 , ... , f n in the forward direction and b n , ... , b 0 in the backward direction then the span ( i , j ) would be represented as the concatenation of the vector differences ( f j ? f i ) and ( b i ? b j ) .
+The spans are represented using output from both backward and forward LSTM components , as can be seen in Figure 3 .
+This is essentially the LSTM - Minus feature representation described by Wang and Chang ( 2016 ) extended to the bi-directional case .
+In initial experiments , we found that there was essentially no difference in performance between using the difference features and concatenating all end - point vectors , but our approach is almost twice as fast .
+This model allows a sentence to be processed once , and then the same recurrent outputs can be used to compute span features throughout the parse .
+Intuitively , this allows the span differences to learn to represent the sentence spans in the context of the rest of the sentence , not in isolation ( especially true for LSTM given the extra hidden recurrent connection , typically described as a " memory cell " ) .
+In practice , we use a two -layer bi-directional LSTM , where the input to the second layer combines the forward and backward outputs from the first layer at that time step .
+For each direction , the components from the first and second layers are concatenated to form the vectors which go into the span features .
+See Cross and Huang ( 2016 ) for more details on this approach .
+For the particular case of our transition constituency parser , we use only four span features to determine a structural action , and three to determine a label action , in each case partitioning the sentence exactly .
+The reason for this is straightforward : when considering a structural action , the top two spans on the stack must be considered to determine whether they should be combined , while for a label action , only the top span on the stack is important , since that is the candidate for labeling .
+In both cases the remaining sentence prefix and suffix are also included .
+These features are shown in Table 1 .
+The input to the recurrent network at each time step consists of vector embeddings for each word and its part- of-speech tag .
+Parts of speech are predicted beforehand and taken as input to the parser , as in much recent work in parsing .
+In our experiments , the embeddings are randomly initialized and learned from scratch together with all other network weights , and we would expect further performance improvement from incorporating embeddings pretrained from a large external corpus .
+The network structure after the the span features consists of a separate multilayer perceptron for each type of action ( structural and label ) .
+For each action we use a single hidden layer with rectified linear ( ReLU ) activation .
+The model is trained on a peraction basis using a single correct action for each parser state , with a negative log softmax loss function , as in Chen and Manning ( 2014 ) .
+Dynamic Oracle
+The baseline method of training our parser is what is known as a static oracle : we simply generate the sequence of actions to correctly parse each training sentence , using a short-stack heuristic ( i.e. , combine first whenever there is a choice of shift and combine ) .
+This method suffers from a well - documeted problem , however , namely that it only " prepares " the model for the situation where no mistakes have been made during parsing , an inevitably incorrect assumption in practice .
+To alleviate this problem , Goldberg and Nivre ( 2013 ) define a dynamic oracle to return the best possible action ( s ) at any arbitrary configuration .
+In this section , we introduce an easy - to - compute optimal dynamic oracle for our constituency parser .
+We will first define some concepts upon which the dynamic oracle is built and then show how optimal actions can be very efficiently computed using this framework .
+In broad strokes , in any arbitrary parser configuration c there is a set of brackets t * ( c ) from the gold tree which it is still possible to reach .
+By following dynamic oracle actions , all of those brackets and only those brackets will be predicted .
+Even though proving the optimality of our dynamic oracle ( Sec. 4.3 ) is involved , computing the oracle actions is extremely simple ( Secs. 4.2 ) and efficient ( Sec. 4.4 ) .
+Preliminaries and Notations
+Before describing the computation of our dynamic oracle , we first need to rigorously establish the desired optimality of dynamic oracle .
+The structure of this framework follows Goldberg et al . ( 2014 ) . Definition 1 . We denote c ? c iff. c is the result of action ? on configuration c , also denoted functionally as c = ? ( c ) .
+We denote to be the union of ? for all actions ? , and * to be the reflexive and transitive closure of .
+Definition 2 ( descendant / reachable trees ) .
+We denote D( c ) to be the set of final descendant trees derivable from c , i.e. , D( c ) = {t | c * z , ? , t }.
+This set is also called " reachable trees " from c. Definition 3 ( F 1 ) .
+We define the standard F 1 metric of a tree t with respect to gold tree t G as F 1 ( t ) = 2rp r+p , where r = | t?t G | |t G | , p = | t?t G | | t | .
+The following two definitions are similar to those for dependency parsing by Goldberg et al . ( 2014 ) . Definition 4 . We extend the F 1 function to configurations to define the maximum possible F 1 from a given configuration : F 1 ( c ) = max t 1 ?D ( c ) F 1 ( t 1 ) .
+Definition 5 ( oracle ) .
+We can now define the desired dynamic oracle of a configuration c to be the set of actions that retrain the optimal F 1 : oracle ( c ) = {? | F 1 ( ? ( c ) ) = F 1 ( c ) } .
+This abstract oracle is implemented by dyna ( ? ) in Sec. 4.2 , which we prove to be correct in Sec. 4.3 .
+Definition 6 ( span encompassing ) .
+We say span ( i , j ) is encompassed by span ( p , q ) , notated ( i , j ) ( p , q ) , iff .
+p ? i < j ? q. Definition 7 ( strict encompassing ) .
+We say span ( i , j ) is strictly encompassed by span ( p , q ) , notated ( i , j ) ? ( p , q ) , iff. ( i , j ) ( p , q ) and ( i , j ) = ( p , q ) .
+We then extend this relation from spans to brackets , and notate i X j ? p Y q iff. ( i , j ) ? ( p , q ) .
+We next define a central concept , reachable brackets , which is made up of two parts , the left ones left ( c ) which encompass ( i , j ) without crossing any stack spans , and the right ones right ( c ) which are completely on the queue .
+See Fig. 4 for examples .
+Definition 8 ( reachable brackets ) .
+For any configuration c = z , ? | i | j , t , we define the set of reachable gold brackets ( with respect to gold tree t G ) as reach ( c ) = left ( c ) ? right ( c ) where the left- and right- reachable brackets are left ( c ) = { p X q ? t G | ( i , j ) ? ( p , q ) , p ? ? | i} right ( c ) = { p X q ? t G | p ? j} for even z , with the ? replaced by for odd z. Special case ( initial ) : reach ( 0 , [ 0 ] , ? ) = t G .
+The notation p ? ?
+| i simply means ( p , q ) does not " cross " any bracket on the stack .
+Remember our stack is just a list of span boundaries , so if p coincides with one of them , ( p , q ) 's left boundary is not crossing and its right boundary q is not crossing either since q ? j due to ( i , j ) ? ( p , q ) .
+Also note that reach ( c ) is strictly disjoint from t , i.e. , reach ( c ) ? t = ? and reach ( c ) ? t G ? t. See Figure 6 for an illustration .
+Definition 9 ( next bracket ) .
+For any configuration c = z , ? | i | j , t , the next reachable gold bracket ( with respect to gold tree t G ) is the smallest reachable bracket ( strictly ) encompassing ( i , j ) : next ( c ) = min ? left ( c ) .
+Structural and Label Oracles For an even-step configuration c = z , ? | i | j , t , we denote the next reachable gold bracket next ( c ) to be p X q , and define the dynamic oracle to be : dyna ( c ) = ? ? ? ? ?
+{ sh } if p = i and q > j { comb } if p < i and q = j {sh , comb} if p < i and q > j ( 1 ) As a special case dyna ( 0 , [ 0 ] , ? ) = { sh} .
+Figure 5 shows examples of this policy .
+The key insight is , if you follow this policy , you will not miss the next reachable bracket , but if you do not follow it , you certainly will .
+We formalize this fact below ( with proof omitted due to space constraints ) which will be used to prove the central results later .
+Lemma 1 . For any configuration c , for any ? ? dyna ( c ) , we have reach ( ? ( c ) ) = reach ( c ) ; for any ? / ? dyna ( c ) , we have reach ( ? ( c ) ) reach ( c ) .
+The label oracles are much easier than structural ones .
+For an odd-step configuration c = z , ? | i | j , t , we simply check if ( i , j ) is a valid span in the gold tree t G and if so , label it accordingly , otherwise no label .
+More formally , dyna ( c ) = { label - X } if some i X j ?
+t G { nolabel } otherwise ( 2 )
+Correctness
+To show the optimality of our dynamic oracle , we begin by defining a special tree t * ( c ) and show that it is optimal among all trees reachable from configuration c .
+We then show that following our dynamic oracle ( Eqs. 1 - 2 ) from c will lead to t * ( c ) .
+Definition 10 ( t * ( c ) ) .
+For any configuration c = z , ? , t , we define the optimal tree t * ( c ) to include all reachable gold brackets and nothing else .
+More formally , t * ( c ) = t ? reach ( c ) .
+We can show by induction that t * ( c ) is attainable : Lemma 2 .
+For any configuration c , the optimal tree is a descendant of c , i.e. , t * ( c ) ? D ( c ) .
+The following Theorem shows that t * ( c ) is indeed the best possible tree : Theorem 1 ( optimality of t * ) .
+For any configuration c , F 1 ( t * ( c ) ) = F 1 ( c ) .
+Proof .
+( SKETCH ) Since t * ( c ) adds all possible additional gold brackets ( the brackets in reach ( c ) ) , it is not possible to get higher recall .
+Since it adds no incorrect brackets , it is not possible to get higher pre - t t G reach ( c ) t * ( c ) = t ? reach ( c ) Figure 6 : The optimal tree t * ( c ) adds all reachable brackets and nothing else .
+Note that reach ( c ) and t are disjoint .
+cision .
+Since F 1 is the harmonic mean of precision and recall , it also leads to the best possible F 1 . Corollary 1 . For any c = z , ? , t , for any t ? D ( c ) and t = t * ( c ) , we have F 1 ( t ) < F 1 ( c ) .
+We now need a final lemma about the policy dyna ( ? ) ( Eqs. 1 - 2 ) before proving the main result .
+Lemma 3 . From any c = z , ? , t , for any action ? ? dyna ( c ) , we have t * ( ? ( c ) ) = t * ( c ) .
+For any action ? / ? dyna ( c ) , we have t * ( ? ( c ) ) = t * ( c ) .
+Proof .
+( SKETCH )
+By case analysis on even / odd z .
+We are now able to state and prove the main theoretical result of this paper ( using Lemma 3 , Theorem 1 and Corollary 1 ) : Theorem 2 .
+The function dyna ( ? ) in Eqs. ( 1 - 2 ) satisfies the requirement of a dynamic oracle ( Def. 5 ) : dyna ( c ) = oracle ( c ) for any configuration c .
+Implementation and Complexity For any configuration , our dynamic oracle can be computed in amortized constant time since there are only O( n ) gold brackets and thus bounding | reach ( c ) | and the choice of next ( c ) .
+After each action , next ( c ) either remains unchanged , or in the case of being crossed by a structural action or mislabeled by a label action , needs to be updated .
+This update is simply tracing the parent link to the next smallest gold bracket repeatedly until the new bracket encompasses span ( i , j ) .
+Since there are at most O( n ) choices of next ( c ) and there are O(n ) steps , the per-step cost is amortized constant time .
+Thus our dynamic oracle is much faster than the super-linear time oracle for arc-standard dependency parsing in Goldberg et al . ( 2014 ) .
+Related Work Neural networks have been used for constituency parsing in a number of previous instances .
+For example , Socher et al . ( 2013 ) learn a recursive network that combines vectors representing partial trees , Vinyals et al . ( 2015 ) adapt a sequence - tosequence model to produce parse trees , Watanabe and Sumita ( 2015 ) Durrett and Klein ( 2015 ) combine both neural and sparse features for a CKY parsing system .
+Our own previous work ( Cross and Huang , 2016 ) use a recurrent sentence representation in a head-driven transition system which allows for greedy parsing but does not achieve state - of - the - art results .
+The concept of " oracles " for constituency parsing ( as the tree that is most similar to t G among all possible trees ) was first defined and solved by Huang ( 2008 ) in bottom - up parsing .
+In transition - based parsing , the dynamic oracle for shift- reduce dependency parsing costs worst - case O(n 3 ) time ( Goldberg et al. , 2014 ) .
+On the other hand , after the submission of our paper we became aware of a parallel work ( Coavoux and Crabb ? , 2016 ) that also proposed a dynamic oracle for their own incremental constituency parser .
+However , it is not optimal due to dummy non-terminals from binarization .
+Experiments
+We present experiments on both the Penn English Treebank ( Marcus et al. , 1993 ) and the French Treebank ( Abeill ?
+et al. , 2003 ) .
+In both cases , all stateaction training pairs for a given sentence are used at the same time , greatly increasing training speed since all examples for the same sentence share the same forward and backward pass through the recurrent part of the network .
+Updates are performed in minibatches of 10 sentences , and we shuffle the training sentences before each epoch .
+The results we report are trained for 10 epochs .
+The only regularization which we employ during training is dropout ( Hinton et al. , 2012 ) , which is applied with probability 0.5 to the recurrent outputs .
+It is applied separately to the input to the second LSTM layer for each sentence , and to the input to the ReLU hidden layer ( span features ) for each stateaction pair .
+We use the ADADELTA method ( Zeiler , 2012 ) to schedule learning rates for all weights .
+All of these design choices are summarized in Table 2 .
+In order to account for unknown words during training , we also adopt the strategy described by Kiperwasser and Goldberg ( 2016 b ) , where words in the training set are replaced with the unknownword symbol UNK with probability p unk = z z +f ( w ) where f ( w ) is the number of times the word appears in the training corpus .
+We choose the parameter z so that the training and validation corpora have approximately the same proportion of unknown words .
+For the Penn Treebank , for example , we used z = 0.8375 so that both the validation set and the ( rest of the ) training set contain approximately 2.76 % unknown words .
+This approach was helpful but not critical , improving F 1 ( on dev ) by about 0.1 over training without any unknown words .
+Training with Dynamic Oracle
+The most straightforward use of dynamic oracles to train a neural network model , where we collect all action examples for a given sentence before updating , is " training with exploration " as proposed by Goldberg and Nivre ( 2013 ) .
+This involves parsing each sentence according to the current model and using the oracle to determine correct actions for training .
+We saw very little improvement on the Penn treebank validation set using this method , however .
+Based on the parsing accuracy on the training sentences , this appears to be due to the model overfitting the training data early during training , thus negating the benefit of training on erroneous paths .
+Accordingly , we also used a method recently proposed by , which specifically addresses this problem .
+This method introduces stochasticity into the training data parses by randomly taking actions according to the softmax distribution over action scores .
+This introduces realistic mistakes into the training parses , which we found was also very effective in our case , leading to higher F 1 scores , though it noticeably sacrifices recall in favor of precision .
+This technique can also take a parameter ? to flatten or sharpen the raw softmax distribution .
+The results on the Penn treebank development set for various values of ? are presented in Table 3 .
+We were surprised that flattening the distribution seemed to be the least effective , as training accuracy ( taking into account sampled actions ) lagged somewhat behind validation accuracy .
+Ultimately , the best results were for ? = 1 , which we used for final testing .
+Model
+Penn Treebank
+Following the literature , we used the Wall Street Journal portion of the Penn Treebank , with standard splits for training ( secs 2 - 21 ) , development ( sec 22 ) , and test sets ( sec 23 ) .
+Because our parsing system seamlessly handles non-binary productions , minimal data preprocessing was required .
+For the part- of-speech tags which are a required input to our parser , we used the Stanford tagger with 10 - way jackknifing .
+Table 4 compares test our results on PTB to a range of other leading constituency parsers .
+Despite being a greedy parser , when trained using dynamic oracles with exploration , it achieves the best F 1 score of any closed - set single -model parser .
+French Treebank
+We also report results on the French treebank , with one small change to network structure .
+Specifically , we also included morphological features for each word as input to the recurrent network , using a small embedding for each such feature , to demonstrate that our parsing model is able to exploit such additional features .
+We used the predicted morphological features , part- of-speech tags , and lemmas ( used in place of word surface forms ) supplied with the SPMRL 2014 data set ( Seddah et al. , 2014 ) .
+It is thus possible that results could be improved further using an integrated or more accurate predictor for those features .
+Our parsing and evaluation also includes predicting POS tags for multi-word expressions as is the standard practice for the French treebank , though our results are similar whether or not this aspect is included .
+We compare our parser with other recent work in Table 5 .
+We achieve state - of - the - art results even in comparison to Bj?rkelund et al . ( 2014 ) , which utilized both external data and reranking in achieving the best results in the SPMRL 2014 shared task .
+Notes on Experiments
+For these experiments , we performed very little hyperparameter tuning , due to time and resource contraints .
+We have every reason to believe that performance could be improved still further with such techniques as random restarts , larger hidden layers , external embeddings , and hyperparameter grid search , as demonstrated by Weiss et al . ( 2015 ) .
+We also note that while our parser is very accurate even with greedy decoding , the model is easily adaptable for beam search , particularly since the parsing system already uses a fixed number of actions .
+Beam search could also be made considerably more efficient by caching post-hidden - layer feature components for sentence spans , essentially using the precomputation trick described by Chen and Manning ( 2014 ) , but on a per-sentence basis .
+Conclusion and Future Work
+We have developed a new transition - based constituency parser which is built around sentence spans .
+It uses a factored system alternating between structural and label actions .
+We also describe a fast dynamic oracle for this parser which can determine the optimal set of actions with respect to a gold training tree in an arbitrary state .
+Using an LSTM model and only a few sentence spans as features , we achieve state - of - the - art accuracy on the Penn Treebank for all parsers without reranking , despite using strictly greedy inference .
+In the future , we hope to achieve still better results using beam search , which is relatively straightforward given that the parsing system already uses a fixed number of actions .
+Dynamic programming ( Huang and Sagae , 2010 ) could be especially powerful in this context given the very simple feature representation used by our parser , as noted also by Kiperwasser and Goldberg ( 2016 b ) .
+Figure 1 : 1 Figure 1 : Deductive system for the Structure / Label transition parser .
+The stack ? is represented as a list of integers where the span defined by each consecutive pair of elements is a sentence segment on the stack .
+Each X is a nonterminal symbol or an ordered unary chain .
+The set t contains labeled spans of the form iX j , which at the end of a parse , fully define a parse tree .

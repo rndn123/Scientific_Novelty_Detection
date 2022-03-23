@@ -1,0 +1,118 @@
+title
+Learning Curricula for Multilingual Neural Machine Translation Training
+abstract
+Low-resource Multilingual Neural Machine Translation ( MNMT ) is typically tasked with improving the translation performance on one or more language pairs with the aid of highresource language pairs .
+In this paper , we propose two simple search based curricula - orderings of the multilingual training data - which help improve translation performance in conjunction with existing techniques such as fine-tuning .
+Additionally , we attempt to learn a curriculum for MNMT from scratch jointly with the training of the translation system using contextual multi-arm bandits .
+We show on the FLORES low-resource translation dataset that these learned curricula can provide better starting points for fine tuning and improve overall performance of the translation system .
+Introduction Curriculum learning ( Bengio et al. , 2009 ; Elman , 1993 ; Rohde and Plaut , 1994 ) hypothesizes that presenting training samples in a meaningful order to machine learners during training may help improve model quality and convergence speed .
+In the field of Neural Machine Translation ( NMT ) most curricula are hand designed e.g. , fine-tuning ( Luong and Manning , 2015 ; Freitag and Al - Onaizan , 2016 ) and data selection ( Moore and Lewis , 2010 ; Axelrod et al. , 2011 ; Duh et al. , 2013 ; Durrani et al. , 2016 ) .
+Another common curriculum is one based on ordering samples from easy to hard using linguistic features and auxiliary model scores ( Zhang et al. , 2018 ( Zhang et al. , , 2019 but these are hard to tune , relying to extensive trial and error to find the right hyperparameters .
+Attempts to learn a curriculum jointly with the NMT training setup ( Kumar et al. , 2019 ) can suffer from observation sparsity , where a single training run does not provide enough training samples for an external agent to learn a good curriculum policy .
+Our NMT task of choice in this paper is low-resource multi-lingual NMT ( MNMT ) .
+While standard NMT systems typically deal with a language pair , the source and the target , an MNMT model may have multiple languages as source and / or target .
+Most large-scale MNMT models are trained using some form of model parameter sharing ( Johnson et al. , 2017 ; Aharoni et al. , 2019 ; Arivazhagan et al. , 2019 ; Bapna and Firat , 2019 ) .
+The notion of how input data should be presented to the MNMT system during training only finds prominence in the case of low-resource MNMT .
+A typical low-resource task will try to leverage a high- resource language pair to aid the training of an NMT system for a low-resource ( very small or no parallel data available ) and related language - pair of interest .
+Typical approaches for low resource MNMT involve pivoting and zero-shot training ( Lakew et al. , 2018 ; Johnson et al. , 2017 ) and transfer learning via fine-tuning ( Zoph et al. , 2016 ; Dabre et al. , 2019 ) .
+Finn et al. ( 2017 ) attempt to meta-learn parameter initialization for child models using trained - high resource parent models for this task .
+In this paper , we build upon the framework for learning curricula introduced in Kumar et al . ( 2019 ) and attempt to alleviate the problem of observation sparsity by learning more robust policies from multiple training runs .
+We use contextual multi-arm bandits for our agents which learn multilingual data sampling policies jointly with the training of the NMT system .
+Additionally , we explore some simple policy search methods to our list of baselines ; specifically , we try and find the best policies using the expensive grid search and pruned - tree search methods .
+We use state - of - the - art hand - designed curricula as our baselines to beat .
+Building upon the task and datasets established by Guzm ?n et al. ( 2019 ) , in this paper , we will attempt to learn a curriculum to train an NMT system for the Nepali- English language pair while leveraging the high resource Hindi-English pair .
+The agent will learn to choose between mini-batches containing either Hindi-English or Nepali-English data at each time step during NMT training to maximize the expected reward ( improvement in validation set performance ) .
+The learned curriculum will hence condition on the state of the NMT system during training and determine whether to expose it to a batch of Nepali-English or Hindi-English data .
+We start by presenting our methods for obtaining search - based and learned curricula in section 2 .
+We present our experiment setup in section 3 and results in section 4 .
+Methods
+The procedure for learning a multi-lingual training curriculum uses multiple multi-arm bandits as agents which explore independent of each other in randomly initialized environments ( NMT systems ) and effectively learn their own policies .
+The stochastic nature of their exploration policy ensures that they explore different action- reward spaces ( the agent executes an action on the NMT environment and receives a reward associated with this action ) .
+Figure 1 shows an overview of this interface .
+The training data for all agents is pooled at the end of the training of individual agents and one final agent is trained using this data which determines the final policy we use as our multi-lingual curriculum .
+We provide more details about this method of learning and the associated baselines below .
+Data Binning Instead of mixing together all the language pairs into one single dataset , we create separate bins for each language pair .
+Hence , with respect to the agent , this is a two bin problem , where its Figure 2 : A line search for a fixed curriculum baseline which samples from one language pair ( high resource , Hindi-English ) with a fixed probability or else samples from the other ( low resource , Nepali-English ) .
+action is the choice of the bin to draw the next mini-batch for NMT training .
+As a result of this design decision , each batch will only contain a single language pair and will hence we relatively homogeneous ( with respect the the feature of interest , language id ) .
+More generally , this can be extended to an arbitrary number of bins , one per language - pair being used to train the MNMT system .
+Grid-search baselines
+The simplest ( albeit expensive to find ) search - based learn - able curriculum to consider in this case is one where we sample batches from one language with a fixed probability or else sample from the other bin during training .
+Since there is only one degree of freedom ( the probability of sampling from one language - pair ) in this search problem , we perform a simple line - search over the range of possible values for this probability .
+Note that , although this curriculum is ' learned ' it remains fixed during each training run and does not change based on the state of the NMT system .
+Figure 2 shows a visual representation of this search method .
+Pruned
+Tree search A variation of the previous search method involves one which uses a technique similar to beam search .
+We divide training into a finite number of phases and then starting from the beginning of training , we search for the best fixed sampling probability .
+At the end of this phase , we discard all but the best model and the policy ( sampling probability ) which led to it , and continue the search for the best policy in the next phase from this model checkpoint .
+The result is a tree-search which prunes all but the best node after each phase .
+The final policy is the culmination of all phase - wise best fixed sampling ratios .
+This procedure appears in Algorithm 1 .
+Algorithm 1 : Pruned tree-search for multi-lingual curricula search Result : P * , the list of the best policies per phase p = { 0.0 , 0.1 ,
+Observation Engineering
+The observations provided to the multi-arm bandit agents are identical in structure to the ones introduced in Kumar et al . ( 2019 ) .
+A prototype batch - a finite number of sentences from each language pair - is randomly sampled per bin ( language-pair ) and concatenated together .
+At each time step , the observation is the vector containing sentence - level log-likelihoods produced by the NMT system for this prototype batch .
+We exclude observations from the initial portion of NMT interaction to counteract the naturally decaying property of log-likelihood scores during NMT training .
+Contextual Multi-arm Bandits Multi-arm bandit ( MAB ) based agents are typically trained to learn policies which maximize the expected reward received ( minimize regret ) .
+Contextual multi-arm bandits ( Pandey et al. , 2007 ; Chih- Chun Wang et al. , 2005 ; Langford and Zhang , 2008 ) allows the use of state based information to determine this policy .
+In our case the contextual MABs condition on the observation received from the NMT system to determine an action , the choice of bin to sample a mini-batch .
+The reward obtained for this action is the delta-validation perplexity post update , the improvement in perplexity on the validation set in a finite window .
+The exploration strategy is the linearly - decaying epsilon-greedy strategy ( Kuleshov and Precup , 2014 ) .
+The contextual MABs are implemented as simple feed -forward neural networks which take the observation vector as input and produce a distribution over two states representing the bins .
+If we choose to exploit this learned policy , the bin with maximum probability mass is selected for sampling .
+Experiment Setup
+We use Fairseq ( Ott et al. , 2019 ) for all our NMT experiments and the our NMT systems are configured to replicate the setup described in Guzm ? n et al . ( 2019 ) .
+The grid search experiments search over the the range [ 0 , 1 ] for sampling in increments of 0.1 .
+The pruned tree-search uses a beam width of 1 .
+The phase duration for tree -search is set to one epoch of NMT training .
+We use either 5 or 10 concurrent contextual MABs which are implemented as two 256 - dimensional feed forward neural networks trained using RMSProp with a learning rate of 0.00025 and a decay of 0.95 .
+Rewards for the agent ( validation delta-perplexity ) are provided every ten training steps .
+To create the observations , we sample 32 prototype sentences from each bin to create a prototype Dataset Sentences Tokens Nepali-English 563 K 6.8 M Hindi-English 1.6 M 16.7 M batch of 64 sentences and measure sentence level log-likelihood after each update .
+We use an NMT warmup of 5000 steps ( no training data for the agent from this period is recorded ) .
+For the exploration strategy we use a linearly decaying epsilon function with decay period set to 25 k steps .
+The decay floor was set to 0.01 .
+The window for the delta-perplexity reward was 1 .
+We use the datasets provided as part of the FLORES task ( Guzm ? n et al. , 2019 ) for our experiments .
+The statistics of the training dataset for the multi-lingual task appear in table 1 .
+The Hindi-English dataset comes from the IIT Bombay corpus 1 .
+The validation and test sets for Nepali-English ( the low resource language - pair of interest ) contain 2500 and 3000 sentences respectively .
+Results
+Our results are presented in Table 2 .
+Our baselines consist of : ? ne-en random baseline :
+This is the NMT setup which is only trained on the Nepali-English corpus .
+The data is randomly shuffled to form mini-batches .
+? hi-en random baseline :
+The NMT system trained on the high-resource Hindi-English dataset with the Nepali-English validation and test sets .
+? ne-hi-en random baseline : The Hindi-English and Nepali-English data is mixed together to train the NMT system .
+The Nepali-English data is upsampled to match the size of the the Hindi-English corpus .
+?
+Multilingual transformer : Replicates the setup from Guzm ?n et al . ( 2019 ) . ?
+Continued training baseline : Uses the hi-en random baseline as a starting point to fine tune using the Nepali-English validation and test sets .
+Our non-MAB search - based curriculum baselines are : ?
+Grid search : A static curriculum is learned by searching over the space of sampling probabilities for the bins .
+? Grid Search + Continued training :
+The previous model is fine tuned using the Nepali-English validation and test sets .
+?
+Pruned tree-search : Epoch- dependent curriculum searched using the pruned tree-search method .
+?
+Pruned tree-search + Continued training :
+The previous model is fine tuned using the Nepali-English validation and test sets .
+From Table 2 , we see that the ne-en and hi-en baselines are very weak , with the latter lagging behind despite having access to more data .
+This indicates that with these language pairs , even though adding the high- resource dataset may help , in isolation it is not a good proxy for the low-resource pair .
+The random baseline with the combination of the two datasets ( upsampled low-resource ) is the strongest amongst the fixed baselines marginally beating the multi-lingual transformer and ( surprisingly ) the continued training baselines .
+While the grid search and pruned - tree search baselines are close in performance to the best fixed baselines , continued training with them provides much stronger results where the 50/50 configuration for the grid search 2 provides the best result at 15.1 BLEU and the tree search slightly behind at 14.92 BLEU .
+Figure 3 shows the BLEU scores for the grid search experiments over the chosen search points in the probability space ( the probability of sampling from the low resource language pair ) .
+For the contextual MABs , we use either 5 or 10 concurrent agents ; training data is gathered from all concurrent bandits to train the final curriculum .
+In addition , we choose to update the bandit policy only once every 500 updates , 1 epoch or 2 epochs of NMT training .
+The results of all our experiments appear in table 3 and the best configurations are in table 2 .
+While the curricula learned using the contextual MABs are able to match the performance of the strongest fixed policy ( ne-hi-en random baseline ) , it performs slightly worse than the curriculum obtained using the ( expensive ) grid search combined with continued training , by about 0.2 BLEU points .
+Interestingly , continuing training from the models trained using the curricula learned by the MABs leads to the strongest results .
+Specifically , using the model trained using the curriculum learned by the strongest MAB ( MAB2 in Table 2 ) results in a BLEU score of 15.45 on this task , a gain of 0.6 on the strongest baseline .
+Conclusion
+In this paper , we present techniques which learn curricula for multilingual NMT training from multiple training runs and agents .
+On the task of low-resource multilingual NMT training , we use conditional multi-arm bandits which condition on the state of the NMT system and learn policies which determine whether to train on a batch of a high- resource ( Hindi-English ) or the low-resource ( Nepali-Hindi ) language pair per step in training .
+In addition , we introduce some simple search - based methods for policy search ( grid search and pruned tree search ) for this task .
+We show that both these simple learned curricula and the ones derived from the MABs can match the state - of - the - art hand - designed multilingual baselines .
+However , continued training on models trained using these learned curricula yields better results , indicating that they may serve as good starting models for fine-tuning .
+Figure 1 : 1 Figure 1 : The multi- arm bandit agents ' ( MAB ) interface with the NMT system .

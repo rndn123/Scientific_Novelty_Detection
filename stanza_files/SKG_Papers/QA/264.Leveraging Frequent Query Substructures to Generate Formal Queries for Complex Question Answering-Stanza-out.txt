@@ -1,0 +1,247 @@
+title
+Leveraging Frequent Query Substructures to Generate Formal Queries for Complex Question Answering
+abstract
+Formal query generation aims to generate correct executable queries for question answering over knowledge bases ( KBs ) , given entity and relation linking results .
+Current approaches build universal paraphrasing or ranking models for the whole questions , which are likely to fail in generating queries for complex , long-tail questions .
+In this paper , we propose SubQG , a new query generation approach based on frequent query substructures , which helps rank the existing ( but nonsignificant ) query structures or build new query structures .
+Our experiments on two benchmark datasets show that our approach significantly outperforms the existing ones , especially for complex questions .
+Also , it achieves promising performance with limited training data and noisy entity / relation linking results .
+Introduction Knowledge- based question answering ( KBQA ) aims to answer natural language questions over knowledge bases ( KBs ) such as DBpedia and Freebase .
+Formal query generation is an important component in many KBQA systems ( Bao et al. , 2016 ; Cui et al. , 2017 ; Luo et al. , 2018 ) , especially for answering complex questions .
+Given entity and relation linking results , formal query generation aims to generate correct executable queries , e.g. , SPARQL queries , for the input natural language questions .
+An example question and its formal query are shown in Figure 1 . Generally speaking , formal query generation is expected to include but not be limited to have the capabilities of ( i ) recognizing and paraphrasing different kinds of constraints , including triple - level constraints ( e.g. , " movies " corresponds to a typing constraint for the target variable ) and higher level constraints ( e.g. , subgraphs ) .
+For instance , " the same ... as " * Corresponding authors represents a complex structure shown in the middle of Figure 1 ; ( ii ) recognizing and paraphrasing aggregations ( e.g. , " how many " corresponds to COUNT ) ; and ( iii ) organizing all the above to generate an executable query ( Singh et al. , 2018 ; Zafar et al. , 2018 ) .
+There are mainly two kinds of query generation approaches for complex questions .
+( i) Templatebased approaches choose a pre-collected template for query generation ( Cui et al. , 2017 ; Abujabal et al. , 2017 ) .
+Such approaches highly rely on the coverage of templates , and perform unstably when some complex templates have very few natural language questions as training data .
+( ii ) Approaches based on semantic parsing and neural networks learn entire representations for questions with different query structures , by using a neural network following the encode- and - compare framework ( Luo et al. , 2018 ; Zafar et al. , 2018 ) .
+They may suffer from the lack of training data , especially for long-tail questions with rarely appeared structures .
+Furthermore , both above approaches cannot handle questions with unseen query structures , since they cannot generate new query structures .
+To cope with the above limitations , we propose a new query generation approach based on the following observation : the query structure for a complex question may rarely appear , but it usually contains some substructures that frequently appeared in other questions .
+For example , the query structure for the question in Figure 1 appears rarely , however , both " how many movies " and " the same ... as " are common expressions , which correspond to the two query substructures in dashed boxes .
+To collect such frequently appeared substructures , we automatically decompose query structures in the training data .
+Instead of directly modeling the query structure for the given question as a whole , we employ multiple neural networks to predict query substructures contained in the question , each of which delivers a part of the query intention .
+Then , we select an existing query structure for the input question by using a combinational ranking function .
+Also , in some cases , no existing query structure is appropriate for the input question .
+To cope with this issue , we merge query substructures to build new query structures .
+The contributions of this paper are summarized below : ?
+We formalize the notion of query structures and define the substructure relationship between query structures . ?
+We propose a novel approach for formal query generation , which firstly leverages multiple neural networks to predict query substructures contained in the given question , and then ranks existing query structures by using a combinational function .
+?
+We merge query substructures to build new query structures , which handles questions with unseen query structures . ?
+We perform extensive experiments on two KBQA datasets , and show that SubQG significantly outperforms the existing approaches .
+Furthermore , SubQG achieves a promising performance with limited training data and noisy entity / relation linking results .
+Preliminaries
+An entity is typically denoted by a URI and described with a set of properties and values .
+A fact is an entity , property , value triple , where the value can be either a literal or another entity .
+A KB is a pair K = ( E , F ) , where E denotes the set of entities and F denotes the set of facts .
+A formal query ( or simply called query ) is the structured representation of a natural language question executable on a given KB .
+Formally , a query is a pair Q = ( V , T ) , where V denotes the set of vertices , and T denotes the set of labeled edges .
+A vertex can be either a variable , an entity or a literal , and the label of an edge can be either ( Bao et al. , 2016 ) .
+For instance , ?V ar1 , MAXATN , 2 means ORDER BY DESC ( ? V ar1 ) LIMIT 1 OFFSET 1 .
+To classify various queries with similar query intentions and narrow the search space for query generation , we introduce the notion of query structures .
+A query structure is a set of structurallyequivalent queries .
+Let Q a = ( V a , T a ) and Q b = ( V b , T b ) denote two queries .
+Q a is structurally - equivalent to Q b , denoted by Q a ? = Q b , if and only if there exist two bijections f : V a ?
+V b and g : L e ( Q a ) ?
+L e ( Q b ) such that : ( i ) ?v ?
+V a , v is a variable ? f ( v ) is a variable ; ( ii ) ?r ? L e ( Q a ) , r is a user-defined property ? g ( r ) is a user-defined property ; if r is a built - in property , g ( r ) = r ; ( iii ) ?v?r? v v , r , v ? T a ? f ( v ) , g ( r ) , f ( v ) ?
+T b .
+The query structure for Q a is denoted by S a = [ Q a ] , which contains all the queries structurallyequivalent to Q a .
+For graphical illustration , we represent a query structure by a representative query among the structurally - equivalent ones and replace entities and literals with different kinds of placeholders .
+An example of query and query structure is shown in the upper half of Figure 2 .
+For many simple questions , two query structures , i.e. , ( {?
+V ar1 , Ent1 } , { ?V ar1 , P rop1 , Ent1 } ) and ( {? V ar1 , Ent1 } , { Ent1 , P rop1 , ?V ar1 } ) , are sufficient .
+However , for complex
+Output query Probability of containing each query substructure
+Predict query substructures
+Merged query substructures
+Rank existing query structures
+Merge query substructures
+Grounding and validation Figure 3 : Framework of the proposed approach questions , a diversity of query structures exist and some of them share a set of frequently - appeared substructures , each of which delivers a part of the query intention .
+We give the definition of query substructures as follows .
+Let S a = [ Q a ] and S b = [ Q b ] denote two query structures .
+S a is a query substructure of S b , de - noted by S a S b , if and only if Q b has a sub- graph Q c such that Q a ? = Q c .
+Furthermore , if S a = [ Q a ] S b = [ Q b ] , we say that Q b has S a , and S a is contained in Q b .
+For example , although the query structures for the two questions in Figures 1 and 2 are different , they share the same query substructure ( { ? V ar1 , ?V ar2 , Class1 } , { ?V ar1 , COUNT , ?V ar2 , ?V ar1 , ISA , Class1 } ) , which corresponds to the phrase " how many movies " .
+Note that , a query substructure can be the query structure of another question .
+The goal of this paper is to leverage a set of frequent query ( sub - ) structures to generate formal queries for answering complex questions .
+The Proposed Approach
+In this section , we present our approach , SubQG , for query generation .
+We first introduce the framework and general steps with a running example ( Section 3.1 ) , and then describe some important steps in detail in the following subsections .
+Offline .
+The offline process takes as input a set of training data in form of question , query pairs , and mainly contains three steps :
+1 . Collect query structures .
+For questions in the training data , we first discover the structurallyequivalent queries , and then extract the set of all query structures , denoted by TS .
+2 . Collect frequent query substructures .
+We decompose each query structure S i = ( V i , T i ) ?
+TS to get the set for all query substructures .
+Let T j be a non-empty subset of T i , and V T j be the set of vertices used in T j .
+S j = ( V T j , T j ) should be a query substructure of S i according to the definition .
+So , we can generate all query substructures of S i from each subset of T i .
+Disconnected query substructures would be ignored since they express discontinuous meanings and should be split into smaller query substructures .
+If more than ?
+queries in training data have substructure S j , we consider S j as a frequent query substructure .
+The set for all frequent query substructures is denoted by FS * .
+3 . Train query substructure predictors .
+We train a neural network for each query substructure
+Framework S * i ?
+FS * , to predict the probability that Q y has S * i ( i.e. , S * i [ Q y ] ) for input question y , where Q y denotes the formal query for y .
+Details for this step are described in Section 3.2 .
+Online .
+The online query generation process takes as input a natural language question y , and mainly contains four steps :
+1 . Predict query substructures .
+We first predict the probability that S * i [ Q y ] for each S * i ?
+FS * , using the query substructure predictors trained in the offline step .
+An example question and four query substructures with highest prediction prob-abilities are shown in the top of Figure 4 . 2 . Rank existing query structures .
+To find an appropriate query structure for the input question , we rank existing query structures ( S i ? TS ) by using a scoring function , see Section 3.3 .
+3 . Merge query substructures .
+Consider the fact that the target query structure [ Q y ] may not appear in TS ( i.e. , there is no query in the training data that is structurally - equivalent to Q y ) , we design a method ( described in Section 3.4 ) to merge question - contained query substructures for building new query structures .
+The merged results are ranked using the same function as existing query structures .
+Several query structures ( including the merged results and the existing query structures ) for the example question are shown in the middle of Figure 4 . 4 . Grounding and validation .
+We leverage the query structure ranking result , alongside with the entity / relation linking result from some existing black box systems ( Dubey et al. , 2018 ) to generate executable formal query for the input question .
+For each query structure , we try all possible combinations of the linking results according to the descending order of the overall linking score , and perform validation including grammar check , domain / range check and empty query check .
+The first non-empty query passing all validations is considered as the output for SubQG .
+The grounding and validation results for the example question are shown in the bottom of Figure 4 .
+Query Substructure Prediction
+In this step , we employ an attention based Bi-LSTM network ( Raffel and Ellis , 2015 ) to predict Pr[ S * i | y ] for each frequent query substructure S * i ?
+FS * , where Pr[ S * i | y ] represents the proba- bility of S * i [ Q y ] .
+There are mainly three reasons that we use a predictor for each query substructure instead of a multi-tag predictor for all query substructures : ( i ) a query substructure usually expresses part of the meaning of input question .
+Different query substructures may focus on different words or phrases , thus , each predictor should have its own attention matrix ; ( ii ) multitag predictor may have a lower accuracy since each tag has unbalanced training data ; ( iii ) single pre-trained query substructure predictor from one dataset can be directly reused on another without adjusting the network structure , however , the multi-tag predictor need to adjust the size of the ? ? ? ? ? ? ? ? 1 ? 2 ? 3 ? ?1 ? ? ? 1 ? 2 ? 3 ? ?1 ? ? 200 200 1 Att ( ? ? ) ? 200 1 ? [? ? * |?]
+Output :
+Before the input question is fed into the network , we replace all entity mentions with Entity using EARL ( Dubey et al. , 2018 ) , to enhance the generalization ability .
+Given the question word sequence {w 1 , ... , w T } , we first use a word embedding matrix to convert the original sequence into word vectors {e 1 , ... , e T } , followed by a BiLSTM network to generate the context-sensitive representation {h 1 , ... , h T } for each word , where h t = [ LSTM ( e t , ? ? h t?1 ) ; LSTM ( e t , ? ? h t + 1 ) ] .
+( 1 ) Then , the attention mechanism takes each h t as input , and calculates a weight ?
+t for each h t , which is formulated as follows : ? t = e Att ( ht ) T k=1 e Att( h k ) , ( 2 ) Att ( h t ) = v T att tanh ( W att h t + b att ) , ( 3 ) where W att ?
+R |ht |?|ht | , b att ?
+R |ht | and v att ?
+R |ht | .
+Next , we get the representation for the whole question q c as the weighted sum of h t : q c = T t=1 ? t h t . ( 4 ) The output of the network is a probability Pr[ S * i | y ] = ?( v
+T out q c + b out ) , ( 5 ) where v out ?
+R |q c | and b out ?
+R . The loss function minimized during training is the binary cross-entropy : Loss ( S * i ) = ? ( y , Q y ) ?
+Train s.t. S * i [ Q y ] log ( Pr [ S * i | y ] ) ? ( y , Q y ) ?
+Train s.t. S * i [ Q y ] log ( 1 ? Pr[ S * i | y ] ) , ( 6 ) where Train denotes the set of training data .
+2618 Algorithm
+1 : Query substructure merging Input : Question y , freq .
+query substructures FS * 1 FS + := { S * i ? FS * | Pr[ S * i | y ] > 0.5 } ; 2 M ( 0 ) := { S * i ? FS * | Score [ S * i | y ] > ?} ; 3 for i = 1 to K do // K is maximum iterations 4 M ( i ) := ? ; 5 forall S * i ? FS + , Sj ? M ( i?1 ) do 6 M ( i ) := M ( i ) ? Merge( S * i , Sj ) ; 7 M ( i ) :=
+{ S l ? M ( i ) | Score [ S l | y ] > ?} ; 8 return K i=0 M ( i ) ;
+Query Structure Ranking
+In this step , we use a combinational function to score each query structure in the training data for the input question .
+Since the prediction result for each query substructure is independent , the score for query structure S i is measured by joint probability , which is Score ( S i | y ) = S * j ?FS * s.t. S * j S i Pr[ S * j | y ] ? S * j ?FS * s.t. S * j S i ( 1 ? Pr[ S * j | y ] ) .
+( 7 ) Assume that Q y ?
+S i , ?S * j S i ,
+Query Substructure Merging
+We proposed a method , shown in Algorithm 1 , to merge question - contained query substructures to build new query structures .
+In the initialization step , it selects some query substructures of high scores as candidates , since the query substructure may directly be the appropriate query structure for the input question .
+In each iteration , the method merges each question - contained substructures with existing candidates , and the merged results of high scores are used as candidates in the next iteration .
+The final output is the union of all the results from at most K iterations .
+When merging different query substructures , we allow them to share some vertices of the same kind ( variable , entity , etc. ) or edge labels , except the variables which represent aggregation results .
+Thus , the merged result of two query substructures is a set of query structures instead of one .
+Also , the following restrictions are used to filter the merged results : ( ii )
+The merged results have ? ? triples ; ( iii )
+The merged results have ? ? aggregations ;
+An example for merging two query substructures is shown in Figure 6 .
+Experiments and Results
+In this section , we introduce the query generation datasets and state - of - the - art systems that we compare .
+We first show the end-to- end results of the query generation task , and then perform detailed analysis to show the effectiveness of each module .
+Question sets , source code and experimental results are available online .
+1
+Experimental Setup Datasets
+We employed the same datasets as Singh et al . ( 2018 ) and Zafar et al . ( 2018 ) : ( i ) the large-scale complex question answering dataset ( LC - QuAD ) ( Trivedi et al. , 2017 ) , containing 3,253 questions with non-empty results on DBpedia ( 2016 - 04 ) , and ( ii ) the fifth edition of question answering over linked data ( QALD - 5 ) dataset ( Unger et al. , 2015 ) , containing 311 questions with non-empty results on DBpedia ( 2015 - 10 ) .
+Both datasets are widely used in KBQA studies ( Zou et al. , 2014 ; Dubey et al. , 2018 ) , and have become benchmarks for some annual KBQA competitions 23 .
+We did not employ the WebQuestions ( Berant et al. , 2013 ) dataset , since approximately 85 % of its questions are simple .
+Also , we did not employ the ComplexQuestions ( Bao et al. , 2016 ) and ComplexWebQuestions ( Talmor and Berant , 2018 ) dataset , since the existing works on these datasets have not reported the formal query generation result , and it is difficult to separate the formal query generation component from the end-to - end KBQA systems in these works .
+Implementation details
+All the experiments were carried out on a machine with an Intel Xeon E3- 1225 3.2 GHz processor , 32 GB of RAM , and an NVIDIA GTX1080 Ti GPU .
+For the embedding layer , we used random embedding .
+For each dataset , we performed 5 - fold cross-validation with the train set ( 70 % ) , development set ( 10 % ) , and test set ( 20 % ) .
+The threshold ? for frequent query substructures is set to 30 , the maximum iteration number K for merging is set to 2 , ? in Algorithm 1 is set to 0.3 , the maximum triple number ? for merged results is set to 5 , and the maximum aggregation number ? is set to 2 .
+Other detailed statistics are shown in Table 1 .
+End-to- End Results
+We compared SubQG with several existing approaches .
+SINA ( Shekarpour et al. , 2015 ) and NLIWOD conduct query generation by predefined rules and existing templates .
+SQG ( Zafar et al. , 2018 ) firstly generates candidate queries by finding valid walks containing all of entities and properties mentioned in questions , and then ranks them based on Tree -LSTM similarity .
+CompQA ( Luo et al. , 2018 ) is a KBQA system which achieved state - of- the - art performance on WebQuesions and ComplexQuestions over Freebase .
+We re-implemented its query generation component for DBpedia , which generates candidate queries by staged query generation , and ranks them using an encode-and - compare network .
+The average F1 - scores for the end-to - end query generation task are reported in Table 2 .
+All these results are based on the gold standard entity / relation linking result as input .
+Our approach SubQG outperformed all the comparative approaches on both datasets .
+Furthermore , as the results shown in Table 3 , it gained a more significant improvement on complex questions pared with CompQA .
+Both SINA and NLIWOD did not employ a query ranking mechanism , i.e. , their accuracy and ( Shekarpour et al. , 2015 ) 0.24 ? 0.39 ? NLIWOD 4 0.48 ? 0.49 ? SQG ( Zafar et al. , 2018 ) 0.75 ? - CompQA ( Luo et al. , 2018 ) 0.772 ?0.014 0.511 ?0.043 SubQG ( our approach ) 0.846 ?0.016 0.624 ?0.030 ? indicates results taken from Singh et al . ( 2018 ) and SQG .
+coverage are limited by the rules and templates .
+Although both CompQA and SQG have a strong ability of generating candidate queries , they perform not quite well in query ranking .
+According to our observation , the main reason is that these approaches tried to learn entire representations for questions with different query structures ( from simple to complex ) using a single network , thus , they may suffer from the lack of training data , especially for the questions with rarely appeared structures .
+As a contrast , our approach leveraged multiple networks to learn predictors for different query substructures , and ranked query structures using combinational function , which gained a better performance .
+The results on QALD - 5 dataset is not as high as the result on LC - QuAD .
+This is because QALD -5 contains 11 % of very difficult questions , requiring complex filtering conditions such as REGEX and numerical comparison .
+These questions are currently beyond our approach 's ability .
+Also , the size of training data is significant smaller .
+Detailed Analysis
+Ablation Study
+We compared the following settings of SubQG : Rank w/o substructures .
+We replaced the query substructure prediction and query structure ranking module , by choosing an existing query structure in the training data for the input question , using a BiLSTM multiple classification network .
+Rank w/ substructures
+We removed the merging module described in Section 3.4 .
+This setting assumes that the appropriate query structure for an input question exists in the training data .
+Merge query substructures
+This setting ignored existing query structures in the training data , and only considered the merged results of query substructures .
+As the results shown in Table 4 , the full ver -
+Table 5 shows the accuracy of some alternative networks for query substructure prediction ( Section 3.2 ) .
+By removing the attention mechanism ( replaced by unweighted average ) , the accuracy declined approximately 3 % .
+Adding additional part of speech tag sequence of the input question gained no significant improvement .
+We also tried to replace the attention based BiLSTM with the network in ( Yih et al. , 2015 ) , which encodes questions with a convolutional layer followed by a max pooling layer .
+This approach did not perform well since it cannot capture long-term dependencies .
+Results with Noisy Linking
+We simulated the real KBQA environment by considering noisy entity / relation linking results .
+We firstly mixed the correct linking result for each mention with the top - 5 candidates generated from EARL ( Dubey et al. , 2018 ) , which is a joint entity / relation linking system with state - of - the - art performance on LC - QuAD .
+The result is shown in the second row of Table 6 .
+Although the precision for first output declined 11.4 % , in 85 % cases we still can generate correct answer in top - 5 .
+This is because SubQG ranked query structures first and considered linking results in the last step .
+Many error linking results can be filtered out by the empty query check or domain / range check .
+We also test the performance of our approach only using the EARL linking results .
+The performance dropped dramatically in comparison to the first two rows .
+The main reason is that , for
+Results on Varied Sizes of Training Data
+We tested the performance of SubQG with different sizes of training data .
+The results on LC - QuAD dataset are shown in Figure 7 .
+With more training data , our query substructure based approaches obtained stable improvements on both precision and recall .
+Although the merging module impaired the overall precision a little bit , it shows a bigger improvement on recall , especially when there is very few training data .
+Generally speaking , equipped with the merging module , our substructure based query generation approach showed the best performance .
+Error Analysis
+We analyzed 100 randomly sampled questions that SubQG did not return correct answers .
+The major causes of errors are summarized as follows :
+Query structure errors ( 71 % ) occurred due to multiple reasons .
+Firstly , 21 % of error cases have entity mentions that are not correctly detected before query substructure prediction , which highly influenced the prediction result .
+Secondly , in 39 % of the cases a part of substructure predictors provided wrong prediction , which led to wrong structure ranking results .
+Finally , in the remaining 11 % of the cases the correct query structure did not appear in the training data , and they cannot be generated by merging substructures .
+Grounding errors ( 29 % ) occurred when SubQG generated wrong queries with correct query structures .
+For example , for the question " Was Kevin Rudd the prime minister of Julia Gillard " , SubQG cannot distinguish JG , primeM inister , KR from KR , primeM inister , JG , since both triples exist in DBpedia .
+We believe that extra training data are required for fixing this problem .
+Alongside with entity and relation linking , existing KBQA systems often leverage formal query generation for complex question answering ( Bao et al. , 2016 ; Trivedi et al. , 2017 ) .
+Based on our investigation , the query generation approaches can be roughly divided into two kinds : template - based and semantic parsing - based .
+Template - based approaches transform the input question into a formal query by employing precollected query templates .
+Cui et al . ( 2017 ) collect different natural language expressions for the same query intention from question - answer pairs .
+Singh et al . ( 2018 ) re-implement and evaluate the query generation module in NLIWOD , which selects an existing template by some simple features such as the number of entities and relations in the input question .
+Recently , several query decomposition methods are studied to enlarge the coverage of the templates .
+Abujabal et al . ( 2017 ) present a KBQA system named QUINT , which collects query templates for specific dependency structures from question - answer pairs .
+Furthermore , it rewrites the dependency parsing results for questions with conjunctions , and then performs sub-question answering and answer stitching .
+Zheng et al . ( 2018 ) decompose questions by using a huge number of triple - level templates extracted by distant supervision .
+Compared with these approaches , our approach predicts all kinds of query substructures ( usually 1 to 4 triples ) contained in the question , making full use of the training data .
+Also , our merging method can handle questions with unseen query structures , having a larger coverage and a more stable performance .
+Semantic parsing - based approaches translate questions into formal queries using bottom up parsing ( Berant et al. , 2013 ) or staged query graph generation ( Yih et al. , 2015 ) .
+gAnswer ( Zou et al. , 2014 ; Hu et al. , 2018 ) builds up seman-tic query graph for question analysis and utilize subgraph matching for disambiguation .
+Recent studies combine parsing based approaches with neural networks , to enhance the ability for structure disambiguation .
+Bao et al . ( 2016 ) , Luo et al . ( 2018 ) and Zafar et al . ( 2018 ) build query graphs by staged query generation , and follow an encode-and - compare framework to rank candidate queries with neural networks .
+These approaches try to learn entire representations for questions with different query structures by using a single network .
+Thus , they may suffer from the lack of training data , especially for questions with rarely appeared structures .
+By contrast , our approach utilizes multiple networks to learn predictors for different query substructures , which can gain a stable performance with limited training data .
+Also , our approach does not require manually - written rules , and performs stably with noisy linking results .
+Conclusion
+In this paper , we introduced SubQG , a formal query generation approach based on frequent query substructures .
+SubQG firstly utilizes multiple neural networks to predict query substructures contained in the question , and then ranks existing query structures using a combinational function .
+Moreover , SubQG merges query substructures to build new query structures for questions without appropriate query structures in the training data .
+Our experiments showed that SubQG achieved superior results than the existing approaches , especially for complex questions .
+In future work , we plan to add support for other complex questions whose queries require UNION , GROUP BY , or numerical comparison .
+Also , we are interested in mining natural language expressions for each query substructures , which may help current parsing approaches .
+Figure 1 : 1 Figure 1 : An example for complex question and query

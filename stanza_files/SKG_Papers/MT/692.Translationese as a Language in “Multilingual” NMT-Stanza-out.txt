@@ -1,0 +1,240 @@
+title
+Translationese as a Language in " Multilingual " NMT
+abstract
+Machine translation has an undesirable propensity to produce " translationese " artifacts , which can lead to higher BLEU scores while being liked less by human raters .
+Motivated by this , we model translationese and original ( i.e. natural ) text as separate languages in a multilingual model , and pose the question : can we perform zero-shot translation between original source text and original target text ?
+There is no data with original source and original target , so we train a sentence - level classifier to distinguish translationese from original target text , and use this classifier to tag the training data for an NMT model .
+Using this technique we bias the model to produce more natural outputs at test time , yielding gains in human evaluation scores on both adequacy and fluency .
+Additionally , we demonstrate that it is possible to bias the model to produce translationese and game the BLEU score , increasing it while decreasing human-rated quality .
+We analyze these outputs using metrics measuring the degree of translationese , and present an analysis of the volatility of heuristic - based train - data tagging .
+Introduction " Translationese " is a term that refers to artifacts present in text that was translated into a given language that distinguish it from text originally written in that language ( Gellerstam , 1986 ) .
+These artifacts include lexical and word order choices that are influenced by the source language ( Gellerstam , 1996 ) as well as the use of more explicit and simpler constructions ( Baker et al. , 1993 ) .
+These differences between translated and original text mean that the direction in which parallel data ( bitext ) was translated is potentially important for machine translation ( MT ) systems .
+Most * Work done while at Google Research .
+parallel data is either source-original ( the source was translated into the target ) or target-original ( the target was translated into the source ) , though sometimes neither side is original because both were translated from a third language .
+Figure 1 illustrates the four possible combinations of translated and original source and target data .
+Recent work has examined the impact of translationese in MT evaluation , using the WMT evaluation campaign as the most prominent example .
+From 2014 through 2018 , WMT test sets were constructed such that 50 % of the sentence pairs are source-original ( upper right quadrant of Figure 1 ) and the rest are target-original ( lower left quadrant ) .
+Toral et al. ( 2018 ) , Zhang and Toral ( 2019 ) , and Graham et al . ( 2019 ) have examined the effect of this testing setup on MT evaluation , and have all argued that target-original test data should not be included in future evaluation campaigns because the translationese source is too easy to translate .
+While target-original test data does have the downside of a translationese source side , recent work has also shown that human raters prefer MT output that is closer in distribution to original target text than translationese ( Freitag et al. , 2019 ) .
+This indicates that the target side of test data should also be original ( upper left quadrant of Figure 1 ) ; however , it is unclear how to produce high-quality test data ( let alone training data ) that is simultaneously sourceand target-original .
+Because of this lack of original - to-original sentence pairs , we frame this as a zero-shot translation task , where translationese and original text are distinct languages or domains .
+We adapt techniques from zero-shot translation with multilingual models ( Johnson et al. , 2016 ) , where the training pairs are tagged with a reserved token corresponding to the domain of the target side : translationese or original text .
+Tagging is helpful when the training set mixes data of different types by allowing the model to 1 ) see each pair 's type in training to preserve distinct behaviors and avoid regressing to a mean / dominant prediction across data types , and 2 ) elicit different behavior in inference , i.e. providing a tag at test time yields predictions resembling a specific data type .
+We then investigate what happens when the input is an original sentence in the source language and the model 's output is also biased to be original , a scenario never observed in training .
+Tagging in this fashion is not trivial , as most MT training sets do not annotate which pairs are sourceoriginal and which are target-original 1 , so in order to distinguish them we train binary classifiers to distinguish original and translated target text .
+Finally , we perform several analyses of tagging these " languages " and demonstrate that tagged back - translation can be framed as a simplified version of our method , and thereby improved by targeted decoding .
+Our contributions are as follows : 1 . We propose two methods to train translationese classifiers using only monolingual text , coupled with synthetic text produced by machine translation .
+Using only original ?
+translationese and translationese ?
+original training pairs , we apply techniques from zero-shot multilingual MT to enable original ?
+original translation .
+3 . We demonstrate with human evaluations that this technique improves translation quality , both in terms of fluency and adequacy .
+4 . We show that biasing the model to instead produce translationese outputs inflates BLEU scores while harming quality as measured by human evaluations .
+Classifier Training + Tagging Motivated by prior work detailing the importance of distinguishing translationese from original text ( Kurokawa et al. , 2009 ; Lembersky et al. , 2012 ; Toral et al. , 2018 ; Zhang and Toral , 2019 ; Graham et al. , 2019 ; Freitag et al. , 2019 ; Edunov et al. , 2019 ) as well as work in zero-shot translation ( Johnson et al. , 2016 ) , we hypothesize that performance on the source-original translation task can be improved by distinguishing target-original and target - translationese examples in the training data and constructing an NMT model to perform zero-shot original ?
+original translation .
+Because most MT training sets do not annotate each sentence pair 's original language , we train a binary classifier to predict whether the target side of a pair is original text in that language or translated from the source language .
+This follows several prior works attempting to identify translations ( Kurokawa et al. , 2009 ; Koppel and Ordan , 2011 ; Lembersky et al. , 2012 ) .
+To train the classifier , we need target - language text annotated by whether it is original or translated .
+We use News Crawl data from WMT 2 as targetoriginal data .
+It consists of news articles crawled from the internet , so we assume that most of them are not translations .
+Getting translated data is trickier ; most human-translated pairs where the original language is annotated are only present in test sets , which are generally small .
+To sidestep this , we choose to use machine translation as a proxy for human translationese , based on the assumption that they are similar .
+This allows us to create classifier training data using only unannotated monolingual data .
+We propose two ways of doing this : using forward translation ( FT ) or round -trip translation ( RTT ) .
+Both are illustrated in Figure 2 .
+To generate FT data , we take source - language News Crawl data and translate it into the target language using a machine translation model trained on WMT training bitext .
+We can then train a classifier to distinguish the generated text from monolingual target - language text .
+One potential problem with the FT data set is that the original and translated pairs may differ not only in the respects we care about ( i.e. translationese ) , but also in content .
+Taking English ?
+French as an example language pair , one could imagine that certain topics are more commonly reported on in original English language news than in French , and vice versa , e.g. news about American or French politics , respectively .
+The words and phrases representing those topics could then act as signals to the classifier to distinguish the original language .
+To address this , we also experiment with RTT data .
+For this approach we take target - language monolingual data and round-trip translate it with two machine translation models ( target? source and then source ? target ) , resulting in another target - language sentence that should contain the same content as the original sentence , alleviating the concern with FT data .
+Here we hope that the noise introduced by round-trip translation will be similar enough to human translationese to be useful for our downstream task .
+In both settings , we use the trained binary classifier to detect and tag training bitext pairs where the classifier predicted that the target side is original .
+3 Experimental Set-up
+Data
+We perform our experiments on WMT18 English ?
+German bitext and WMT15 English ?
+French bitext .
+We use WMT News Crawl for monolingual data ( 2007 for German and 2007 - 2014 .
+We filter out sentences longer than 250 subwords ( see Section 3.2 for the vocabulary used ) and remove pairs whose length ratio is greater than 2 .
+This results in about 5 M pairs for English ?
+German .
+We do not filter the English ?
+French bitext , resulting in 41 M sentence pairs .
+For monolingual data , we deduplicate and filter sentences with more than 70 tokens or 500 characters .
+For the experiments described later in Section 5.3 , this monolingual data is back - translated with a target - to - source translation model ; after doing so , we remove any sentence pairs where the back - translated source is longer than 75 tokens or 550 characters .
+This results in 216.5 M sentences for English ?
+German ( of which we only use 24 M at a time ) and 39 M for English ?
+French .
+As a final step , we use an in-house language identification tool based on the publicly - available Compact Language Detector 2 3 to remove all pairs with the incorrect source or target language .
+This was motivated by observing that some training pairs had the incorrect language on one side , including cases where both sides were the same ; Khayrallah and Koehn ( 2018 ) found that this type of noise is especially harmful to neural models .
+The classifiers were trained on the target language monolingual data in addition to either an equal amount of source language monolingual data machine - translated into the target language ( for the FT classifiers ) or the same target sentences roundtrip translated through the source language with MT ( for the RTT classifiers ) .
+In both cases , the MT models were trained only with WMT bitext .
+The models used to generate the synthetic data have BLEU ( Papineni et al. , 2002 ) performance as follows on newstest2014 / full : German ?
+English 31.8 ; English ?
+German 28.5 ; French ?
+English 39.2 ; English ?
+French 40.6 .
+Here and elsewhere , we report BLEU scores with SacreBLEU ( Post , 2018 ) ; see Section 3.3 .
+Both language pairs considered in this work are high-resource .
+While translationese is a potential concern for all language pairs , in low-resource settings it is overshadowed by general quality concerns stemming from the lack of training data .
+We leave for future work the application of these techniques to low-resource language pairs .
+Architecture and Training Our NMT models use the transformer - big architecture ( Vaswani et al. , 2017 ) implemented in lingvo ( Shen et al. , 2019 ) with a shared sourcetarget byte-pair-encoding ( BPE ) vocabulary ( Sennrich et al. , 2016 b ) of 32 k types .
+To stabilize training , we use exponentially weighted moving average ( EMA ) decay ( Buduma and Locascio , 2017 )
+Checkpoints were picked by best dev BLEU on a set consisting of a tagged and untagged version of every input .
+For the translationese classifier , we trained a three - layer CNN - based classifier optimized with Adagrad .
+We picked checkpoints by F1 on the development set , which was newstest2015 for English ?
+German and a subset of newstest2013 containing 500 English-original and 500 Frenchoriginal sentence pairs for English ?
+French .
+We found that the choice of architecture ( RNN / CNN ) and hyperparameters did not make a substantial difference in classifier accuracy .
+Evaluation
+We report BLEU ( Papineni et al. , 2002 ) scores with SacreBLEU ( Post , 2018 ) and include the identification string 4 to facilitate comparison with future work .
+We also run human evaluations for the best performing systems ( Section 4.3 ) .
+Results and Discussion
+Classifier Accuracy
+Before evaluating the usefulness of our translationese classifiers for the downstream task of machine translation , we can first evaluate how accurate they are at distinguishing original text from human translations .
+We use WMT test sets for this evaluation , because they consist of source-original and target-original sentence pairs in equal number .
+For French , the FT classifier scored 0.81 F1 and the RTT classifier scored 0.68 on newstest 2014 / full .
+For German , the FT classifier achieved 0.85 F1 and the RTT classifier scored 0.65 on newstest2015 .
+We note that while the FT classifiers perform reasonably well , the RTT classifiers are less effective .
+This result is in line with prior work by Kurokawa et al . ( 2009 ) , who trained an SVM classifier on French sentences to detect translations from English .
+They used word n-gram features for their classifier and achieved 0.77 F1 , but were worried about a potential content effect and so also trained a classifier where nouns and verbs were replaced with corresponding part-of-speech ( POS ) tags , achieving 0.69 F1 .
+Note that they tested on the Canadian Hansard corpus ( containing Canadian parliamentary transcripts in English and French ) while we tested on WMT test sets , so the numbers are not directly comparable , but it is interesting to see the similar trends in comparing content - aware and content -unaware versions of the same method .
+We also point out that Kurokawa et al . ( 2009 ) both trained and tested with humantranslated sentences , while we trained our classifiers with machine - translated sentences while still testing on human-translated data .
+The portion of our data classified as targetoriginal by each classifier is reported in Table 1 . ( RTT ) classifier performs slightly worse than the baseline .
+However , the model trained with data tagged by the forward translation ( FT ) classifier is able to achieve an improvement of 0.5 BLEU on both halves of the test set when biased toward translationese on the source-original half and original text on the target-original half .
+This , coupled with the observation that the BLEU score on the source-original half sharply drops when adding the tag , indicates that the two halves of the test set represent quite different tasks , and that the model has learned to associate the tag with some aspects specific to generating original text as opposed to translationese .
+However , we were not able to replicate this positive result on the English ?
+German language pair ( Table 2 b ) .
+Interestingly , in this scenario the relative ordering of the FT and RTT models is reversed , with the German RTT - trained model outperforming the FT - trained one .
+This is also interesting because the German FT classifier achieved a higher F1 score than the French one , indicating that a classifier 's performance alone is not a sufficient indicator of its effect on translation performance .
+One possible explanation for the negative result is that the English ?
+German bitext only contains 5 M pairs , as opposed to the 41 M for English ?
+French , so splitting the data into two portions could make it difficult to learn both portions ' output distributions properly .
+NMT with Translationese -Classified Bitext
+Human Evaluation Experiments
+In the previous subsection , we saw that BLEU for the source-original half of the test set went down when the model trained with FT classifications ( FT clf. ) was decoded it as if it were target-original ( Table 2a ) .
+Prior work has shown that BLEU has a low correlation with human judgments when the reference contains translationese but the system output is biased toward original / natural text ( Freitag et al. , 2019 ) .
+This is the very situation we find ourselves in now .
+Consequently , we run a human evaluation to see if the output truly is more natu-ral and thereby preferred by human raters , despite the loss in BLEU .
+We run both a fluency and an adequacy evaluation for English ?
+French to compare the quality of this system when decoding as if source-original vs. target-original .
+We also compare the system with the Untagged baseline .
+All evaluations are conducted with bilingual speakers whose native language is French , and each is rated by 3 different raters , with the average taken as the final score .
+Our two evaluations are as follows : ?
+Adequacy : Raters were shown only the source sentence and the model output .
+Each output was scored on a 6 - point scale .
+?
+Fluency : Raters saw two target sentences ( two models ' outputs ) without the source sentence , and were asked to select which was more fluent , or whether they were equally good .
+Fluency human evaluation results are shown in Table 3 . We measured inter-rater agreement using Fleiss ' Kappa ( Fleiss , 1971 ) , which attains a maximum value of 1 when raters always agree .
+This value was 0.24 for the comparison with the untagged baseline , and 0.16 for the comparison with the translationese decodes .
+The agreement levels are fairly low , indicating a large amount of subjectivity for this task .
+However , raters on average still indicated a preference for the FT clf. model 's natural decodes .
+This provides evidence that they are more fluent than both the translationese decodes from the same model and the baseline untagged model , despite the drop in BLEU compared to each .
+Adequacy human ratings are summarised in Table 4 .
+Both decodes from the FT clf. model scored significantly better than the baseline .
+This is especially true of the natural decodes , demonstrating that the model does not suffer a loss in adequacy by generating more fluent output , and actually sees a significant gain .
+We hypothesize that splitting the data as we did here allowed the model to learn a sharper distribution for both portions , thereby increasing the quality of both decode types .
+Some additional evidence for this is the fact that the FT clf.
+model 's training loss was consistently lower than that of the baseline .
+5 Supplemental Experiments
+Measuring Translationese
+Translationese tends to be simpler , more standardised and more explicit ( Baker et al. , 1993 ) compared to original text and can retain typical characteristics of the source language ( Toury , 2012 ) . Toral ( 2019 ) proposed metrics attempting to quantify the degree of translationese present in a translation .
+Following their work , we quantify lexical simplicity with two metrics : lexical variety and lexical density .
+We also calculate the length variety between the source sentence and the generated translations to measure interference from the source .
+Lexical Variety
+An output is simpler when it uses a lower number of unique tokens / words .
+By generating output closer to original target text , our hope is to increase lexical variety .
+Lexical variety is calculated as the typetoken ratio ( TTR ) : T T R = number of types number of tokens ( 1 ) ( 2006 ) found that translationese tends to be lexically simpler and have a lower percentage of content words ( adverbs , adjectives , nouns and verbs ) than original written text .
+Lexical density is calculated as follows :
+Lexical Density
+Scarpa lex density = number of content words number of total words ( 2 )
+Length Variety Both MT and humans tend to avoid restructuring the source sentence and stick to sentence structures popular in the source language .
+This results in a translation with similar length to that of the source sentence .
+By measuring the length variety , we measure interference in the translation because its length is guided by the source sentence 's structure .
+We compute the normalized absolute length difference at the sentence level and average the scores over the test set of source - target pairs ( x , y ) : length variety = || x | ? |y || | x | ( 3 )
+Results Results for all three different translationese measurements are shown in Table 5 . Lexical Variety : Using the tag to decode as natural text ( i.e. more like original target text ) increases lexical variety .
+This is expected as original sentences tend to use a larger vocabulary .
+Lexical Density :
+We also increase lexical density when decoding as natural text .
+In other words , the model has a higher percentage of content words in its output , which is an indication that it is more like original target - language text .
+Length Variety :
+Unlike the previous two metrics , decoding as natural text does not lead to a more " natural " ( i.e. larger ) average length variety .
+One reason may be related to the fact that this is the only metric that also depends on the source sentence : since all of our training pairs feature translationese on either the source or target side , both the tagged and untagged training pairs will feature similar sentence structures , so the model never fully learns to produce different structures .
+This further illustrates the problem of the lack of original ?
+original training data noted in the introduction .
+Tagging using Translationese Heuristics
+Rather than tagging training data with a trained classifier , as explored in the previous sections , it might be possible to tag using much simpler heuristics , and achieve a similar effect .
+We explore two options here .
+Length Ratio Tagging
+Here , we partition the training pairs ( x , y ) according to a simple length ratio | x| |y | .
+We use a threshold ? length empirically calculated from two large monolingual corpora , M x and M y : ?length = 1 | Mx | x i ? Mx |x i | 1 | My | y i ? My |y i | ( 4 ) For English ?
+French , we found ? length = 0.8643 , meaning that original French sentences tend to have more tokens than English .
+We tag all pairs with length ratio greater than ? length ( 49.8 % of the training bitext ) .
+Based on the discussion in Section 5.1.3 , we expect that | x| |y | ?
+1.0 indicates translationese , so in this case the tag should mean " produce translationese " instead of " produce original text . "
+Lexical Density Tagging
+We tag examples with a target-side lexical density of greater than 0.5 , which means that the target is more likely to be original than translationese .
+Please refer to Section 5.1.2 for an explanation of this metric .
+Results
+Table 6 shows the results for this experiment , compared to the untagged baseline and the classifiertagged model from Table 2a .
+This table specifically looks at the effect of controlling whether the output should feature more or less translationese on each subset of the test set .
+We see that the lexical density tagging approach yields expected results , in that the tag can be used to effectively increase BLEU on the target-original portion of the test set .
+The length- ratio tagging , however , has the opposite effect : producing shorter outputs ( " decode as if translationese " ) produces higher target-original BLEU and lower source-original BLEU .
+We speculate that this data partition has accidentally picked up on some artifact of the data .
+Two interesting observations from Table 6 are that 1 ) both heuristic tagging methods perform much more poorly than the classifier tagging method on both test set halves , and 2 ) all varieties of tagging produce large performance changes ( up to - 7.2 BLEU ) .
+This second observation highlights that tagging can be powerful - and dangerous when it does not correspond well with the desired feature .
+Back -Translation Experiments
+We also investigated whether using a classifier to tag training data improved model performance in the presence of back - translated ( BT ) data .
+introduced tagged back -translation ( TBT ) , where all back - translated pairs are tagged and no bitext pairs are .
+They experimented with decoding the model with a tag ( " as - if- backtranslated " ) but found it harmed BLEU score .
+However , in our early experiments we discovered that doing this actually improved the model 's performance on the target-original portion of the test set , while harming it on the source-original half .
+Thus , we frame TBT as a heuristic method for identifying target-original pairs : the monolingual data used for the back - translations is assumed to be original , and the target side of the bitext is assumed to be translated .
+We wish to know whether we can find a better tagging scheme for the combined BT + bitext data , based on a classifier or some other heuristic .
+Results for English ?
+French models trained with BT data are presented in Table 7a .
+While combining the bitext classified by the FT classifier with all - tagged BT data yields a minor gain of 0.2 BLEU over the TBT baseline of , the other methods do not beat the baseline .
+This indicates that assuming all of the target monolingual data to be original is not as harmful as the error introduced by the classifiers .
+English ?
+German results are presented in Table 7 b .
+Combining the bitext classified by the RTT classifier with all - tagged BT data matched the performance of the TBT baseline , but none of the models outperformed it .
+This is expected , given the poor performance of the bitext-only models for this language pair .
+Example Output In Table 8 , we show example outputs for WMT English ?
+French comparing the Untagged baseline with the FT clf. natural decodes .
+In the first example , avec suffisamment d'art is an incorrect word-for-word translation , as the French word art cannot be used in that context .
+Here the word habilement , which is close to " skilfully " in English , sounds more natural .
+In the second example , libre d'imp ? t is the literal translation of " tax -free " , but French documents rarely use it , they prefer pas imposable , meaning " not taxable " .
+7 Related Work
+Translationese
+The effects of translationese on MT training and evaluation have been investigated by many prior authors ( Kurokawa et al. , 2009 ; Lembersky et al. , 2012 ; Toral et al. , 2018 ; Zhang and Toral , 2019 ; Graham et al. , 2019 ; Freitag et al. , 2019 ; Edunov et al. , 2019 ; Freitag et al. , 2020 ) .
+Training classifiers to detect translationese has also been done ( Kurokawa et al. , 2009 ; Koppel and Ordan , 2011 ) .
+Similarly to this work , Kurokawa et al . ( 2009 ) used their classifier to preprocess MT training data ; however , they completely removed target-original pairs .
+In contrast , Lembersky et al. ( 2012 ) used both types of data ( without explicitly distinguishing them with a classifier ) , and used entropy - based measures to cause their phrase - based system to favor phrase table entries with target phrases that are more similar to a corpus of translationese than original text .
+In this work , we combine aspects from each of these : we train a classifier to partition the training data , and use both subsets to train a single model with a mechanism allowing control over the degree of translationese to produce in the output .
+We also show with human evaluations that source-original test sentence pairs result in BLEU scores that do not correlate well with translation quality when evaluating models trained to produce more original output .
+Training Data Tagging for NMT
+In addition to the methods in , tagging training data and using the tags to control output is a technique that has been growing in popularity .
+Tags on the source sentence have Source Sorry she did n't phrase it artfully enough for you .
+Untagged D?sol ?e , elle ne l'a pas formul ?
+avec suffisamment d'art pour vous .
+FT clf. D?sol ?
+elle ne l'a pas formul ?
+assez habilement pour vous .
+Source
+Your first 10,000 is tax free .
+Untagged Votre premi?re tranche de 10 000 est libre d'imp ?t. FT clf .
+La premi?re tranche de 10 000 n'est pas imposable .
+been used to indicate target language in multilingual models ( Johnson et al. , 2016 ) , formality level in English ?
+Japanese ( Yamagishi et al. , 2016 ) , politeness in English ?
+German ( Sennrich et al. , 2016a ) , gender from a gender-neutral language ( Kuczmarski and Johnson , 2018 ) , as well as to produce domain-targeted translation ( Kobus et al. , 2016 ) .
+Shu et al. ( 2019 ) use tags at training and inference time to increase the syntactic diversity of their output while maintaining translation quality ; similarly , Agarwal and Carpuat ( 2019 ) and Marchisio et al . ( 2019 ) use tags to control the reading level ( e.g. simplicity / complexity ) of the output .
+Overall , tagging can be seen as domain adaptation ( Freitag and Al - Onaizan , 2016 ; Luong and Manning , 2015 ) .
+Conclusion
+We have demonstrated that translationese and original text can be treated as separate target languages in a " multilingual " model , distinguished by a classifier trained using only monolingual and synthetic data .
+The resulting model has improved performance in the ideal , zero-shot scenario of original ?
+original translation , as measured by human evaluation of adequacy and fluency .
+However , this is associated with a drop in BLEU score , indicating that better automatic evaluation is needed .
+Figure 1 : 1 Figure 1 : Illustration of MT train+ test parallel data , organized into quadrants based on whether the source or target is translated or original .

@@ -1,0 +1,289 @@
+title
+Retrieval - guided Dialogue Response Generation via a Matching-to-Generation Framework
+abstract
+End - to- end sequence generation is a popular technique for developing open domain dialogue systems , though they suffer from the safe response problem .
+Researchers have attempted to tackle this problem by incorporating generative models with the returns of retrieval systems .
+Recently , a skeleton- thenresponse framework has been shown promising results for this task .
+Nevertheless , how to precisely extract a skeleton and how to effectively train a retrieval - guided response generator are still challenging .
+This paper presents a novel framework in which the skeleton extraction is made by an interpretable matching model and the following skeleton - guided response generation is accomplished by a separately trained generator .
+Extensive experiments demonstrate the effectiveness of our model designs .
+Introduction Sequence-to-sequence ( seq2seq ) neural models ( Shang et al. , 2015 ; Vinyals and Le , 2015 ; Sordoni et al. , 2015 ; Serban et al. , 2016 ; Li et al. , 2016a ) have been popular for single -turn dialogue response generation .
+However , many of the generated responses ( e.g. , " I do n't know " and " I think so " ) appear to be generic and dull ( safe response problem ) ( Li et al. , 2016 a ) .
+This problem is avoided in traditional retrieval systems ( Ji et al. , 2014 ; Hu et al. , 2014 ) by preceding the selection of informative and engaging responses .
+It is of interest to benefit from both the generalization capacity of the seq2seq models and the information richness of the retrieved responses .
+Following the standard encoder-decoder framework , early attempts have either used an extra encoder for the retrieved response Query :
+How is your day today ?
+Response : Great , I get promotion today .
+Retrieval guided
+Vanilla seq2seq Bad , I hate the weather .
+The model is forced to neglect the retrieved response even though it is a proper response , due to the mismatch between the retrieved response and the target response .
+Pandey et al. , 2018 ; Wu et al. , 2019 ) or a unified encoder for the concatenation of the query and the retrieved response ( Weston et al. , 2018 ) .
+To prevent the inflow of erroneous information , Cai et al . ( 2019 ) proposed a general framework that first extracts a skeleton from the retrieved response and then generates the response based on the extracted skeleton .
+Despite their differences , a common issue is that the generation model easily learns to ignore the retrieved response entirely and collapses to a vanilla seq2seq model .
+As shown in Figure 1 , this happens with improper training instances .
+Given the large space of possible responses , it happens frequently that a retrieved response ( extracted skeleton ) is suitable for responding to the query , but inconsistent with the current target response .
+1
+The generation model is thus mistakenly led to be inclined to neglect the retrieval .
+To address the above problem , we present the matching - to- generation method , a more flexible framework for retrieval - guided response generation .
+This framework consists of an interpretable matching model for skeleton extraction and a skeleton - guided response generator for response generation .
+One novel characteristic of our proposed framework is that the training of the skeleton extractor ( i.e. , the matching model ) and the response generator is decoupled , yet they work cooperatively under the help of a retrieval system .
+Figure 2 depicts the training and inference procedures of our framework .
+During training , the skeleton- guided response generator is trained in a similar manner as the denoising autoencoder ( Vincent et al. , 2008 ) , where the model learns to recover an input pattern that is partially corrupted .
+Specifically , we employ a random mechanism for generating the skeletons used for training .
+The generated skeletons are extracted from their corresponding responses with some deliberate disturbance .
+In this way , we circumvent the aforementioned problem of improper training instances in previous work .
+Meanwhile , the random mechanism also simulates the actual inference environment where the quality of the input skeleton varies among different queries due to the instability of the retrieval system and the skeleton extractor .
+The diversity of the training skeletons helps produce a robust response generator that is capable of handling different situations .
+Note the separation of the training of skeleton extraction and response generation requires an additional training objective for the skeleton extractor .
+Given there is no explicit response skeleton in general query - response pairs for training , we propose to use an interpretable matching model for matching skeleton extraction .
+We consider that the matching skeleton for a given query - response pair should be the sub-sequence of the response that is particularly useful in matching the query .
+The designed interpretable matching model is able to reveal the fine- grained matching scores at tokenlevel whereas it is trained by ordinary queryresponse pairs .
+Experiments show that our method significantly improves the informativeness of the generated responses as well as their relevance to the corresponding queries .
+In addition , we conduct extensive ablation studies to quantify the improvement from different model designs .
+To summarize , our contributions are as follows : ?
+We propose a flexible framework for retrieval - guided dialogue response generation .
+The training of our approach is independent of the underlying retrieval system . ?
+We propose an interpretable matching model for matching skeleton extraction .
+?
+We propose to train a skeleton- guided response generator that can handle skeletons with different qualities .
+Models
+The whole framework consists of two components : an interpretable matching model and a skeleton - guided response generator .
+During inference , the matching model is used to derive a matching skeleton by explicitly selecting a subsequence of a retrieved response .
+The response generator then takes the generated skeleton as an additional input and makes necessary editions to obtain a complete and appropriate response .
+Interpretable Matching Model
+The goal of the interpretable matching model is to reveal token - level matching information between a query - response pair thus a matching skeleton can be derived from the response .
+However , the training of the matching model does not rely on such fine - grained annotations .
+Instead , it is trained to estimate the sequence - level quality of a response for a given query , as an ordinary query - response matching model .
+The key is that the sequencelevel matching score can be decomposed into a set of token - level scores , which will be illustrated later .
+The overall architecture of our matching model is illustrated in Figure 3 .
+It consists of two encoders , one for the query and one for the re-sponse .
+Both encoders are based on the Transformer architecture ( Vaswani et al. , 2017 ) .
+For a query q = ( q 1 , q 2 , . . . , q n ) and a response r = ( r 1 , r 2 , . . . , r m ) , where n and m are the query length and the response length respectively , we first insert a special token at the beginning of each input sequence .
+The transformer encoders results in two sequences of hidden state vectors q 0 , q 1 , . . . , q n and r 0 , r 1 , . . . , r m , where q 0 and r 0 are considered as the aggregate summary for the query and the response respectively .
+We then use self-attention mechanism for acquiring the final query representation x q and the final response representation x r .
+For instance , to compute the response representation x r , we use the sequence - level summary r 0 for weighting the different parts of the input response .
+First , the sequence - level summary r 0 is projected to another vector space by a linear transformation : r w = W w r 0 + b w where r w is the weight vector , and W w and b w are learnable parameters .
+The attention score ?
+i of the i-th token in the response is then computed as a dot-product between the weight vector r w and the token representation r i : ?
+i = exp( r w ? r i ) m k=1 exp( r w ? r k )
+The response representation x r is calculated as the weighted sum of the Transformer encoder outputs as well as their initial vector representations ( i.e. , the sum of tokens and position embeddings ) 2 : x r = m k=1 ? i ( r i + e r i )
+The self-attention mechanism for the query has the identical architecture but uses a different set of parameters .
+Finally , the pair-wise score is calculated by a bilinear function of x q and x r : s( q , r ) = x q T W s x r where W s is a trainable parameter .
+The above equation can be rewritten by a decomposition of 2
+We found that adding the initial vector representations er i to be critical in keeping the weighted elements reflect the corresponding local information .
+Without this operation , the Transformer encoder outputs ri tends to be constant regardless of the position i , which indicates that the point information about a specific input part is overwhelmed by the global information .
+Embeddings Transformer Linear Attention Bilinear Query !(# , % ) 0.35 0.01 - 0.3 ' q * q + q , q - r * r + r , r - / * / + / , / - 0 * 0 + 0 , 0 - 1 2 3 2 Response : I love superhero movies .
+Batman is my favorite .
+Query : Would you like to watch Captain America ?
+the ingredients of x r : s( q , r ) = x q T W s x r = x q T W s m k=1 ? k ( r k + e r k ) = m k=1 ? k x q T W s ( r k + e r k )
+Let s k = x q T W s ( r k + e r k ) , we arrive at : s( q , r ) = m k=1 ? k s k
+Note that for a given query , ? k and s k are functions of the response r and the position index k only .
+According to the formulation , we see that s k and ?
+k are largely impacted by the local information at r k .
+Therefore , s k , ?
+k can be interpreted as the local matching score and the local importance , respectively , followed by that s(q , r ) is a weighted sum of all local scores .
+Once the matching model has been well - trained , we can use ?
+k and s k to identify the most informative and relevant parts of a retrieved response .
+In experiments , we show a simple heuristic rule can effectively pick up the skeletons .
+Skeleton - guided Response Generator
+The skeleton- guided response generator is devised for generating a fluent and adequate response based on the current query and an input skeleton .
+To ensure the skeleton- guided response generator does make use of the input skeleton , we extract the training skeleton from the ground - truth response by some randomized strategies .
+To prevent the response generator from mindlessly copying , we deliberately vary the length and the quality of the training skeletons to create a diverse set of training instances .
+We note the response generator behaves like a denoising autoencoder ( Vincent et al. , 2008 ) with an extra input , i.e. the query .
+In this way , we learn a robust response generator that is compatible with different types of skeletons .
+Specifically , for any golden query - response pair ( q , r ) , we randomly generate a training skeleton through the following procedures .
+3 ? All stop words in r are masked in advance .
+The rest tokens are masked at a mask rate ?. 90 % of the time , ? is set to 0.7. 10 % of the time , ? is uniformly sampled in the range of [ 0 , 1 ] .
+?
+Instead of always replacing the masked token with a special placeholder token , 20 % of time , we replace the token with a random word uniformly sampled from the total vocabulary .
+?
+At a chance of 10 % , we randomly shuffle the word order in the training skeleton .
+The response generator consists of one encoder for the query q , one encoder for the skeleton s and one decoder for the response r , all implemented by LSTM networks ( Hochreiter and Schmidhuber , 1997 ) .
+The decoder interacts with the two encoders through two separate attention mechanisms accordingly .
+Training
+The matching model and the response generator are trained separately .
+Previous studies ( Shang et al. , 2018 ; Tao et al. , 2018 ; Mou et al. , 2016 ) formulated the training of matching models as binary classification learning , where negative sampling is used to free human annotation .
+Specifically , for query q and golden response r + , a negative response r ? can be randomly sampled from other responses in the training set .
+We extend the binary classification setting into a learningto-rank fashion for improved performance .
+Concretely , at each training mini-batch , we randomly sample M query - response pairs .
+Then we compute the matching scores between all combinations of queries and responses in the mini-batch .
+As a result , all these scores form a scoring matrix S ? R M ?M , where S ij is the score between the i-th query and the j-th response .
+Inspired by Henderson et al . ( 2017 ) ; Lin et al. ( 2017 ) , we use softmax to compute the ranking scores for candidate responses .
+Intuitively , for each query , the matching model should give the highest score to the golden response over other M ? 1 responses ( i.e. , always rank the golden response at the first place ) .
+Thus , we define the training loss as L ( ? ) = ?
+M k=1 log softmax ( S k : ) k ( 1 ) where S k : is k-th row of S. Label smoothing ( Szegedy et al. , 2016 ) of value ls = 0.1 is used to improve the performance .
+Note although there are M ?
+M scores to compute , each query and each response only needs to be modeled once thanks to the independent encoding of x q and x r .
+Experiments show that the ranking scheme outperforms the binary classification scheme by a large margin when evaluated by hits@1 metric with 127 randomly sampled responses .
+The response generator is trained by the standard maximum likelihood estimate .
+Discussion
+We note that the most related work is Cai et al . ( 2019 ) that also employs a pipeline approach for skeleton extraction and response generation .
+However , there are some major distinctions in our framework .
+First , their skeleton extractor is pre-trained by the lexical overlap between the retrieved response and the golden response .
+However , it is not a proper objective since the mismatch between the retrieved response and the golden response does not imply a mismatch to the target query .
+In contrast , our interpretable matching model allows extracting a more precise skeleton in semantics .
+Second , the training of the response generator relies on the output of the learned skeleton extractor , which is by no means aimed for generating the current response , causing a trained generator to severely ignore the skeleton .
+Differently , our response generator is trained with targetspecific skeletons .
+Experiments
+Dataset and Evaluation Metrics
+We use a single-turn conversation dataset collected from popular Chinese social websites such as Douban and Weibo .
+4
+The dataset contains about six millions query-response pairs .
+Throughout all experiments , the retrieval system we adopted is a publicly available chatbot API .
+5
+The related resources can be found at https://github.
+com / jcyk / seqgen .
+It has been argued that existing automatic metrics such as BLEU and METEOR cannot authentically reflect the quality of dialog response .
+Thus , the main evaluation is done by human annotators .
+Specifically , we evaluate the quality of a response on three criteria : informativeness , relevance , and fluency .
+Each aspect is rated on a five-point scale , where 1 , 3 and 5 indicate unacceptable , moderate and excellent performance respectively .
+2 and 4 are used by annotators in unsure cases .
+A set of 300 different query samples are used for evaluation .
+We recruit five experienced annotators and take the average score among them .
+Besides , we also use dist - 1 / dist - 2 ( Li et al. , 2016a ) to examine a model 's ability for generating diverse responses .
+which is the number of distinct unigrams / bi-grams divided by the total number .
+Compared Methods
+To show the effectiveness of our proposed methods , we compare it with the following methods .
+?
+Retrieval
+The underlying retrieval system used in our experiments .
+? Seq2Seq
+The basic Seq2Seq model ( Bahdanau et al. , 2014 ; Luong et al. , 2015 ) that only takes the query as input .
+? Seq2Seq-MMI
+A variant of the basic Seq2Seq model that uses Maximum Mutual Information ( MMI ) for filtering out generic responses ( Li et al. , 2016 a ) .
+Concretely , a response-toquery Seq2Seq model is trained and used to rerank the outputs of the top -100 responses of Seq2Seq .
+? RetrieveNRefine ++
+The best performing model used in Weston et al . ( 2018 ) , which appends the retrieved response to the query in a basic Seq2Seq model .
+6
+The model 's output will be overwritten by the retrieved response once they have a large word overlap ( Jaccard distance > 0.6 ) .
+?
+EditVec
+The model proposed in Wu et al . ( 2019 ) .
+In addition to the retrieved response , the lexical difference ( insert words and delete words ) between the query and the retrieved query is also encoded ( in a so-called edit vector ) to feed the decoder .
+?
+Skeleton-Lex
+The best method presented in Cai et al . ( 2019 ) .
+We refer to it as Skeleton - Lex because its skeleton extractor is pretrained by the lexical overlap between the retrieved response and the golden response .
+Implementation Details
+For encoders and decoders in all above baselines , they are implemented by LSTM networks ( bidirectional for encoders and unidirectional for decoders ) ( Hochreiter and Schmidhuber , 1997 ) with the number of layers and hidden size equal to 2 and 500 .
+The word embeddings are randomly initialized , of which the dimension is 300 .
+Our response generator follows the same settings .
+The skeleton extractor is implemented by 2 - layer Transformer encoder ( Vaswani et al. , 2017 ) , of which the number of heads and hidden size is 8 and 512 .
+In experiments , we use a simple heuristic rule for extracting skeletons .
+First , we remove all words with a negative local score s k .
+Then we compute the average score of the rest part .
+Lastly , words with a score below the average are also removed .
+As the retrieval system can potentially return a large set of results , we allow retrieval - guided generation models ( both baselines and ours ) make use of the top - 10 retrieved results both in training and testing .
+Therefore , during testing , 10 responses are generated for each query .
+They are then ranked by the matching model proposed in Section 2.1 and the highest - scored one is used for evaluation .
+Table 1 : Human scores on response quality , depicted in three aspects : informativeness , relevance , and fluency , with standard deviation in parentheses .
+Sign tests on human scores show that our method is significantly better than all other methods with p-value < 0.01 with the only exception marked by ?.
+We also present dist - 1 and dist - 2 for diversity assessment .
+Main Results
+The evaluation results are given in Table 1 .
+They show that our method outperforms all baseline methods in all three human evaluation aspects .
+Surprisingly , the informativeness score is even slightly better than the underlying retrieval system , which indicates the retrieved information has been effectively utilized .
+It can also be verified by the automatic metrics ( dist - 1 and dist - 2 ) , our generation model is the only one that achieves close performance to that of the retrieval system .
+For the relevance score , the retrievalindependent Seq2Seq - MMI establishes a strong baseline .
+As for retrieval - guided generation , skeleton - guided methods are better than those who use completely retrieved responses , which confirms that the introduction of the intermediate skeleton prevents the inflow of irrelevant information .
+Furthermore , our method advances the performance of Skeleton - Lex by a large margin , which partly demonstrates that the skeletons extracted by our deep semantic matching model are more precise .
+For fluency , our method also achieves much better performance than all baseline methods .
+We attribute the remarkable improvement to the unique training fashion for our response generator .
+During training , our response generator receives a diverse set of probably noisy skeletons , which impels it to learn the error correction and better language organization .
+More Analysis
+To further quantify the contributions made by different components in our model , we turn to ablation tests .
+Generally , we try to substitute each component of our model with other possible coun- terparts .
+The detailed analysis is given below .
+First , we would like to see if the matching skeleton extracted by our interpretable architecture is beneficial .
+In order to examine this , we replace our skeleton extractor by several different approaches .
+?
+Lexical
+We use the skeletons extracted by the skeleton extractor in Skeleton - Lex .
+? PMI Point mutual information ( PMI ) is a popular measure used for finding collocations and associations between words .
+We compute the PMI between query word and response word through statistics on the training corpus .
+For a word in the retrieved response , we score it by the sum of the PMIs between it and all words in the target query .
+Words with the highest scores form the skeleton .
+?
+Keywords
+We generate a skeleton by preserving the most informative words in the retrieved response .
+Specifically , the words with the highest TF - IDF values are preserved and the others are removed .
+For a fair comparison , the lengths of the skeletons ( the number of preserving words ) generated by PMI and Keywords are kept as the same with the one generated by our skeleton extractor .
+In this sense , the comparison with the last two approaches shows how good the token - level score s k
+Model Variants
+Info is in selecting the most useful words , compared to statistical values such as TF - IDF and PMI .
+The result is in shown Table 2 .
+As seen , both two learnable skeleton extractors give better results than non-parametric methods , indicating the task of skeleton extraction is non-trivial and requires deep reasoning .
+Our semantic -inspired model is far ahead of others in all aspects , while Lexical only has a notable improvement in informativeness compared to statistical methods .
+This suggests that the skeleton extracted by Lexical has a relatively low precision , leading to moderate relevance .
+In addition , it might be a little bit surprising to see that PMI and keywords give almost the same performance on all three metrics , telling a given query is not that necessary .
+However , we found lots of skeletons proposed by PMI are identical to those of keywords .
+We attribute it to that the keywords in r are often also the keywords in differentiating its context .
+To test the ability of the skeleton - based response generator , we use the existing alternative trained in Skeleton - Lex , which also takes a skeleton and input query as input .
+The result displays on how good our response generator is at transforming a skeleton to a proper response .
+The results are shown in the first block of Table 3 .
+We see a clear decline in performance after switching to the response generator of Skeleton - Lex .
+We conjecture that the big gap is caused by that their response generator is trained with the output of their skeleton extractor , thus it is highly biased to their specific skeleton extractor and cannot work well with others .
+This result motivates us to present a systematic examination of different component combinations , as shown by the full content of Table 3 .
+As seen , our response generator is less sensitive to the underlying skeletons .
+The result of combining our response generator and their skeleton extractor is slightly below our
+Variants Info .
+Relevance Fluency ours 2.69 3.11 3.20 Seq2Seq-MMI 2.64 3.02 3.14 full mode , but even higher than their full model .
+Lastly , we investigate the improvement brought by our ranker .
+To this end , we replace our ranker with the seq2seq - MMI model ( use the sum of the forward and backward generation probability of re-ranking ) .
+The results are shown in Table 4 .
+As we can see , our matching model shows superior capability in selecting the best response , especially in terms of relevance .
+Case Study
+We also present some examples generated by different methods in Table 5 .
+In the first case , the retrieved utterance is very specific with elaborated details .
+However , it is not a reasonable response due to the sudden topic drift .
+While other methods directly ignore the retrieved response , our method makes an informative and fluent response by using some useful details .
+In the second case , our skeleton extractor again successfully locates the most informative and relevant parts of the retrieved response , the response generator then chains them together and generate a meaningful response .
+In the third case , the retrieved response is also good but not fluent .
+The skeleton extracted by our skeleton extractor contains a useless word , yet our response generator can ignore the mistake and generate a fluent and comforting response .
+We can also see another retrieval - guided method ( EditVec ) also attempt to use the retrieved response but capture the wrong parts .
+Related Work Open domain dialog system has been a long goal for the NLP community since ELIZA ( Weizenbaum , 1966 ) .
+Early data-driven work uses information retrieval techniques ( Ji et al. , 2014 ; Hu et al. , 2014 ) .
+Recently , end-to - end neural sequence generation ( Vinyals and Le , 2015 ; Serban et al. , 2016 ; Li et al. , 2016a ; Sordoni et al. , 2015 ) has attracted the most attention .
+A major issue of such end-to - end sequence generation method is the safe response problem .
+The generated responses tend to be universal and unengaging ( e.g. , " I do n't know " , " I think so " etc. ) .
+One of the rea -
+Ours ? ? ? ? ? , ? ? ? ? ? ? ? ? ? , ?
+I also like girl with long hair , I think once the straight bangs are curled , it does n't look good any more .
+Seq2Seq -MMI ?
+I also like girls with long hair .
+RetrieveNRefine ++ ?
+I like girls with long hair .
+EditVec ?
+I also like girls with long hair .
+Skeleton-Lex
+Seq2Seq -MMI ?
+I am irregular too .
+RetrieveNRefine ++ ?
+What is irregular ?
+EditVec ?
+Why you are shy ?
+Skeleton - Lex ?
+I am irregular too .
+Table 5 : Example responses from different models , as well as a visualization of the skeleton extraction in our model .
+Darker color indicates bigger matching scores and the words being selected for skeleton are in red boxes .
+sons is that for most queries , the set of possible responses is considerably large and the query alone cannot specify an informative response .
+Various approaches ( Li et al. , 2016 b ; Xing et al. , 2017 ; Ghazvininejad et al. , 2018 ; Zhou et al. , 2018 ; Liu et al. , 2018 ; Tian et al. , 2019 ; have been proposed for this problem .
+Some previous studies have been about using the results of traditional retrieval systems for informative response generation .
+introduced an extra encoder for the retrieved response .
+The encoder 's output , together with that of the query encoder , is utilized to feed the decoder .
+Weston et al. ( 2018 ) simply concatenated the original query and the retrieved response as the input to the encoder .
+Instead of solely using the retrieved response , Wu et al . ( 2019 ) further introduced to encodes the lexical differences between the current query and the retrieved query .
+Besides , Pandey et al. ( 2018 ) proposed to weight different training instances by context similarity , yet their work is done in close domain conversation .
+The idea of editing some prototype materials rather than generating from scratch has also been explored in other text generation tasks .
+For examples , Guu et al . ( 2018 ) proposed a prototypethen - edit model for unconditional text generation .
+Wiseman et al . ( 2017 Wiseman et al. ( , 2018 used either fixed template or learned templates for data- to - text generation .
+conditioned the next sentence generation on a skeleton that is extracted from the source input and the already generated text in storytelling .
+Also for storytelling , Clark et al . ( 2018 ) proposed to extract the entities in sentences and use them as additional input .
+Gu et al. ( 2018 ) uses retrieved translation as a reference to the generative translation model .
+Conclusion
+In this paper , we presented a novel framework , matching - to- generation , for retrieval - guided response generation .
+Our method uses an interpretable matching model for response skeleton extraction and a robust response generator for response completion .
+The two components are trained separately to allow more flexibility .
+Experiments show our method significantly outperforms several strong baselines .
+Figure 1 : 1 Figure 1 : The common problem for training a retrievalguided generation model in previous work .
+The model is forced to neglect the retrieved response even though it is a proper response , due to the mismatch between the retrieved response and the target response .

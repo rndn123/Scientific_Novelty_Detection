@@ -1,0 +1,215 @@
+title
+Attention Calibration for Transformer in Neural Machine Translation
+abstract
+Attention mechanisms have achieved substantial improvements in neural machine translation by dynamically selecting relevant inputs for different predictions .
+However , recent studies have questioned the attention mechanisms ' capability for discovering decisive inputs .
+In this paper , we propose to calibrate the attention weights by introducing a mask perturbation model that automatically evaluates each input 's contribution to the model outputs .
+We increase the attention weights assigned to the indispensable tokens , whose removal leads to a dramatic performance decrease .
+The extensive experiments on the Transformer - based translation have demonstrated the effectiveness of our model .
+We further find that the calibrated attention weights are more uniform at lower layers to collect multiple information while more concentrated on the specific inputs at higher layers .
+Detailed analyses also show a great need for calibration in the attention weights with high entropy where the model is unconfident about its decision 1 .
+Introduction Attention mechanisms have been ubiquitous in neural machine translation ( NMT ) ( Bahdanau et al. , 2015 ; Vaswani et al. , 2017 ) .
+It dynamically encodes source-side information by inducing a conditional distribution over inputs , where the ones that are most relevant to the current translation are expected to receive more attention .
+However , many studies doubt whether highlyattended inputs have a large impact on the model outputs .
+On the one hand , erasing the representations accorded high attention weights do not necessarily lead to a performance decrease ( Serrano and deaths _ [ mask ] in _ [ before ] in _ [ after ] in _ [ mask ] heavy snow in countryside has caused many deaths and traffic interruption Ours : days of heavy snow in countryside left many deaths and transportation disrupted Ref : Smith , 2019 ) , which can be attributed to that unimportant words ( e.g. , punctuations ) are frequently assigned with high attention weights ( Mohankumar et al. , 2020 ) .
+On the other hand , Jain and Wallace ( 2019 ) state that attention weights are inconsistent with other feature importance metrics in text classification tasks .
+It further proves that attention mechanisms are incapable of precisely identifying decisive inputs for each prediction , which would result in wrong -translation or over-translation in NMT ( Tu et al. , 2016 ) .
+We take Figure 1 as an example .
+After producing the target- side word " deaths " , attention mechanisms wrongly attribute most attention to the " EOS " , making parts of the source sentence untranslated .
+? ? ? ? ? ? ? ? ? ? ? ? ? ? < EOS >
+In this paper , we propose to calibrate the vanilla attention mechanism by focusing more on key in - puts .
+To test what inputs affect the model prediction most , we tend to observe how the model decision changes as perturbing parts of inputs .
+We define the perturbation operation as applying a learnable mask to scale each attention weight .
+Then , we perform a " deletion game " , which aims to find the smallest perturbation extents that cause the significant quality degradation .
+In this manner , we can find the most informative inputs for the prediction .
+Based on the results detected by the mask perturbation model , we further calibrate attention weights by reallocating more attention to informative inputs .
+We design three fusion methods to incorporate the calibrated attention weights into original attention weights : ( 1 ) fixed weighted sum , ( 2 ) annealing learning , and ( 3 ) gating mechanism .
+The mask perturbation model and NMT model are jointly trained , while the attention weights in NMT are corrected based on the actual contributions measured by the mask perturbation model .
+Recall the example in Figure 1 . After producing the target word " in " , our mask perturbation model finds that the source word " ?
+[ countryside ] " with a high attention weight is exactly the decisive input for the prediction .
+Therefore , we strengthen the corresponding attention weight of " ? [ countryside ] " .
+However , after the prediction " deaths " , the highly - attended " EOS " is not the decisive input at the current step .
+We redistribute the attention weights to the source words ( " ? [ traffic ] " and " ? [ interruption ] " ) which receive little attention but are important for the subsequent translation discovered by our mask perturbation model .
+After calibration , the missing source information " traffic interruption " is well - translated .
+We conduct extensive experiments to verify our method 's effectiveness on Transformer - based translation ( NIST Zh?En , WMT14 En?De , WMT16 En?Ro , WMT17 En?Fi , and En?Lv ) .
+Experimental results show that our calibration methods can significantly boost performance .
+We further visualize calibrated attention weights and investigate when attention weights need to be corrected .
+The contributions of this paper are three - fold : ?
+We propose a mask perturbation model to automatically assess each input 's contribution for translation , which is simple yet effective .
+?
+We design three methods to calibrate original attention weights by highlighting the informative inputs , which are experimentally proved to outperform strong baselines .
+?
+Detailed analyses show that calibrated attention weights are more uniform at lower layers while more focused at the higher layers .
+Highentropy attention weights are found to have great needs for calibration at all layers .
+Background
+In this section , we first briefly introduce the framework of Transformer ( Vaswani et al. , 2017 ) with a focus on the Multi-head attention ( MHA ) .
+Then we present an analysis of the learned attention weights , the correlation with feature importance measures , which motivates our ideas discussed afterward .
+Transformer Architecture
+The Transformer is an encoder-decoder framework with stacking layers of attention blocks .
+The encoder first transforms an input x = {x 1 , x 2 , ...x n } to a sequence of continues representations h = {h 1 , h 2 , ...h n } , from which the decoder generates an output sequence y = {y 1 , y 2 , ...y m }. Multi-head attention between encoder and decoder enables each prediction to attend overall inputs from different representation subspaces jointly .
+For the single head , we first project h = {h 1 , h 2 , ...h n } to keys K and values V using different linear projections .
+At the t-th position , we project the hidden state of the previous decoder layer to the query vector q t .
+Then we multiply q t by keys K to obtain an attention a t , which is used to calculate a weighted sum of values V . Attn ( q t , K , V ) = a t * V a t = softmax q t K T ? d k ( 1 ) where d k is the dimension of the keys .
+For MHA , we use different projections to obtain the queries , keys , and values representations for each head .
+It is noted that Transformer ( base model ) performs N = 6 cross-lingual attention layers and employs h = 8 parallel attention heads for each time .
+Thus we implement our methods on N ? h attention operations separately .
+For simplicity , we next denote the query , keys , and values as q t , K , V regardless of what layers and heads they come from .
+often presented as communicating the relative importance of inputs .
+However , recent work has cautioned against whether the inputs accorded high attention weights decide the model outputs ( Jain and Wallace , 2019 ) .
+Our analysis examines the correlation with attention weights and feature importance metrics in NMT to test if the attention mechanisms focus on the decisive inputs .
+We apply gradient - based methods ( Simonyan et al. , 2014 ; to measure the importance of each contextual representation h i for model output y t :
+Disagreement Between ? it = |? h i p(y t | x 1:n ) | ( 2 ) We train a baseline Transformer model on NIST Zh?
+En dataset and extract the averaged attention weights over heads .
+Figure 2 reports the statistics of Kendall -?
+correlation for each attention layer , where the observed correlation is all modest ( 0 indicates no correlation , while 1 implies perfect concordance ) .
+The inconsistency with feature importance metrics reveals that the high-attention inputs are not always responsible for the model prediction .
+It further motivates us whether we can calibrate the attention weights to focus more on the decisive inputs to achieve better translation .
+Our Method
+We aim to make the attention mechanism more focused on the informative inputs .
+The first step is to discover what inputs are essential for the model prediction .
+As shown in Figure 3 , we design a Mask Perturbation Model to worsen the performance with limited perturbation on the original attention weights .
+By doing this , we can automatically detect what inputs decide the model outputs .
+Then , we design an Attention Calibration Network ( ACN ) to correct the original attention weights , highlighting the decisive inputs based on what inputs are perturbed by the mask perturbation model .
+Mask Perturbation Model
+To search the source-side inputs that the model relies on to produce the output , we can observe how the model prediction changes as perturbing different parts of the input sentence .
+We apply a mask to scale each input 's attention weight , which simulates the process of perturbation .
+Formally , let m t be a mask at t-th step .
+The perturbed attention weight a p t is calculated as : a p t = m t a t + ( 1 ? m t ) ? 0 ( 3 ) where ?
+0 is a uniform distribution ( an average vector of 1 n ) and denotes element - wise multiplication .
+The mask m t is obtained based on the hidden state in the decoder q t and keys K : m t = ? q t W Q ( KW K ) T ? d k ( 4 ) Here , ?( ? ) is the sigmoid function .
+A smaller value of m t means a larger perturbation extent on original attention weights .
+Considering the structure of multi-head attention in Transformer , W Q and W K differ among layers and heads .
+To test the effect of perturbing distinct regions of inputs , we borrow the idea " deletion game " to find the smallest perturbation extent , which leads to a significant performance decrease .
+The objective function of mask perturbation model is : L ( ? m ) = ?L NMT ( a p t , ? ) + ?L c ( ? m ) ( 5 ) where ? denotes the parameters of the original Transformer .
+L NMT ( a p t , ? ) is the cross-entropy loss of the translation model when using perturbed attention weights a p t . ? m = { W Q , W K } represents the parameters of mask perturbation model .
+The first term indicates that the perturbation operation aims to harm the translation quality .
+The second one serves as a penalty term to encourage most of the mask to be turned off ( perturb inputs as few as possible ) .
+L c ( ? m ) = 1 ? m t 2 ( 6 ) The perturbation extent is determined by the hyperparameter ?.
+Notably , earlier studies employ masks and " deletion game " as the analytical tools to explore the importance of each attention head ( Fong and Vedaldi , 2017 ) or the contributions of the pixels in the figure to the model outputs ( Voita et al. , 2019 ) .
+However , we extend to probing the inputs ' contributions to the model prediction in NMT and further use the masks to calibrate the attention mechanisms based on the analytical results .
+Attention Calibration Network
+As aforementioned , our mask perturbation model removes the most informative input to deteriorate the translation by setting the corresponding masks to zero .
+In other words , a smaller mask means a larger perturbation , namely a more significant impact on the prediction .
+We propose to calibrate the original attention weights in NMT by highlighting the essential inputs for each model prediction .
+Formally , the calibrated attention weight a c t can be designed as : a c t = a t e 1 ?mt ( 7 )
+We increase the attention weights of key inputs which suffer large perturbation extents .
+The attention weights of other less-informative inputs are correspondingly decreased .
+We design three methods to incorporate a c t into the original one a t to obtain combined attention weights a comb t : ? Fixed Weighed Sum .
+In this method , the calibrated attention weights are added to the original attention weights of fixed ratio ?
+as : a comb t = softmax ( a t + ? * a c t ) ( 8 ) ? Annealing Learning .
+Considering the mask perturbation model is not well - trained at the early stage , we expect the effect of a c t to be smaller at first and gradually grow with the training step s .
+To this end , we use annealing learning to control the ratio of a c t as : a comb t = ?( s ) * a t + ( 1 ? ?( s ) ) * a c t ?( s ) = e ?s/10 5 ( 9 ) ? Gating Mechanism .
+We propose a calibration gate to dynamically select the amount of the information from the perturbation model in the decoding process .
+a comb t = g t * a t + ( 1 ? g t ) * a c t g t = ?( q t W g + b g ) ( 10 ) where W g and b g are trainable parameters vary among different layers and heads .
+Training
+Our mask perturbation model and NMT model are jointly optimized .
+As shown in Figure 3 , the mask perturbation model is trained to worsen the performance by limited perturbation on the attention weights ( Equation 5 ) .
+Given what inputs are perturbed , we can figure out the decisive inputs for each model prediction and calibrate the original attention weights in the NMT model by ACN .
+With the calibrated attention weights , the NMT model is finally optimized by : L NMT ( ? ) = ?
+m t=1 logp(y t |y <t , x ; a comb t , ? ) ( 11 ) During testing , the mask perturbation model also helps identify the informative inputs based on the hidden state in the decoder at each step ( as seen in Equation 4 ) .
+The NMT model decodes with the calibrated attention weights .
+Moreover , our method can provide the saliency map between inputs and outputs based on the generated mask , an accessible measurement of the inputs ' contributions to the model predictions .
+Experiments
+We evaluate our method in LDC Chinese-English ( Zh?En ) , WMT14 English - German ( En? De ) , WMT16 English -Romanian ( En?Ro ) , WMT17 English - Finnish ( En?Fi ) and English -Latvian ( En?Lv ) .
+Dataset
+We tokenize the corpora using a script from Moses ( Koehn et al. , 2007 ) .
+Byte pair encoding ( BPE ) ( Sennrich et al. , 2016 ) is applied to all language pairs to construct a join vocabulary except for Zh?En where the source and target languages are separately encoded .
+For Zh?En , we remove the sentences of more than 50 words .
+We use NIST 2002 as validation set , NIST 2003 - 2006 as the testbed .
+For En? De , newstest2013 and newstest 2014 are set as validation and test sets .
+We use the standard 4 - gram BLEU ( Papineni et al. , 2002 ) on the true-case output to score the performance .
+For En?Ro , we use newsdev2016 and newstest2016 as development and test sets .
+For En?Lv and En? Fi , news - dev2017 and newstest2017 are validation set and test set .
+See Table 1 for statistics of the data .
+Settings
+We implement the described models with fairseq 5 toolkit for training and evaluating .
+We experiment with Transformer Base ( Vaswani et al. , 2017 ) : hidden size d model = 512 , 6 encoder and decoder layers , 8 attention heads and 2048 feed -forward innerlayer dimension .
+The dropout rate of the residual connection is 0.1 except for Zh?En ( 0.3 ) .
+During training , we use label smoothing of value ls = 0.1 and employ the Adam ( ? 1 = 0.9 , ? 2 = 0.998 ) for parameter optimization with a scheduled learning rate of 4,000 warm - up steps .
+All the experiments last for 150k steps except for small- scale En? Ro translation tasks ( 100k ) .
+For evaluation , we average the last ten checkpoints and use beam search Model TEST GNMT ( Wu et al. , 2016 ) ( beam size 4 , length penalty 0.6 ) for inference .
+Besides , the hyperparameter ? in Equation 8 decides how much the calibrated attention weights are incorporated in the Fixed Weighted Sum method .
+We set ? = 0.1 in all experiments for comparison .
+Main Results
+To comprehensively compare with the existing baselines and similar work , we report the results of some competitive models including GNMT ( Wu et al. , 2016 ) , Conv ( Gehring et al. , 2017 ) and At- tIsAll ( Vaswani et al. , 2017 ) on WMT14 En?
+De translation task .
+Besides , we also compare our method against related researches about introducing word alignment information to guide translation ( Weng et al. , 2020 ; Feng et al. , 2020 ) .
+As presented in Table 2 , our method exhibits better performance than the above models .
+Unlike supervised attention with external word alignment , our model yields a significant gain by looking into what inputs affect the model 's internal training .
+Table 3 shows the translation quality measured in BLEU score for NIST Zh?En .
+Our proposed model significantly outperforms the baseline by 0.96 ( MT02 ) , 0.84 ( MT03 ) , 0.58 ( MT04 ) , 1.02 ( MT05 ) and 0.76 ( MT06 ) , respectively .
+We also conduct our experiments on WMT17 En?Fi and En?Lv .
+As shown in Table 4 , our methods improve the performance over baseline by 0.54 BLEU ( En? Fi ) , 0.6 BLEU ( Fi?En ) , 0.57 BLEU ( En?Lv ) and 0.95 BLEU ( Lv?En ) .
+For the small-scale WMT16 En?Ro , our methods achieve a substantial improvement of 1.44 more BLEU ( En?Ro ) and 0.95 BLEU ( Ro ?
+En pared to the large-scale dataset , the insufficient training data make it harder to learn the relationship between inputs and outputs , leaving a greater need for calibrating attention weights .
+Overall , our proposed model significantly outperforms the strong baselines , especially for the small-scale dataset .
+More importantly , the parameter size is tiny ( 6 M ) , which cannot add much cost to the training and inference process .
+Effect of Fusion Methods
+For three fusion methods , the fixed weighted sum has a limited gain .
+Annealing learning is comparatively more stable , which reduces the impact of ACN when the mask perturbation model is not well -trained at the initial stage .
+But it is challenging to design an annealing strategy that can be applied to all language pairs .
+Gate mechanism mostly achieves the best performance for dynamically controlling the proportions of original and calibrated attention weights .
+Effect of Hyperparameter
+The hyperparameter ? in the loss function of the mask perturbation model ( as in Equation 5 ) decides how much masks would turn on to perturb the original attention weights .
+Figure 4 exhibits the average value of generated masks across heads as the function of the setting of ?.
+A larger ?
+forces the model to turn off most masks , which makes the value of the mask closer to 1 , resulting in a smaller perturbation extent on the attention weights .
+Correlation with Feature Importance Metrics Figure 5 reports the correlation between our generated mask ( m ) and the gradient - based importance measures 6 ( ? it ) .
+We find that the masks are relatively closer to the gradient - based importance measures than the original attention weights , which prove the effectiveness of our mask perturbation model to discover decisive inputs .
+Analysis
+In this section , we explain how our proposed method helps produce better translation by investigating : ( 1 ) what attention weights need to calibrate and ( 2 ) calibrated attention weights are more focused or more uniform .
+Specifically , we delve into the differences between layers , which give insights into the attention mechanism 's inner working .
+We conduct analyses on Zh?En NIST03 and En? De newstest2014 to understand our model from different perspectives .
+We apply Jensen-Shannon Divergence ( JSD ) between attention weights before and after calibration to measure the calibration extent : JSD ( a 1 , a 2 ) = 1 2 KL [ a 1 a ] + 1 2 KL [ a 2 a ] ( 12 ) where a = a 1 + a 2 2 .
+A high JSD means the calibrated attention weights are distant from the original one .
+Besides , we use the entropy changes of attention weights to test whether the calibrated attention weights become more uniform or focused .
+Ent ( a 1 , a 2 ) = ent ( a 1 ) ? ent ( a 2 ) ( 13 ) where ent ( a ) = ? m i=1 a i loga i , a metric to describe the uncertainty of the distribution .
+attention layers are not well -trained in the original NMT model and have an urgent need to calibrate .
+Figure 6 depicts the JSD between original and calibrated attention weights .
+We find high JSD for high layers and low JSD for low layers in Zh?
+En task .
+However , a different pattern is observed in En?De task , where JSD in the high layer is lower than in the low layers .
+We speculate that the difference is due to the language discrepancy and we will explore this phenomenon in our future work .
+High or low entropy ?
+More focused contributions of inputs suggest that the model is more confident about the choice of important tokens ( Voita et al. , 2020 ) .
+We attempt to validate whether the attention weights are more likely to be calibrated when the NMT model is uncertain about its decision .
+Figure 7 shows the positive relationship between calibration extent and the entropy of attention weights .
+Take the 6 - th attention layer in Zh?
+En translation as an example ( as seen in Figure 7 ( b ) ) .
+The averaged JSD is 0.0084 for the attention weights in rang [ 0,0.8 ] , while the value is 0.0324 for the attention weights where the entropy is larger than 3.2 .
+These findings can also be observed at different attention layers and language pairs .
+We infer that a higher entropy indicates the NMT model relies on multiple inputs to generate the translation , which increases the probability of information redundancy or error signals .
+Our proposed model is more likely to calibrate these attention weights to makes the NMT model pay more attention to the informative inputs .
+Calibrated attention weights are more dispersed or focused ?
+There are multiple reasons why the calibrated attention weights can boost performance .
+Section 4.3 states that our generated masks are much closer to the gradient - based feature importance measures compared with attention weights .
+On the other hand , we present the entropy differences of the original and calibrated attention weights in Table 5 where the entropy of attention weights are overall smaller after calibration .
+However , the changes vary across layers .
+For En?
+De translation , the calibrated attention weights are more uniform at 1 - 3 layers and more focused at 4 - 6 layers , while the attention weights become more focused for all layers except the 1- st layer on Zh?
+En task .
+These findings prove that each attention layer plays a different role in the decoding process .
+The low layers generally grasp information from various inputs , while the high layers look for some particular words tied to the model predictions .
+Related Work
+The attention mechanism is first introduced to augment vanilla recurrent network ( Bahdanau et al. , 2015 ; Luong et al. , 2015 ) , which are then the backbone of state - of- the - art Transformer ( Vaswani et al. , 2017 ) for NMT .
+It yields better performance and provides a window into how a model is operating ( Belinkov and Glass , 2019 ; Du et al. , 2020 ) .
+This section reviews the recent researches on analyzing and improving attention mechanisms .
+The Attention Debate Many recent studies have spawned interest in whether attention weights faithfully represent each input token 's responsibility for model prediction .
+Serrano and Smith flip the model 's decision by permuting some small attention weights , with high - weighted components not being the reason for the decision .
+Some work ( Jain and Wallace , 2019 ; Vashishth et al. , 2019 ) find a weak correlation between attention scores and other well - ground feature importance metrics , specially gradient - based and leave- one - out methods , in various text classification tasks .
+We also present the correlation analysis in the lessdiscussed Transformer - based NMT and reach a similar conclusion .
+As opposed to the critiques of regarding attention weights as explanation , Wiegreffe and Pinter claim that the trained attention mechanisms do learn something meaningful about the relationship between inputs and outputs , such as syntactic information ( Raganato and Tiedemann , 2018 ; Vig and Belinkov , 2019 ; Pham et al. , 2019 ) . Can Attention be improved ?
+There is plenty of work on supervising attention weights with lexical probabilities ( Arthur et al. , 2016 ) , word alignment Mi et al. , 2016 ; Cohn et al. , 2016 ; Garg et al. , 2019 ; Feng et al. , 2020 ) , human rationales ( Strout et al. , 2019 ) and sparsity regularization .
+Unlike them , we never introduce any external knowledge but highlight the inputs whose removal would significantly decrease Transformer 's performance .
+Another work line aims to make attention better indicative of the inputs ' importance ( Kitada and Iyatomi , 2020 ; Tutek and Snajder , 2020 ; Mohankumar et al. , 2020 ) which is designed for analysis with no significant performance gain , while our methods incorporate the analytical results to enhance the NMT performance .
+Conclusion
+In this paper , we present a mask perturbation model to automatically discover the decisive inputs for the model prediction .
+We propose three methods to calibrate the attention mechanism by focusing on the discovered vital inputs .
+Extensive experimental results show that our approaches obtain significant improvements over the state - of - the - art system .
+Analytical results indicate that our proposed methods make the low layer 's attention weights more dispersed to grasp multiple information .
+In contrast , high - layer attention weights become more focused on specific essential inputs .
+We further find a greater need for calibration in the original attention weights with high entropy .
+Our work provides insights on future work about learning more useful information via attention mechanisms in other attention - based frameworks .
+Figure 1 : 1 Figure 1 : Examples of the attention weights before and after calibration .
+" in " denotes the timestep after the prediction " in " .
+The dashed boxes indicate the inputs which should receive more attention measured by our mask perturbation model .

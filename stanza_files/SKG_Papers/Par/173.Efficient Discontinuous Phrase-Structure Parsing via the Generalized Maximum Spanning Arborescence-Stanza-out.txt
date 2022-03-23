@@ -1,0 +1,316 @@
+title
+Efficient Discontinuous Phrase-Structure Parsing via the Generalized Maximum Spanning Arborescence
+abstract
+We present a new method for the joint task of tagging and non-projective dependency parsing .
+We demonstrate its usefulness with an application to discontinuous phrase-structure parsing where decoding lexicalized spines and syntactic derivations is performed jointly .
+The main contributions of this paper are ( 1 ) a reduction from joint tagging and non-projective dependency parsing to the Generalized Maximum Spanning Arborescence problem , and ( 2 ) a novel decoding algorithm for this problem through Lagrangian relaxation .
+We evaluate this model and obtain state - of - the - art results despite strong independence assumptions .
+Introduction Discontinuous phrase-structure parsing relies either on formal grammars such as LCFRS , which suffer from a high complexity , or on reductions to non-projective dependency parsing with complex labels to encode phrase combinations .
+We propose an alternative approach based on a variant of spinal TAGs , which allows parses with discontinuity while grounding this work on a lexicalized phrase -structure grammar .
+Contrarily to previous approaches , ( Hall and Nivre , 2008 ; Versley , 2014 ; Fern?ndez-Gonz?lez and Martins , 2015 ) , we do not model supertagging nor spine interactions with a complex label scheme .
+We follow Carreras et al . ( 2008 ) but drop projectivity .
+We first show that our discontinuous variant of spinal TAG reduces to the Generalized Maximum Spanning Arborescence ( GMSA ) problem ( Myung et al. , 1995 ) .
+In a graph where vertices are partitioned into clusters , GMSA consists in finding the arborescence of maximum weight in-cident to exactly one vertex per cluster .
+This problem is NP - complete even for arc-factored models .
+In order to bypass complexity , we resort to Lagrangian relaxation and propose an efficient resolution based on dual decomposition which combines a simple non-projective dependency parser on a contracted graph and a local search on each cluster to find a global consensus .
+We evaluated our model on the discontinuous PTB ( Evang and Kallmeyer , 2011 ) and the Tiger ( Brants et al. , 2004 ) corpora .
+Moreover , we show that our algorithm is able to quickly parse the whole test sets .
+Section 2 presents the parsing problem .
+Section 3 introduces GMSA from which we derive an effective resolution method in Section 4 .
+In Section 5 we define a parameterization of the parser which uses neural networks to model local probabilities and present experimental results in Section 6 .
+We discuss related work in Section 7 .
+Joint Supertagging and Spine Parsing
+In this section we introduce our problem and set notation .
+The goal of phrase-structure parsing is to produce a derived tree by means of a sequence of operations called a derivation .
+For instance in context-free grammars the derived tree is built from a sequence of substitutions of a nonterminal symbol with a string of symbols , whereas in tree adjoining grammars ( TAGs ) a derivation is a sequence of substitutions and adjunctions over elementary trees .
+We are especially interested in building discontinuous phrase-structure trees which may contain constituents with gaps .
+1 We follow Shen ( 2006 ) and build derived trees from adjunctions performed on spines .
+Spines are lexicalized unary trees where each level represents Figure 1 : A derivation with spines and adjunctions ( dashed arrows ) .
+The induced dependency tree is non-projective .
+Each color corresponds to a spine .
+We omit punctuation to simplify figures .
+a lexical projection of the anchor .
+Carreras et al. ( 2008 ) showed how spine- based parsing could be reduced to dependency parsing : since spines are attached to words , equivalent derivations can be represented as a dependency tree where arcs are labeled by spine operations , an adjunction together with information about the adjunction site .
+However , we depart from previous approaches ( Shen and Joshi , 2008 ; Carreras et al. , 2008 ) by relaxing the projectivity constraint to represent all discontinuous phrase-structure trees ( see Figure 1 ) .
+We assume a finite set of spines S. A spine s can be defined as a sequence of grammatical categories , beginning at root .
+For a sentence w = ( w 0 , w 1 , . . . , w n ) where w k is the word at position k and w 0 is a dummy root symbol , a derivation is a triplet ( d , s , l ) defined as follows .
+Adjunctions are described by a dependency tree rooted at 0 written as a sequence of arcs d .
+If ( h , m ) ? d with h ? { 0 , . . . , n} and m ? { 1 , . . . , n} , then the derivation contains an adjunction of the root of the spine at position m to a node from the spine at position h .
+Supertagging , the assignment of a spine to each word , is represented by a sequence s = ( s 0 , s 1 , . . . , s n ) of n + 1 spines , each spine s k being assigned to word w k .
+Finally , labeling l = ( l 1 , . . . , l n ) is a sequence where l k is the label of the k th arc ( h , m ) of d .
+The label consists of a couple ( op , i ) where op is the type of adjunction , here sister or regular 2 , and i is the index of the adjunction node in s h .
+Each derivation is assigned an arc-factored score ?
+which is given by : ?( d , s , l ; w ) = ( h , m ) ? d ?( h , m , s h , s m , l hm ; w )
+For instance , following score functions de -2
+The distinction is not crucial for the exposition .
+We refer readers to ( Shen and Joshi , 2008 ; Carreras et al. , 2008 ) . veloped in ( Carreras et al. , 2008 )
+We assume that ?
+accounts for the contribution of arcs , spines and labels to the score .
+The details of the contribution depend on the model .
+We choose the following : ?( d , s , l ; w ) = ( h , m ) ? d (?( h , m ; w ) +?( s m ; h , m , w ) +?( l hm ; h , m , s h , w ) ) where ? is the score related to the dependency tree , ? is the supertagging score and ? the labeling score .
+Note that functions ? , ? and ? have access to the entire input string w .
+Score function ? can be parameterized in many ways and we discuss our implementation in Section 5 .
+In this setting , parsing a sentence w amounts to finding the highest - scoring derivation ( d * , s * , l * ) = arg max ( d, s , l ) ?( d , s , l ; w ) .
+Recovering the derived tree from a derivation is performed by recursively mapping each spine and its dependencies to a possibly gappy constituent .
+Given a spine s h and site index i , we look for the leftmost s l and rightmost s r dependents attached with regular adjunction .
+If any , we insert a new node between s h [ i ] and s h [ i + 1 ] with the same grammatical category as the first one .
+This new node fills the role of the foot node in TAGs .
+Every dependent of s h [ i ] with anchor in interval [ l + 1 , r ? 1 ] is moved to the newly created node .
+Remaining sister and regular adjunctions are simply attached to s h [ i ] .
+The complexity of the parsing problem depends on the type of dependency trees .
+In the case of projective trees , it has been shown ( Eisner , 2000 ; Carreras et al. , 2008 ; Li et al. , 2011 ) that this could be performed in cubic worst - case time complexity with dynamic programming , whether supertags are fixed beforehand or not .
+However , the modification of the original Eisner algorithm requires that chart cells must be indexed not only by spans , or pairs of positions , but also by pairs of supertags .
+In practice the problem is intractable unless heavy pruning is performed first in order to select a subset of spines at each position .
+In the case of non-projective dependency trees , the problem has quadratic worst - case time complexity when supertags are fixed , since the problem then amounts to non-projective parsing and reduces to the Maximum Spanning Arborescence problem ( MSA ) as in ( McDonald et al. , 2005 ) .
+Unfortunately , the efficient algorithm for MSA is greedy and does not store potential substructure candidates .
+Hence , when supertags are not fixed beforehand , a new arborescence must be recomputed for each choice of supertags .
+This problem can be seen as instance of the Generalized Maximum Spanning Arborescence problem , an NPcomplete problem , which we review in the next section .
+Note that arc labels do not impact the asymptotic complexity of an arc-factored model .
+Indeed , only the labeled arc with maximum weight between two vertices is considered when parsing .
+The Generalized Maximum Spanning Arborescence
+In this section , we first define GMSA introduced by Myung et al . ( 1995 ) .
+We formulate this problem as an integer linear program .
+We then explain the reduction from the joint supertagging and spine parsing task to this problem .
+3
+Problem definition Let D = ( V , A ) be a directed graph .
+Given a subset T ?
+A of arcs , V [ T ] denotes the set of vertices of V which are the tail or the head of at least one arc of T .
+These vertices are said to be covered by T .
+A subset T ?
+A of arcs is called an arborescence if the graph ( V [ T ] , T ) is connected , acyclic and each vertex has at most one entering arc .
+The vertex with no entering arc is called the root of T .
+An arborescence covering all vertices is called a spanning arborescence .
+Let ? = { V 0 , . . . , V n } , n ?
+N be a partition of V . Each element of ? is called a cluster .
+An arborescence T of D covering exactly one vertex per cluster of ? is called a generalized spanning arborescence ( GSA ) .
+Figure 2 gives an example of a GSA .
+The partition of V is composed of a cluster having one vertex and six clusters having four vertices .
+Each cluster is depicted by a hatched area .
+The GSA is depicted by the dashed arcs .
+Let W be a vertex subset of V .
+We denote ? ? ( W ) ( resp. ? + ( W ) ) the set of arcs entering ( resp. leaving ) W and ?( W ) = ? ? ( W ) ? + ( W ) .
+4 Contracting W consists in replacing in D all vertices in W by a new vertex w , replacing each arc uv ? ? ? ( W ) by the arc uw and each arc vu ? ? + ( W ) by wu .
+Let D ? be the graph obtained by contracting each cluster of ? in D. Note that a GSA of D and ?
+induces a spanning arborescence of D ? . 5
+For instance , contracting each cluster in the graph given by Figure 2 leads to a graph D ? having 7 vertices and the set of dashed arcs corresponds to a spanning arborescence of D ? . Given arc weights ? ? R A , the weight of an arborescence T is a?T ? a . Given ( D , ? , ? ) , the Generalized Maximum Spanning Arborescence problem ( GMSA ) consists in finding a GSA of D and ? of maximum weight whose root is in V 0 .
+Integer linear program Given a set S , z ?
+R S is a vector indexed by elements in S. For S ? S , z( S ) = s?S z s .
+A GSA T ?
+A is represented by variables x ? { 0 , 1 } V and y ? { 0 , 1 } A such that x v ( resp.
+y a ) is equal to 1 iff v ? V [ T ] ( resp .
+a ? T ) .
+Since a GSA of D and ?
+induces a spanning arborescence of D ? , the arc-incidence vector y ? { 0 , 1 } A of a GSA with root in V 0 satisfies the following , adapted from MSA ( Schrijver , 2003 ) : y (? ? ( V 0 ) ) = 0 ( 1 ) y (? ? ( V k ) ) = 1 ?1 ? k ? n , ( 2 ) y (?
+? ( ? V k ? V k ) ) ? 1 ? ? ? \ { V 0 }. ( 3 ) Let Y denote all the arc-incidence vectors on D corresponding to a spanning arborescence in D ? whose root is the contraction of V 0 .
+Then , Y = {y ? { 0 , 1 } A |y satisfies ( 1 ) - ( 3 ) }.
+GMSA can be formulated with the following integer linear program : max x,y ? ? y ( 4 ) s.t. y ? Y ( 5 ) x v ? y a ?v ? V , a ? ?( v ) , ( 6 ) x v ( V k ) = 1 ?0 ? k ? n , ( 7 ) x v ? { 0 , 1 } ?v ? V. ( 8 ) Let W and T be the vertex and arc sets given by x v = 1 and y a = 1 respectively .
+Since T is a spanning arborescence of D ? by ( 5 ) , ( V [ T ] , T ) is an acyclic directed graph with n arcs such that V 0 has no entering arc and V i , i ? { 1 , . . . , n} , has one entering arc .
+By constraints ( 7 ) , W contains one vertex per cluster of ?.
+Moreover , by inequalities ( 6 ) , 5 ) , it is an optimal solution for GMSA by ( 4 ) .
+V [ T ] ?
+W . Since | W | = n + 1 and | T | = n , W = V [ T ] and ( V [ T ] , T ) is connected , so it is a GSA .
+Because its root is in V 0 by (
+Reduction from joint parsing to GMSA Given an instance of the joint parsing problem , we construct an instance of GMSA as follows .
+With every spine s of every word w k different from w 0 , we associate a vertex v. For k = 1 , . . . , n , we denote by V k the set of vertices associated with the spines of w k .
+We associate with w 0 a set V 0 containing only one vertex and V 0 will now refer both the cluster and the vertex it contains depending on the context .
+Let ? = { V 0 , . . . , V n } and V = ? n k=0 V k .
+For every couple u , v of vertices such that u ?
+V h and v ?
+V m , h = m and m = 0 , we associate an arc uv corresponding to the best adjunction of the root of spine s m associated with v of V m to spine s h associated with vertex u of V h .
+The weight of this arc is given by ? uv = ?( h , m ; w ) + ?( s m ; h , m , w ) + max l hm ?( l hm ; h , m , s h , w ) which is the score of the best adjunction of s m to s h .
+This ends the construction of ( D , ? , ? ) .
+There is a 1 - to - 1 correspondence between the solutions to GMSA and those to the joint supertagging and spine parsing task in which each adjunction is performed with the label maximizing the score of the adjunction .
+Indeed , the vertices covered by a GSA T with root V 0 correspond to the spines on which the derivation is performed .
+By definition of GSAs , one spine per word is chosen .
+Each arc of T corresponds to an adjunction .
+The score of the arborescence is the sum of the scores of the selected spines plus the sum of the scores of the best adjunctions with respect to T .
+Hence , one can solve GMSA to perform joint parsing .
+As an illustration , the GSA depicted in Figure 2 represents the derivation tree of Figure 1 : the vertices of V \ V 0 covered by the GSA are those associated with the spines of Figure 1 and the arcs represent the different adjunctions .
+For instance V0 ( ROOT ) V1 ( What ) V2 ( I ) V3 ( said ) V4 ( should ) V5 ( I ) V6 ( do ) Figure 2 : The generalized spanning arborescence inducing the derivation tree in Figure 1 . the arc from V 3 to V 2 represents the adjunction of spine NP - PRP to spine S-VP - VB at index 0 .
+Efficient Decoding Lagrangian relaxation has been successfully applied to various NLP tasks ( Koo et al. , 2010 ; Le Roux et al. , 2013 ; Almeida and Martins , 2013 ; Das et al. , 2012 ; Corro et al. , 2016 ) .
+Intuitively , given an integer linear program , it consists in relaxing some linear constraints which make the program difficult to solve and penalizing their violation in the objective function .
+We propose a new decoding method for GMSA based on dual decomposition , a special flavor of Lagrangian relaxation where the problem is decomposed in several independent subproblems .
+Dual decomposition
+To perform the dual decomposition , we first reformulate the integer linear program ( 4 ) -( 8 ) before relaxing linear constraints .
+For this purpose , we replace the variables y by three copies {y i } = {y 0 , y 1 , y 2 } , y i ? { 0 , 1 } A .
+We also consider variables z ?
+R A . Let ? 0 , ? 1 and ?
+2 be arc weight vectors such that i ?
+i = ?.
+6 GMSA can then be reformulated as : max x , {y i } , z i ? i ? y i ( 9 ) s.t. y 0 ? Y ( 10 ) x v ? y 1 a ?v ? V , a ? ? ? ( v ) , ( 11 ) x v ? y 2 a ?v ? V , a ? ? + ( v ) , ( 12 ) x v ( V k ) = 1 ?0 ? k ? n , ( 13 ) x v ? { 0 , 1 } ?v ? V , ( 14 ) z = y i ?i. ( 15 ) Note that variables z only appear in equations ( 15 ) .
+Their goal is to ensure equality between copies y 0 , y 1 and y 2 . Variables z are usually called witness variables ( Komodakis et al. , 2007 ) .
+Equality between y 0 , y 1 and y 2 implies that ( 10 ) -( 12 ) are equivalent to ( 5 ) and ( 6 ) .
+We now relax constraints ( 15 ) and build the dual objective ( Lemar?chal , 2001 ) L * ( {? i } ) : max x , {y i } , z i ?
+i ? y i + i? {0,1,2 } ? i ? ( z ? y i ) s.t. ( 10 ) ? ( 14 ) where {?
+i } = {?
+0 , ? 1 , ? 2 } , ? i ? R A for i = 0 , 1 , 2 , is the set of Lagrangian multipliers .
+The dual problem is then : min {?
+i } L * ( { ?
+i })
+Note that , as there is no constraint on z , if i ?
+i = 0 then L * ( { ? i } ) = +?.
+Therefore , we can restrict the domain of { ?
+i } in the dual problem to the set ? = {{?
+i }| i ? i = 0 } .
+This implies that z may be removed in the dual objective .
+This latter can be rewritten as : L * ( { ? i }) = max x , {y i } i ? i ? y i s.t. ( 10 ) ? ( 14 ) where ?i = ? i ? ?
+i for i = 0 , 1 , 2 .
+Computing the dual objective Given {?
+i } ? ? , computing the dual objective L * ( {? i } ) can be done by solving the two following distinct subproblems : P 1 ( ?0 ) = max y 0 ?0 ? y 0 s.t. y 0 ? Y P 2 ( ?1 , ?2 ) = max x,y 1 , y 2 ?1 ? y 1 + ?2 ? y 2 s.t. ( 11 ) ? ( 14 ) y i a ? { 0 , 1 } ?a ? A , i = 1 , 2 . Subproblem
+P 1 can be solved by simply running the MSA algorithm on the contracted graph D ? . Subproblem P 2 can be solved in a combinatorial way .
+Indeed , observe that each value of y 1 and y 2 is only constrained by a single value of x .
+The problem amounts to selecting for each cluster a vertex as well as all the arcs with positive weight covering it .
+More precisely , for each vertex v ?
+V , compute the local weight c v defined by : a? ? ( v ) max {0 , ?1 } + a? + ( v ) max {0 , ?2 }. Let V max be the set of vertices defined as follows .
+For k = 0 , . . . , n , add in V max the vertex v ?
+V k with the maximum weight c v .
+Let A 1 and A 2 be the sets of arcs such that A 1 ( resp .
+A 2 ) contains all the arcs with positive weights entering ( resp. leaving ) a vertex of V max .
+The vectors x , y 1 and y 2 corresponding respectively to the incidence vectors of V max , A 1 and A 2 form an optimal solution to P 2 . Hence , both supbroblems can be be solved with a O ( |? | 2 ) time complexity , that is quadratic w.r.t. the length of the input sentence .
+7
+Decoding algorithm
+Our algorithm seeks for a solution to GMSA by solving the dual problem since its solution is optimal to GMSA whenever it is a GSA .
+If not , a solution is constructed by returning the highest GSA on the spines computed during the resolution of the dual problem .
+We solve the dual problem using a projected subgradient descent which consists in iteratively updating {?
+i } in order to reduce the distance to the optimal assignment .
+Let {?
+i , t } denotes the value of { ?
+i } at iteration t. {?
+i,0 } is initially set to 0 .
+At each iteration , the value of { ?
+i,t+1 } is computed from the value of { ?
+i , t } thanks to a subgradient of the dual objective .
+More precisely , we have { ?
+i,t+1 } = {?
+i , t } ? ? t ? ?L * ( { ? i , t } ) } where ?L * ( { ? i , t } ) is a subgradient of L * ( { ? i , t } ) and ? t ?
+R is the stepsize at iteration t.
+We use the projected subgradient from Komodakis et al . ( 2007 ) .
+Hence , at iteration t , we must solve reparameterized subproblems P 1 and P 2 to obtain the current solution ( x t , ?0 , t , ?1 , t , ?2 , t ) of the dual objective .
+Then each multiplier is updated following ?
+i, t+1 = ? i , t ? ? t ? ? ? ? i , t ? 2 j=0 ? j, t 3 ? ? . Note that for any value of {?
+i } , L * ( {? i } ) gives an upper bound for GMSA .
+So , whenever the optimal solution xt , {?
+i , t } to the dual objective L * ( { ? i , t } ) at iteration t is a primal feasible solution , that is ?0 , t = ?1 , t = ?2 , t , it is an optimal solution to GMSA and the algorithm ends .
+Otherwise , we construct a pipeline solution by performing a MSA on the vertices given by xt .
+If after a fixed number of iterations we have not found an optimal solution to GMSA , we return the pipeline solution with maximum weight .
+Lagrangian enhancement
+The previsouly defined Lagrangian dual is valid but may lead to slow convergence .
+Thus , we propose three additional techniques which empirically improve the decoding time and the convergence rate : constraint tightening , arc reweighing and problem reduction .
+Constraint tightening :
+In subproblem P 2 , we consider a vertex and all of its adjacent arcs of positive weight .
+However , we know that our optimal solution must satisfy tree-shape constraints ( 5 ) .
+Thus , every cluster except the root must have exactly one incoming arc and there is at most one arc between two clusters .
+Both constraints are added to P 2 without hurting its time complexity .
+Reweighing :
+By modifying weights such that less incoming arcs have a positive weight , the solution of P 2 tends to be an arborescence .
+For each cluster V k ? ? \ V 0 , let ?k be the set of incoming arcs with the highest weight ?k .
+Then , let ?
+k be a value such that ?
+a ? ? k is positive only for arcs in ?k . Subtracting ?
+k from the weight ?
+a of each arc of ? ?
+( V k ) and adding ?
+k to the objective score does not modify the weight of the solution because only one entering arc per cluster is selected .
+Problem reduction :
+We use the pipeline solutions computed at each iteration to set the value of some variables .
+Let x , {?
+i } be the optimal solution of L * ( {? i } ) computed at any iteration of the subgradient algorithm .
+For k = 1 , . . . , n , let v be the vertex of V k such that xv = 1 .
+Using the local weights ( Section 4.2 ) , for all v ?
+V k \ { v} , L * ( { ? i } ) +c
+v ?c v is an upper bound on the weight of any solution ( x , y ) to GMSA with x v = 1 .
+Hence , if it is lower than the weight of the best pipeline solution found so far , we can guarantee that x v = 0 in any optimal solution .
+We can check the whole graph in linear time if we keep local weights c in memory .
+Neural Parameterization
+We present a probabilistic model for our framework .
+We implement our probability distributions with neural networks , more specifically we build a neural architecture on top of bidirectional recurrent networks that compute context sensitive representations of words .
+At each step , the recurrent architecture is given as input a concatenation of word and part- of-speech embeddings .
+We refer the reader to ( Kiperwasser and Goldberg , 2016 ; Dozat and Manning ) for further explanations about bidirectional LSTMs ( Hochreiter and Schmidhuber , 1997 ) .
+In the rest of this section , b m denotes the context sensitive representation of word w m .
+We now describe the neural network models used to learn and assign weight functions ? , ? and ? under a probabilistic model .
+Given a sentence w of length n , we assume a derivation ( d , s , l ) is generated by three distinct tasks .
+By chain rule , P ( d , s , l |w ) = P ? ( d|w ) ? P ? ( s|d , w ) ? P ? ( l|d , s , w ) .
+We follow a common approach in dependency parsing and assign labels l in a postprocessing step , although our model is able to incorporate label scores directly .
+Thus , we are left with jointly decoding a dependency structure and assigning a sequence of spines .
+We note s i the i th spine : 8 P ? ( d|w ) ? P ? ( s|d , w ) = ( h , m ) ? d
+P ? ( h|m , w ) ? P ? ( s m |m , d , w ) = ( h , m ) ? d
+P ? ( h|m , w ) ? P ? ( s m |m , h , w )
+We suppose that adjunctions are generated by an arc-factored model , and that a spine prediction depends on both current position and head position .
+Then parsing amounts to finding the most probable derivation and can be realized in the log space , which gives following weight functions : ?( h , m ; w ) = log P ? ( h|m , w ) ?( s m ; h , m , w ) = log P ? ( s m |m , h , w ) where ? represents the arc contribution and ? the spine contribution ( cf. Section 2 ) .
+Word embeddings b k are first passed through specific feed -forward networks depending on the distribution and role .
+The result of the feedforward transformation parameterized by set of parameters ? of a word embedding b s is a vector denoted b ( ? ) s .
+We first define a biaffine attention networks weighting dependency relations ( Dozat and Manning ) : o ( ? ) h , m = b ( ?
+1 ) m W ( ? ) b ( ? 2 ) h + V ( ? ) b ( ? 2 ) h where W ( ? ) and V ( ? ) are trainable parameters .
+Moreover , we define a biaffine attention classifier networks for class c as : o ( ? ) c , h , m = b ( ?
+1 ) m W ( ?c ) b ( ?
+2 ) h + V ( ?c ) b ( ?
+1 ) m ? b ( ? 2 ) h + u ( ?c) where ? is the concatenation .
+W ( ?c ) , V ( ?c) and u ( ? c ) are trainable parameters .
+Then , we define the weight of assigning spine s to word at position m with head h as o ( ? ) s , h , m . Distributions P ? and P ? are parameterized by these biaffine attention networks followed by a softmax layer : P ? ( h|m , w ) = exp o ( ? ) h , m h exp o ( ? ) h , m P ? ( s|h , m , w ) = exp o ( ? ) s , h , m s exp o ( ? ) s , h , m
+Now we move on to the post-processing step predicting arc labels .
+For each adjunction of spine s at position m to spine t at position h , instead of predicting a site index i , we predict the nonterminal nt at t [ i ] with a biaffine attention classifier .
+9
+The probability of the adjunction of spine s at position m to a site labeled with nt on spine t at position h with type a ?
+{ regular , sister } is : P ? ( nt , a|h , m ) = P ? ( nt |h , m , w ) ? P ? ( a|h , mw ) P ? and P ? are again defined as distributions from the exponential family using biaffine attention classifiers : P ? ( nt |h , m , t ) = exp o ( ? ) nt , h , m nt exp o ( ? ) nt , h , m P ? ( a|h , m , t ) = exp o ( ? ) t , h , m a exp o ( ? ) a , h , m
+We use embeddings of size 100 for words and size 50 for parts - of-speech tags .
+We stack two bidirectional LSTMs with a hidden layer of size 300 , resulting in a context sensitive embedding of size 600 .
+Embeddings are shared across distributions .
+All feed -forward networks have a unique elu-activated hidden layer of size 100 ( Clevert et al. , 2016 ) .
+We regularize parameters with a dropout ratio of 0.5 on LSTM input .
+We estimate parameters by maximizing the likelihood of the training data through stochastic subgradient descent using Adam ( Kingma and Ba , 2015 ) .
+Our implementation uses the Dynet library ( Neubig et al. , 2017 ) with default parameters .
+Experiments
+We ran a series of experiments on two corpora annotated with discontinuous constituents .
+English
+We used an updated version of the Wall Street Journal part of the Penn Treebank corpus ( Marcus et al. , 1994 ) which introduces discontinuity ( Evang and Kallmeyer , 2011 ) .
+Sections 2 - 21 are used for training , 22 for developpement and 23 for testing .
+We used gold and predicted POS tags by the Stanford tagger , 10 trained with 10 jackknifing .
+Dependencies are extracted following the head-percolation table of Collins ( 1997 ) . German
+We used the Tiger corpus ( Brants et al. , 2004 ) with the split defined for the SPMRL 2014 shared task ( Maier , 2015 ; Seddah et al. , 2013 ) . Following Maier ( 2015 ) and Coavoux and Crabb ? ( 2017 ) , we removed sentences number 46234 and 50224 as they contain annotation errors .
+We only used the given gold POS tags .
+Dependencies are extracted following the head-percolation table distributed with Tulipa ( Kallmeyer et al. , 2008 ) .
+We emphasize that long sentences are not filtered out .
+Our derivation extraction algorithm is similar to the one proposed in Carreras et al . ( 2008 ) .
+Regarding decoding , we use a beam of size 10 for spines w.r.t. P ? ( s m |m , w ) = h P ? ( s m |h , m , w ) ? P ? ( h|m , w ) but allow every possible adjunction .
+The maximum number of iterations of the subgradient descent is set to 500 and the stepsize ?
+t is fixed following the rule of Polyak ( 1987 ) .
+Parsing results and timing on short sentences only ( ? 40 words ) and full test set using the de-fault discodop 11 eval script are reported on Table 1 and Table 2 . 12
+We report labeled recall ( LR ) , precision ( LP ) , F-measure ( LF ) and time measured in minutes .
+We also report results published by van Cranenburgh et al . ( 2016 ) for the discontinuous PTB and Coavoux and Crabb ? ( 2017 ) for Tiger .
+Moreover , dependency unlabeled attachment scores ( UAS ) and tagging accuracies ( Spine acc . ) are given on Table 3 .
+We achieve significantly better results on the discontinuous PTB , while being roughly 36 times faster together with a low memory footprint .
+13
+On the Tiger corpus , we achieve on par results .
+Note however that Coavoux and Crabb ? ( 2017 ) rely on a greedy parser combined with beam search .
+Fast and efficient parsing of discontinuous constituent is a challenging task .
+Our method can quickly parse the whole test set , without any parallelization or GPU , obtaining an optimality certificate for more than 99 % of the sentences in less than 500 iterations of the subgradient descent .
+When using a non exact decoding algorithm , such as a greedy transition based method , we may not be able to deduce the best opportunity for improving scores on benchmarks , such as the parameterization method or the decoding algorithm .
+Here the behavior may be easier to interpret and directions for future improvement easier to see .
+We stress that our method is able to produce an optimality certificate on more than 99 % of the test examples thanks to the enhancement presented in Section 4.4 .
+Related Work Spine- based parsing has been investigated in ( Shen and Joshi , 2005 ) for Lexicalized TAGs with a left-to- right shift- reduce parser which was subsequently extended to a bidirectional version in ( Shen and Joshi , 2008 ) .
+A graph- based algorithm was proposed in ( Carreras et al. , 2008 ) for secondorder projective dependencies , and for a form of non-projectivity occurring in machine translation ( i.e. projective parses of permutated input sentences ) in ( Carreras and Collins , 2009 ) .
+Discontinuous phrase-structure parsing through dependencies in contexts other that TAGs have been explored in ( Hall and Nivre , 2008 ; Versley , 2014 ; Fern?ndez-Gonz?lez and Martins , 2015 ) .
+The first two encode spine information as arc labels while the third one relaxes spine information by keeping only the root and height of the adjunction , thus avoiding combinatorial explosion .
+Labeling is performed as a post-processing step in these approaches , since the number of labels can be very high .
+Our model also performs labeling after structure construction , but it could be performed jointly without major issue .
+This is one way our model could be improved .
+GMSA has been studied mostly as a way to solve the non directed version ( i.e. with symetric arc weights ) ( Myung et al. , 1995 ) , see ( Pop , 2009 ; Feremans et al. , 1999 ) for surveys on resolution methods .
+Myung et al. ( 1995 ) proposed an exact decoding algorithm through branch - andbound using a dual ascent algorithm to compute bounds .
+Pop ( 2002 ) also used Lagrangian relaxation - in the non directed case - where a single subproblem is solved in polynomial time .
+However , the relaxed constraints are inequalities : if the dual objective returns a valid primal solution , it is not a sufficient condition in order to guarantee that it is the optimal solution ( Beasley , 1993 ) , and thus the stopping criterion for the subgradient descent is usually slow to obtain .
+To our knowledge , our system is the first time that GMSA is used to solve a NLP problem .
+Dual decomposition has been used to derive efficient practical resolution methods in NLP , mostly for machine translation and parsing , see for an overview and ( Koo et al. , 2010 ) for an application to dependency parsing .
+To accelerate the resolution , our method relies heavily on problem reduction ( Beasley , 1993 ) , which uses the primal / dual bounds to filter out suboptimal assignments .
+Exact pruning based on duality has already been studied in parsing , with branch and bound ( Corro et al. , 2016 ) or column generation ( Riedel et al. , 2012 ) and in machine translation with beam search ( Rush et al. , 2013 ) .
+Conclusion
+We presented a novel framework for the joint task of supertagging and parsing by a reduction to GMSA .
+Within this framework we developed a model able to produce discontinuous constituents .
+The scoring model can be decomposed into tagging and dependency parsing and thus may rely on advances in those active fields .
+This work could benefit from several extensions .
+Bigram scores on spines could be added at the expense of a third subproblem in the dual objective .
+High-order scores on arcs like grandparent or siblings can be handled in subproblem P 2 with the algorithms described in ( Koo et al. , 2010 ) .
+In this work , the parameters are learned as separate models .
+Joint learning in the max-margin framework ( Komodakis , 2011 ; Komodakis et al. , 2015 ) may model interactions between vertex and arc weights better and lead to improved accuracy .
+Finally , we restricted our grammar to spinal trees but it could be possible to allow full lexicalized TAG - like trees , with substitution nodes and even obligatory adjunction sites .
+Derivations compat-ible with the TAG formalism ( or more generally LCFRS ) could be recovered by the use of a constrained version of MSA ( Corro et al. , 2016 ) . , this function could read s h [ i ] , s h [ i + 1 ] and s m [ 0 ] , where s[i ] denotes the i-th grammatical category of the spine s.
+The score of the derivation in Figure 1 could then reflect that the spine WHNP - WP associated with What is adjoined on the spine SBARQ -SQ -VP - VB associated with do on a site with the grammatical triple [ VP WHNP VB ] .

@@ -1,0 +1,224 @@
+title
+Non-Autoregressive Machine Translation with Latent Alignments
+abstract
+This paper presents two strong methods , CTC and Imputer , for non-autoregressive machine translation that model latent alignments with dynamic programming .
+We revisit CTC for machine translation and demonstrate that a simple CTC model can achieve state - of - theart for single-step non-autoregressive machine translation , contrary to what prior work indicates .
+In addition , we adapt the Imputer model for non-autoregressive machine translation and demonstrate that Imputer with just 4 generation steps can match the performance of an autoregressive Transformer baseline .
+Our latent alignment models are simpler than many existing non-autoregressive translation baselines ; for example , we do not require target length prediction or re-scoring with an autoregressive model .
+On the competitive WMT '14 En?
+De task , our CTC model achieves 25.7 BLEU with a single generation step , while Imputer achieves 27.5 BLEU with 2 generation steps , and 28.0 BLEU with 4 generation steps .
+This compares favourably to the autoregressive Transformer baseline at 27.8 BLEU .
+Introduction Non-autoregressive neural machine translation ( Gu et al. , 2018 ) aims to enable the parallel generation of output tokens without sacrificing translation quality .
+There has been a surge of recent interest in this family of efficient decoding models , resulting in the development of iterative refinement ( Lee et al. , 2018 ) , CTC models ( Libovicky and Helcl , 2018 ) , insertion - based methods Chan et al. , 2019 b ) , editbased methods ( Gu et al. , 2019 ; Ruis et al. , 2019 ) , masked language models ( Ghazvininejad et al. , 2019 ( Ghazvininejad et al. , , 2020 b , and normalizing flow models ( Ma et al. , 2019 ) .
+Some of these methods generate the output tokens in a constant number of steps ( Gu et al. , 2018 ; Libovicky and Helcl , 2018 ; Lee et al. , 2018 ; Ghazvininejad et al. , 2019 Ghazvininejad et al. , , 2020 b , while others require a logarithmic number of generation steps Chan et al. , 2019 b , a ; Li and Chan , 2019 ) .
+Recent progress has decreased the gap between autoregressive and non-autoregressive models ' translation scores .
+However , non-autoregressive models often suffer from two main limitations :
+1 . First , most non-autoregressive models assume that the output tokens are conditionally independent given the input .
+This leads to the weakness of such models in generating multi-modal outputs ( Gu et al. , 2018 ) , and materializes in the form of token repetitions in the decoded outputs .
+Addressing this limitation generally involves stochastic search algorithms like noisy parallel decoding ( Gu et al. , 2018 ) , iterative decoding ( Ghazvininejad et al. , 2019 ( Ghazvininejad et al. , , 2020 b , or simple but less effective heuristic methods such as collapsing repetitions ( Lee et al. , 2018 ) . 2 . The second limitation of many prior nonautoregressive models is the requirement of output length prediction as a pre-process .
+Autoregressive models have the ability to dynamically adjust the output sequence length by emitting an < END > token at any generation step to stop .
+Many non-autoregressive models often require a fixed length decoder .
+Thus they train a separate target length prediction module , and at inference time , first predict and condition on the target length , and then generate the output tokens ( Gu et al. , 2018 ) .
+Since the model needs to commit to a fixed predicted length , which cannot be changed dynamically , it is often required to use multiple length candidates and re-score them to produce the final translation ( Ghazvininejad et al. , 2019 ( Ghazvininejad et al. , , 2020 b .
+This paper addresses the limitations of existing non-autoregressive machine translation models by using latent alignment models .
+Latent alignment models utilize a sequence of discrete latent alignment variables to monotonically align the nonautoregressive predictions of the model and output tokens .
+Such models use dynamic programming to marginalize out the alignment variables during training .
+This paper studies two instances of latent alignment models including Connectionist Temporal Classification ( CTC ) ( Graves et al. , 2006 ( Graves et al. , , 2013 Graves and Jaitly , 2014 ) and Imputer ( Chan et al. , 2020 ) . Libovicky and Helcl ( 2018 ) have previously applied CTC to non-autoregressive machine translation .
+However , we report a significant improvement over the work of Libovicky and Helcl ( 2018 ) and demonstrate that CTC can achieve the state - of - the - art in single-step nonautoregressive machine translation .
+We attribute this performance difference primarily to our use of distillation during training , similar to Gu et al . ( 2018 ) .
+We adapt latent alignment models to machine translation and demonstrate their effectiveness on non-autoregressive machine translation , advancing state - of- the - art on WMT '14 En?De and WMT '16 En?Ro .
+The main contributions of this paper include : 1 . We adapt latent alignment models to nonautoregressive machine translation .
+2 . We achieve a new state- of- the- art of 25.8 BLEU on WMT '14 En?
+De for single step nonautoregressive machine translation .
+3 . We achieve 27.5 BLEU with 2 step generation , 28.0 BLEU with 4 step generation , and 28.2 BLEU with 8 step generation for WMT '14 En? De , setting a new state - of - the - art for nonautoregressive machine translation with a constant number of generation steps .
+Latent Alignment Models
+We begin by describing the notion of alignment , which in the context of this paper is defined as in the CTC literature ( Graves et al. , 2006 ( Graves et al. , , 2013 Graves and Jaitly , 2014 ) and should not be confused with word alignments in machine translation ( Manning et al. , 1999 ; Dyer et al. , 2013 ) .
+Alignment is a mapping between a sequence of predicted tokens and a sequence of target tokens .
+Alignment can be constructed by inserting special " blank tokens " into the target sequence to match a pre-specified length .
+Our alignments have the same length as the source sequences , and collapsing the alignment 's blank tokens will recover the target sequence .
+Let x denote a source sequence and let y denote a target sequence , where y i ?
+V and V is the target vocabulary .
+We make two assumptions : 1 ) there exists a monotonic mapping between the model 's predictions and the target sequence , and 2 ) the source sequence is at least as long as the target sequence , i.e. | x | ? |y |.
+We define an alignment a between x and y as a discrete sequence in which a i ?
+V ? { " " } , | a| = | x | , and " " is a special " blank " token that is removed to convert a to the target sequence y .
+We define a function ?( y ) that returns all possible alignments for a sequence y of a particular length | x | .
+We also define the collapsing function ? ?1 ( a ) such that ? ?1 ( a ) = y if a ? ?( y ) .
+To avoid token repetitions , it is useful to define the collapsing function ? ?1 ( a ) as first collapsing all consecutive repeated tokens , and then removing all blank tokens .
+This formulation follows CTC precisely ( Graves et al. , 2006 ) .
+For instance , given a source sequence x of length 10 , and a target sequence y = ( A , A , B , C , D ) , then a possible alignment a is ( , A , A , , A , B , B , C , , D ) .
+The log-likelihood of the target sequence is recovered by marginalizing the latent alignments : log p ? ( y|x ) = log a ?( y ) p ? ( a | x ) ( 1 )
+The summation in ( 1 ) is typically intractable , since there are a combinatorial number of alignments .
+In the next two sub-sections , we will briefly describe two variants of latent alignment models that leverage dynamic programming to tractably compute the log-likelihood , Connectionist Temporal Classification ( CTC ) ( Graves et al. , 2006 ) and Imputer ( Chan et al. , 2020 ) .
+Connectionist Temporal Classification Connectionist Temporal Classification ( CTC ) ( Graves et al. , 2006 ( Graves et al. , , 2013 Graves and Jaitly , 2014 ) models the alignment distribution with a strong conditional independence assumption : p ? ( a|x ) = i p( a i |x ; ? ) ( 2 ) Leveraging this strong conditional independence assumption enables CTC to use an efficient dynamic programming algorithm to exactly marginalize out the latent alignments : log p ? ( y|x ) = log a ?( y ) i p( a i |x ; ? ) ( 3 )
+This allows us to compute the log-likelihood and its gradient tractably .
+We refer the reader to Graves et al . ( 2006 ) for the exact details of the dynamic programming algorithm .
+During inference , CTC generates the alignment distribution in parallel with a single generation step ; the output sequence can then be recovered by greedy decoding or beam search ( Graves et al. , 2006 ) .
+We use greedy decoding in all our experiments .
+Imputer
+The CTC model makes strong conditional independence assumption between alignment token predictions .
+This assumption licenses CTC to generate the entire alignment in parallel , with a single generation step independent of the number of source or target tokens .
+However , the strong conditional independence assumption limits its capacity to model complex multi-modal distributions .
+On the other hand , autoregressive models are capable of modelling such complex multi-modalities with the chain rule factorization , but requires n decoding steps to generate n tokens during inference .
+Imputer ( Chan et al. , 2020 ) aims to address these limitations .
+Imputer is an iterative generative model needing only a constant number of generation steps for inference .
+It makes conditional independence assumptions within a generation step to achieve parallel generation , and models conditional dependencies across generation steps .
+This approach has been applied successfully in speech recognition ( Chan et al. , 2020 ) , matching autoregressive models with only a constant number of generation steps .
+Imputer models the distribution of alignments p ? ( a| x ) as : p ? ( a| x ) = ?( a ) p ? ( a| ? , x ) p( ?| x ) ( 4 ) where ? is a ( partially masked out ) alignment , and ?( a ) is the set of all possible masking permutations of a . ( 4 ) marginalizes over all possible alignments between the input and output sequences , and all possible generation orders .
+Imputer models the next alignment a conditioned on the previous alignment ? : p ? ( a| ? , x ) = i p( a i |? , x ; ? ) ( 5 ) The key insight to Imputer is that we can construct a log-likelihood lower - bound : log p ? ( y|x ) ? E a?( y ) ? ? E ?( a ) ? ? log a ? ( ? , a ) p ? ( a |? , x ) ? ? ? ? ( 6 ) where a ? ? ( ? , a ) captures all possible alignments a consistent with ( ? , a ) ( Chan et al. , 2020 ) .
+This equation can be solved efficiently via dynamic programming ( Chan et al. , 2020 ) .
+This formulation licenses Imputer with an iterative generation process .
+Tokens are generated independently ( and in parallel ) within a generation step but are conditioned on the partially predicted alignment ? of the last iteration ( unlike CTC ) .
+In practice , Imputer uses a constant number of decoding iterations independent of the sequence length ( Chan et al. , 2020 ) .
+Both CTC and Imputer have seen much success in tasks like speech recognition ( Graves and Jaitly , 2014 ; Chan et al. , 2020 ) .
+However , to the best of our knowledge , these latent alignment models have not been widely applied to machine translation , with the exception of Libovicky and Helcl ( 2018 ) .
+These latent alignment models hold two key advantages over prior non-autoregressive machine translation work ( Gu et al. , 2018 ; Ghazvininejad et al. , 2019 ) , namely : the token repetition problem and the target length prediction problem .
+We will discuss them in detail in Section 3 .
+Latent Alignment Models for Machine Translation
+In this section , we will discuss how latent alignment models can be adapted to machine translation , and then describe key advantages offered by these models .
+Section 2 identified two assumptions made by latent alignment models : 1 ) there exists a monotonic mapping between the model alignment predictions and the target sequence , and 2 ) the length of the target sequence is less than or equal to the length of source sequence , i.e. | y | ? | x| .
+We will now address these issues to adapt our models for machine translation .
+Monotonic Assumption .
+A monotonic structure between model alignment predictions and the target sequence is desired for the dynamic programming algorithm to marginalize out the latent alignments in Equation ( 1 ) .
+Unlike tasks such as speech recognition , a monotonic relationship between the model alignment predictions and the target sequence may not exist in machine translation .
+For instance , speech - to - text is inherently local , whereas there is typically some global word reordering in machine translation .
+We hypothesize that if we use a powerful deep neural network like the Transformer ( Vaswani et al. , 2017 ) , the Transformer will have sufficient computational capacity to learn to reorder the contextual embeddings such that it is approximately monotonic with the target sequence .
+Libovicky and Helcl ( 2018 ) also made a similar assumption .
+Length Assumption .
+By construction , our alignments are the same length as the source sequence , and consequently , we can not generate a target sequence longer than the source sequence .
+This is not a problem for speech recognition , since the source sequence is generally much longer than the target sequence ; however , this is prohibitively restrictive for machine translation .
+This issue was also discussed in Libovicky and Helcl ( 2018 ) , and they proposed a simple solution of up-sampling the source sequence to s times the original length .
+Choosing a sufficient canvas scale of s , we can ensure the alignment is long enough to model the target sequence across our training distribution .
+We use a very similar up-sampling method applied to the embedding matrix of the source sequence .
+Given a source sequence embedding x ? R |x|?d with d-dimension and length | x | , we simply upsample x ? R s?|x |?d via an affine transformation .
+Model Architecture
+Our neural architecture is simply a stack of selfattention layers ( Vaswani et al. , 2017 ) .
+The source sequence is upsampled ( to handle longer target sequences as described above ) .
+In the Imputer architecture , the input to our self-attention stack is simply the superpositioning of the upsampled source and the previous alignment .
+Our work differs from the prior method , 1 ) our unified architecture does not have separate encoder decoders which require cross-attention mechanisms , 2 ) our architecture is bidirectional , and does not rely on causality masks .
+Figure 1 visualizes our architecture .
+Advantages Latent alignment models mitigate two common issues shared by many non-autoregressive machine translation models - token repetition and the requirement for separate target length prediction .
+Fewer Token Repetitions
+Non-autoregressive sequence models make a conditional independence assumption between token predictions .
+This licenses them to parallel token generation during inference ; however , it makes it difficult to model complex multi-modal distributions .
+This is especially true for single-step generation models which make strong conditional independence assumptions .
+During inference , this conditional independent generation often results in the token repetition problem , where tokens are erroneously repeated in the output sequence .
+This issue has been discussed extensively in prior works ( Gu et al. , 2018 ; Lee et al. , 2018 ; Ghazvininejad et al. , 2019 ) in the context of machine translation , and has been shown to have a negative impact on performance .
+To handle these repetitions , Gu et al . ( 2018 ) used Noisy Parallel Decoding , wherein they sample a large number of translation hypotheses and use an autoregressive teacher to re-score them to implicitly penalize translations with more erroneous repetitions .
+Lee et al. ( 2018 ) adopted a simple but less effective heuristic of simply removing all consecutive repetitions from the predicted target sequence .
+Ghazvininejad et al. ( 2019 ) hypothesized that iterative decoding can help remove repetitions by allowing the model to condition on parts of the input , thus collapsing the multi-modal distribution into a sharper uni-modal distribution .
+They empirically show that the first few decoding iterations are crucial for removing repetitions resulting in a sharp increase in performance .
+Like other non-autoregressive models , latent alignment models also perform conditionally independent generation , and hence face the issue of token repetitions .
+Although they differ from the other models in that they do not generate the target sequence directly .
+Rather , the inference process involves the generation of the target alignment , followed by collapsing the generated alignment into the target sequence using the collapsing function ?
+?1 . Recall by construction , ? ?1 collapses repeated tokens ( Graves et al. , 2006 ) , this inference process enables these models to handle erroneous repetitions implicitly by naturally collapsing them .
+In particular , for single-step decoding , we show that our CTC based model removes most of the repetitions while collapsing the alignment into target sequence , resulting in a significant improvement in translation quality over prior single step generation models .
+In addition , we show that Imputer requires just 4 decoding iterations to achieve state - of - the - art translation scores on WMT14 En? De , in contrast to 10 iterations used by Mask - Predict ( Ghazvininejad et al. , 2019 ) .
+No Target Length Prediction Needed Many prior non-autoregressive models ( Gu et al. , 2018 ; Ghazvininejad et al. , 2019 ) first predict the target length , then conditioned on the target length predict the target sequence .
+This is needed because these architectures utilize an encoderdecoder formulation , and the decoder requires a fixed canvas size to work with .
+The length is fixed , and it cannot be changed dynamically by the model during decoding .
+Due to this lack of flexibility , during inference , one typically samples multiple length candidates and performs decoding for each length followed by re-ranking them to get a final translation .
+This not only requires tuning of a new hyperparameter for determining the number of length candidates to sample during inference but also entails a considerable amount of extra inference computation .
+Our latent alignment models do not require target length prediction , but rather implicitly determine the target sequence length through the alignment .
+This is possible since the alignment is of the same length as the source sequence , thus eliminating the requirement of predicting target length in advance during inference .
+The caveat is that we can not generate a target sequence longer than the source sequence , which we address in Section 3 . Libovicky and Helcl ( 2018 ) , which also applied CTC to machine translation , made a similar argument , and we further extend this to Imputer .
+Our approach simplifies the architecture and decoding process , avoiding a need to build a target length prediction model and searching over it during inference .
+Related Work
+There has been significant prior work on nonautoregressive iterative methods for machine translation ( Gu et al. , 2018 ) , some of which are : iterative refinement ( Lee et al. , 2018 ) , insertionbased methods Chan et al. , 2019a ; Li and Chan , 2019 ) , and conditional masked language models ( Ghazvininejad et al. , 2019 ( Ghazvininejad et al. , , 2020 b . Like insertion - based models Chan et al. , 2019 c ) , our work does not commit to a fixed target length ; insertionbased models can dynamically grow the canvas size , whereas our work which relies on a latent alignment can only generate a target sequence up to a fixed maximum predetermined length .
+Compared to conditional masked languages models ( Ghazvininejad et al. , 2019 ( Ghazvininejad et al. , , 2020 b , key differences are : 1 ) our models do not require target length prediction , and 2 ) we eschew the encoderdecoder neural architecture formulation , but rather rely on the single simple decoder architecture .
+KERMIT
+( Chan et al. , 2019 b , a ) also has a similar neural architecture as us ; they also eschew the conventional encoder-decoder architecture and have a unified architecture .
+Our work relies on the superpositioning of the input and output sequences via the latent alignment , whereas KERMIT relies on concatenation to process the input and output sequences .
+Their work is also more focused on Input : Ein weiterer , besonders wichtiger Faktor sei die Vernetzung von Hochschulen und Unternehmen .
+Output : Another particularly important factor is the networking of universities and businesses .
+Imputer Decoding :
+Another particularly important factor is the networking of universities and businesses .
+Another particularly important factor is the networking of universities and businesses .
+Another particularly important factor is the networking of universities and businesses .
+Another particularly important factor is the networking of universities and businesses .
+Another particularly important factor is the networking of universities and businesses .
+Another particularly important factor is the networking of universities and businesses .
+Another particularly important factor is the networking of universities and businesses .
+Another particularly important factor is the networking of universities and businesses . generative p(x , y ) modelling , whereas our work is focused on conditional modelling p( y | x ) .
+Our CTC work is closely related to and inspired heavily by Libovicky and Helcl ( 2018 ) , which applied CTC single step generation models .
+The key difference is that our work used data distillation for training , and we find that distillation provides a significant boost in performance for our CTC models .
+Finally , our work is closely related to the concurrent work of Ghazvininejad et al . ( 2020a ) on AXE CMLM .
+Similar to our work , they also assume a latent alignment and use dynamic programming for learning .
+Their work focused on the single-step generation and demonstrated strong results , while we apply our models to both single step and iterative generation .
+Experiments Hyperparameters .
+We follow the base Transformer ( Vaswani et al. , 2017 ) for our experiments .
+However , since our architecture does not contain an encoder , we double the number of layers in our decoder to maintain the same number of parameters .
+Our models consist of 12 self-attention layers , with 512 hidden size , 2048 filter size , and 8 attention heads per layer .
+We use 0.1 dropout for regularization .
+We batch sequences of approximately same lengths together , with approximately 2048 tokens per batch .
+We use Adam optimizer ( Kingma and Ba , 2015 ) with ? = ( 0.9 , 0.997 ) and = 10 ?9 .
+The learning rate warms up to 10 ?3 in the first 10 k steps and then decays with the inverse square root schedule following the Tensor2Tensor implementation ( Vaswani et al. , 2018 ) .
+We train all our models for 2 M steps .
+We train the Imputer using CTC loss ( all masked prior alignment ) for 1 M steps , followed by Bernoulli masking policy ( Chan et al. , 2020 ) for next 1 M steps .
+We average the 5 checkpoints with the best performance on the development set to get the final model .
+For Imputer , we use top-k decoding during inference .
+We use canvas scale s = 2 for all our experiments , meaning we upsample the source sequence by a factor of 2 .
+Dataset .
+We perform experiments on WMT '14 En? De , using newstest2013 as the development set , and report newstest2014 as the test set .
+We also report our performance on WMT '16 En-Ro .
+We use SentencePiece ( Kudo and Richardson , 2018 ) to generate a shared subword vocabulary .
+We evaluate the performance of our models with BLEU ( Papineni et al. , 2002 ) . Distillation .
+We follow prior work ( Gu et al. , 2018 ; Lee et al. , 2018 ; Ghazvininejad et al. , 2019 ) and use data distilled from an autoregressive teacher for training our models .
+We use autoregressive base Transformers for generating distilled data .
+For iterative generation , we also report the performance of Imputer model trained on data distilled from autoregressive big Transformers to be comparable with ( Ghazvininejad et al. , 2019 ( Ghazvininejad et al. , , 2020 b which distilled from a big Transformer .
+For WMT '16 En- Ro , we use the distilled dataset provided by Ghazvininejad et al . ( 2019 ) 1 . We analyze the impact of distillation on the performance of our models in Section 6.3 .
+Single Step Decoding
+We first report the performance of latent alignment models for single-step decoding .
+CTC makes full conditional independence assumption allowing the generation of the entire target sequence in a single step .
+We can also perform nonautoregressive single step generation with Imputer by imputing all of the tokens at once .
+Table 1 summarizes the performance of our models and other non-autoregressive single step generation models .
+Our CTC model achieves 25.7 BLEU , and the Imputer model achieves 25.8 BLEU for WMT '14 En?De .
+We find that our single step generation models outperform the autoregressive GNMT model of Wu et al . ( 2016 ) on En?De with 24.6 BLEU .
+To the best of our knowledge , our CTC and Imputer models outperform all prior work on single-step generation on WMT '14 En?De and WMT '16 En?Ro .
+Iterative Decoding
+We now analyze the performance of Imputer .
+Imputer uses a constant number of decoding iterations independent of sequence length .
+We compare our performance with other sub-linear nonautoregressive models , ranging from models requiring logarithmic to a constant number of decoding iterations .
+Table 2 summarizes the results of Imputer model .
+Our Imputer model using 8 decoding iterations achieves 28.2 BLEU on En? De , slightly outper-forming the autoregressive Transformer of 27.8 BLEU .
+On De?En , we achieve 31.3 BLEU , on par with the autoregressive Transformer model .
+Similarly , on En?Ro , Imputer matches the performance of the autoregressive teacher using just 4 decoding iterations .
+We also observe the robustness of our Imputer model when we reduce the number of decoding iterations from 8 to 2 .
+Using only 2 iterations , we obtain 27.5 BLEU on En?De and 30.2 BLEU on De?En .
+These results were trained with distillation from a big Transformer model .
+However , even when we distill from the base Transformer as shown in Table 3 , Imputer still performs on par with the autoregressive Transformer achieving 27.9 and 31.1 BLEU on En?De and De?En respectively .
+Figure 2 shows an example 8- step iterative decoding by Imputer .
+Analysis
+In this section , we present further analysis of our latent alignment models .
+We analyze the ( 1 ) impact on token repetitions in generated translations , ( 2 ) impact of the number of decoding iterations on Imputer , ( 3 ) impact of distillation on our models , and ( 4 ) impact of target length on Imputer .
+Token Repetitions
+We compare the repetition rate of our CTC model with single-step Mask - Predict ( Ghazvininejad et al. , 2019 ) and the concurrent work AXE CMLM Ghazvininejad et al. , 2020a ) in Table 4 . We also report the percentage of repetitions in the original test set for reference .
+We observe a significantly lower rate of token repetitions in our CTC model compared to both the models .
+This empirical observation supports our hypothesis that ?
+?1 helps remove spurious token repetitions .
+Impact of Number of Decoding Iterations
+The number of decoding iterations is an important hyperparameter in iterative models , provid -
+On one end , imputing all the tokens ( k = ? ) in one step results in single-step decoding , while on the other end , imputing 1 token per step ( k = 1 ) results in linear autoregressive decoding ( but not necessarily left-to- right ) .
+Figure 3 shows the BLEU score vs target length T for WMT '14 En?
+De test set , where T is the number of decoding iterations .
+As expected , the performance consistently increases with an increase in T .
+We find that Imputer is robust to T , sacrificing just 0.6 BLEU points when reducing T from 8 to 2 .
+We can match the performance of its autoregressive teacher using just 4 decoding iterations .
+Interestingly , the performance keeps increasing consistently beyond 8 iterations , and even outperforming the autoregressive teacher slightly .
+In the extreme case of autoregressive O(n ) decoding , we obtain 28.3 BLEU score , exceeding the teacher 's performance by 0.5 BLEU points .
+Impact of Distillation
+We analyze the impact of distillation on our models by comparing them to original training data versus training data from a base Transformer teacher on the WMT '14 En?
+De dataset .
+Table 6 summarizes the results .
+In all cases , models trained with the distilled data perform significantly better than the model trained with the original data .
+We observe that the performance gap is largest in the case of the CTC model , and decreases with an increase in the number of decoding iterations .
+This is consistent with prior work finding distillation to improve model quality ( Gu et al. , 2018 ; . decoding iterations .
+Increase in the number of decoding iterations provides consistent gain across all buckets .
+Impact of Target Length for Imputer
+Conclusion
+In this paper , we investigated two latent alignments models , CTC and Imputer , for nonautoregressive machine translation .
+CTC is a single step generation model , while Imputer is an iterative generative model requiring only a constant number of generation steps .
+Our models rely on dynamic programming to marginalize out the latent alignments .
+Unlike many prior works , our models do not need to perform target length prediction , or re-scoring of candidates and our models use a simplified neural architecture without the need of cross-attention mechanism found in many prior encoder-decoder architectures .
+We demonstrate the ease and effectiveness of the application of these simple latent alignment models primarily used in speech recognition to the task of machine translation .
+Applying these latent alignment models for parallel translation of long documents can be an interesting research direction .
+Figure 1 : 1 Figure 1 : Visualization of the CTC ( a ) and Imputer ( b ) architecture for non-autoregressive machine translation .

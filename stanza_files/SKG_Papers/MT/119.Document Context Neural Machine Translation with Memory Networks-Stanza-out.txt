@@ -1,0 +1,207 @@
+title
+Document Context Neural Machine Translation with Memory Networks
+abstract
+We present a document- level neural machine translation model which takes both source and target document context into account using memory networks .
+We model the problem as a structured prediction problem with interdependencies among the observed and hidden variables , i.e. , the source sentences and their unobserved target translations in the document .
+The resulting structured prediction problem is tackled with a neural translation model equipped with two memory components , one each for the source and target side , to capture the documental interdependencies .
+We train the model endto-end , and propose an iterative decoding algorithm based on block coordinate descent .
+Experimental results of English translations from French , German , and Estonian documents show that our model is effective in exploiting both source and target document context , and statistically significantly outperforms the previous work in terms of BLEU and METEOR .
+Introduction Neural machine translation ( NMT ) has proven to be powerful ( Sutskever et al. , 2014 ; Bahdanau et al. , 2015 ) .
+It is on - par , and in some cases , even surpasses the traditional statistical MT ( Luong et al. , 2015 ) while enjoying more flexibility and significantly less manual effort for feature engineering .
+Despite their flexibility , most neural MT models translate sentences independently .
+Discourse phenomenon such as pronominal anaphora and lexical consistency , may depend on long- range dependency going farther than a few previous sentences , are neglected in sentencebased translation ( Bawden et al. , 2017 ) .
+There are only a handful of attempts to document -wide machine translation in statistical and neural MT camps .
+Hardmeier and Federico ( 2010 ) ; Gong et al. ( 2011 ) ; Garcia et al. ( 2014 ) propose document translation models based on statistical MT but are restrictive in the way they incorporate the document- level information and fail to gain significant improvements .
+More recently , there have been a few attempts to incorporate source side context into neural MT ( Jean et al. , 2017 ; Wang et al. , 2017 ; Bawden et al. , 2017 ) ; however , these works only consider a very local context including a few previous source / target sentences , ignoring the global source and target documental contexts .
+The latter two report deteriorated performance when using the target-side context .
+In this paper , we present a document- level machine translation model which combines sentencebased NMT ( Bahdanau et al. , 2015 ) with memory networks ( Sukhbaatar et al. , 2015 ) .
+We capture the global source and target document context with two memory components , one each for the source and target side , and incorporate it into the sentence - based NMT by changing the decoder to condition on it as the sentence translation is generated .
+We conduct experiments on three language pairs : French - English , German-English and Estonian - English .
+The experimental results and analysis demonstrate that our model is effective in exploiting both source and target document context , and statistically significantly outperforms the previous work in terms of BLEU and METEOR .
+Background
+Neural Machine Translation ( NMT )
+Our document NMT model is grounded on sentence - based NMT model ( Bahdanau et al. , 2015 ) which contains an encoder to read the source sentence as well as an attentional decoder to generate the target translation .
+Encoder
+It is a bidirectional RNN consisting of two RNNs running in opposite directions over the source sentence : ? ? hi = ? RNN ( ? ? h i?1 , ES [ xi ] ) , ? ? h i = ? RNN ( ? ? h i +1 , ES [ xi ] ) where E S [ x i ] is embedding of the word x i from the embedding table E S of the source language , and ? ? h i and ? ? h i are the hidden states of the forward and backward RNNs which can be based on the LSTM ( Hochreiter and Schmidhuber , 1997 ) or GRU ( Cho et al. , 2014 ) units .
+Each word in the source sentence is then represented by the concatenation of the corresponding bidirectional hidden states , h i = [ ? ? h i ; ? ? h i ] .
+Decoder
+The generation of each word y j is conditioned on all of the previously generated words y <j via the state of the RNN decoder s j , and the source sentence via a dynamic context vector c j : yj ? softmax ( Wy ? rj + br ) rj = tanh ( s j + Wrc ? cj + Wrj ? ET [ yj? 1 ] ) sj = tanh ( Ws ? sj?1 + Wsj ? ET [ yj? 1 ] + Wsc ? cj ) where E T [ y j ] is embedding of the word y j from the embedding table E T of the target language , and W matrices and b r vector are the parameters .
+The dynamic context vector c j is computed via c j = i ?
+ji h i , where ? j = softmax ( a j ) a ji = v ? tanh ( W ae ? h i + W at ? s j?1 )
+This is known as the attention mechanism which dynamically attends to relevant parts of the source necessary for generating the next target word .
+Memory Networks ( MemNets ) Memory
+Networks are a class of neural models that use external memories to perform inference based on long-range dependencies .
+A memory is a collection of vectors M = {m 1 , .. , m K } constituting the memory cells , where each cell m k may potentially correspond to a discrete object x k .
+The memory is equipped with a read and optionally a write operation .
+Given a query vector q , the output vector generated by reading from the memory is
+| M | i=1 p i m i , where p i represents the relevance of the query to the i-th memory cell p =
+Document NMT as Structured Prediction
+We formulate document-wide machine translation as a structured prediction problem .
+Given a set of sentences {x 1 , . . . , x | d| } in a source document d , we are interested in generating the collection of their translations {y 1 , . . . , y |d| } taking into account interdependencies among them imposed by the document .
+We achieve this by the factor graph in Figure 1 to model the probability of the target document given the source document .
+Our model has two types of factors : ? f ? ( y t ; x t , x ?t ) to capture the interdependencies between the translation y t , the corresponding source sentence x t and all the other sentences in the source document x ?t , and ? g ? ( y t ; y ?t ) to capture the interdependencies between the translation y t and all the other translations in the document y ?t .
+Hence , the probability of a document translation given the source document is P (y 1 , . . . , y |d| |x 1 , . . . , x | d| ) ? exp t f ? ( y t ; x t , x ?t ) + g ? ( y t ; y ?t ) .
+The factors f ? and g ? are realised by neural architectures whose parameters are collectively denoted by ?.
+Training
+It is challenging to train the model parameters by maximising the ( regularised ) likelihood since computing the partition function is hard .
+This is due to the enormity of factors g ?
+( y t ; y ?t ) over a large number of translation variables y t 's ( i.e. , the number of sentences in the document ) as well as their unbounded domain ( i.e. , all sentences in the target language ) .
+Thus , we resort to maximising the pseudo-likelihood ( Besag , 1975 ) for training the parameters : arg max ? d?D |d| t=1 P ? ( y t |x t , y ?t , x ?t ) ( 1 ) where D is the set of bilingual training documents , and | d| denotes the number of ( bilingual ) sentences in the document d = {( x t , y t ) } | d| t=1 .
+We directly model the document-conditioned NMT model P ? ( y t |x t , y ?t , x ?t ) using a neural architecture which subsumes both the f ? and g ? factors ( covered in the next section ) .
+Decoding
+To generate the best translation for a document according to our model , we need to solve the following optimisation problem : arg max y 1 ,... , y |d| |d| t=1 P ? ( y t |x t , y ?t , x ?t ) which is hard ( due to similar reasons as mentioned earlier ) .
+We hence resort to a block coordinate descent optimisation algorithm .
+More specifically , we initialise the translation of each sentence using the base neural MT model P ( y t |x t ) .
+We then repeatedly visit each sentence in the document , and update its translation using our document-context dependent NMT model P ( y t |x t , y ?t , x ?t ) while the translations of other sentences are kept fixed .
+Context Dependent NMT with MemNets
+We augment the sentence- level attentional NMT model by incorporating the document context ( both source and target ) using memory networks when generating the translation of a sentence , as shown in Figure 2 .
+Our model generates the target translation word - by - word from left to right , similar to the vanilla attentional neural translation model .
+However , it conditions the generation of a target word not only on the previously generated words and the current source sentence ( as in the vanilla NMT model ) , but also on all the other source sentences of the document and their translations .
+That is , the generation process is as follows : P ? ( yt|xt , y?t , x?t ) = |y t | j=1 P ? ( yt , j|yt , <j , xt , y?t , x?t ) ( 2 ) where y t , j is the j-th word of the t-th target sentence , y t , <j are the previously generated words , and x ?t and y ?t are as introduced previously .
+Our model represents the source and target document contexts as external memories , and attends to relevant parts of these external memories when generating the translation of a sentence .
+Let M [ x ?t ] and M [y ?t ] denote external memories representing the source and target document context , respectively .
+These contain memory cells corresponding to all sentences in the document except the t-th sentence ( described shortly ) .
+Let h t and s t be representations of the t-th source sentence and its current translation , from the encoder and decoder respectively .
+We make use of h t as the query to get the relevant context from the source external memory : c src t = MemNet ( M [ x ?t ] , h t )
+Furthermore , for the t-th sentence , we get the relevant information from the target context : c trg t = MemNet ( M [ y ?t ] , s t + W at ? h t ) where the query consists of the representation of the translation s t from the decoder endowed with that of the source sentence h t from the encoder to make the query robust to potential noises in the current translation and circumvent error propagation , and W at projects the source representation into the hidden state space .
+Now that we have representations of the relevant source and target document contexts , Eq. 2 can be re-written as : P ? ( yt|xt , y?t , x?t ) = |y t | j=1 P ? ( yt , j|yt , <j , xt , c trg t , c src t ) ( 3 )
+More specifically , the memory contexts c src t and c trg t are incorporated into the NMT decoder as : ?
+Memory - to - Context in which the memory contexts are incorporated when computing the next decoder hidden state : ?
+Memory - to- Output in which the memory contexts are incorporated in the output layer : s t , j = tanh ( W s ? s t , j?1 + W sj ? E T [ y t , j ] + W sc ? c t , j + W sm ?
+c src t + W st ?
+c trg t ) y t , j ? softmax ( W y ? r t , j + W ym ?
+c src t + W yt ?
+c trg t + b r ) where W sm , W st , W ym , and W yt are the new parameter matrices .
+We use only the source , only the target , or both external memories as the additional conditioning contexts .
+Furthermore , we use either the Memory- to - Context or Memory - to - Output architectures for incorporating the document contexts .
+In the experiments , we will explore these different options to investigate the most effective combination .
+We now turn our attention to the construction of the external memories for the source and target sides of a document .
+The Source Memory
+We make use of a hierarchical 2 - level RNN architecture to construct the external memory of the source document .
+More specifically , we pass each sentence of the document through a sentence - level bidirectional RNN to get the representation of the sentence ( by concatenating the last hidden states of the forward and backward RNNs ) .
+We then pass the sentence representations through a document- level bidirectional RNN to propagate sentences ' information across the document .
+We take the hidden states of the document-level bidirectional RNNs as the memory cells of the source external memory .
+The source external memory is built once for each minibatch , and does not change throughout the document translation .
+To be able to fit the computational graph of the document NMT model within GPU memory limits , we pre-train the sentence - level bidirectional RNN using the language modelling training objective .
+However , the document- level bidirectional RNN is trained together with other parameters of the document NMT model by back - propagating the document translation training objective .
+The Target Memory
+The memory cells of the target external memory represent the current translations of the document .
+Recall from the previous section that we use coordinate descent iteratively to update these translations .
+Let {y 1 , . . . , y |d| } be the current translations , and let {s |y 1 | , . . . , s |y |d| | } be the last states of the decoder when these translations were generated .
+We use these last decoder states as the cells of the external target memory .
+We could make use of hierarchical sentencedocument RNNs to transform the document translations into memory cells ( similar to what we do for the source memory ) ; however , it would have been computationally expensive and may have resulted in error propagation .
+We will show in the experiments that our efficient target memory construction is indeed effective .
+Experiments and Analysis Datasets .
+We conducted experiments on three language pairs : French - English , German-English and Estonian - English .
+Table 1 shows the statistics of the datasets used in our experiments .
+The French - English dataset is based on the TED Talks corpus 1 ( Cettolo et al. , 2012 ) where each talk is considered a document .
+The Estonian - English data comes from the Europarl v7 corpus 2 ( Koehn , 2005 ) . Following Smith et al. ( 2013 ) , we split the speeches based on the SPEAKER tag and treat them as documents .
+The French-English and Estonian - English corpora were randomly split into train / dev/ test sets .
+For German- English , we use the News Commentary v9 corpus 3 for training , news - dev2009 for development , We pre-processed all corpora to remove very short documents and those with missing translations .
+Out - of-vocabulary and rare words ( frequency less than 5 ) are replaced by the < UNK > token , following Cohn et al . ( 2016 ) .
+4 Evaluation Measures
+We use BLEU ( Papineni et al. , 2002 ) and METEOR ( Lavie and Agarwal , 2007 ) scores to measure the quality of the generated translations .
+We use bootstrap resampling ( Clark et al. , 2011 ) to measure statistical significance , p < 0.05 , comparing to the baselines .
+Implementation and Hyperparameters
+We implement our document- level neural machine translation model in C ++ using the DyNet library ( Neubig et al. , 2017 ) , on top of the basic sentence - level NMT implementation in mantis ( Cohn et al. , 2016 ) .
+For the source memory , the sentence and document-level bidirectional RNNs use LSTM and GRU units , respectively .
+The translation model uses GRU units for the bidirectional RNN encoder and the 2 - layer RNN decoder .
+GRUs are used instead of LSTMs to reduce the number of parameters in the main model .
+The RNN hidden dimensions and word embedding sizes are set to 512 in the translation and memory components , and the alignment dimension is set to 256 in the translation model .
+Training
+We use a stage-wise method to train the variants of our document context NMT model .
+Firstly , we pre-train the Memory- to- Context / Memory - to- Output models , setting their readings from the source and target memories to the zero vector .
+This effectively learns parameters associated with the underlying sentence - based NMT model , which is then used as initialisation when training all parameters in the second stage ( including the ones from the first stage ) .
+For the first stage , we make use of stochastic gradient descent ( SGD ) 5 with initial learning rate of 0.1 and a decay factor of 0.5 after the fourth epoch for a total of ten epochs .
+The convergence occurs in 6 - 8 epochs .
+For the second stage , we use SGD with an initial learning rate of 0.08 and a decay factor of 0.9 after the first epoch for a total of 15 epochs 6 .
+The best model is picked based on the dev-set perplexity .
+To avoid overfitting , we employ dropout with the rate 0.2 for the single memory model .
+For the dual memory model , we set dropout for Document RNN to 0.2 and for the encoder and decoder to 0.5 .
+Mini- batching is used in both stages to speed up training .
+For the largest dataset , the document NMT model takes about 4.5 hours per epoch to train on a single P100 GPU , while the sentence - level model takes about 3 hours per epoch for the same settings .
+When training the document NMT model in the second stage , we need the target memory .
+One option would be to use the ground truth translations for building the memory .
+However , this may result in inferior training , since at the test time , the decoder iteratively updates the translation of sentences based on the noisy translations of other sentences ( accessed via the target memory ) .
+Hence , while training the document NMT model , we construct the target memory from the translations generated by the pre-trained sentence - level model 7 .
+This effectively exposes the model to its potential test-time mistakes during the training time , resulting in more robust learned parameters .
+Main Results
+We have three variants of our model , using : ( i ) only the source memory ( S- NMT + src mem ) , ( ii ) only the target memory ( S- NMT + trg mem ) , or ( iii ) both the source and target memories ( S- NMT + both mems ) .
+We compare these variants against the standard sentence - level NMT model ( S - NMT ) .
+We also compare the source memory variants of our model to the local context - NMT models 8 of Jean et al . ( 2017 ) and Wang et al . ( 2017 ) , which use a few previous source sentences as context , added to the decoder hidden state ( similar to our Memory - to- Context model ) .
+Memory-to- Context
+We consistently observe + 1.15/+1.13 BLEU / METEOR score improvements across the three language pairs upon comparing our best model to S-NMT ( see Table 2 ) .
+Overall , our document NMT model with both memories has been the most effective variant for all of the three language pairs .
+We further experiment to train the target memory variants using gold translations instead of the generated ones for German- English .
+This led to ?0.16 and ?0.25 decrease 9 in the BLEU scores for the target-only and both-memory variants , which confirms the intuition of constructing the target memory by exposing the model to its noises during training time .
+Memory-to- Output From Table 2 , we consistently see +.95/ +1.00 BLEU / METEOR improvements between the best variants of our model and the sentence - level baseline across the three lan - 8 We implemented and trained the baseline local context models using the same hyperparameters and training procedure that we used for training our memory models .
+9 Latter is statistically significant decrease w.r. guage pairs .
+For French ?
+English , all variants of document NMT model show comparable performance when using BLEU ; however , when evaluated using METEOR , the dual memory model is the best .
+For German ?
+English , the target memory variants give comparable results , whereas for Estonian ?
+English , the dual memory variant proves to be the best .
+Overall , the Memory- to - Context model variants perform better than their Memory - to - Output counterparts .
+We attribute this to the large number of parameters in the latter architecture ( Table 3 ) and limited amount of data .
+We further experiment with more data for train - ing the sentence - based NMT to investigate the extent to which document context is useful in this setting .
+We randomly choose an additional 300K German-English sentence pairs from WMT '14 data to train the base NMT model in stage 1 .
+In stage 2 , we use the same document corpus as before to train the document- level models .
+As seen from Figure 3 , the document MT variants still benefit from the document context even when the base model is trained on a larger bilingual corpus .
+For the Memory - to - Context model , we see massive improvements of + 0.72 and + 1.44 METEOR scores for the source memory and dual memory model respectively , when compared to the baseline .
+On the other hand , for the Memory - to - Output model , the target memory model 's METEOR score increases significantly by + 1.09 compared to the baseline , slightly differing from the corresponding model using the smaller corpus ( + 1.2 ) .
+4 shows comparison of our Memory - to - Context model variants to local source context - NMT models ( Jean et al. , 2017 ; Wang et al. , 2017 ) . For French ?
+English , our source memory model is comparable to both baselines .
+For German ?
+English , our S-NMT + src mem model is comparable to Jean et al . ( 2017 ) but outperforms Wang et al . ( 2017 ) for one test set according to BLEU , and for both test sets according to METEOR .
+For Estonian ?
+English , our model outperforms Jean et al . ( 2017 ) .
+Our global source context model has only surface - level sentence information , and is oblivious to the individual words in the context since we do an offline training to get the sentence representations ( as previously mentioned ) .
+However , the other two context baselines have access to that information , yet our model 's performance is either better or quite close to those models .
+We also look into the unigram BLEU scores to see how much our global source memory variants lead to improvement at the word-level .
+From Table 5 , it can be seen that our model 's performance is better than the baselines for majority of the cases .
+The S-NMT + both mems model gives the best results for all three language pairs , showing that leveraging both source and target document context is indeed beneficial for improving MT performance .
+Local Source Context Models Table
+Analysis Using Global / Local Target Context
+We first investigate whether using a local target context would have been equally sufficient in comparison to our global target memory model for the three datasets .
+We condition the decoder on the previous target sentence representation ( obtained from the last hidden state of the decoder ) by adding it as an additional input to all decoder states ( PrevTrg ) similar to our Memory - to - Context model .
+From Table 6 , we observe that for French ?
+English and Estonian ?
+English , using all sentences in the target context or just the previous target sentence gives comparable results .
+We may attribute this to these specific datasets , that is documents from TED talks or European Parliament Proceedings may depend more on the local than on the global context .
+However , for German ?
+English ( NC - 11 ) , the target memory model performs the best show - Output Analysis
+To better understand the dual memory model , we look at the first sentence example in Table 7 .
+It can be seen that the source sentence has the noun " Qimonda " but the sentencelevel NMT model fails to attend to it when generating the translation .
+On the other hand , the single memory models are better in delivering some , if not all , of the underlying information in the source sentence but the dual memory model 's translation quality surpasses them .
+This is because the word " Qimonda " was being repeated in this specific document , providing a strong contextual signal to our global document context model while the local context model by Wang et al . ( 2017 ) is still unable to correctly translate the noun even when it has access to the word-level information of previous sentences .
+We resort to manual evaluation as there is no standard metric which evaluates document - level discourse information like consistency or pronominal anaphora .
+By manual inspection , we observe that our models can identify nouns in the source sentence to resolve coreferent pronouns , as shown in the second example of Table 7 .
+Here the topic of the sentence is " the country under the dictatorship of Lukashenko " and our target and dual memory models are able to generate the appropriate pronoun / determiner as well as accurately translate the word ' diktatuur ' , hence producing much better translation as compared to both baselines .
+Apart from these improvements , our models are better in improving the readability of sentences by generating more context appropriate grammatical structures such as verbs and adverbs .
+Furthermore , to validate that our model improves the consistency of translations , we look at five documents ( roughly 70 sentences ) from the test set of Estonian - English , each of which had a word being repeated in the gold translation .
+Our model is able to resolve the consistency in 22 out of 32 cases as compared to the sentencebased model which only accurately translates 16 of those .
+Following Wang et al. ( 2017 ) , we also investigate the extent to which our model can correct errors made by the baseline system .
+We randomly choose five documents from the test set .
+Out of the 20 words / phrases which were incorrectly translated by the sentence - based model , our model corrects 85 % of them while also generating 10 % new errors .
+Related Work Document-level Statistical MT
+There have been a few SMT - based attempts to document MT , but they are either restrictive or do not lead to significant improvements .
+Hardmeier and Federico ( 2010 ) identify links among words in the source document using a word-dependency model to improve translation of anaphoric pronouns .
+Gong et al. ( 2011 ) make use of a cache- based system to save relevant information from the previously generated translations and use that to enhance document - level translation .
+Garcia et al. ( 2014 ) propose a two -pass approach to improve the translations already obtained by a sentencelevel model .
+Docent is an SMT - based document - level decoder ( Hardmeier et al. , 2012 ( Hardmeier et al. , , 2013 , which tries to modify the initial translation generated by the Moses decoder ( Koehn et al. , 2007 ) through stochastic local search and hill-climbing .
+Garcia et al. ( 2015 ) make use of neural - based continuous word representations to incorporate distributional semantics into Docent .
+In another work , Garcia et al . ( 2017 ) incorporate new word embedding features into Docent to improve the lexical consistency of translations .
+The proposed methods fail to yield improvements upon automatic evaluation .
+MT Jean et al. ( 2017 ) extend the vanilla attention - based neural MT model ( Bahdanau et al. , 2015 ) by conditioning the decoder on the previous sentence via attention over its words .
+Extending their model to consider the global source document context would be challenging due to the large size of computation graph over all the words in the source document .
+Wang et al . ( 2017 ) employ a 2 - level hierarichal RNN to summarise three previous source sentences , which is then used as an additional input to the decoder hidden state .
+Bawden et al. ( 2017 ) use multi-encoder NMT models to exploit context from the previous source and target sentence .
+They highlight the importance of targetside context but report deteriorated BLEU scores when using it .
+All these works consider a very local source / target context and completely ignore the global source and target document contexts .
+Larger Context Neural
+Conclusion
+We have proposed a document- level neural MT model that captures global source and target document context .
+Our model augments the vanilla sentence - based NMT model with external memories to incorporate documental interdependencies on both source and target sides .
+We show statistically significant improvements of the translation quality on three language pairs .
+For future work , we intend to investigate models which incorporate specific discourse - level phenomena .
+Figure 1 : 1 Figure 1 : Factor graph for document- level MT

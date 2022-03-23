@@ -1,0 +1,261 @@
+title
+Phrase-level Active Learning for Neural Machine Translation
+abstract
+Neural machine translation ( NMT ) is sensitive to domain shift .
+In this paper , we address this problem in an active learning setting where we can spend a given budget on translating in - domain data , and gradually finetune a pre-trained out - of- domain NMT model on the newly translated data .
+Existing active learning methods for NMT usually select sentences based on uncertainty scores , but these methods require costly translation of full sentences even when only one or two key phrases within the sentence are informative .
+To address this limitation , we re-examine previous work from the phrase - based machine translation ( PBMT ) era that selected not full sentences , but rather individual phrases .
+However , while incorporating these phrases into PBMT systems was relatively simple , it is less trivial for NMT systems , which need to be trained on full sequences to capture larger structural properties of sentences unique to the new domain .
+To overcome these hurdles , we propose to select both full sentences and individual phrases from unlabelled data in the new domain for routing to human translators .
+In a German-English translation task , our active learning approach achieves consistent improvements over uncertainty - based sentence selection methods , improving up to 1.2 BLEU score over strong active learning baselines .
+1
+Introduction Machine translation ( MT ) models are very sensitive to domain shift ( Koehn and Knowles , 2017 ; Chu and Wang , 2018 ) , and one typical way to address this problem is adding in - domain data to the MT training process ( Luong and Manning , 2015 ; Chu et al. , 2017 ) .
+However , this data may not be available a priori , and hiring professional translators with knowledge of specific domains ( such as medicine or law ) is usually costly .
+As a result , active learning approaches ( Gangadharaiah et al. , 2009 ; Haffari et al. , 2009 ; Bloodgood and Callison - Burch , 2010 ) have been widely adopted to reduce the annotation cost by translating a smaller representative subset of the in-domain data , with the hope that models trained on this translated subset approximate those trained on a much larger labeled set .
+In general , active learning ( AL ) approaches iterate between two steps : data selection / annotation , and model update .
+With regards to data selection for machine translation , most existing works ( Haffari et al. , 2009 ; Peris and Casacuberta , 2018 ; Zeng et al. , 2019 ) focus on selecting sentences that are most useful for training either phrase - based machine translation ( PBMT ) or neural machine translation ( NMT ) models .
+However , even the most informative sentences inevitably involve segments that the MT system can already translate well , and asking the translator to also translate these segments is not costeffective .
+There have been a few works used in conjunction with older PBMT models that ameliorate this problem through phrase - based selection techniques ( Bloodgood and Callison - Burch , 2010 ; Daum ?
+III and Jagarlamudi , 2011 ; Miura et al. , 2016 ) , which select only individual phrases , maximizing information gain .
+However , while these translated phrases can be easily integrated into PBMT by adding them to the existing phrase table , incorporating them into NMT models is less simple because NMT has no concept of a " phrase table " and must be trained on full sentences similar to those that must be translated .
+In this paper , we propose a method for incorporating phrase - based active learning into NMT .
+Specifically , we first describe sentence - based and phrase - based selection strategies , then propose a hybrid strategy that combines both methods .
+We also describe several ways to incorporate this translated data into the training of NMT systems .
+We conduct experiments on German-English translation by adapting NMT models trained on WMT parallel data to the medicine and IT domains .
+Experimental results show that the hybrid selection strategy obtains more stable translation performance than either phrase - based or sentence - based selection strategy .
+Problem Definition
+In the setting of active learning for domain adaptation , we are given an out-of- domain labelled corpus ( x , y ) ?
+L and an in-domain unlabelled corpus x ? U .
+We define a phrase as a contiguous sequence of words up to some length limit N , and denote a set of possible phrases in a sentence x by ? n? [ 1 , N ] n-gram ( x ) , where we set N = 4 in all experiments below .
+To obtain translations of unlabelled data , we assume access to professional translators O ( ? ) who can translate source-side sentences S and / or phrases P selected from U , i.e. , O( x ) ?x ? S ? U , and O ( p ) ?p ? P ? P U = ? x?U ? n? [ 1 , N ] n-gram ( x ) .
+We assume that translating sentences or phrases requires cost c ( ? ) , and annotation must be performed within a fixed budget B = x?S c( x ) + p?P c ( p ) .
+This active learning procedure consists of two main steps : selection / translation ( ?3 ) and fine-tuning ( ?4 ) .
+Active Selection Strategies
+Sentence Selection Strategies
+Existing sentence - based active learning methods usually define a sentence - level scoring function ?( x , ? ) , and select sentences with the top scores .
+Following Zeng et al. ( 2019 ) , we categorize these methods into two classes : data-driven and modeldriven methods .
+Data-driven methods only rely on the unlabeled data U and the labeled data L , i.e. , ?( x , U , L ) , and usually score sentences based on the trade - off between the density and diversity of the selected sentences .
+In contrast , model- driven approaches usually estimate the prediction uncertainty of a source sentence given the current MT model ? , i.e. , ?( x , ? , U , L ) , and select sentences with high uncertainty for training the model .
+Before getting to our proposed phrase - based strategies in ?3.2 we highlight several existing sentence selection strategies .
+Random Sampling :
+One easy strategy is randomly sampling sentences from the unlabeled data U for annotation .
+Although it is simple , this method is an unbiased approximation of the data distribution in U .
+Therefore , this method remains a strong baseline in the active learning literature ( Gangadharaiah et al. , 2009 ; Miura et al. , 2016 ; Zeng et al. , 2019 ) if the annotation budget is sufficiently large .
+Margin- based Ratio Score ( MRS ) : Zhang et al. ( 2018 ) propose to measure the distance between sentence embeddings .
+This method takes each unlabeled sentence , estimates its distance in embedding space from the labeled sentences in the outof-domain corpus , and iteratively selects sentences that are more distant from sentences in the labeled data .
+In our instantiation of this method , we leverage the pre-trained mBERT model ( Devlin et al. , 2019 ) to extract sentence representation e x of a particular sentence x.
+2 Instead of using a cosine similarity function , we measure a ratio- based score which is the ratio between the cosine similarity of ( e x , e x ) and the average cosine similarity with their k nearest neighbors in Eq. ( 1 ) , because the margin-based ratio score has been shown effective in sentence retrieval in ( Artetxe and Schwenk , 2019 ) . ratio( e x , e x ) ( 1 ) = cos ( e x , e x ) z?NN k ( x ) cos ( ex , ez ) 2 k + z?NN k ( x ) cos ( e x , ez ) 2 k , where k is the number of nearest neighbors .
+We then compute the distance between each in - domain sentence and its nearest out - of- domain neighbor within a randomly sampled subset of labeled sentences L : ?( x , ? ) = dist ( x , L ) = 1 ? max x ?L ratio( e x , e x ) .
+We approximate the distance between x and out-of- domain corpus L using a subset L for efficiency purposes , because the out-of- domain L is usually large .
+Next we use the distance dist ( x , L ) as our scoring function ?( x , ? ) , and select the unlabeled sentence with the largest distance from ( subsampled ) sentences in the out-of- domain corpus .
+Round Trip Translation Likelihood ( RTTL ) :
+One model- driven method is based on a method referred to as " round trip translation " ( Haffari et al. , 2009 ; Zeng et al. , 2019 ) .
+The labeled data L is used to train two MT models ? src-tgt , ? tgt - src that translate between the source and target languages in two directions .
+Each unlabeled source sentence x ?
+U is first translated to ? in the target language by ? src-tgt , and then ? is translated to x by ? tgt-src .
+This method assumes that if this round-trip translation process fails to recover some of the content on the source side then this is an indication that the sentence may be difficult for the current model and is a good candidate for human annotation .
+Haffari et al. ( 2009 ) use a scoring function that computes the similarity between the original sentence x and x using the sentence - level BLEU score ( Chen and Cherry , 2014 ) , while Zeng et al . ( 2019 ) estimate the likelihood of the original source sentence x given ? by the reverse MT model ? tgt-src . ? ? argmax y P ?src-tgt ( y|x ) ( 2 ) ?( x , ? ) = log P ?tgt-src ( x | ? ) ( 3 )
+Phrase Selection Strategies
+A few existing phrase - based active learning methods ( Bloodgood and Callison - Burch , 2010 ; Miura et al. , 2016 ) have been proposed to improve PBMT systems .
+These methods first determine the possible set of phrases in a sentence , select phrases to be translated according to a scoring metric , and incorporate these in the training of the PBMT system .
+In the following paragraphs , we introduce two phrase - based selection strategies , and discuss how to integrate this data into NMT in ?4 .
+Similar to the sentence selection strategies , we define a phrase - level scoring function ?( p , ? ) and select phrases with the top scores .
+n-gram Frequency ( NGF ) ( Bloodgood and Callison - Burch , 2010 ) :
+The most straightforward phrase selection strategy is to select the most frequent phrases in the unlabelled data that do not appear in the already labeled data .
+First we extract two sets of possible n-grams ( n ? 4 ) from sentences in U and L , which are defined as P U = ? x?U ? n? [ 1 , N ] n-gram ( x ) , and P L = ? ( x,y ) ? L ? n? [ 1 , N ] n-gram ( x ) .
+We then score each phrase as follows : ?( p , ? ) = occ ( p , U ) , if p ? P U , p / ?
+P L 0 , otherwise ( 4 ) where occ ( p ) counts the occurrences of p in U .
+We then select the top frequent phrases until we use up the budget for annotating phrases .
+Semi-Maximal Phrases ( NGF - SMP ) :
+The two phrase sets P U , P L extracted by the n-gram Frequency method contain many substrings that also occur in some longer strings .
+For example , p = " eines der " always co-occurs with the longer p = " eines der besten " in the WMT14 German - English dataset .
+To identify the longer strings , Miura et al . ( 2016 ) proposed the following semi-order relation , which defines the relation between a phrase p and its sub-string p satisfying the condition that p occurs at least half the time of p in the corpus U. p * p ? ? , ? : ?p? = p ( 5 ) ? occ( p , U ) 2 < occ ( p , U ) A phrase p is called a semi-maximal phrase if there does not exist a phrase p in U such that p * p .
+Therefore , a compact subset of phrases P U can be constructed by containing only semi-maximal phrases in the phrase set P U in U : P U = { p | p ? P U , p * p ? p ? P U }. ( 6 ) By using semi-maximal phrases in P U rather than all phrases in P U , we remove a large number of phrases that are included in a longer phrase more than half the time , and reduce the redundancy of the selected phrases .
+Next we can select phrases similarly using Eq. ( 4 ) by replacing the original phrase set P U with the sub-set P U .
+Notably , we select representative phrases by their occurrences instead of using a similarity function between phrase embeddings .
+Because it is easy to count the phrase occurrences by extract stringmatch while it is infeasible to do so for sentences .
+As for sentence selection , measuring a similarity between sentence embeddings ( e.g. , MRS ) provides an alternative way of matching sentences .
+Hybrid Selection Strategy Phrase - based selection has its benefits , such as efficient annotation of core vocabulary from the target domain .
+However , at the same time it lacks the ability to identify larger sentence structure that may nonetheless be unique to the target domain .
+Modeling this structure is particularly important for NMT ( in constrast to PBMT ) , as NMT directly learns both lexical and syntactic transformations within the same model .
+Because of this , we propose a simple yet novel hybrid selection strategy that leverages the benefits of both sentence - based and phrase - based selection strategies .
+Specifically , we allocate our budget in a way to annotate sentences with B s words from our set of sentences and B p words from our set of phrases .
+Depending on the specific sentencebased and phrase - based selection strategies chosen in the hybrid selection strategy , it is non-trivial to determine which selection strategy improves the in-domain translation performance more than the other one before actual finetuning .
+Therefore , in our implementation , we assume that we have no prior knowledge about which selection strategies will be most effective , and simply evenly distribute the annotation budget into the sentence - based and phrase - based strategies .
+We leave more sophisticated allocation strategies as future work , and we discuss some potential avenues briefly in ?7 .
+Training with Sentences and Phrases After data selection , we fine - tune the base NMT model on the newly translated data .
+This is essentially an extreme form of domain adaptation where we adapt a base NMT model trained on outof-domain data to a new domain .
+Specifically , we adapt a strategy of mixed fine-tuning ( Luong and Manning , 2015 ) , which continues training a pretrained out - of- domain model on both in - domain data and a certain amount of out - of- domain data to prevent overfitting to relatively small in - domain data .
+Compared to the standard domain adaptation setting where we have only a small number of in-domain sentences , our phrase - level active learning setting has the additional difficulty of having to use short translations of individual phrases .
+In the following , we describe both methods to choose which data to use in mixed fine-tuning , and how to incorporate phrasal translations .
+Data Mixing
+For data mixing , we sample a subset L r of data directly from the labeled set L , and concatenate L r with the newly annotated sentences L s and phrases L p for mixed fine-tuning ( Line 8 in Algorithm 1 ) .
+Specifically , we define a distribution function ? over L , and either sample by ( x , y ) ? ? or greedily take the most likely data by ( x , y ) = argmax ( x, y ) ? L ?( x , y ) iteratively for M times to obtain the subset L r of M parallel data .
+Random Sampling :
+The most simple way to select out - of- domain data is to randomly sample sentences from the out-of- domain corpus L , i.e. , ( x , y ) ? Uniform ( L ) .
+Although it is simple , this has been popularly used in the literature of domain adaption for NMT ( Chu and Wang , 2018 ) . Retrieve Similar Sentences : Recently , Aharoni and Goldberg ( 2020 ) showed that pre-trained language models implicitly learn sentence embeddings that cluster by domains , and proposed a data selection method that has proven more effective than methods based on the likelihood of an indomain language model ( Moore and Lewis , 2010 ) .
+Since our base NMT model is pre-trained on outof-domain corpus , we need to adapt the model to the domain of the unlabeled data .
+Instead of random sampling , we adopt the selection method in Aharoni and Goldberg ( 2020 ) to retrieve parallel sentences from L that are close to the in-domain sentences in U .
+To do so , we leverage the contextualized sentence representations , and measure the distance of a source sentence in L w.r.t. the unlabeled corpus U by ratio(x , U ) , ?x ? L . Next , we iteratively retrieve labeled data from L that have the smallest distance scores to their nearest neighbors , i.e. , ( x , y ) = argmax ( x, y ) ?
+L ratio( x , U ) .
+Incorporating Phrasal Translations
+In addition to obtaining real parallel data from L for mixed fine-tuning , we create synthetic parallel data ( x , ? ) by incorporating phrasal translations into existing context from L .
+Specifically , for an unlabeled sentence x ?
+U containing a newly annotated phrase p x , we retrieve the most similar sentence pair ( x * , y * ) from L by ( x * , y * ) = argmax ( x ,y ) ?
+L ratio( e x , e x ) ( 7 ) We then alter ( x * , y * ) with the newly annotated phrase pair ( p x , p y ) to create synthetic sentence pair ( x , ? ) .
+Similar to data mixing , we concatenate the set of synthetic data with the annotated sentences L s and phrases L p for mixed fine-tuning .
+Switch Phrases : Inspired by existing data augmentation methods ( Fadaee et al. , 2017 ) , we examine a data augmentation method that switches out phrases in the out-of- domain sentence pairs in L by the newly annotated phrase pairs from U. First , we define the following operation Switch ( x , p , i ) that returns a new sentence by substituting the phrase at the i-th position in x * by p x . Switch ( x * , p x , i ) = [ x * < i ; p x ; x * ?i+| px | ] ( 8 ) Next , we enumerate all possible positions in x * for switching phrases , and then apply the in-domain language model trained on U to select the most probably synthetic sentence by x = argmax x = Switch ( x * , px , i ) ?0?i<|x * |?|px| , px ? n? [ 1 , N ] n-gram ( x ) P LM ( x ) , ( 9 ) where p x is a phrase in the unlabeled sentence x .
+Notably , we use a 4 - gram language model implemented in KenLM 3 .
+Since sentences are usually short ( average length of 10 - 25 words ) , creating a synthetic sentence takes O ( |x * || x | ) scoring operations by the language model .
+To synthesize the corresponding ?
+from the retrieved target sentence y * , we apply a word alignment model trained on L to find the index j for the translation of the replaced phrase x * i:i+ | px | in y * , and substitute the phrase at the j-th position in y * by p y to obtain ? = Switch(y * , p y , j ) .
+Contextualized Phrases :
+The other idea is to augment the context of a newly annotated phrase pair ( p x , p y ) , since a phrase p x lacks larger sentence structure .
+Specifically , we define the contextualized operation that augments a phrase p x in x by appending it to the retrieved sentence x * .
+Contextualize ( x * , p x ) = [ x * , p x ] ( 10 )
+We then enumerate all annotated phrases in x , and apply an in-domain language model to find the most probable annotated phrase pair ( p x , p y ) 3 https://github.com/kpu/kenlm that synthesizes x .
+The corresponding ? can be obtained by Contextualize(y * , p y ) .
+x = argmax x = [ x * , px ] ?px ? n? [ 1, N ] n-gram ( x ) P LM ( x ) ( 11 ) 5 Experiments
+Experimental Setting
+We use the WMT14 German-English data as the out-of- domain labeled data for training our base NMT model , and take the source sentences of two parallel corpora in the medicine and IT domains ( Koehn and Knowles , 2017 ) as the unlabeled data .
+More details can be found in Appendix B.1 .
+As our NMT model , we use a 6 - layer 512 - unit Transformer ( Vaswani et al. , 2017 ) implemented in Fairseq , 4 and use a subword vocabulary of 50,000 for both languages constructed by Byte Pair Encoding ( Sennrich et al. , 2016 ) .
+We train the base model with Adam for 10 epochs with 4 K warmup steps and a peak learning rate of 1e - 3 , and decay the learning rate based on the inverse square root of the number of update steps ( Vaswani et al. , 2017 ) .
+For active learning , we set our annotation budgets by number of words translated ( following the prevailing translation market practice to charge for jobs by the word ) , and investigate the budgets from 2.5 K words up to 40 K words .
+5 After data selection ( ?3 ) , we obtain a set L r of M parallel sentences ( ?4 ) , and set the size M = | L p | where L p is selected by NGF - SMP .
+We then fix L r for mixed finetuning in all experiments , and continue fine-tuning the base model on a mixture of the newly - translated data and L r for 5 more epochs .
+Word-level Translation Accuracy
+Since our selection and mixed fine-tuning methods focus on leveraging phrasal translations for domain adaptation , we perform a fine- grained analysis on the word-level translation accuracy of the NMT systems due to the domain shift .
+A source word is defined as an unseen in - domain word when it never appears in the out-of- domain corpus .
+If phrase selection strategies select more in- domain words , we would expect a higher translation accuracy of such in - domain words by the adapted NMT systems using phrase selection .
+As a result , we compare the translation accuracy of in-domain words by the NMT models using different selection strategies in Figure 3 .
+As shown in the figure , NGF - SMP significantly improves the translation accuracy of the in-domain words with a small annotation budget .
+In contrast , MRS falls short of the other compared methods when the annotation budget is less than 80 K words .
+Moreover , we find that the hybrid selection strategy of NGF - SMP and MRS can combine the merits of both methods , and obtain an even higher accuracy when the budget is greater than 40 K annotated words .
+Qualitatively , the example in Table 1 shows the translations for a source sentence with all words appearing in the medical domain .
+The NMT model adapted by MRS translates the first half of the source sentence by picking the correct word " exercised " , while the NMT model adapted by NGF - SMP generates the correction translation " somnolence " in the second half of the output .
+The NMT model using the hybrid of NGF - SMP and MRS strategies translates both words correctly ( more examples in Appendix B.2 ) .
+How Does Each Selection Strategy Help ?
+We examine the question of which selection strategy ( ?3 ) best improves accuracy on in- domain test data .
+For mixed fine-tuning , in this section we use the retrieved out - of- domain parallel data for a fair comparison among all active selection strategies .
+Figure 2 shows the average BLEU score and the standard deviation of the adapted MT systems to two new domains over 3 independent runs .
+6 6 To obtain a stable result , we independently run the active learning procedure with different selection strategies 3 times , Comparing among sentence selection strategies in Figure 2 , MRS performs slightly better than the random sentence selection baseline on adapting the NMT model to the IT domain with smaller standard deviation values , and performs comparably on adapting to the medicine domain .
+However , we observe that RTTL performs worst , and we conjecture that this is due to the usage of the base NMT models that are trained on the out-of- domain parallel data in both directions .
+The errors accumulated from the round trip translation process lead to an inaccurate estimation of the uncertainty score for a source sentence .
+Table 2 shows the top 5 sentences selected by RTTL .
+The selected sentences in the medicine domain are short phrases rather than complete sentences , and those selected in the IT domain contain duplicate phrases such as " bewerten mit ? " .
+For phrase - based selection methods , NGF - SMP significantly outperforms the random phrase selection strategy .
+Further , NGF - SMP even outperforms sentence selection methods when the annotation budget is small ( less than 20 k words ) for adaption to the medicine domain .
+As we increase the annotation budget to 40 K annotated words , sentence selection strategies outperform phrase selection strategies .
+This indicates that if we keep training NMT systems on shorter phrase pairs when the annotation budget is sufficient , the NMT systems would be limited by lack of longer sentence structures .
+In Figure 2 b , we also find that NMT models trained with phrasal translations fall short of those trained with sentence translations when adapting to the IT domain .
+It is hard to train the NMT systems to translate certain phrases correctly without the sentence context .
+For example , " Pers?nlichen Ordner " in the IT domain is translated to " home directory " rather than " personal folder " in the sentence " jedes Skript dieses Dialogs hat Schreib - Zugriff auf Ihren Pers?nlichen Ordner " .
+Finally , the hybrid selection of NGF - SMP and MRS strategies outperforms the individual selection strategies over every budget in our set of budgets , i.e. , 2.5K , 5K , 10K , 20K , 40 K annotated words , improving the best phrase selection strategy NGF - SMP by 0.49 average BLEU points , and the best sentence selection strategy MRS by 1.11 average BLEU points in the medicine domain .
+Notably , the phrase - based selection strategy especially helps in the scenario where the context is not required to translate domain-specific words , for example , the name of a medicine or a disease in the medicine domain ( See the first example in Appendix B.2 ) .
+For the adaptation scenario that requires a longer context in some domains such as IT , the hybrid strategy can also significantly outperforms the best phrase - based strategy NGF - SMP by 1.2 average BLEU points , and the best sentence selection strategy MRS by 0.15 BLEU points .
+Overall , our hybrid selection strategy is effective to combine the merits of both sentence and phrase selection strategies in the domain adaptation setting .
+How Representative Are the Selected Data ?
+If the selected data has a significant overlap of segments with the in- domain test data , we would expect a better adaptation performance of the NMT trained on the selected data .
+Therefore we investigate the n-gram overlap between the selected data and the test data when we annotate 5 K words from the medicine corpus , and report the average BLEU score of the adapted NMT models trained on the selected data in Table 3 .
+Interestingly , we find that there exists a high correlation ( ? ?0.8 ) between the n-gram overlap and the average BLEU score , which indicates that the n-gram overlap with the test set can be used as a good measure of whether the selected data is useful for improving the NMT model in the new domain .
+Compared to the random phrase selection , NGF - SMP selects phrases with a high overlap with the test data .
+We also observe that sentence selection strategies cover fewer phrases in the test data than phrase selection strategies .
+This also corroborates our assumption that asking translators to annotate phrases that the MT system can already translate well is not cost-effective to improve the in-domain translation performance .
+How Redundant Are the Selected Data ?
+To answer this question , we first define " in- domain words " as words that only appear in the in- domain test set but do not exist in the out-of- domain data .
+We report the statistics of the in-domain word types word counts in the selected data with 10 K annotated words in Table 5 .
+We find that phrase selection strategies select more unique in-domain word types and counts than the sentence selection strategies .
+This indicates that phrase selection strategies leverage the same amount of budget effectively to annotate more diverse in-domain words than sentence selection strategies .
+How Do Phrasal Translations Help in Mixed Fine-tuning ?
+We further investigate the effect of mixed finetuning using the newly annotated in - domain data and sub-sampled out - of - domain data when comparing with fine-tuning only on the newly annotated data .
+Table 4 shows the average BLEU score and the standard deviation values over 3 independent runs .
+Compared to fine- tuning on only annotated data , adding randomly sampled sentence pairs from the out-of- domain data helps when the annotation budget is less than 5 K annotated words , but hurts when we increase the budget .
+In contrast , adding sentences retrieved by the similarity in the sentence embedding space not only outperforms fine-tuning only on annotated data and mixed finetuning with randomly sampled sentences , but also achieves smaller standard deviation values .
+On the other hand , mixed fine-tuning on synthetic data by switching phrases performs slightly worse than the mixed fine - tuning on real retrieved data , but outperforms the fine-tuning without any out-ofdomain data , especially when the annotation budget is small , e.g. , 5 K annotated words .
+Combining synthetic data by switching phrase and real retrieved data for mixed fine-tuning also improves the translation performance over the training only on synthetic data .
+However , the contextualized method performs worst among all mixed fine-tuning methods , which indicates that simply appending existing sentence context to phrasal translations might potentially introduce noise to the training data .
+Related Work Active Learning for Machine Translation
+Pioneering works on active learning for machine translation focus on selecting sentences that are most useful for training PBMT .
+This includes sentence selection strategies based on maximizing the percentage of unseen n-gram ( Eck et al. , 2005 ) , ngram frequency , lexical diversity ( Haffari et al. , 2009 ) , or in- domain coverage ( Ananthakrishnan et al. , 2010 ) .
+These sentence selection strategies have been used in active learning algorithms to deal with static data in the batch mode ( Ananthakrishnan et al. , 2010 ) , or steaming data in the interactive setting ( Gonz?lez-Rubio et al. , 2012 ; Peris and Casacuberta , 2018 ; Lam et al. , 2019 ) .
+For phrase - level annotations , there have been a few works applying phrase - based selection ( Bloodgood and Callison - Burch , 2010 ; Miura et al. , 2016 ) to PBMT .
+While the annotated phrases can be easily integrated by adding them with estimated translation probability to the existing phrase table in PBMT , it it less trivial to integrate these phraselevel annotations in NMT .
+Arthur et al. ( 2016 ) integrated the word-level translations to NMT by interpolating the probability of the NMT decoder with the estimated lexical probability .
+However , this approach requires a modification of the NMT model .
+Our paper investigates data-driven approaches that augment the training data by leveraging annotated phrases and existing parallel data .
+Word / Phrase - based Data Augmentation
+The other line of research investigates data augmentation methods that leverage word or phrase translations to create synthetic parallel data for training MT models .
+This includes augmentation methods that replace a word in the existing parallel data with a low-frequency word sampled from the frequency distribution of the vocabulary ( Xie et al. , 2017 ) or from the probability of language models in both directions ( Fadaee et al. , 2017 ; Kobayashi , 2018 ) . that randomly replaces words in parallel sentences with other random words from the in-domain vocabulary .
+A more recent work on dictionary - based data augmentation ( Peng et al. , 2020 ) proposed to use an existing high-quality in- domain dictionary , and replaced a source word in the existing parallel data by the most similar word in the dictionary according to the cosine similarity metric in the embedding space .
+In contrast , we select noisy indomain phrases using different phrase - based selection strategies ( ?3.2 ) to ensure the selection quality in an active learning process .
+7 Discussion and Future Work Inputs : the unlabelled set U , the labelled set L , and a budget B .
+3 : Train a MT model ? on L. Aharoni and Goldberg ( 2020 ) , there is overlap between the training data and the test data in the original split of the two corpora provided by Koehn and Knowles ( 2017 ) , so we follow them in removing the duplicated sentences in the in-domain data , and re-splitting two new test sets in order to prevent the model from memorizing the selected in - domain training data that could potentially be included in the test data .
+Table 6 shows the data statistics .
+Model :
+As our NMT model , we use a 6 - layer 512 - unit Transformer ( Vaswani et al. , 2017 ) implemented in Fairseq , 7 and use a subword vocabulary of 5,000 for both languages constructed by Byte Pair Encoding ( Sennrich et al. , 2016 ) .
+The model has 45 M parameters .
+Training :
+We train the base model with Adam for 10 epochs with 4 K warmup steps and a peak learning rate of 1e - 3 , and decay the learning rate based on the inverse square root of the number of update steps ( Vaswani et al. , 2017 ) .
+We save the last checkpoint as our base model , and continue finetuning the base model on a mixture of the newlytranslated data and the retrieved out - of - domain data for 5 more epochs .
+Training / Inference Time : We train each model on one NVIDIA RTX 2080 Ti GPU for all our experiments .
+Training the base NMT model takes less than 1 days , and fine-tuning the base NMT model on selected data takes less than 4hours .
+The decoding of 2000 sentences can be finished within 5 minutes .
+B.2 Qualitative Analysis
+In the first example of Table 7 , the NMT model adapted by NGF - SMP can predict most words correctly while the NMT model adapted by MRS generate a random sentence .
+B.3 Do Phrasal Annotations Bias NMT ?
+Since phrasal annotations are short and do not contain complex sentence structure , we hypothesis that NMT systems trained on phrasal annotations would be biased towards generating shorter sentences or sentences in different grammatical order w.r.t. the reference sentence .
+To understand this question , we analyze the length ratio between the translation outputs and the reference sentences in Figure 4 .
+We find that the NMT model trained only on annotated phrases selected by NGF - SMP generates shorter sentences than reference sentences .
+In contrast , adding sentences randomly sampled from the labeled corpus L make the NMT model generate longer sentences than the reference sentences , while retrieving sentences from L that are similar to the sentences in U makes the model produces translation outputs with closed lengths as the reference sentences .
+Qualitatively , we also show the problem of generating sentences with different structures as the reference sentences in the third example in Table 1 .
+In the third example , the NMT model trained with NGF - SMP produces a translation in an active voice , while the reference sentence uses a passive voice .
+Figure 1 : 1 Figure 1 : Overview of the active learning process
+Figure 2 : 2 Figure 2 : Average BLEU score over 3 runs for adapting a base NMT to the Medicine and IT domains .
+Figure 3 : 3 Figure 3 : Translation accuracy of in- domain words in the test set from the medicine domain
+S by L s = { ( x , O ( x ) ) | x ?
+S} 6 : Translate P by L p = { ( p , O ( p ) ) |p ? P} 7 : L r ? Obtain parallel data from L ( ?4 ) 8 : Fine-tune ? on L s ? L p ? L r 9 : return ?
+Algorithm 2 Hybrid Phrase / Sentence Selection 1 : procedure SELECTION ( U , L , B ) 2 :Inputs : the unlabelled set U , the labelled set L , and a budget B .
+P U , P L by strategies ( ?3.2 ) 10 : while p?P c( p ) < B p do 11 : p ? argmax p?P
+U occ( p , U ) As pointed out in
+Figure 4 : 4 Figure 4 : Length ratio between the NMT outputs and the reference sentences .
+Table 1 : 1 is required , as there are reports of confusion and somnolence during the treatment .
+15.71 MRS
+However , caution should be exercised , as confusion and drowsiness may occur during the treatment .
+15.62 NGF-SMP+MRS
+However , caution should be exercised as confusion and somnolence may occur during the treatment .
+15.71 Translations generated by NMT models using different selection strategies .
+The last column shows the sentence BLEU score of the translations .
+Translation errors are highlighted in red .
+collect new translation data , and concatenate them with the same data retrieved from out - of- domain labeled data
+Table 2 : 2 Top 5 sentences selected by RTTL
+Table 3 : 3 Percentage of the n-gram in the test sentences that are covered by the selected data with 5 K words , the out-of- domain training data and the in-domain training data .
+The last row shows the Pearson correlation coefficient between n-gram overlap and avg .
+BLEU score .
+Methods uni-gram bi-gram tri-gram 4 - gram Avg. BLEU OoD Data 79.33 32.65 7.30 1.10 34.51 + Random Sentence 82.81 38.45 11.62 3.73 39.27 + RTTL 80.70 35.76 9.85 3.04 35.78 + MRS 82.74 38.83 12.01 4.05 39.27 + Random Phrase 82.36 35.84 7.98 1.15 38.23 + NGF 84.45 41.82 14.94 6.17 39.96 + NGF-SMP 85.80 43.13 16.15 7.11 40.21 + NGF-SMP + MRS 84.48 41.89 14.98 6.48 40.55 ID Training Data 98.58 87.30 67.61 52.11 57.59 Pearson Correlation 0.90 0.83 0.80 0.78 /
+Table 4 : 4 proposed an effective method ? 0.14 39.22 ? 0.00 40.56 ? 0.02 41.19 ? 0.25 44.07 ? 0.33 37.94 ? 0.08 38.68 ? 0.54 40.62 ? 0.59 42.62 ? 0.03 45.00 ? 0.11 38.94 ? 0.02 39.60 ? 0.09 41.34 ? 0.12 42.44 ? 0.15 44.90 ? 0.06 39.46 ? 0.14 40.51 ? 0.23 40.62 ? 0.49 41.82 ? 0.26 43.78 ? 0.57 39.73 ? 0.16 40.55 ? 0.14 42.30 ? 0.10 43.72 ? 0.04 45.41 ? 0.08 38.93 ? 0.36 40.59 ? 0.17 41.82 ? 0.29 42.70 ? 0.37 45.33 ? 0.04 35.36 ? 0.38 37.85 ? 0.68 39.96 ? 0.35 42.83 ? 0.11 44.14 ? 0.15 39.61 ? 0.06 40.95 ? 0.06 42.19 ? 0.08 43.42 ? 0.17 45.06 ? 0.19 37.88 ? 0.25 39.52 ? 0.32 41.17 ? 0.28 42.80 ? 0.21 44.28 ? 0.13
+Comparison between mixed fine-tuning methods .
+Bold indicates highest average BLEU by column .
+Out-of-domain Data Sampled Retrieved Switched Contextualized NGF-SMP MRS In-domain Data 2.5 K 5 K 10K 20K 40K 39.39 Methods IDWT WT IDWT WT IDWC WC IDWC WC Random Phrase 787 2206 35.68 860 5003 17.19 NGF 489 1053 46.44 889 5002 17.77 NGF -SMP 796 1492 53.35 1076 5001 21.52 Random Sentence 631 1984 31.80 712 5023 14.17 RTTL 592 1338 44.25 961 5023 19.13 MRS 647 2056 31.47 721 5023 14.35 NGF -SMP + MRS 667 1755 38.01 859 5035 17.06
+Table 5 : 5 Statistics of the unique in- domain word types and word counts in the selected data with 10 K annotated words .
+Table 6 : 6 Data statistics of the out-of- domain labeled data in WMT14 and the in-domain unlabeled data in the medicine and IT domains .
+Data Domain Lang # Sentences # Words Vocab Avg Len L WMT14 De En 4.4M 108.0M 114.5M 955.3 K 1.9M 24.4 25.8 U Medicine IT De De 227.2 K 190.6K 3.8M 114.3 K 2.1M 114.6 K 16.8 11.5
+Table 7 : 7 Translations generated by NMT models using different selection strategies .
+The last column shows the sentence BLEU score of the translations .
+Translation errors are highlighted in red .
+Output S-BLEU Source Schwindel , Par?sthesie , Geschmacksst?rung Reference Dizziness , paraesthesiae , taste disorder NGF - SMP Dizziness , paraesthesia , taste disturbance 23.27 MRS
+The room was very small and the bathroom was very small .
+0.00 NGF -SMP +MRS Dizziness , paraesthesia , taste disturbance 23.27 Source ? ber Hospitalisierung oder Todesf?lle in Verbindung mit Infektionen wurde berichtet .
+Reference Hospitalisation or fatal outcomes associated with infections have been reported .
+NGF -SMP
+There have been reports of Hospitalisation or death associated with infections .
+29.79 MRS
+Hospitals or deaths associated with infections have been reported .
+54.63 NGF-SMP+MRS
+There have been reports of Hospitalisation or fatality associated with infections .
+29.79 NGF -SMP NGF -SMP + Mixed ( Random ) NGF -SMP + Mixed ( Retrieved ) NGF - SMP + Mixed ( Switched ) NGF - SMP + Mixed ( Contextualized ) NGF - SMP + MRS + Mixed ( Retrieved ) 1.050 Length Ratio 1.000 1.025 0.975 0.950 2.5 K 5 K 10 K 20 K 40 K 80 K # Annotated Words 1099
+We average the word representations from the 7th layer of the mBERT model as the sentence embedding , because the middle - layer representations have proven effective in crosslingual retrieval tasks ( Pires et al. , 2019 ; Hu et al. , 2020 ) .
+https://github.com/pytorch/fairseq
+5
+At current market rates , this would cost from 491 to 7,092 USD for German-English translation by professional translators at https://translated.com/.
+https://github.com/pytorch/fairseq

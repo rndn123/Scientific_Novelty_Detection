@@ -1,0 +1,257 @@
+title
+Neural Path Hunter : Reducing Hallucination in Dialogue Systems via Path Grounding
+abstract
+Dialogue systems powered by large pretrained language models exhibit an innate ability to deliver fluent and natural - sounding responses .
+Despite their impressive performance , these models are fitful and can often generate factually incorrect statements impeding their widespread adoption .
+In this paper , we focus on the task of improving faithfulness and reducing hallucination of neural dialogue systems to known facts supplied by a Knowledge Graph ( KG ) .
+We propose NEU -RAL PATH HUNTER which follows a generatethen - refine strategy whereby a generated response is amended using the KG .
+NEURAL PATH HUNTER leverages a separate tokenlevel fact critic to identify plausible sources of hallucination followed by a refinement stage that retrieves correct entities by crafting a query signal that is propagated over a k-hop subgraph .
+We empirically validate our proposed approach on the OpenDialKG dataset ( Moon et al. , 2019 ) against a suite of metrics and report a relative improvement of faithfulness over dialogue responses by 20.35 % based on FeQA ( Durmus et al. , 2020 ) .
+The code is available at https://github.com/ nouhadziri / Neural -Path-Hunter .
+Introduction Conversation within a dialogue can be thought of as an exchange of utterances between two speakers .
+Each utterance is not independent of one another but is instead grounded within a larger dialogue context known to both parties ( Jurafsky and Martin , 2018 ; Sordoni et al. , 2015 ; Serban et al. , 2016 ; Dziri et al. , 2019 ) .
+Indeed , if a response to an utterance fails to be faithful to some given knowledgei .e. by producing false information - it is uninformative and runs the risk of jeopardizing the entire enterprise of conversation .
+More precisely , this means that in addition to being fluent , topical , and grammatical , utterances within a dialogue must also be factually correct .
+The faithfulness of responses is of principal importance when designing dialogue systems that are grounded using auxiliary knowledge such as Knowledge Graphs ( KG ) .
+Despite maintaining plausible general linguistic capabilities , dialogue models are still unable to fully discern facts and may instead hallucinate factually invalid information .
+Moreover , empirical evidence for hallucination in Language Models ( LM ) runs contrary to known studies that these large models are capable of recalling factual knowledge , e.g. entities and relations in a KG , ( Roberts et al. , 2020 ; Petroni et al. , 2019 ) .
+This suggests that this inherent lack of controllability may be remedied by leveraging external oracle knowledge .
+However , existing approaches to knowledge grounding often suffer from a source-reference divergence problem whereby the reference contains additional factual information and simply training on the reference is insufficient to guarantee faithfulness ( Wiseman et al. , 2017 ; Parikh et al. , 2020 ; Tian et al. , 2019 ) .
+Consequently , ensuring the faithfulness of knowledge grounded dialogue systems - via precise alignment of the source and reference -remains an open challenge .
+Present Work .
+In this work , we focus on address-ing the open problem of hallucination of factually invalid statements in knowledge grounded dialogue systems where the source of knowledge is a KG .
+We first identify prominent modes of hallucination by conducting a systematic human study on generated responses which reveals one major source of hallucination as the ( mis ) - use of wrong entities to describe factual content ( Kryscinski et al. , 2020 ) , a problem that persists when naively applying language models in dialogue systems .
+To enforce faithfulness to the misattribution of entities in grounded dialogue systems , we introduce NEURAL PATH HUNTER ( NPH ) , a module that operates on hallucinated responses .
+NPH follows a generate - then - refine approach by augmenting conventional dialogue generation with an additional refinement stage enabling the dialogue system to correct potential hallucinations by querying the KG .
+NPH grounds dialogue generation by constraining the flow of conservation to be supported by a valid path on the KG .
+To do so , the module combines a token - level hallucination critic that masks out entities of concern in an utterance , followed by a pre-trained nonautoregressive LM which prescribes contextual representations for each masked entity .
+This is then fed sequentially to an autoregressive LM to obtain output representations .
+These output representations can then be used to efficiently launch a query on the KG - effectively modelling dialogue as a signal being propagated on a local k-hop subgraph whereby locality is enforced through the conversation history - returning factually correct entities .
+Our proposed approach is applicable to any generated response whenever an available KG is provided and works without further fine-tuning .
+The high- level overview of our proposed approach is outlined in Fig.
+1 and exemplar machine - generated responses post-refinement are presented in Table 8 in ?H .
+Our main contributions are summarized as follows : ?
+We conduct a comprehensive human study on hallucinations generated by state - of - the - art dialogue systems which reveals that the main mode of hallucinations is through the injection of erroneous entities in generated responses . ?
+We propose NEURAL PATH HUNTER , which leverages facts supplied by a KG to reduce hallucination in any machine - generated response . ?
+We empirically demonstrate that NEURAL PATH HUNTER substantially reduces hallucinations in KG - grounded dialogue systems with a relative improvement of 20.35 % in FeQA , a QA - based faithfulness metric ( Durmus et al. , 2020 ) , and an improvement of 39.98 % in human evaluation .
+Hallucination in KG - grounded Dialogue Systems
+We consider the task of generating factual and grounded dialogue when presented with auxiliary structured knowledge .
+In particular , we focus on factoids taken from multi-relational graphs G = ( V , E , R ) , termed Knowledge Graphs ( KG As a starting point for our investigation , we study the various types of hallucinations a model may inject into an otherwise satisfactory response .
+Specifically , we explore the circumstances under which LMs are likely to exhibit unfaithful behaviour through misappropriation of entities ( e.g. Barrack Obama was the President of Canada ) .
+Inspired by ( Maynez et al. , 2020 ) for KG - grounded dialogue systems we hypothesize - among other possible mechanisms - hallucination can take form as either intrinsic or extrinsic to the provided KG .
+Definition 2.1 ( Extrinsic Hallucination ) .
+An extrinsic hallucination corresponds to an utterance that brings a new span of text that does not correspond to a valid triple in G k c .
+From the perspective of definition 2.1 , an utterance that might be partially faithful is still guilty of hallucination if there exists any injection of knowledge not authentically captured in G k c .
+Despite this , external hallucinations can often be easier to identify due to their egregious nature .
+For example , the dialogue sample in Fig.
+1 contains an external hallucination as the entity in question " Jay Roach " did not direct the movie " Titanic " and it is not supported within the 1 - hop subgraph .
+On the other hand , the generated response may identify the correct set of entities but make false claims about their relationship which leads to the following definition .
+Definition 2.2 ( Intrinsic Hallucination ) .
+An intrinsic hallucination corresponds to an utterance that A : Do you know the book The Witches ?
+B : The Witches is written by Roald Dahl .
+He also wrote
+The Champion of the World .
+GPT2 - KG
+A gen Yes he did .
+He also wrote The Time Machine and The Invisible Man . misuses either [ SBJ ] or [ OBJ ] in G k c such that there is no direct path between the two entities .
+Intrinsic hallucinations inject false information by condensing information from the KG in a wrong way .
+For instance , claiming that " Jay Roach " produced " Meet the Parents " is an incorrect association of the true relationship between these entities .
+To ascertain the degree to which KG - grounded dialogue systems hallucinate and the nature of these hallucinations , we conduct a systematic evaluation by soliciting human judgement .
+We first fine- tune a LM on the OpenDialKG dataset ( Moon et al. , 2019 ) which contains a turn- based dialogue between two speakers on extracted triples from a known KG .
+The sequential nature of such turn - based dialogues grounded via extracted KG - triples effectively renders the entire conversation as a path traversed on the KG ( see ?A for dataset details ) .
+Modes of Hallucination Experimental Protocol .
+As a demonstrative example , we use a pre-trained GPT - 2 model ( Radford et al. , 2019 ) as the backbone of a neural dialogue system .
+To fine- tune GPT2 , we concatenate the dialogue history , the KG-triples [ SBJ ] , [ PRE ] , [ OBJ ] and the ground truth response and then train the model to predict the next word in the response .
+To explore the effect of different decoding strategies and their impact in injecting hallucinations , we sample 300 responses from each decoding approach .
+We investigate greedy search , beam search , nucleus sampling ( Holtzman et al Table 2 : Human assessment of random 1500 GPT2 dialogue responses generated using OpenDialkg .
+" Ex " , " In " and " B " mean extrinsic , intrinsic , and both hallucinations respectively .
+Each cell shows the mean percentage of responses with a specific dialogue property ( see ?B for confidence intervals ) .
+2020 ) and top-k sampling ( Radford et al. , 2019 ) as representative decoding strategies .
+For each dialogue sample , we crowd-source human judgement by soliciting evaluations from 3 different annotators from Appen 1 , a high-quality annotation platform .
+Each annotator is tasked to first identify the presence of hallucination in the generated response when provided the dialogue history and KG triples .
+For samples where hallucination is present , we further ask the human annotators to identify whether the hallucination is extrinsic , intrinsic or both .
+If the response is not hallucinated , we ask them whether the response is faithful ( i.e. , supported by the triples ) or generic ( e.g. , " I do n't know about that " ) .
+The results of the human assessment are shown in Table 2 . Overall , we report the average Krippendorf 's alpha coefficient to be 0.72 on the annotator responses to the different questions which indicates high agreement .
+Using Table 2 , we make the following key observations : Observation 1 . Humans notice most hallucinations in KG - grounded dialogue systems are extrinsic .
+Observation 2 .
+A hallucination occurs the least in dialogue responses generated using a greedy decoding scheme .
+Conversely , top-k sampling results in the highest hallucination percentage ( 40.33 % ) .
+Observation
+3 . Increased diversity in response generation - i.e.( less generic ) , is positively correlated with an increase in hallucination e.g. Nucleus =0.9 .
+Observation 1 indicates that the dominant mode of hallucination for all decoding strategies in KGgrounded dialogue systems is extrinsic rather than intrinsic .
+In fact , we find that in the OpenDialKG dataset , 54.80 % of the responses contain extra entity mentions that are not supported by either D or G 1 c which may partially explain empirical observations .
+Observation 2 suggests that the modelwhen conditioned on factual knowledge-often assigns the highest probability mass to the correct response and sampling based on other distributions ( e.g. top - k ) invites hallucination in the generation process -a fact also observed in language modelling ( Keskar et al. , 2019 ) .
+Observation 3 suggests an implicit trade- off between the different goals of response generation whereby improving the diversity of response can negatively impact its faithfulness .
+This reveals that in certain cases responses might be originally faithful to G k c but increasing diversity encourages the model to hallucinate .
+In light of these important observations , the main goal of this paper is not necessarily to advance state - ofthe - art decoding methods but instead to instrument an efficient technique to identify hallucinations as well as retrieve the correct entities from the KG .
+Neural Path Hunter
+We seek to design a dialogue refinement system capable of fixing generated utterances such that they are semantically relevant given the conversation history and supported within a provided KG .
+To do so , we introduce NEURAL PATH HUNTER ( NPH ) a refinement strategy that can be easily applied to any generated response without retraining the model .
+NPH is composed of two modules : A token - level hallucination critic and an entity mention retriever .
+The first module flags and masks out hallucinated entities in an existing response and can be trained offline .
+The second module accepts masked representations identified by the critic and builds contextual representation of these problem - atic tokens which are then used to retrieve more faithful entities by running a query over G k c .
+We assume the local k-hop subgraph is either provided or extracted based on the dialogue history .
+The following sections describe the data preparation , training , and inference procedures for these submodules .
+Problem Formulation
+Each instance in the dataset is composed of a dialogue history D = ( x 1 , . . . , x n ) , a set of j triples at turn n , K n = ( t 1 , t 2 , . . . t j ) which together with D must be used towards generating the response xn + 1 .
+Here , each individual triple t i = [ SBJ ] , [ PRE ] , [ OBJ ] is extracted from a provided KG .
+Thus , the task is to generate a response xn + 1 that is faithful to a non-empty subset M n ? K n - i.e. , it can optionally talk about a few triples but not none .
+Specifically , the response xn + 1 may contain entity mentions m i ?
+V which indicates a factual response that potentially needs to be refined using NPH .
+For our purposes , it is most convenient to represent each mention as a tuple of three elements that indicates the beginning of the mention at position m b i and the end at position m e i .
+In other words , we represent an entity mention m i as m i = ( m i , m b i , m e i ) .
+These entity mentions may not be faithful at all if they do not belong to either a [ SBJ ] or [ OBJ ] in M n ( extrinsic hallucination ) or they could inject false relationships between mentions via an unsupported path in G k c by incorrectly utilizing a [ PRE ] ( intrinsic hallucination ) .
+We target and correct these unfaithful entities through retrieval over G k c in ?3.3 .
+Token - level hallucination critic
+To enforce faithfulness via refinement , we first identify the exact sources of hallucination in a given response .
+Based on the findings of human judgement in Tab.2 and ?2.1 , we find hallucination errors in a dataset like OpenDialKG are often associated with entity mentions such as names of people , movies titles , locations , etc .
+To flag entities of concern , we design a token - level hallucination critic C that consumes D , K n , xn + 1 and outputs the set of hallucinated entity mentions M c .
+To train C , we choose to cast the problem as a sequence labelling task where a binary label is predicted at each word position .
+As there is no labelled training data available for this task , we create a synthetic dataset consisting of ground truth dialogue samples and corrupted negative samples .
+We explore two corruption processes that convert a regular clean ground - truth response x n+1 to its corresponding hallucinated one xn+ 1 based on the type of hallucination we might expect to encounter - i.e. extrinsic and intrinsic .
+1 . Extrinsic Negatives .
+We replace each m i in x n+1 with entities of the same type ( e.g. , person , location , etc ... ) but crucially not within G k c and the dialogue history D. 2 . Intrinsic Negatives .
+We simply swap every pair [ SBJ ] and [ OBJ ] in x n+1 .
+For example , the response " Crescendo was written by Becca Fitzpatrick " ?
+" Becca Fitzpatrick was written by Crescendo " results in an intrinsic hallucination as in this case [ PRE ] is not bidirectional .
+Overall , we apply a 60 % / 40 % split of extrinsic versus intrinsic corruption strategies to the original train OpenDialKG to obtain a synthetic dataset to train C which is taken to be a pre-trained LM that is then fine -tuned on this binary classification task .
+Entity Mention Retriever
+An overview of the Entity Mention Retriever is depicted in Fig. 2 .
+Having identified entities of concern in xn+ 1 , we now wish to craft a query that can be efficiently run over G k c .
+To do so , we model the generated response xn + 1 as a signal being propagated over G k c which serves to capture the highest probability paths starting from the context node c the conversation may take if it was faithful .
+The context node c is extracted from ground truth triples available in the dataset and or D .
+In order to run an effective query over G k c , it is critical that the representation of all flagged m i ?
+M c and edge triples E ? G k c are in the same representation space .
+Inspired by the Cloze task ( Taylor , 1953 ) , we obtain contextual representations of all m i 's identified by the critic by first masking them out before using a Masked Language Model ( MLM ) .
+Operationally , we feed D , K n , as well as the flagged set of entities to obtain contextual hidden state representations : H = MLM ( D , K n , M c ) ( 1 )
+As the MLM may return multiple hidden ddimensional state representation for each m i ?
+M c , we simply apply a pooling operation to obtain a single representation for each entity - i.e. h i = MaxPool ( h b , h e ) .
+To obtain the actual query q i , we use an autoregressive LM which iteratively consumes an order dependent representation of h i given by applying a learnable projection map W : R 2d ?
+R d to a concatenation of the current hidden state and the retrieved entity embedding e i?1 using previous query q i?1 as shown in Fig. 2 , q i = LM ( W ( concat [ e i?1 , h i ] ) ) , KG - Entity Memory .
+Viewed another way , each q i can be interpreted as a relation embedding for the masked position in xn + 1 .
+To effectively query G k c , we must also represent all nodes in the same embedding space as q i and in doing so effectively build a representation of G k c which we call KG - Entity Memory .
+We explore two approaches towards this goal .
+The first uses the final hidden layer of a pre-trained GPT2 to obtain initial embeddings for each node in G k c 2 .
+Our second approach uses CompGCN ( Vashishth et al. , 2020 ) , which is a Graph Convolutional Network ( Kipf and Welling , 2017 ) purposely built for multi-relational data .
+We initialize the CompGCN network offline with GPT2 embeddings for all entities and relations in the full graph G before running a few rounds of message passing by optimizing for a standard relation prediction objective .
+Both approaches to KG - Entity memory embeddings can be further updated during training .
+Finally , to retrieve the correct entity for query q i , we simply use a scoring function s to score every KG - Entity memory triple in G k ci.e.
+t i = c , q i , [ OBJ ] .
+The retrieved entity is the [ SUB ] or [ OBJ ] that achieves the highest score .
+Training the Entity Mention Retriever
+To train the Entity Mention Retriever , we augment the conventional maximum likelihood objective with an additional contrastive loss L NCE that encourages faithful retrieval .
+In particular , we use Noise Contrastive Estimation ( NCE ) ( Gutmann and Hyv?rinen , 2010 ) which forces the Entity Mention Retriever to learn a scoring rule such that s( t i ) > s( t i ) , ?t i ?
+E , t i ? ? where t i = c , q i , [ OBJ ] is the edge-triple based on KG-entity memory and t i = c , q i , [ OBJ ] ? is a negative sample where [ OBJ ] ?
+3 is sampled from a corruption distribution over edge triples ? not in G k c .
+To compute L NCE , we draw n negative samples uniformly over all entities for each query q i .
+L NCE = ? log ( s ( t ) ) ? log s( t ) + n j=1 s( t ) .
+At training time , we use teacher forcing ( Williams and Zipser , 1989 ) ; first , we mask out all entity mentions within the gold response x n+1 , get their representations through a MLM and provide the ground truth entity mention concatenated with h i at each time step in the LM .
+For the scoring function , we use DistMult ( Wang et al. , 2014 ) due to its simplicity in the absence of known structure over the modified triples e.g. translation , rotation , which are exploited in other popular scoring functions for KGs .
+By optimizing L NCE , we encourage the model to leverage the dialogue history , the position of the masked entity in x n+1 , and the k-hop subgraph to identify more faithful entities that are relevant to the conversation history .
+To train the Entity Mention Retriever , we thus jointly optimize L NCE and L MLE for the main language modelling task , L = L MLE + ?L NCE . ( 2 )
+Experiments
+We evaluate the ability of NEURAL PATH HUNTER towards reducing hallucinations in KG - grounded dialogue systems on the OpenDialKG dataset ( Moon et al. , 2019 ) .
+At present , OpenDialKG is the only publicly available dataset that provides openended dialogue responses grounded on paths from a given KG , this is why we limit our experiments on this dataset .
+As there are no established metrics for this task , we consider a suite of task -specific and automated metrics to assess the different components of NPH and the degree of hallucination present .
+We use standard classification metrics such as F1score , precision and recall to evaluate C and PPL to measure the quality of the LM .
+Similarly , we use retrieval metrics like Hits@k , Mean Rank ( MR ) , and Mean Reciprocal Rank ( MRR ) to evaluate the Entity Mention Retriever .
+Precise implementation details can be found in ?D. Hallucination Metrics .
+We consider 3 different hallucination metrics M1 - M3 that provide a multifaceted measure of performance .
+Appendix ?E outlines these metrics in detail .
+Succinctly , M1 . BLEU ( Papineni et al. , 2002 ) M2 . Hallucination Critic which we reapply to the refined response .
+For M3 .
+we repurpose the FeQA measure ( Durmus et al. , 2020 ) - known to be an effective faithfulness measure in text summarization - by considering our document as the concatenation of D and all G 1 c triples while the summary is the response xn + 1 . Negative Candidates .
+We consider two different negative sampling strategies in order to compute L NCE : SANS ( Ahrabian et al. , 2020 ) and In- batchnegatives .
+SANS selects hard negatives by leveraging the graph structure and selecting negative samples from a context entity 's k-hop subgraph ( e.g. G 1 c ) .
+Meanwhile ,
+In - batch - negatives considers the ground truth triple of each sample within a batch as a negative candidate for the other samples in the same batch .
+Using this approach , the number of candidates is equal to the batch size .
+Main Experimental Questions
+Our experiments answer the following questions : Q1 ) Identifying Hallucinations .
+Can C identify both extrinsic and intrinsic hallucinations ?
+Q2 ) Reducing Hallucinations .
+Is NPH effective in reducing hallucinations ?
+Q3 ) Query Generation .
+Can NPH retrieve the correct entities and is L NCE important to learn query representations q i ?
+Q4 ) Impact of MLM and Critic .
+Is MLM essential to our training strategy or can we only use an autoregressive LM ?
+Analagously , can we simply bypass the critic during refinement ?
+Q5 ) Impact of global graph structure .
+Is the global graph structure important for learning KG - Entity memory representations ?
+Results
+Throughout our experiments , we rely on three representative baselines for response generation : GPT2 - KG , AdapterBot , and GPT2 - KE . GPT2 - KG is a small pre-trained GPT2 model ( Radford et al. , 2019 ) fine -tuned on the dialogue corpus .
+AdapterBot uses a fixed backbone conversational model such as DialGPT ( Zhang et al. , 2020 ) and encodes multiple dialogue skills via different adapters ( Houlsby et al. , 2019 ) . Both GPT2 - KG and AdapterBot process inputs by concatenating D , K n and the generated response .
+GPT2 - KE on the other hand uses a GPT2 model trained on a knowledge - augmented training set .
+Q1 : Identifying Hallucinations Analogous to the study conducted in ?2.1 , we ask humans to identify the span of text that is hallucinated w.r.t. to the given triples in 500 responses generated greedily from GPT2 - KG .
+We report the average Krippendorf 's alpha coefficient to be 0.73 on the annotator responses .
+Table 5 outlines our results .
+To explore the robustness of our corruption strategies as discussed in ?3.2 , we fine - tune a large RoBERTa model ( Liu et al. , 2019a ) on three different synthetic datasets : ( i ) RoBERTa - Extrin corresponds to the negative examples crafted using an extrinsic hallucinations , where entity mentions are first extracted using the SpaCy NER tagger ( Honnibal and Montani , 2017 ) . ( ii ) RoBERTa -Intrin consists of negative examples that contain intrinsic hallucinations .
+( iii ) Finally , RoBERTa -Intrin-Extrin corresponds to examples that were either corrupted using an extrinsic or intrinsic strategy but not both simultaneously .
+For ( i ) and ( ii ) , the examples are obtained by corrupting the full train OpenDialKG data .
+We observe that RoBERTa-Intrin-Extrin achieves the highest F1 ( 70.35 % ) , compared to the classifiers trained on the first two synthetic datasets .
+Such a result highlights that our RoBERTa -Intrin-Extrin classifier can indeed detect both kinds of hallucinations and also that our corruption strategies are effective .
+In the rest of the experiments , we take RoBERTa -Intrin-Extrin as the hallucination classifier C.
+Q2 : Reducing Hallucinations
+We evaluate the ability of NPH in fixing hallucination in generated responses in the three response generation baselines .
+We also perform ablation for each model using the different components of NPH .
+We present the results in Table 3 which show the degree of hallucination prior to and after applying NPH on each response generation method .
+We find that NPH consistently performs favourably in reducing hallucination across FeQA and the hallucination Critic .
+In particular , we observe that the strongest iteration of each baseline model is the original model paired with the full NPH module .
+For example , in AdapterBot , NPH decreases the Critic score by 8.17 points and increases faithfulness by 6.67 points on FeQA .
+With respect to BLEU scores , we observe inconsistent performance across the different baselines with AdapterBot + NPH incurring a marginally higher score .
+While we use BLEU as a proxy for faithfulness , it is still an imperfect measure as it is computed solely between the n-gram overlap between a reference and generated text which neglects the important fact that there is a multitude of different ways to generate a faithful response w.r.t. a KG .
+Q3 : Query Generation
+We now investigate NPH 's ability to retrieve the correct entity using the crafted query .
+We present the results in Table 4 along with different ablation studies .
+We find that key metrics such as Hits@3 and Hits@10 are nearly saturated when using the complete NPH module with GPT2 embeddings for the KG - Entity memory .
+Furthermore , we notice that all retrieval metrics drop dramatically ( e.g.? 70 Hits@1 ) when L NCE is omitted .
+Finally , we observe that SANS negatives lead to lower perplexity Model Neg. candidates PPL Hits@1 Hits@3 Hits@10 MR MRR and better retrieval performance across the board .
+This is unsurprising since local negative samples are known to be harder and thus provides a richer learning signal ( Ahrabian et al. , 2020 ) .
+Q4 : Impact of MLM and Critic
+We now gauge the importance of using MLM and Critic within NPH .
+To assess the MLM component , we replace each contextual representation m i ?
+M c with randomly initialized values .
+We highlight our findings in Table 3 where NPH-W/O MLM performs worse than NPH across all models .
+Investigating further in Table 4 , we observe that performance without MLM degrades substantially ( e.g. ? 26 Hits@1 ) when using pre-trained GPT2 embeddings as entity memory and similarly for CompGCN embeddings .
+These findings suggest that MLM facilitates the learning of rich masked representations that are useful in downstream applications , a fact which is in line with other works that leverage MLM ( Roberts et al. , 2020 ; Devlin et al. , 2019 ; Joshi et al. , 2020 ) .
+To judge the impact of the critic , we mask out all entity mentions as opposed to only masking out potential hallucinated ones during refinement .
+In Table 3 , we find that NPH-W/O CRITIC performs the worst in every metric compared to all baselines which underlines that simply masking all entities - hallucinated or otherwise - in a response is not a productive strategy for effective refinement .
+Q5 : Impact of global graph structure
+We now investigate the representation of entities in our KG - Entity Memory .
+We explore two vari- ants : 1 ) Initializing embeddings as the output of a pre-trained GPT - 2 model .
+2 ) Utilizing node embeddings learned by a CompGCN network trained on a standard relation prediction task over the entire graph G .
+In both these approaches , the embeddings are updated throughout training using Eq. 2 .
+As per Table 4 , we notice a dramatic difference in both perplexity and retrieval performance in favour of using simply the output of a pre-trained GPT - 2 model .
+Such a result may be reconciled by noticing that any specific turn in dialogue local information ( e.g. previous turn ) - as conversation topics may drift - is significantly more important to generate a faithful response .
+Thus , enriching entity embeddings with global structure in G is less beneficial than aligning G k c with the representation space of the autoregressive LM , which for us is also GPT2 .
+Human Evaluation
+In addition to the automated hallucination metrics , we conduct human evaluation to assess NPH 's ability to reduce hallucination .
+We provide human annotators with 200 hallucinated responses per baseline ( ?4.2 ) as identified by our hallucination critic ?3.2 .
+The faithfulness of each response is evaluated by 3 humans who are provided D , K n , and the retrieved path from G k c .
+We further request annotators to evaluate the fluency of the responses before and after refinement .
+Results are depicted in Table 6 .
+We see that the hallucination critic achieves a precision of 97.5 % for GPT2 - KB responses , 95.5 % for AdapterBot and 97.0 % for GPT2 -KE .
+In contrast , generation methods when paired with NPH reduce hallucinations by a large margin 42.05 % for GPT2 - KB responses with a marginal drop in fluency ( 4.32 % ) .
+We also observe similar performance gains for responses generated from AdapterBot and GPT2 -KE .
+Related Work Knowledge Graphs .
+Building large-scale repositories of knowledge has been one of the principle directions of research in artificial intelligence since the inception of the field ( Newell and Simon , 1956 ; Newell et al. , 1959 ) .
+Often represented as large scale multi-relational graphs , KGs have seen wide application in a variety of domains , such as question answering ( Yao and Van Durme , 2014 ; Hao et al. , 2017 ) , and natural language processing ( Berant et al. , 2013 ; Yu and Dredze , 2014 ) to name a few .
+Beyond academic research , public KG 's like FreeBase ( Bollacker et al. , 2008 ) have been invaluable in industrial applications forming symbolic backbones of most important products ( Singhal , 2012 ) .
+KG 's have also risen in prominence in the context of dialogue models that propose to explicitly embed symbolic knowledge representations into a neural embedding space ( Liu et al. , 2019a ; Zhu et al. , 2017 ; Moon et al. , 2019 ; . Liu et al. ( 2019 b ) use a knowledge retriever component that conditions the response by retrieving relevant facts from the KG based on the current utterance .
+Similarly , and use a commonsense KG to inject commonsense knowledge into the response of the conversational model .
+Tuan et al. ( 2019 ) explore the effects of using a dynamic KG in the dialogue model .
+On the other hand , Moon et al . ( 2019 ) propose a conversational reasoning model that traverses a large scale KG to retrieve a relevant path given a starting node and a classifier to predict the next node a response show follow .
+Unlike the KG path traversal problem , this work focuses on removing hallucinations in generated responses using a KG .
+Hallucination .
+The injection of false information is a well - known phenomena in data- to - text generation ( Tian et al. , 2019 ; Dhingra et al. , 2019 ; Parikh et al. , 2020 ) , machine translation ( Koehn and Knowles , 2017 ; , image captioning ( Rohrbach et al. , 2018 ) , machine summarization ( Maynez et al. , 2020 ; Durmus et al. , 2020 ) and question answering ( Feng et al. , 2018 ) .
+In the context of dialogue systems , Du?ek et al . ( 2018 Du?ek et al. ( , 2020 demonstrate that state - of - the - art natural language generation ( NLG ) models can hallucinate by missing important entities .
+Few NLG models have been proposed to cope with the issue , but are often custom-made for task - oriented dialogue ( Balakrishnan et al. , 2019 ) .
+Recently , little progress has been made for studying hallucination in open-domain dialog systems .
+Dziri et al. ( 2021 ) study hallucination in knowledge - grounded dialogue systems and introduce a the BEGIN benchmark for measuring groundedness in dialogue systems .
+Finally , propose a dialogue system that is more faithful to the source knowledge by adding control tokens at training time that guide the model towards generating more objective sentences which have higher overlap with the source .
+Conclusion
+In this work , we investigate the open problem of hallucination in KG - grounded dialogue systems and demonstrate that these models are more susceptible to extrinsic hallucinations which predominantly manifest as the injection of erroneous entities .
+To tackle this challenging problem , we propose a new module NEURAL PATH HUNTER that aims to enforce faithfulness in KG - grounded dialogue systems by identifying and refining hallucinations via queries over a k-hop subgraph .
+We empirically observe that NPH is capable of reducing hallucination when paired with a number of base dialogue models with relative improvements of 20.35 % over vanilla GPT2 on FeQA .
+Our findings also reveal the crucial role the representation of the local subgraph plays as external memory compared to the full global graph .
+In this work , we considered a paired KG aligned with dialogue but in many other applications , such dialogue to KG alignment may be difficult to easily obtain necessitating the usage of the full graph which is interesting direction for future work .

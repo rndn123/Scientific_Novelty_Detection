@@ -1,0 +1,274 @@
+title
+Learning to Customize Model Structures for Few-shot Dialogue Generation Tasks
+abstract
+Training the generative models with minimal corpus is one of the critical challenges for building open-domain dialogue systems .
+Existing methods tend to use the meta-learning framework which pre-trains the parameters on all non-target tasks then fine-tunes on the target task .
+However , fine-tuning distinguishes tasks from the parameter perspective but ignores the model-structure perspective , resulting in similar dialogue models for different tasks .
+In this paper , we propose an algorithm that can customize a unique dialogue model for each task in the few-shot setting .
+In our approach , each dialogue model consists of a shared module , a gating module , and a private module .
+The first two modules are shared among all the tasks , while the third one will differentiate into different network structures to better capture the characteristics of the corresponding task .
+The extensive experiments on two datasets show that our method outperforms all the baselines in terms of task consistency , response quality , and diversity .
+Introduction Generative dialogue models often require a large amount of dialogues for training , and it is challenging to build models that can adapt to new domains or tasks with limited data .
+With recent advances in large-scale pre-training [ Peters et al. , 2018 ; Howard and Ruder , 2018 ; Radford et al. , 2018 ; Devlin et al. , 2018 ] , we can first pre-train a generative model on large-scale dialogues from the non-target domains and then fine-tune on the task -specific data corpus [ Wang et al. , 2019a ; Alt et al. , 2019a ; Klein , 2019 ] .
+While pre-training is beneficial , such models still require sufficient taskspecific data for fine-tuning .
+They cannot achieve satisfying performance when very few examples are given [ Bansal et al. , 2019 ] .
+Unfortunately , this is often the case in many dialogue generation scenarios .
+For example , in personalized dialogue generation , we need to quickly adapt to the response style of a user 's persona by just a few his or her dialogues [ Madotto et al. , 2019 ; ; in emotional dialogue generation , we need to generate a response catering to a new emoji using very few utterances containing this emoji [ Zhou et al. , 18 ; Zhou and Wang , 2018 ] .
+Hence , this is the focus of our paper - few - shot dialogue generation , i.e. training a generative model that can be generalized to a new task ( domain ) within k-shots of its dialogues .
+A few works have been proposed to consider few-shot dialogue generation as a meta-learning problem [ Madotto et al. , 2019 ; Qian and Yu , 2019 ; Mi et al. , 2019 ] .
+They all rely on the popular modelagnostic meta-learning ( MAML ) method [ Finn et al. , 2017 ] .
+Take building personalized dialogue models as an example , previous work treats learning dialogues with different personas as different tasks [ Madotto et al. , 2019 ; Qian and Yu , 2019 ] .
+They employ MAML to find an initialization of model parameters by maximizing the sensitivity of the loss function when applied to new tasks .
+For a target task , its dialogue model is obtained by finetuning the initial parameters from MAML with its task -specific training samples .
+Despite the apparent success in few-shot dialogue generation , MAML still has limitations [ Zintgraf et al. , 2019 ] .
+The goal of generative dialogue models is to build a function mapping a user query to its response , where the function is determined by both the model structure and parameters [ Brock et al. , 2018 ] .
+By fine- tuning with a fixed model structure , MAML only searches the optimal parameter settings in the parameter optimization perspective but ignores the search of optimal network structures in the structure optimization perspective .
+More-over , language data are inherently discrete and dialogue models are less vulnerable to input changes than image-related models [ Niu and Bansal , 2018 ] , which means gradients calculated from a few sentences may not be enough to change the output word from one to another .
+Thus there is a need to develop an effective way to adjust MAML for large model diversity in dialogue generation tasks .
+In this paper , we propose the Customized Model Agnostic Meta- Learning algorithm ( CMAML ) that is able to customize dialogue models in both parameter and model structure perspective under the MAML framework .
+The dialogue model of each task consists of three parts : a shared module to learn the general language generation ability and common characteristics among tasks , a private module to model the unique characteristic of this task , and a gate to absorb information from both shared and private modules then generate the final outputs .
+The network structure and parameters of the shared and gating modules are shared among all tasks , while the private module starts from the same network but differentiates into different structures to capture the task -specific characteristics .
+In summary , our contributions are as follows : ?
+We propose the CMAML algorithm that can customize dialogue models with different network structures for different tasks in the few-shot setting .
+The algorithm is general and well unified to adapt to various few-shot generation scenarios .
+?
+We propose a pruning algorithm that can adjust the network structure for better fitting the training data .
+We use this strategy to customize unique dialogue models for different tasks . ?
+We investigate two crucial impact factors for meta-learning based methods , i.e. , the quantity of training data and task similarity .
+We then describe the situations where the meta-learning can outperform other fine-tuning methods .
+Related Work Few-shot Dialogue Generation .
+The past few years have seen increasing attention on building dialogue models in few-shot settings , such as personalized chatbots that can quickly adapt to each user 's profile or knowledge background Madotto et al. , 2019 ] , or that respond with a specified emotion [ Zhou et al. , 18 ; Zhou and Wang , 2018 ] .
+Early solutions are to use explicit Zhou et al. , 18 ] or implicit [ Li et al. , 2016 b ; Zhou and Wang , 2018 ; Zhou et al. , 18 ] task descriptions , then introduce this information into the generative models .
+However , these methods require manually created task descriptions , which are not available in many practical cases .
+An alternative promising solution to building few-shot dialogue models is the meta-learning methods , especially MAML [ Finn et al. , 2017 ] . Madotto et al. ( 2019 ) propose to regard learning with the dialogue corpus of each user as a task and endow the personalized dialogue models by fine-tuning the initialized parameters on the taskspecific data .
+Qian and Yu ( 2019 ) and Mi et al . ( 2019 ) treat the learning from each domain in multidomain task - oriented dialogue generation as a task , and apply MAML in a similar way .
+All these methods do not change the original MAML but directly apply it to their scenarios due to the model - agnostic property of MAML .
+Thus , task differentiation always counts on fine-tuning , which only searches the best model for each task at the parameter level but not the model structure level .
+Meta-learning .
+Meta-learning has achieved promising results in many NLP problems recently due to its fast adaptation ability on a new task using very few training data Wang et al. , 2019 b ; Obamuyide and Vlachos , 2019 b ; Alt et al. , 2019 b ] .
+In general , there are three categories of meta-learning methods : metric- based methods [ Vinyals et al. , 2016 ; Snell et al. , 2017 ; Sung et al. , 2018 ; Ye and Ling , 2019 ] which encode the samples into an embedding space along with a learned distance metric and then apply a matching algorithm , model - based methods [ Santoro et al. , 2016 ; Obamuyide and Vlachos , 2019a ] which depend on the model structure design such as an external memory storage to facilitate the learning process , and optimization - based methods [ Finn et al. , 2017 ; Andrychowicz et al. , 2016 ; Huang et al. , 2018 ] which learn a good network initialization from which fine-tuning can converge to the optimal point for a new task with only a few examples .
+Methods belonging to the first two are proposed for classification , and those in the third category are model- agnostic .
+Therefore , it is intuitive to apply the optimization - based methods , in which MAML is most popular , for dialogue generation tasks .
+However , some researchers found that the original MAML has limited ability to model taskspecific characteristics in the image or text classification scenarios [ Jiang et al. , 2018 ; Sun et where the convolutional layer is for general features and the attention layer is for task -specific features .
+Sun et al. ( 2019 ) propose to learn a task -specific shifting and scaling operation on the general shared feed -forward layers .
+However , the involved operations in these two methods such as shifting and scaling are designed for feed -forward networks , and can not be applied to the generative models which generally rely on Seq2seq [ Sutskever et al. , 2014 ] models with recurrent GRU or LSTM [ Hochreiter and Schmidhuber , 1997 ] cells .
+In this paper , we propose a new meta-learning algorithm based on MAML that can enhance task -specific characteristics for generation models .
+Dialogue Model
+In this section , we firstly describe the network structure of the proposed dialogue model , and then briefly introduce its pre-training .
+Model Architecture
+We aim to build dialogue models for different generation tasks in the few-shot setting .
+Now , we first describe the dialogue model of each task to be used in our training algorithm .
+It involves three network modules and noted as Seq2SPG ( in Figure 1 ) : Shared Module .
+It gains the basic ability to generate a sentence and thus its parameters are shared among all tasks .
+We employ a prevailing Seq2seq dialogue model .
+At each decoding step t , we feed the word x t and last hidden state h t?1 to the decoding cell , and obtain an output distribution o s over the vocabulary .
+Private Module .
+It aims at modeling the unique characteristics of each task .
+We design a multilayer perception ( MLP ) in the decoder to fulfill this goal .
+Each task has its unique MLP network , which starts from the same initialization and then evolves into different structures during training .
+At each decoding step t , the MLP takes the word x t and the output h t?1 of the shared module at step t ?
+1 as input , then outputs a distribution o p over the vocabulary .
+In our experiments , we also explore different inputs for the private module .
+Gating Module .
+We use a gate to fuse information from the shared and private modules : g s = tanh ( W s [ o s , o p ] + b s ) g p = tanh ( W p [ o s , o p ] + b p ) o = g s ?
+o s + g p ? o p ( 1 ) where W s , W p , b s , b p are parameters , ? is elementwise product , and o is the word distribution .
+Training Overview
+For the rest of the paper , p( T ) denotes the task distribution , T i denotes the i-th task to be trained , D train i and D valid i denotes the training and validation corpus of task T i , and ?
+i denotes all training parameters of the dialogue model for T i , which include parameters ? s /? p i /?
+g in the shared / private / gating module respectively .
+we consider a model represented by a parameterized function f with parameters ?.
+The model training for all tasks consists of two steps : pre-training and customized model training .
+In pre-training , CMAML employs the vanilla MAML to obtain a pre-trained dialogue model as the initial model ? for all tasks .
+At the beginning of the MAML , ? are randomly initialized .
+Then , two main procedures perform iteratively : meta-training and meta-testing .
+In meta-training , MAML first samples a set of tasks T i ?p( T ) .
+Then , for each task i , MAML adapts ? to get ?
+i with the taskspecific data , which is , ? i = ? ? ? ? L D train i ( f ( ? ) ) ( 2 ) In the meta-testing , MAML tests tasks T i ?p( T ) with ?
+i to obtain the losses and then updates ? by ? = ? ? ? ?
+T i ?p( T ) L D valid i ( f ( ? i ) ) ( 3 ) Here , ? and ? are hyper-parameters .
+In standard MAML , each task obtains its parameters ?
+i by fine-tuning the pre-trained ?.
+However , recall that fine-tuning fails to search the best model in the network structure perspective .
+Also , the generative models are less vulnerable to input changes , thus a few utterances may not be enough to adapt ?
+into diverse ?
+i for different tasks .
+To address these issues , we do not perform direct fine - tuning on each task , but design our second training step - Customized Model Training , in which the pretrained private module can evolve into different structures to capture the characteristics of each task and encourage model diversity .
+Customized Model Training After obtaining the pre-trained model ? from MAML , we employ Customized Mode Training with the following two updating steps : ? Private Network Pruning .
+This step is applied for the private module only , which is to differentiate the MLP structure of each task .
+Each task has a different MLP structure by retaining its own subset of active MLP parameters in order to characterize the uniqueness of this task .
+? Joint Meta-learning .
+In this step , we re-train parameters of all three modules of each task using MAML again , but each private module is with its pruned MLP structure now .
+Also , similar tasks with similar pruned MLP structures are jointly trained in order to enrich the training data .
+In the following , we will describe these two steps respectively as well as the gradient update of the whole dialogue model .
+Private Network Pruning After pre-training , dialogue models of different tasks remain the same parameters ? , including ? s /? p /?
+g in the shared / private / gating module .
+In this step , the private module with parameters ?
+p will evolve into different structures with parameters ?
+p i to capture the task 's unique characteristics .
+First , we fine- tune the whole dialogue model of each task from the MAML initialization with its own training data and add an L-1 regularization on the parameters of the private module .
+The goal of L-1 regularization here is to make the parameters sparse such that only parameters beneficial to generate task -specific sentences are active .
+Second , we apply an up-to-bottom strategy to prune the private MLP for each task .
+This is equal to selecting edges in the fully connected layers in the MLP .
+We do not prune the layers connected to the input and output of the MLP .
+For the rest layers , we start the pruning from the one closest to the output first .
+For the l-th layer , we consider layers above it ( > l ) are closer to the output , and its lower layers ( < l ) are closer to the input .
+When we process the l-th layer , its upper layers should already be pruned .
+We only keep edges of the current processed layer whose weight excels a certain threshold ?.
+If all edges in the l layer connected to a node is pruned , all edges connected to this node in the l ?
+1 layer will also be pruned .
+In this way , the parameters in private module ?
+p differentiates into | T | parameters ?
+p i , where each ?
+p i is a subset of ? p .
+The pruning algorithm described above is illustrated in Algorithm 1 .
+Joint Meta-learning
+So far , every task has a unique network structure in its private module .
+Now we jointly train the whole dialogue models of all tasks .
+We start from the pre-trained MAML initialization again .
+For the shared and gating modules , all tasks share the same parameters , and they are trained with all training data .
+The private module , which is to capture the uniqueness of each task , is supposed to be trained on task -specific data .
+However , we do not have sufficient training data for each task in the few-shot setting , thus the private module may not be trained well .
+Fortunately , all private modules evolve from the same MLP structure , and similar tasks naturally share overlapped network structures , i.e. remaining edges after pruning are overlapped .
+This inspires us to train each edge in the private MLP by all training samples of tasks in which this edge is not pruned .
+Concretely , we train the private MLP in this way : for each edge e in the MLP , if it is active in more than one tasks , its corresponding parameters ?
+p e are updated on the data of all task j's , in which the edge is active , i.e. ? p e ? ? p j : ? p e = ? p e ? ? ? p e T j :?
+p e ? p j L D train j ( f ( ? p j ) ) ( 4 ) where each ? p i /?
+p i only contains the ? p e /?
+p e 's of all active edges in the i-th task .
+During meta-testing , the loss is accumulated by the tasks that use the corresponding dialogue models , so ?
+p is updated as , ? p = ? p ? ?
+T i ?p( T ) ? ? p i L D valid i ( f ( ? p i ) ) ( 5 )
+Gradient Updates
+We summarize the gradient updates of the three modules in our proposed dialogue model during customized model training in Algorithm 2 .
+For the shared and gating module , gradients are updated in the same way as MAML .
+The update of the private module is replaced by the above Eq. 4 and Eq. 5 introduced in joint meta-learning .
+The loss function used to calculate the gradients in our model is the negative log-likelihood of generating the response r given the input query q as , L = ? log p( r|q , ? s , ? p , ? g ) ( 6 ) Algorithm 2 : Customized Model Training Input :
+The distribution over the task set p( T ) , the step size ? and ?.
+Output :
+The customized dialogue models ?
+s ? ? p i ? ? g for every task Ti. for each Ti in T do ? p i ? Private Network Pruning ( Ti ) .
+while not converge do Sample a batch of tasks Ti?p ( T ) . for each sampled task Ti do Adapt ? s /?
+g to ? s i /?
+g i with D train i using Eq. 2 ; Adapt ?
+p i to ?
+p i with D train i using Eq. 4 . Update ? s , ? g with D valid i using Eq. 3 . Update ?
+p i with D valid i using Eq. 5 . return ? s ? ? p i ? ? g 5 Experiments
+Datasets
+We perform experiments in Persona- chat [ Madotto et al. , 2019 ] and MojiTalk [ Zhou and Wang , 2018 ] , which are treated as few-shot dialogue generation tasks in previous work Madotto et al. , 2019 ; Zhou and Wang , 2018 ; Zhou et al. , 18 ] . Persona-chat has 1137/99/100 users for training / validation / evaluation , and each user has 121 utterances on average .
+We follow the previous work [ Madotto et al. , 2019 ] and concatenate all the contextual utterances including the query as the input sequence .
+We regard building a dialogue model for a user as a task on this dataset .
+MojiTalk has 50/6/8 emojis for training / validation / evaluation .
+Each training / validation emoji has 1000 training samples on average , and each evaluation emoji has 155 samples on average .
+We regard generating responses with a designated emoji as a task .
+On both datasets , the data ratio for meta-training and meta-testing is 10:1 .
+Implementation Details
+We implement our shared module based on the Seq2seq model with pre-trained Glove embedding [ Pennington et al. , 2014 ] and LSTM unit , and use a 4 - layer MLP for the private module 1 .
+The dimension of word embedding , hidden state , and MLP 's output are set to 300 .
+In CMAML , we pretrain the model for 10 epochs and re-train each model for 5 steps to prune the private network .
+The L-1 weight in the re-training stage is 0.001 , and the threshold ? is 0.05 .
+We follow other hyperparameter settings in Madotto et al . [ 2019 ] .
+Competing Methods ?
+Pretrain-Only :
+We pre-train a unified dialogue generation model with data from all training tasks then directly test it on the testing tasks .
+We try three base generation models : the Seq2seq and the Speaker model [ Li et al. , 2016 b ] and the Seq2SPG proposed in Section 3.1 .
+Speaker incorporates the task ( user / emoji ) embeddings in the LSTM cell , and the task embeddings of testing tasks are random parameters in this setting .
+?
+Finetune :
+We fine- tune the pre-trained models on each testing task , denoted as Seq2seq -F , Speaker - F and Seq2SPG -F. ? MAML [ Madotto et al. , 2019 ] : We apply the MAML algorithm on the base model Seq2seq and Seq2SPG , and note them as MAML - Seq2seq and MAML - Seq2SPG .
+MAML -Seq2SPG uses the same base model as the proposed CMAML but does not apply the pruning algorithm , which helps to verify the effectiveness of the pruning algorithm and joint meta-learning .
+Note that We did not apply MAML on Speaker model as it shows no improvement comparing with Seq2seq .
+? CMAML : We try two variants of our proposed algorithm .
+CMAML -Seq2SPG is our full model ( equal to CMAML in previous sections ) , where the dialogue Seq2SPG is the base model and pruning algorithm is applied for customizing unique model structures for tasks .
+CMAML -Seq2SP
+G uses a different base model noted as Seq2SP G , where the private module only takes the output of the shared module as the input .
+Pruning algorithm is also applied in private module for network customization .
+Evaluation Metrics Automatic Evaluation .
+We performed automatic evaluation metrics in three perspectives : ?
+Response quality / diversity :
+We use BLEU [ Papineni et al. , 2002 ] to measure the word overlap between the reference and the generated sentence ; PPL , the negative logarithm of the generated sentence ; Dist - 1 [ Li et al. , 2016a ; Song et al. , , 2018 to evaluate the response diversity , which calculates the ratio of distinct 1 - gram in all test generated responses .
+?
+Task consistency :
+We use C score [ Madotto et al. , 2019 ] in Persona- chat , which uses a pre-trained natural language inference model to measure the response consistency with persona description , and E-acc [ Zhou and Wang , 2018 ] in MojiTalk , which uses an emotion classifier to predict the correlation between a response and the designated emotion .
+?
+Model difference :
+It is hard to measure the models ability of customization as we do not have the ground -truth model .
+Hence , we define the average model difference of pairwise tasks as the Diff Score of each method , and the model difference of a method before and after fine- tuning as ?
+Score .
+The model difference between T i and T j is the Euclidean distance of their parameters normalized by their parameter count : D( T i , T j ) = ||?
+i ? j || 2 M . Here , ? i /?
+j includes all model parameters of this task , M is the total parameter number of the model .
+A set of models that capture the unique characteristics of each task should be different from each other and will have a higher Diff score , indicating that a large Diff score is a sufficient condition for a strong customization ability .
+Similarly , a model that changes a lot for task specific adaptation during fine-tuning will achieve a higher ?
+Score , indicating that ?
+Score is also a sufficient condition for a good adaptation ability .
+Human Evaluation .
+We invited 3 well - educated graduated students to annotate the 100 generated replies for each method .
+For each dataset , the annotators are requested to grade each response in terms of " quality " and " task consistency " ( i.e. personality consistency in Persona - Chat and emoji consistency in MojiTalk ) independently in three scales : 2 ( for good ) , 1 ( for fair ) and 0 ( for bad ) .
+" quality " measures the appropriateness of replies , and we refer 2 for fluent , highly consistent ( between query and reply ) , and informativeness , 1 for few grammar mistakes , moderate consistent , and universal reply , and 0 for incomprehensible or unrelated topic .
+" task consistency " measures whether a reply is consistent with the characteristics of a certain task , and we refer 2 for highly consistent , 1 for no conflicted and 0 for contradicted .
+Notice that the user description ( Persona dataset ) and sentences with a certain emoji ( Mojitalk dataset ) are provided as the references .
+Volunteers , instead of authors , conduct the double - blind annotations on shuffled samples to avoid subjective bias .
+Overall Performance Quality / Diversity .
+In the Persona- chat dataset , Pretrain - Only methods provide the borderlines of all methods .
+In Pretrain- Only , Seq2SPG achieves the best performance in terms of both automatic and human measurements , indicating the appropri -
+Most of the performance of the competing methods in the MojiTalk dataset is similar to the Persona - chat dataset , while one difference is that Speaker achieves the highest Dist - 1 score among all the methods .
+By carefully analyzing the gener-ated cases , we find all non-meta- learning methods ( Pretrain- Only and Finetune ) consistently produce random word sequences , which means they completely fail in the few-shot setting on this task .
+However , meta-learning - based methods survive .
+Task Consistency .
+On both datasets , Finetune methods make no significant differences on C score , E-acc and Task Consistency when compared with Pretrain - Only methods , which means that simple fine-tuning is useless for improving the task consistency .
+All meta-learning methods including MAML and CMAML outperforms Finetune .
+Compared with MAML - Seq2seq and MAML -Seq2SPG , CMAML-Seq2SPG obtain 22.2%/12.5 % and 11.8 % / 5.6 % improvement on C score and Eacc .
+It means that the private modules in CMAML - Seq2SPG are well pruned to better well describes the unique characteristics of each task .
+We also observe that in MojiTalk , CMAML -Seq2SPG achieves good improvement compared with other baselines on the BLEU score but a lim-ited improvement on E-acc and task consistency score when compared with Persona- chat .
+This tells that when the training data is limited , the generative models tend to focus on the correctness of the response rather than the task consistency .
+By jointly analyzing the response quality and task consistency measurement , we can easily draw the conclusion that the responses produced by our algorithm in CMAML - Seq2SPG not only is superior in response quality but also caters to the characteristics of the corresponding task .
+Model Differences .
+Even though a high difference score among tasks does not indicate each model has captured its unique characteristics , a set of models that can capture the characteristics of themselves will have a higher different score .
+Hence , we present the difference scores of competing methods as a reference index .
+In Table 1 , we can see that fine-tuning on non-meta- learning methods ( Pretrain- Only and Finetune ) does not boost the model differences between tasks .
+MAML helps to increase the model differences but is not as good as the proposed CMAML methods .
+CMAML -Seq2SPG achieves the highest model difference scores on two datasets as it distinguishes different tasks in both parameter and model structure level .
+A higher ? score of a method means its produced dialogue models are more easy to finetune .
+All non-meta- learning methods have so much lower ? scores than MAML methods .
+CMAML -Seq2SPG has the highest scores on both datasets , indicating that the active edges in the private module are more likely to be fine-tuned to better fit the corpus of the corresponding tasks .
+We also observe that CMAML -Seq2SP G has relatively low ? scores , which indicates its base generation model Seq2S G is not as good as Seq2SPG .
+Impact Factors
+We further examine two factors that may have a great impact on the performance : the quantity of training data and the similarity among tasks .
+Few - shot Settings .
+We only use Persona- chat dataset for analysis , because MojiTalk has too little data to further decrease .
+In Persona- chat , each user has 121 training samples on average , and we evaluate all the methods in a 100 and 110 samples setting ( both in train and test ) in Table 2 because all the methods tend to produce random sequences when each task contains less than 100 samples .
+For non-meta-learning methods including Pretrain-Only and Finetune , the quality scores improve as the quantity of training data increases , while the C scores almost remain the same as these methods are not sensitive to the differences among tasks .
+MAML methods have not changed too much on BLEU scores along with the data growth , but its C scores keep increasing .
+Both the BLEU score and C score of CMAML -Seq2SPG keep increasing with the data growth , and it always achieves the best performance among all the tasks .
+This proves that the customized generative models are suitable for the corresponding tasks and can always take the full potential of the training data .
+Task Similarity .
+Again , we only use the Personachat dataset because we cannot define similarities among emojis .
+We construct two datasets : one contains 100 similar users and another contains 100 dissimilar users ( both in train and test ) .
+The performance of all the methods is close to each other in the similar-user setting .
+It means meta-learning - based methods have no advantage for similar tasks .
+In the dissimilar-users setting , CMAML -Seq2SPG performs best on the C score and BLEU .
+We draw a conclusion that user similarity influences the performance of our model .
+Compared to that in dissimilar-users setting , the BLEU in the similar-users setting is high , but the C score is low .
+The possible reason is that generative models do not distinguish similar tasks and regard all tasks as one task in training .
+Case Study
+We only present one case in the Persona- chat dataset due to the limited space in Table 3 . Pretrain-Only and Finetune methods produce general responses with less information .
+MAML methods tend to generate diverse responses as their initial parameters are easier to be finetuned .
+Even though the user profiles are not used for training , CMAML - Seq2SPG can quickly learn the persona information " pediatrician " from its training dialogues while other baselines can not .
+From another perspective , the pruned private module in CMAML -Seq2SPG can be regarded as a special memory that stores the task -specific information without explicit definition of memory cells .
+Conclusion
+In this paper , we address the problem of the fewshot dialogue generation .
+We propose CMAML , which is able to customize unique dialogue models for different tasks .
+CMAML introduces a private network for each task 's dialogue model , whose structure will evolve during the training to better fit the characteristics of this task .
+The private module will only be trained on the corpora of the corresponding task and its similar tasks .
+The experiment results show that CMAML achieves the best performance in terms of response quality , diversity and task consistency .
+We also measure the model differences among tasks , and the results prove that CMAML produces diverse dialogue models for different tasks .
+al. , Really I Really Emm Really , ? ?
+I I I like do n't like cats know cats ? ?
+I I hate hate pets pets Similar tasks Similar tasks
+All tasks I have a dog Query Encoder User-i Decoder User-j Decoder Training Corpus shared module data flow Generative Models gating module private module / tasks that are chosen / not for training similar tasks Figure 1 : The proposed CMAML algorithm applying on the personalized dialogue systems .
+Each customized dialogue model Seq2SPG consists of a shared , a private , and a gating module .
+The shared and gating module are the same among users and are trained on all tasks .
+The private module is unique for each user to describe this user 's persona , and is trained on the corresponding and similar tasks .
+The lines in color indicate the data flow directions .
+2019 ; Liu et al. , 2020 ] .
+Jiang et al. ( 2018 ) build an attention layer over the convolutional layers ,

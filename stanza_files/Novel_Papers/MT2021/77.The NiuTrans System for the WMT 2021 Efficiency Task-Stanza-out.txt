@@ -1,0 +1,185 @@
+title
+The NiuTrans System for the WMT21 Efficiency Task
+abstract
+This paper describes the NiuTrans system for the WMT21 translation efficiency task 1 . Following last year 's work , we explore various techniques to improve the efficiency while maintaining translation quality .
+We investigate the combinations of lightweight Transformer architectures and knowledge distillation strategies .
+Also , we improve the translation efficiency with graph optimization , low precision , dynamic batching , and parallel pre / postprocessing .
+Putting these together , our system can translate 247,000 words per second on an NVIDIA A100 , being 3 ? faster than our last year 's system .
+Our system is the fastest and has the lowest memory consumption on the GPU - throughput track .
+The code , model , and pipeline will be available at NiuTrans .
+NMT 2 .
+Introduction Large and deep Transformer models have dominated machine translation ( MT ) tasks in recent years ( Vaswani et al. , 2017 ; Edunov et al. , 2018 ; Raffel et al. , 2020 ) .
+Despite their high accuracy , these models are inefficient and difficult to deploy ( Wang et al. , 2020a ;
+Hu et al. , 2021 ; . Many efforts have been made to improve the translation efficiency , including efficient architectures ( Li et al. , 2021 a , b ) , quantization ( Bhandare et al. , 2019 ; , and knowledge distillation Lin et al. , 2021a ) .
+This work investigates efficient Transformers architectures and optimizations specialized for different hardware platforms .
+In particular , we study deep encoder and shallow decoder Transformer models and optimize them for both GPUs and CPUs .
+Starting from an ensemble of three deep Transformer teacher models , we train various student models via sequence - level knowledge distil - 1 http://statmt.org/wmt21/ efficiency-task.html 2 https://github.com/NiuTrans/NiuTrans.
+NMT lation ( SKD ) ( Hinton et al. , 2015 ; Kim and Rush , 2016 ) and data augmentation ( Shen et al. , 2020 ) .
+We find that using a deep encoder ( 6 layers ) and a shallow decoder ( 1 layer ) gives reasonable improvements in speed while maintaining high translation quality .
+We improve the student model 's efficiency by removing unimportant components , including the FFN sub-layers and multi-head mechanism .
+We also explore other model- agnostic optimizations , including graph optimization , dynamic batching , parallel pre / postprocessing , 8 - bit matrix multiplication on CPUs , and 16 - bit computation on GPUs .
+Section 2 describes the training procedures of the deep teacher models .
+Then , Section 3 presents various optimizations for reducing the model size , improving model performance and efficiency .
+Finally , Section 4 details the accuracy and efficiency results of our submissions for the shared efficiency task .
+Model Overview Following Hu et al. ( 2020 ) , and Lin et al . ( 2021a ) , we use the SKD method to train our models .
+Our experiments also show that the SKD method can obtain better performance than the word- level knowledge distillation ( WKD ) method , similar to Kim and Rush ( 2016 ) .
+Therefore , all of student models are optimized by using the interpolated SKD method ( Kim and Rush , 2016 ) , and trained on data generated from the teacher models .
+Deep Transformer Teacher Models Recently , researchers have explored deeper models to improve the translation quality Dehghani et al. , 2019 ; Wang et al. , 2020 b ) .
+Inspired by them , we employ deep Transformers as the teacher models .
+More specifically , we train three teachers with different configurations , including Deep -30 , Deep -12-768 , and Skipping Sublayer - 40 .
+We also utilize .
+The number of encoder layers is 40 and model 's other setups are same as .
+We adopt the relative position representation ( RPR ) ( Shaw et al. , 2018 ) to further improve the teacher models and set the key 's relative length to 8 .
+Lightweight Transformer Student Models
+Although the ensemble teacher model delivers excellent performance , our goal is to learn lightweight models .
+The natural idea is to compress knowledge from an ensemble into the lightweight model using knowledge distillation ( Hinton et al. , 2015 ) .
+We employ sequence -level knowledge distillation on the ensemble teacher model described in Section 2.1 .
+Seqence-level Knowledge Distillation
+The SKD will make a student model mimic the teacher 's behaviors at the sequence level .
+Moreover , the method considers the sequence -level distribution specified by the model over all possible sequences t ?
+T . Following Kim and Rush ( 2016 ) , the loss function of SKD method for training students is L SKD ? ? t?T 1 {t = ?} log p( t | s ) ( 1 ) = ? log p( t = ? | s ) ( 2 ) where 1 { ?} is the indicator function , ? is the output of teacher model using beam search , s symbolizes the source sentence and p(?|? ) denotes the conditional probability .
+We use the ensemble teacher model to generate multiple translations of the raw English sentences .
+In particular , we collect the 5best list for each sentence against the original target to create the synthetic training data .
+However , we select only 12 million synthetic data to train our student models to reduce training costs .
+We find that student models will not have better performance when increasing the number of training data .
+Fast Student Models
+As suggested in Hu et al . ( 2020 ) , the bottleneck of translation efficiency is the decoder part .
+Hence , we accelerate the decoding by reducing the number of decoder layers and removing multi-head mechanism 3 . Inspired by Hu et al . ( 2021 ) , we design the lightweight Transformer student model with one decoder layer .
+We further remove the multi-head mechanism in the decoder 's attention modules .
+Table 1 shows that the Transformer student model with one decoder layer and one decoder attention head can achieve similar translation quality to the baseline .
+Therefore , we train four different student models based on the Transformer architecture with one decoder layer and one decoder attention head .
+Those student models are described in detail in the Table 2 . Besides , experiments show that adding more encoder layers cannot improve the performance when the student model has 12 encoder layers .
+Therefore , our submissions have 12 encoder layers at most .
+Data and Training Details
+Our data is constrained by the condition of the WMT 2021 English - German news translation task 4 , and we use the same data filtering method as Zhang et al . ( 2020 ) .
+We select 20 million pairs to train our teacher models after filtering all official released parallel datasets ( without official synthetic datasets ) .
+The data is tokenized with Moses tokenizer ( Koehn et al. , 2007 ) Encoded ( BPE ) ( Sennrich et al. , 2016 ) with 32 K merge operations using a shared vocabulary .
+After decoding , we remove the BPE separators and detokenize all tokens with Moses detokenizer ( Koehn et al. , 2007 ) .
+Teacher Models Training
+We train three teacher models using newstest19 as the development set with Fairseq ( Ott et al. , 2019 ) .
+We share the source-side and target -side embeddings with the decoder output weights .
+We use the Adam optimizer ( Kingma and Ba , 2015 ) with ?
+1 = 0.9 , ? 2 = 0.997 and = 10 ?8 as well as gradient accumulation due to the high GPU memory footprints .
+Each model is trained on 8 TITAN V GPUs for up to 11 epochs .
+The learning rate is decayed based on the inverse square root of the update number after 1,6000 warm - up steps , and the maximum learning rate is 0.002 .
+After training , we average the last five checkpoints in the training process for all models .
+Similar to Zhang et al. ( 2020 ) , we train our teacher models with a round of back -translation with 12 million monolingual data selected from the News crawl and News Commentary .
+We train three De?En models with the same method and model setup to generate pseudo-data .
+Table 3 shows the results of all teacher models and their ensemble , where we report SacreBLEU ( Post , 2018 ) and the model size .
+Our final ensemble teacher model can achieve a BLEU score of 33.4 on newstest20 .
+Student Models Training
+The training settings for student models are the same for the teacher models , except its learning rate is 0.0007 and warmupupdates is 8000 .
+In addition , we also use the cutoff method ( Shen et al. , 2020 ) to boost our student models 5 and we train our student model with 21 epochs .
+Table 2 shows the results of all student models .
+Our student model yields a significant speedup ( 2 ?- 2.6 ? ) with modest sacrifice in terms of BLEU ( 0.2-0.9 on newstes t 20 ) .
+Interpretation of Results After training the final student models , we evaluate their BLEU scores on the English - German newstest20 , newstest19 , and newstest18 before any inference optimization .
+Results show that the student models can achieve very similar performance to the teachers .
+For instance , the Student - 12 - 1- 512 model delivers a loss of 0.2 BLEU score compared to the ensemble of teacher models .
+Optimizations for Decoding Our optimizations for decoding are implemented with NiuTensor 6 .
+The optimizations can be divided into three parts , including optimizations for CPUs , GPUs , and device - independent techniques .
+Optimizations for GPUs
+For the GPU - based decoding , we mainly explore dynamic batching and FP16 inference .
+Dynamic Batching
+Unlike the CPU version , the easiest way to reduce the translation time on GPUs is to increase the batch size within a specific range .
+We implement a dynamic batching scheme that maximizes the number of sentences in the batch while limiting the number of tokens .
+This strategy significantly accelerates the inference compared to a fixed batch size when the sequence length is short .
+FP16 Inference Since the Tesla A100 GPU supports calculations under FP16 , our systems execute almost all operations in 16 - bit floating - point .
+To escape overflow , we convert the data type before and after the softmax operation in the attention modules .
+We also reorder some operations for numerical stability .
+For instance , we apply the scaling operation ( dived by ? d k ) to the query instead of the attention weights .
+To accelerate our systems further , we replace the vanilla layer normalization with the L1 - norm .
+Also , we find that removing the multi-head mechanism ( by setting the head to 1 ) in the student models significantly improves the throughput without performance loss .
+Optimizations for CPUs
+We employ the Student -6- 1- 512 and Student - 3 - 1- 512 models as our CPU submissions .
+Two methods are discussed to speed up the decoding for our CPU systems .
+The Use of MKL
+We use the Intel Math Kernel Library ( Wang et al. , 2014 ) to optimize our NiuTensor framework , which helps our systems to make the full use of the Intel architecture and to extract the maximum performance .
+8 - bit Matrix Multiplication with Packing
+We implement 8 - bit matrix multiplication using the open-source library FBGEMM ( Khudia et al. , 2021 ) . Following Kim et al. ( 2019 ) , we quantize each column of the weight matrix separately with different scales and offsets .
+Scale and offsets for weight matrix are calculated by : b scale [ j ] = 14 ? j 255 ( 3 ) b zeropoint [ j ] = 127 ? ( x j + 7 ? j ) b scale [ j ] ( 4 ) where ? j and xj refers to average and standard deviation for the j-th column .
+The quantization parameters for the input matrix is calculated by : a scale = x max ? x min 255 ( 5 ) a zeropoint = 255 ?
+x max a scale ( 6 ) where x max and x min are the maximum and minimum values of the matrix respectively .
+With FBGEMM API , we also execute the packing operation to change the layout of the matrices into a form that uses the CPU more efficiently .
+We prequantize and pre-pack all the weight matrices to avoid repeated operation during inference .
+where x max and x min are the maximum and minimum values of the matrix , respectively .
+We also execute the packing operation to change the layout of the matrices into a form that uses the CPU more efficiently .
+We pre-quantize and pre-pack all the weight matrices to avoid repeated operation during inference .
+Other Optimizations
+Furthermore , we explore other device- independent methods to optimize our systems .
+Those methods help our systems to achieve obvious speed - up without translation precision loss .
+Graph Optimization
+A neural net can be represented by a directed acyclic graph ( DAG ) , where the nodes represent tensors and the connections represent operations .
+We optimize our system by simplifying the computational graph of the models .
+The optimizations for the graph are detailed as follows : ? Computation optimization .
+We prune all redundant operations and reorder some operations in the computational graph .
+For instance , we remove the log-softmax operation in the output layer when using greedy search .
+We also extract the transpose operations from matrix multiplications to the begin of decoding . ) .
+When the GPU system is running , it will use all free CPUs on the device .
+?
+Memory optimization .
+We reuse all possible nodes to minimize the memory consumption .
+We also reduce the memory allocation or movement with an efficient memory pool .
+Moreover , we sort the source sentences in descending order of length and detect the peak memory footprint before decoding .
+Parallel Execution
+We use the GNU Parallel ( Tange , 2011 ) for our systems to perform tasks in parallel .
+More specifically , we split the standard input into several lines and deliver them via the pipeline .
+The method is used to accelerate pre-processing , post-processing , and decoding on CPUs .
+We also find that the system decoding speed / memory is strongly correlated with the number of lines per task .
+To find the best number of lines for each run , we measure the time cost in different setups against the number of lines .
+Figure 1 shows that 2000 is a relatively good choice , and the Student - 6 - 1 - 512 model can translate 100,000 sentences in 102.6s on CPUs under this setup .
+Better Decoding Configurations
+As aforementioned , our GPU versions use a large batch size , but the batch size on the CPU is much smaller .
+To be more clear , there is sentence batch ( sbatch ) and word batch ( wbatch ) in our systems , and they restrict the number of sentences and number of words in a mini-batch to not be greater than sbatch and wbatch , respectively .
+In our GPU systems , we set the sbatch / wbatch to 3072/64000 .
+For our CPU systems , the number of processes is managed by the Parallel tool , which is more efficient and accurate .
+Moreover ,
+We use one MKL thread for each process and set the sbatch / wbatch to 128/2048 .
+Greedy Search
+In the practice of knowledge distillation , we find that our systems are insensitive to the beam size .
+It means that the translation quality is good enough even using greedy search in all submissions .
+Fast Data Preparation
+We use the fastBPE 7 , a faster C ++ version of subword - nmt 8 , to speed the BPE process .
+Moreover , we also use the fastmosestokenizer 9 for tokenization .
+Results after Optimizations Figure 2 plots the Student -6 - 1- 512 model 's performance with different decoding optimizations .
+All results show that our optimizations can significantly speed up our system without losing BLEU .
+What is interesting about the BLEU is that we can achieve additional improvements of 0.4/0.1 BLEU points on the GPU / CPU through decoding optimizations in all our experiments .
+We also measure other models after decoding optimizations and find their performance is similar to the Student - 6- 1 - 512 model .
+Submissions and Results
+Submissions
+For the GPU track submissions , our GPU systems are compiled with CUDA 11.2 .
+We set the num-ber of decoder layers and the number of our decoder attention head to 1 as described in Section 2.2 for all our GPU systems .
+We see a speedup of more than 6 ? on the GPU system created by Student - 12 - 1- 512 model and a slight decrease of only 0.2 BLEU on the newstest20 compared to the deep ensemble model .
+The system is named as Base-GPU - System in following part .
+We continue to reduce the number of encoder layers for more accelerations , and the GPU system with Student - 6 - 1 - 512 model reduces the translation time by onefour with only six encoder layers compared to the Base- GPU - System .
+Our fastest GPU system consists of three encoder layers and one decoder layer , which achieves 31.5 BLEU on the newstest20 with GPU and 1.6 ? speedup compared to the Base-GPU -System .
+We also employ the Student - 6 - 1 - 0 model to create a GPU system that can achieve the 1.3 ?
+speedup compared to Base-GPU -System .
+Our systems are compiled in the 11.2.1 - devel-centos7 docker image , an NVIDIA open-source image 10 .
+We copy the executables , dependence tools , and model files to the 11.2.1 - base-centos7 docker image ( final submission ) .
+In this way , we ensure all of our system docker images can be executed by the organizers successfully and reduce the docker images size .
+For the CPU track submissions , we use the test machine , which has 18 virtual cores .
+Our CPU version is compiled with MKL static library , and the executable file is 23 MiB .
+Also , we use the 8 bit matrix multiplication with packing to speed the matrix multiplication in the network .
+We use the Student -3 - 1- 512 and Student - 6 - 1- 512 models in our CPU systems , and they respectively achieve 31.5 and 32.8 BLEU on newstest20 .
+For our CPU docker images , we use the base- centos7 docker image 11 to deploy our CPU MT systems .
+Furthermore , all submissions are tested with different cases , including dirty data , empty input , and very long sentences .
+The test results show that our systems can run successfully with exceptional inputs .
+Results
+Our systems for the GPU - throughput track are the fastest overall submissions .
+Specifically , the Student -3 - 1- 512 system can translate about 250 thousand words per second and achieve 25.5 BLEU on newstest21 .
+We attribute this to the comparison of the performance of our teacher model on WMT21 .
+In the CPU track , our system also has competitive performance .
+Our fastest CPU system created by Student - 3 - 1- 512 model can translate about 48 thousand words per real second via 36 CPU cores and can achieve 25.5 BLEU .
+We find that reducing the number of encoder layers for student model achieves lower BLEU scores at a similar speed for our CPU systems .
+Moreover , we compare the cost-effective of GPU and CPU decoding in terms of millions of words translated per dollar according to the official evaluation results .
+We find that highly - effective GPU decoding is about to out-compete CPU - bound decoding in terms of cost-effective .
+Noteworthy , our GPU system with Student - 3 - 1- 512 model can translate 300M words per dollar with acceptable quality .
+Also , all of our GPU systems have the lowest RAM consumption ( about 4 GB ) to official test compared with the submissions of other participants .
+Conclusion
+We have described our systems for the WMT21 shared efficiency task .
+We have explored various efficient Transformer architectures and optimizations specialized for both CPUs and GPUs .
+We have shown that a lightweight decoder and proper optimizations for different hardware can significantly accelerate the translation process with slight or no loss of translation quality .
+Our fastest GPU system with three encoder layers and one decoder layer is 11 ?
+faster than the deep ensemble model and lose 1.9 BLEU points .
+7LPH&RVWVHFFigure 1 : 1 Figure 1 : Results on Student -6-1-512 model .
+The time cost is measured on an Intel Xeon Gold 6240 CPU with 100,000 lines of raw English sentences with an averaged length of 18 words .

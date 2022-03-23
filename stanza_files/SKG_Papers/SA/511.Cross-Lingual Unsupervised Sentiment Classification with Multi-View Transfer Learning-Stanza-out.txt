@@ -1,0 +1,231 @@
+title
+Cross -Lingual Unsupervised Sentiment Classification with Multi-View Transfer Learning
+abstract
+Recent neural network models have achieved impressive performance on sentiment classification in English as well as other languages .
+Their success heavily depends on the availability of a large amount of labeled data or parallel corpus .
+In this paper , we investigate an extreme scenario of cross-lingual sentiment classification , in which the low-resource language does not have any labels or parallel corpus .
+We propose an unsupervised cross-lingual sentiment classification model named multi-view encoder-classifier ( MVEC ) that leverages an unsupervised machine translation ( UMT ) system and a language discriminator .
+Unlike previous language model ( LM ) based fine-tuning approaches that adjust parameters solely based on the classification error on training data , we employ the encoder-decoder framework of a UMT as a regularization component on the shared network parameters .
+In particular , the cross-lingual encoder of our model learns a shared representation , which is effective for both reconstructing input sentences of two languages and generating more representative views from the input for classification .
+Extensive experiments on five language pairs verify that our model significantly outperforms other models for 8/11 sentiment classification tasks .
+Introduction Recent neural network models have achieved remarkable performance on sentiment classification in English and other languages ( Conneau et al. , 2017 ; Chen et al. , 2018 ; He et al. , 2019 ; Chen and Qian , 2019 ) .
+However , their success heavily depends on the availability of a large amount of labeled data or parallel corpus .
+In reality , some low-resource languages or applications have limited labeled data or even without any labels or parallel corpus , which may hinder us from training a robust and accurate sentiment classifier .
+To build sentiment classification models for low-resource languages , recent researchers developed cross-lingual text classification ( CLTC ) models ( Xu and Yang , 2017 ; Eriguchi et al. , 2018 ) , which transfers knowledge from a resource- rich ( source ) language to a low-resource ( target ) language .
+The core of those models is to learn a shared language - invariant feature space that is indicative of classification for both languages .
+Therefore a model trained from the source language can be applied to the target language .
+Based on how the shared feature space is learned , there are three categories , namely word- level alignments ( Andrade et al. , 2015 ) , sentence - level alignments ( Eriguchi et al. , 2018 ) and document level alignments ( Zhou et al. , 2016 ) .
+Those models can well capture the semantic similarity between two languages .
+They , however , require parallel resources such as a bilingual dictionary , parallel sentences , and parallel Wikipedia articles .
+Such a limitation may prevent these models from being applicable in languages without any parallel resources .
+Recently , there have been several attempts at developing " zero-resource " models ( Ziser and Reichart , 2018 ; Chen et al. , 2018 ; Chen and Qian , 2019 ) .
+Most notably , Ziser and Reichart ( 2018 ) proposed a cross-lingual & cross-domain ( CLCD ) model that builds on pivot based learning and bilingual word embedding .
+Although CLCD does not directly need labeled data or parallel corpus , it requires bilingual word embeddings ( BWEs ) ( Smith et al. , 2017 ) that requires thousands of translated words as a supervised signal .
+Chen et al. ( 2018 ) developed an adversarial deep averaging network to learn latent sentence representations for classification , but it had an implicit dependency on BWEs ( Zou et al. , 2013 ) that requires pretraining on a large bilingual parallel corpus .
+Chen and Qian ( 2019 ) extended the cross-lingual model in Chen et al . ( 2018 ) to multiple source languages by using the unsupervised BWEs ( Lample et al. , 2018 b ) and adding individual feature extractor for each source language , which eliminated the dependency on a parallel corpus .
+Nevertheless , their model is very sensitive to the quality of BWEs and performs poorly on distant language pairs such as English - Japanese , as illustrated in their experimental study .
+In parallel , cross-lingual language models ( LMs ) trained from raw Wikipedia texts , such as multilingual BERT 1 ( Devlin et al. , 2019 ) and XLM ( Conneau and Lample , 2019 ) , have been prevalent in solving zero-shot classification problems ( Wu and Dredze , 2019 ) .
+Those models use the BERT - style Transformer ( Vaswani et al. , 2017 ) architecture simultaneously trained from multiple languages to construct a sentence encoder , and fine - tune the encoder and a classifier on labeled training data from the source language .
+Then the fine-tuned model is applied to the target language .
+The whole process does not require any labeled data or parallel corpus .
+However , under the " zero parallel resource " setting , the encoder trained from self -supervised masked language modelling within each language may not well capture the semantic similarity among languages , which could harm the generalization performance of fine-tuned models .
+In this paper , we propose a sentiment classification model called multi-view encoder-classifier ( MVEC ) in an unsupervised setting , in which we only have monolingual corpora from two languages and labels in the source language .
+Different from previous language model ( LM ) based fine-tuning approaches ( Devlin et al. , 2019 ; Conneau and Lample , 2019 ) that adjust parameters solely based on the classification error of training data , we utilize the encoder-decoder network from unsupervised machine translation ( UMT ) ( Lample et al. , 2018a ) to regularize and refine the shared latent space .
+In particular , the transformer - based encoder regularized by a language discriminator learns shared but more refined language - invariant representations , which are effective for both reconstructing sentences from two languages by the decoder and generating multi-view feature representations for classification from input documents .
+In our model , we construct two views from the en-coder : ( i ) the encoded sentences in the source language ; ( ii ) the encoded translations of the source sentences in the target language .
+Our proposed MVEC is partially initialized by pretrained LMs ( Conneau and Lample , 2019 ) but further fine-tuned to align sentences from two languages better , accurately predict labeled data in the source language and encourage consensus between the predictions from the two views .
+The full model is trained in an end-to - end manner to update parameters for the encoder-decoder , the language discriminator , and the classifier at each iteration .
+Our contributions in this paper are as follows : ?
+We present an unsupervised sentiment classification model without any labels or parallel resource requirements for the target language .
+By designing a multi-view classifier and integrating it with pretrained LMs and UMT ( Lample et al. , 2018a ) , we build our model ( MVEC ) on a more refined latent space that is robust to language shift with better model interpretation compared to previous zero-shot classification works ( Chen et al. , 2018 ; Conneau and Lample , 2019 ) . ?
+We extensively evaluate our model in 5 language pairs involving 11 sentiment classification tasks .
+Our full model outperforms state-ofthe - art unsupervised fine-tuning approaches and partially supervised approaches using crosslingual resources in 8/11 tasks .
+Therefore , our results provide a strong lower bound performance on what future semi-supervised or supervised approaches are expected to produce .
+Related Work 2.1 Cross-Lingual Text Classification ( CLTC ) CLTC aims to learn a universal classifier that can be applied to languages with limited labeled data ( Bel et al. , 2003 ; Dong and de Melo , 2019 ; Keung et al. , 2019 ) , which is naturally applicable for sentiment analysis .
+Traditional supervised methods utilize cross-lingual tools such as machine translation systems and train a classifier on the source language ( Prettenhofer and Stein , 2010 ) .
+The latest models used parallel corpus either to learn a bilingual document representation ( Zhou et al. , 2016 ) or to conduct cross-lingual model distillation ( Xu and Yang , 2017 ) .
+In the unsupervised setting , Chen et al . ( 2018 ) learned language - invariant latent cross-lingual representations with adversarial training .
+Ziser and Reichart ( 2018 ) used pivot based learning and structure - aware DNN to transfer knowledge to low-resourced languages .
+In both papers , however , they have an implicit dependency on BWEs , which requires a bilingual dictionary to train .
+Chen and Qian ( 2019 ) was the first fully unsupervised approach using the unsupervised BWEs ( Lample et al. , 2018 b ) and multi-source languages with adversarial training .
+In contrast , our model is a multi-view classification model that is seamlessly integrated pretrained LMs ( Conneau and Lample , 2019 ) and the encoder-decoder from UMT ( Lample et al. , 2018a ) with adversarial training .
+Hence we learn a more fine-tuned latent space to better capture document - level semantics and generate multiple views to represent the input .
+Unsupervised Machine Translation UMT does not rely on any parallel corpus to perform translation , which lays a foundation for our approach .
+At the word- level , Lample et al . ( 2018 b ) built a bilingual dictionary between two languages by aligning monolingual word embeddings in an unsupervised way .
+At the sentence and document level , Lample et al . ( 2018a ) proposed a UMT model by learning an autoencoder that can reconstruct two languages under both within-domain and cross-domain settings .
+Lample et al. ( 2018 c ) extended Lample et al. ( 2018a ) with a phrase - based approach .
+Since we aim to learn more refined language - invariant representations for classification , it is natural to employ the encoder from a UMT system to generate multiple views of the input and enable knowledge transfer .
+Multi-View Transfer Learning
+The task of multi-view transfer learning is to simultaneously learn multiple representations and transfer the learned knowledge from source domains to target domains , which have fewer training samples .
+Generally , data from different views contains complementary information and multiview learning exploits the consistency from multiple views ( Li et al. , 2019 ) .
+Our work is particularly inspired by Fu et al . ( 2015 ) and , both of which exploit the complementarity of multiple semantic representations with semantic space alignment .
+The difference is that we use an encoder-decoder framework to generate multiple views for input from the source language and enforce a consensus between their predictions .
+Furthermore , we introduce a language discriminator ( Lample et al. , 2018a ) to encourage the encoder to generate language - invariant representations from the input .
+Methodology
+In this section , we will introduce our model 's general workflow , including the details of each component and our training algorithm .
+Problem Setup Given monolingual text data { D src , D tgt } from both the source and target language with a subset of labeled samples { D L src , y L src } in the source language where y L src is a vector of class labels and D L src ?
+D src , the task aims to build a universal classification model f ( X ; ? ) ?
+y parameterized by ?
+that can be directly applicable to unlabeled data in the target language , where X is an input document from any language and y is its class label .
+Note that in this paper we assume two languages share the same class types .
+Model Architecture
+Our proposed approach multi-view encoder classifier ( MVEC ) is composed of three components : an encoder-decoder , a language discriminator , and a classifier .
+Motivated by the success of unsupervised machine translation ( UMT ) in Lample et al . ( 2018a ) and reconstruction regularization by an autoencoder in Sabour et al . ( 2017 ) , we adopt the encoder-decoder framework from UMT ( Lample et al. , 2018a ) and introduce self-reconstruction loss within one language and back -translation reconstruction loss across languages together with the normal loss from classification .
+For simplicity , we denote self-reconstruction loss as " withindomain loss " and back - translation reconstruction loss as " cross- domain loss " throughout the paper .
+Although the encoder from UMT can generate a latent representation for input sentences / documents , there is still a semantic gap between the source and target language .
+Following Lample et al. ( 2018a ) ; Chen et al. ( 2018 ) , we enrich the encoder-decoder framework with a language discriminator that can produce fine-tuned latent representations to align latent representations from two languages better .
+Such representations are necessary to train a language - invariant classifier that is robust to the shift in languages .
+In particular , as illustrated in Figure 1 , the encoder is used to encode source and target docu - ments ( a sequence of sentences ) into a shared latent space , while the decoder is responsible for decoding the documents from the latent space to the source or the target language .
+Following Lample et al. ( 2018a ) , the encoder-decoder is shared for both languages ( domains ) and trained withindomain and cross-domain .
+The language discriminator aims to predict the language source for each document , and the classifier is trained to classify each document into predefined class labels .
+Under the unsupervised setting , MVEC only observes unlabeled monolingual corpora from two languages and some labeled documents in the source language .
+The unlabeled monolingual data is normally sampled from the application domain , i.e. , unlabeled product reviews or social media posts , which is used in both adopting pretrained LMs in the target domain and training UMT .
+As shown in Figure 1 , unlabeled source and target data only pass through encoder-decoder and language discriminator , while the labeled source data pass all components in the system , including the sentiment classifier .
+For evaluation purposes , we may have labeled documents in the target language .
+However , they are only used during the test period .
+In the following subsections , we introduce each component of MVEC in detail .
+Encoder-Decoder Let x ( l ) = ( x ( l ) 1 , x ( l ) 2 , ? ? ? , x ( l ) n ) denote the input document of n words from a particular lan-guage l , where l ? { src , tgt} .
+The encoder is a neural network e ?enc ( x ( l ) ) parameterized by ?
+enc that produces a sequence of n hidden states Z ( l ) = ( z ( l ) 1 , z ( l ) 2 , ? ? ? , z ( l ) n ) by using the corresponding word embedding for x ( l ) i , where z ( l ) i is the latent representation of x ( l ) i in the shared latent space and ?
+enc are parameters of the encoder shared between two languages .
+The encoder could be a BiLSTM or a transformer ( Vaswani et al. , 2017 ) .
+In this paper , we adopt the transformer , which has achieved enormous success in ( e.g. , ) recent text representation learning tasks ( Devlin et al. , 2019 ; Conneau and Lample , 2019 ) . Given Z ( l ) as the input , the decoder d ? dec ( Z ( l ) ) generates the output sequence y ( l ) = ( y ( l ) 1 , y ( l ) 2 , ? ? ? , y ( l ) k ) .
+We use the same transformer based decoder as in Conneau and Lample ( 2019 ) , parameterized by ? dec .
+For simplicity , we will denote the encoder and decoder by e( x ( l ) ) and d( Z ( l ) ) respectively instead of e ?enc ( x ( l ) ) and d ? dec ( Z ( l ) ) .
+It is more likely for the encoder-decoder to merely memorize every input word one by one if there are no imposed constraints .
+To improve the robustness of encoder-decoder , we follow Lample et al . ( 2018a ) to adopt the Denoising Autoencoders ( DAE ) ( Vincent et al. , 2008 ) , which recovers input from its corrupted version .
+There are three ways to inject noise into the document including shuffle , dropout , and replacement by special words .
+In our model , we drop and replace every word with probabilities of p d and p b , respectively , and we slightly shuffle the input document by implementing random permutation ? on the input document , where p d and p b can be viewed as hyper-parameters for controlling noise levels .
+In our design , the permutation ? satisfies the condition |?( i ) ? i| ? k , ?i ? { 1 , ? ? ? , n} , where n is the length of input document and k is another hyper-parameter .
+Note that the noise model is only applied to unlabeled data used for training the encoder-decoder and the discriminator , while labeled data will keep its originality for all components training .
+We use G ( . ) to denote a stochastic noise model , which takes input document x ( l ) and generates G( x ( l ) ) as a randomly sampled noisy version of x ( l ) .
+To incorporate the encoder-decoder as regularization components , we follow Lample et al . ( 2018a ) to consider both within-domain and crossdomain objective functions .
+The first objective function aims to reconstruct a document from a noisy version of itself within a language , whereas the second ( cross-domain ) objective function targets to teach the model to translate an input document across languages .
+Specifically , given a language l ?
+{ src , tgt} , the within-domain objective function can be written as : R wd ( ? ed , l ) = E x?D l , x?d( e ( G ( x ) ) ) [?( x , x ) ] ( 1 ) where ? ed = [? enc , ? dec ] , x ? d( e ( G ( x ) ) ) is a reconstruction of the corrupted version of x sampled from the monolingual dataset D l , and ? is the sum of token - level cross-entropy loss to measure discrepancy between two sequences .
+Similarly , we consider teaching the encoderdecoder to reconstruct x in one language from a translation of x in the other language , leading to the following cross-domain objective function : R cd ( ? ed , l 1 , l 2 ) = E x?D l 1 , x?d( e ( T ( x ) ) ) [?( x , x ) ] ( 2 ) where ( l 1 , l 2 ) ? {( src , tgt ) , ( tgt , src ) } and T ( . ) is the current UMT model applied to input document x from language l 1 to language l 2 .
+Language Discriminator Cross-lingual classifiers work well when their input produced by the encoder is language - invariant , as studied in Chen et al . ( 2018 ) .
+Thus , we prefer our encoder to map input documents from both languages into a shared feature space independent of languages .
+To achieve this goal , we follow Chen et al .
+( 2018 ) ; Lample et al. ( 2018a ) and introduce a language discriminator into our model , which is a feed-forward neural network with two hidden layers and one softmax layer to identify the language source from the encoder 's output .
+In particular , we minimize the following cross-entropy loss function : L D (? D |? enc ) = ?E ( l , x ( l ) ) [ log P D ( l|e ( x ( l ) ) ] ( 3 ) where ?
+D denotes parameters of the discriminator , ( l , x ( l ) ) corresponds to language and document pairs uniformly sampled from monolingual datasets , and P D ( . ) is the output from the softmax layer .
+Meanwhile , the encoder is trained to " fool " the discriminator : L adv ( ? enc |?
+D ) = ?E x ( l i ) ?D l i [ log P D ( l j |e( x ( l i ) ) ] ( 4 ) with l j = l 1 if l i = l 2 , and vice versa .
+Multi-view Classifier
+Thus far , we have described how we obtain a language - invariant latent space to encode two languages , which may not be sufficient to generalize well across languages if we simply train a classifier on the encoder 's output for the source language ( Chen et al. , 2018 ) .
+One key difference between Chen et al . ( 2018 ) and our work is that we use UMT ( Lample et al. , 2018a ) , which can generate multiple views for the input labeled documents from the source language .
+We can thereby benefit from multi-view learning 's superior generalization capability over single - view learning ( Zhao et al. , 2017 ) .
+Particularly , we consider two views of input : ( i ) the encoded labeled documents from the source language ; ( ii ) the encoded back - translations of the source documents from the target language .
+Our learning objective is to train the classifier to match predicted document labels with ground truth from the source language and to encourage two predictive distributions on the two views to be as similar as possible .
+We consider the following objective function : ) is KL Divergence to measure the difference between two distributions , y is the class label of input document x and ?
+c are parameters of classifier .
+Following previous studies in text classification ( Devlin et al. , 2019 ) , we use the first token 's representation in the last hidden layer from the transformer encoder as the document representation vector .
+The classifier is a feed-forward neural network with two hidden layers and a softmax layer .
+L C (? C , ? ed ) = E ( x , The final objective function at one iteration of our learning algorithm is to minimize the following loss function : L all = L C + ? wd ?
+( R wd src + R wd tgt ) ( 6 ) + ? cd ?
+( R cd src + R cd tgt ) + ? adv ?
+L adv where ? wd , ? cd , ? adv are hyper-parameters to trade- off among within-domain loss , the crossdomain loss and the adversarial loss , respectively .
+Training Algorithm
+Our model relies on an initial translation machine T ( 0 ) , which provides a translation from one lan-guage to another for calculating the cross-domain loss in Eq. ( 2 ) and classifier loss in Eq. ( 5 ) .
+To accelerate the training , we initialize T ( 0 ) by pretraining a transformer - based UMT ( Conneau and Lample , 2019 ) for certain steps with the same encoder-decoder architecture as our model on monolingual Wikipedia text .
+After pretraining , we use the pretrained encoder-decoder network to initialize our model and start training the classifier and the discriminator .
+Meanwhile , we refine the encoder and the decoder on monolingual data and labeled data from the source language .
+During each training step , the optimization iterates from updating ?
+D in Eq. ( 3 ) to updating ?
+ed and ?
+C in Eq. ( 6 ) .
+Note that if a batch of documents drawn from monolingual data are all unlabeled , then we suspend updating classifier parameters and only update the parameters of the language discriminator and encoder-decoder .
+In Algorithm 1 , we provide a detailed procedure .
+Algorithm 1
+The proposed MVEC algorithm .
+Update T ( t + 1 ) ? {e ( t ) , d ( t ) } ;
+We conduct experiments on cross-lingual multiclass and binary sentiment classification using five language pairs involving 11 tasks .
+More specifically , English is always the source language , and the target languages are French , German , Japanese , Chinese , and Arabic , respectively .
+Datasets Amazon Review ( French , German , Japanese ) .
+This is a multilingual sentiment classification dataset ( Duh et al. , 2011 ) in four languages , in- cluding English ( en ) , French ( fr ) , German ( de ) , and Japanese ( ja ) , covering three products ( book , DVD , and music ) .
+For each product in each language , there are 2000 documents in each of the training and test sets .
+Each document contains a title , a category label , a review , and a 5 - point scale star rating .
+Following Xu and Yang ( 2017 ) ; Chen and Qian ( 2019 ) , we convert multi-class ratings to binary ratings by thresholding at 3 - point .
+For each product , since the test set in English is not used , we combine the English training and test sets and randomly sample 20 % ( 800 ) documents as the validation set to tune hyper-parameters , and use the rest 3200 samples for training .
+For each target language , we use the original 2000 test samples for comparison with previous methods .
+Unlike Chen et al . ( 2018 ) ; Chen and Qian ( 2019 ) that used labeled data in the target language for model selection , we only use the labels of reviews in the target language for testing .
+There are 105k , 58k , 317k , 300k unlabeled reviews for English , French , German and Japanese , respectively , which can be used as monolingual data to train the encoder-decoder of our model .
+Yelp and Hotel Review ( Chinese ) .
+This dataset is from two sources : ( i ) 700 k
+Yelp reviews in English with five classes from Zhang et al . ( 2015 ) , and ( ii ) 170k hotel reviews in Chinese segmented and annotated with five classes from Lin et al . ( 2015 ) .
+Following the same setup in Chen et al . ( 2018 ) , we split all Yelp reviews into a training set with 650k reviews and validation set with 50 k reviews .
+The 650k review contents are also served as the monolingual training data for English .
+For Chinese hotel review data , we sample 150k reviews as the monolingual training set .
+The rest 20 k reviews are treated as the test set .
+Social Media Posts ( Arabic ) .
+The BBN Arabic Sentiment dataset is from Mohammad et al . ( 2016 ) .
+There are 1200 documents from social media posts annotated with three labels ( negative , neutral , positive ) in the data .
+The original dataset was split into half as training and the other half as testing .
+Since we do not need validation data in the target language to tune the model , we randomly sample 1000 documents as test data .
+For English resource , we still use Yelp reviews and follow the same split as the Chinese case , but convert 5 level reviews into 3 levels 2 . Also , we randomly sample 161 k sentences from the United Nations Corpus Arab subset ( Ziemski et al. , 2016 ) as unlabeled monolingual data for our model training .
+Experiment Setting For French , German and Japanese , we perform binary classification .
+For Chinese and Arabic , we perform multi-class classification .
+Data Preprocessing .
+Following Lample et al. ( 2018 c ) , we extract and tokenize monolingual data of each language using Moses ( Koehn et al. , 2007 ) .
+Then we use the neural machine translation for rare words with subword units , named fastBPE ( Sennrich et al. , 2016 ) in three steps .
+In detail , BPE code is collected from the pretrained XLM - 100 models ( Conneau and Lample , 2019 ) , then applied to all tokenized data and used to extract the training vocabulary .
+To constrain our model size , we only keep the top 60 k most frequent subword units in our training set .
+Finally , we binarize monolingual data and labeled data for model training , validation and testing .
+Pretraining Details .
+As mentioned earlier , our model depends on an initial translation machine to compute reconstruction loss and classifier loss .
+We leverage pretrained language models ( Conneau and Lample , 2019 ) to initialize a transformerbased UMT ( Lample et al. , 2018a ) and train it on Wikipedia text 3 .
+In particular , we sample 10 million sentences from each language pairs and use the XLM library 4 to train a UMT ( Lample et al. , 2018a ) for 200K steps .
+The resulting encoderdecoder are used to initialize our model .
+Regarding word embedding initialization , we use the embeddings obtained from the 1st layer of pretrained language models ( Conneau and Lample , 2019 ) , which has demonstrated better crosslingual performance in a number of evaluation metrics over MUSE ( Lample et al. , 2018 b ) .
+Training Details .
+In our experiment , both encoder and decoder are 6 layer transformers with 8head self-attention .
+We set both subword embedding and hidden state dimension to 1024 and use greedy decoding to generate a sequence of tokens .
+The encoder-decoder and classifier are trained using Adam optimizer ( Kingma and Ba , 2015 ) with a learning rate of 10 ?5 and a mini-batch size of 32 .
+We set the hidden dimension to 128 for both clas-sifier and discriminator .
+For parameters of denoising auto-encoder , we set p d = 0.1 , p b = 0.2 and k = 3 following Lample et al . ( 2018a ) .
+Finally , we perform a grid search for hyper-parameters on { 0.5,1,2,4,8 } and set ? wd , ? cd to 1 and ? adv to 4 .
+To prevent gradient explosion , we clip the gradient L 2 norm by 5.0 .
+Our approach is implemented in PaddlePaddle 5 and all experiments are conducted on an NVIDIA Tesla M40 ( 24GB ) GPU .
+Competing Methods .
+We have compared our method with several recently published results .
+Due to the space limit , we briefly introduce several representative baselines : LR + MT translated the bag of words from target language to source language via machine translation and then built a logistic regression model .
+BWE baselines rely on Bilingual Word Embeddings ( BWEs ) , wherein 1to - 1 indicates that we are only transferring from English , while 3 - to - 1 means the training data from all other three languages .
+CLDFA ( Xu and Yang , 2017 ) was built on model distillation on parallel corpora with adversarial feature adaptation technique .
+PBLM ( Ziser and Reichart , 2018 ) used bilingual word embeddings and pivot-based language modeling for cross-domain & cross-lingual classification .
+MBERT ( Devlin et al. , 2019 ) and XLM - FT ( Conneau and Lample , 2019 ) directly fine - tuned a single layer classifier based on pretrained LM multilingual BERT and XLM .
+Experiment Results In Table 1 and Table 2 , we compare our method with others based on their published results or our reproduced results from their code .
+Our results are averaged based on 5 rounds of experiment with the standard deviation around 1 % - 1.5 % .
+Following previous baselines , we do not report them here .
+Our first observation from Table 1 is that our model and the fine-tuned multilingual LM MBERT ( Devlin et al. , 2019 ) and XLM - FT ( Conneau and Lample , 2019 ) outperform all previous methods including the methods with cross-lingual resources for 8/9 tasks by a large margin , which indicates the huge benefit from pretrained LMs in the zero-shot setting .
+Compared with MBERT and XLM - FT , our model obtains better performance when the target language is more similar to the source language , for example , German and French , and one task in Japanese .
+In Table 2 , we show the comparison between our method and a few other published results , including ADAN ( Chen et al. , 2018 ) and mSDA ( Chen et al. , 2012 ) for Chinese and Arabic languages in multi-class setting .
+Similarly , our model obtains slightly better accuracy in Chinese .
+Overall , built on top of the pretrained LMs and UMT , our full model achieves the state - of - theart performance on 8/11 sentiment classification tasks , especially when the target language is more similar to the source language .
+Moreover , we illustrate the effectiveness of encoder-decoder based regularization in reducing the language shift in the shared latent space .
+Intuitively , if the fine-tuned latent space is less sensitive to the language shift , the performance on validation sets and test sets should be highly correlated during training .
+In Figure 2 , we report the average accuracy of both validation and test set w.r.t. training epochs over five runs on Amazon book review data in French .
+From Figure 2 , we observe that even though our model 's best validation accuracy is lower than XLM - FT ( Conneau and Lample , 2019 ) in English , it has more correlated accuracy curves than XLM - FT across English and French .
+For example , the validation accuracy of XLM - FT starts decreasing after epoch 10 , while the test accuracy is still increasing .
+Such an observation shows that the latent representation learned solely from self -supervised objectives ( e.g. , masked language modeling ) may not well capture the semantic similarity among languages .
+Hence the resulting classifier may work well in the source language but may not generalize to the target language .
+In contrast , our model sacrifices some accuracy in the source language but can select better models for the target language in a cross-lingual setting .
+Ablation Study
+To understand the effect of different components in our model on the overall performance , we con - duct an ablation study , as reported in Table 3 .
+Clearly , the encoder-decoder trained either by the within-domain objective or cross-domain objective is the most critical .
+For Amazon data in three languages ( German , French , Japanese ) , the model without cross-domain loss obtains prediction accuracy of 83.22 % , 82.40 % , and 72.05 % , which gets decreased by 5 % ? 7 % compared with the full model .
+The performance is also significantly degraded when the adversarial training component is removed because the distribution of latent document representations is not similar between two languages .
+The two -views consensus component also has a significant effect on the performance of our model , with a performance drop up to 5 points for en-jp .
+Such a result verifies our claim that cross-lingual model benefits from training on multiple views of the input .
+Case Study
+To further explore the effectiveness of our approach , we visualize the encoder 's output and the last layer before softmax for 10 randomly sampled Amazon reviews in English and their translations in French using Google Translation , as shown in Appendix A.2 .
+As seen in the lower - left panel of Figure 3 , most red circles and black squares with the same indices are very close for our method but are distant for XLM - FT in the top-left .
+Such an observation implies that our encoder combined UMT and a language discriminator adequately maps the input into a shared language - invariant latent space while preserving semantic similarity .
+For the last layer before softmax , even though XLM - FT also generates reasonable representations to separate positive and negative reviews , the data points are scattered randomly .
+On the contrary , our model 's output in the lower right panel of Figure 3 shows two more obvious clusters with corresponding labels that can be easily separated .
+One cluster in the left contains all of the positive documents , while the negative examples only appear on the right side .
+Conclusion
+In this paper , we propose a cross-lingual multiview encoder-classifier ( MVEC ) that requires neither labeled data in the target language nor crosslingual resources with the source language .
+Built upon pretrained language models , our method utilizes the encoder-decoder component with a language discriminator from an unsupervised machine translation system to learn a languageinvariant feature space .
+Our approach departs from previous models that could only make use of the shared language - invariant features or depend on parallel resources .
+By constructing the finetuned latent feature space and two views of input from the encoder-decoder of UMT , our model significantly outperforms previous methods for 8/11 zero-shot sentiment classification tasks .

@@ -1,0 +1,115 @@
+title
+Neural Semantic Parsing over Multiple Knowledge-bases
+abstract
+A fundamental challenge in developing semantic parsers is the paucity of strong supervision in the form of language utterances annotated with logical form .
+In this paper , we propose to exploit structural regularities in language in different domains , and train semantic parsers over multiple knowledge - bases ( KBs ) , while sharing information across datasets .
+We find that we can substantially improve parsing accuracy by training a single sequence - tosequence model over multiple KBs , when providing an encoding of the domain at decoding time .
+Our model achieves state-ofthe - art performance on the OVERNIGHT dataset ( containing eight domains ) , improves performance over a single KB baseline from 75.6 % to 79.6 % , while obtaining a 7x reduction in the number of model parameters .
+Introduction Semantic parsing is concerned with translating language utterances into executable logical forms and constitutes a key technology for developing conversational interfaces ( Zelle and Mooney , 1996 ; Zettlemoyer and Collins , 2005 ; Kwiatkowski et al. , 2011 ; Liang et al. , 2011 ; Artzi and Zettlemoyer , 2013 ; .
+A fundamental obstacle to widespread use of semantic parsers is the high cost of annotating logical forms in new domains .
+To tackle this problem , prior work suggested strategies such as training from denotations ( Clarke et al. , 2010 ; Liang et al. , 2011 ; Artzi and Zettlemoyer , 2013 ) , from paraphrases ( Berant and Liang , 2014 ; Wang et al. , 2015 ) and from declarative sentences ( Krishnamurthy and Mitchell , 2012 ; Reddy et al. , 2014 ) . Figure 1 : Examples for natural language utterances with logical forms in lambda- DCS ( Liang , 2013 ) in different domains that share structural regularity ( a comparative structure in the first example and a superlative in the second ) .
+In this paper , we suggest an orthogonal solution : to pool examples from multiple datasets in different domains , each corresponding to a separate knowledge - base ( KB ) , and train a model over all examples .
+This is motivated by an observation that while KBs differ in their entities and properties , the structure of language composition repeats across domains ( Figure 1 ) .
+E.g. , a superlative in language will correspond to an ' argmax ' , and a verb followed by a noun often denotes a join operation .
+A model that shares information across domains can improve generalization compared to a model that is trained on a single domain only .
+Recently , Jia and Liang ( 2016 ) and Dong and Lapata ( 2016 ) proposed sequence - to-sequence models for semantic parsing .
+Such neural models substantially facilitate information sharing , as both language and logical form are represented with similar abstract vector representations in all domains .
+We build on their work and examine models that share representations across domains during encoding of language and decoding of logical form , inspired by work on domain adaptation ( Daume III , 2007 ) and multi-task learning ( Caruana , 1997 ; Collobert et al. , 2011 ; Luong et al. , 2016 ; Firat et al. , 2016 ; Johnson et al. , 2016 ) .
+We find that by providing the decoder with a representation of the domain , we can train a single model over multiple domains and substantially improve accuracy compared to models trained on each domain separately .
+On the OVERNIGHT dataset , this improves accuracy from 75.6 % to 79.6 % , setting a new state - of - the - art , while reducing the number of parameters by a factor of 7 .
+To our knowledge , this work is the first to train a semantic parser over multiple KBs .
+Problem Setup
+We briefly review the model presented by Jia and Liang ( 2016 ) , which we base our model on .
+Semantic parsing can be viewed as a sequenceto-sequence problem ( Sutskever et al. , 2014 ) , where a sequence of input language tokens x = x 1 , . . . , x m is mapped to a sequence of output logical tokens y 1 , . . . , y n .
+The encoder converts x 1 , . . . , x m into a sequence of context sensitive embeddings b 1 , . . . , b m using a bidirectional RNN ( Bahdanau et al. , 2015 ) : a forward RNN generates hidden states h F 1 , . . . , h F m by applying the LSTM recurrence ( Hochreiter and Schmidhuber , 1997 ) : h F i = LST M ( ? ( in ) ( x i ) , h F i?1 ) , where ? ( in ) is an embedding function mapping a word x i to a fixed - dimensional vector .
+A backward RNN similarly generates hidden states h B m , . . . , h B 1 by processing the input sequence in reverse .
+Finally , for each input position i , the representation b i is the concatenation [ h F i , h B i ] .
+An attention - based decoder ( Bahdanau et al. , 2015 ; Luong et al. , 2015 ) generates output tokens one at a time .
+At each time step j , it generates y j based on the current hidden state s j , then updates the hidden state s j+1 based on s j and y j .
+Formally , the decoder is defined by the following equations : s 1 = tanh ( W ( s ) [ h F m , h B 1 ] ) , e ji = s j W ( a ) b i , ? ji = exp( e ji ) m i =1 e ji , c j = m i=1 ? ji b i , p(y j = w | x , y 1:j?1 ) ? exp ( U [ s j , c j ] ) , s j+1 = LST M ( [ ? ( out ) ( y j ) , c j ] , s j ) , ( 1 ) where i ? { 1 , . . . , m} and j ? { 1 , . . . , n} .
+The matrices W ( s ) , W ( a ) , U , and the embedding function ? ( out ) are decoder parameters .
+We also employ attention - based copying as described by Jia and Liang ( 2016 ) , but omit details for brevity .
+The entire model is trained end-to- end by maximizing p(y | x ) = n j=1 p(y j | x , y 1:j?1 ) .
+Models over Multiple KBs
+In this paper , we focus on a setting where we have access to K training sets from different domains , and each domain corresponds to a different KB .
+In all domains the input is a language utterance and the label is a logical form ( we assume annotated logical forms can be converted to a single formal language such as lambda- DCS in Figure 1 ) .
+While the mapping from words to KB constants is specific to each domain , we expect that the manner in which language expresses composition of meaning to be shared across domains .
+We now describe architectures that share information between the encoders and decoders of different domains .
+One - to- one model
+This model is similar to the baseline model described in Section 2 .
+As illustrated in Figure 2 , it consists of a single encoder and a single decoder , which are used to generate outputs for all domains .
+Thus , all model parameters are shared across domains , and the model is trained from all examples .
+Note that the number of parameters does not depend on the number of domains K. Since there is no explicit representation of the domain that is being decoded , the model must learn to identify the domain given only the input .
+To alleviate that , we encode the k'th domain by a one- hot vector d k ?
+R K .
+At each step , the decoder updates the hidden state conditioned on the domain 's one - hot vector , as well as on the previous hidden state , the output token and the context .
+Formally , for domain k , Equation 1 is changed : 1 s j+1 = LST M ( [ ? ( out ) ( y j ) , c j , d k ] , s j ) .
+( 2 ) Recently Johnson et al. ( 2016 ) used a similar intuition for neural machine translation , where they added an artificial token at the beginning of each source sentence to specify the target language .
+We implemented their approach and compare to it in Section 4 .
+Since we have one decoder for multiple domains , tokens which are not in the domain vocabulary could possibly be generated .
+We prevent that at test time by excluding out - of- domain tokens before the softmax ( p( y j | x , y 1:j?1 ) ) takes place .
+Many - to-many model
+In this model , we keep a separate encoder and decoder for every domain , but augment the model with an additional encoder that consumes examples from all domains ( see Figure 2 ) .
+This is motivated by prior work on domain adaptation ( Daume III , 2007 ; Blitzer et al. , 2011 ) , where each example has a representation that captures domain-specific aspects of the example and a representation that captures domain-general aspects .
+In our case , this is achieved by encoding examples with a domainspecific encoder as well as a domain-general encoder , and passing both representations to the decoder .
+Formally , we now have K + 1 encoders and K decoders , and denote by h F , k i , h B , k i , b k i the forward state , backward state and their concatenation at position i ( the domain- general encoder has index K + 1 ) .
+The hidden state of the decoder in domain k is initialized from the domain-specific and domain-general encoder : s 1 = tanh ( W ( s ) [ h F , k m , h B , k 1 , h F ,K+1 m , h B ,K+1 1 ] ) .
+Then , we compute unnormalized attention scores based on both encoders , and represent the language context with both domain-general and domain-specific representations .
+Equation 1 for domain k is changed as follows : e ji = s j W ( a ) [ b k i , b K+1 i ] , c j = m i=1 ? ji [ b k i , b K+1 i ] .
+In this model , the number of encoding parameters grows by a factor of 1 k , and the number of decoding parameters grows by less than a factor of 2 .
+One -to-many model
+Here , a single encoder is shared , while we keep a separate decoder for each domain .
+The shared encoder captures the fact that the input in each domain is a sequence of English words .
+The domainspecific decoders learn to output tokens from the right domain vocabulary .
+Experiments
+Data
+We evaluated our system on the OVERNIGHT semantic parsing dataset , which contains 13 , 682 examples of language utterances paired with logical forms across eight domains .
+OVERNIGHT was constructed by generating logical forms from a grammar and annotating them with language through crowdsourcing .
+We evaluated on the same train / test split as Wang et al . ( 2015 ) , using the same accuracy metric , that is , the proportion of questions for which the denotations of the predicted and gold logical forms are equal .
+Implementation Details
+We replicate the experimental setup of Jia and Liang ( 2016 ) :
+We used the same hyper-parameters without tuning ; we used 200 hidden units and 100 dimensional word vectors ; we initialized parameters uniformly within the interval [?0.1 , 0.1 ] , and maximized the log likelihood of the correct logical form with stochastic gradient descent .
+We trained the model for 30 epochs with an initial learning rate of 0.1 , and halved the learning rate every 5 epochs , starting from epoch 15 .
+We replaced word vectors for words that occur only once in the training set with a universal < unk > word vector .
+At test time , we used beam search with beam size 5 .
+We then picked the highest - scoring logical form that does not yield an executor error when its denotation is computed .
+Our models were implemented in Theano ( Bergstra et al. , 2010 ) .
+1 : Test accuracy for all models on all domains , along with the number of parameters for each model .
+Results
+For our main result , we trained on all eight domains all models described in Section 3 : ONE2ONE , DOMAINENCODING and INPUTTO - KEN representing respectively the basic one- toone model , with extensions of one- hot domain encoding or an extra input token , as described in Section 3.1 .
+MANY2MANY and ONE2MANY are the models described in Sections 3.2 and 3.3 , respectively .
+INDEP is the baseline sequence - tosequence model described in Section 2 , which trained independently on each domain .
+Results show ( Table 1 ) that training on multiple KBs improves average accuracy over all domains for all our proposed models , and that performance improves as more parameters are shared .
+Our strongest results come when parameter sharing is maximal ( i.e. , single encoder and single decoder ) , coupled with a one-hot domain representation at decoding time ( DOMAINENCODING ) .
+In this case accuracy improves not only on average , but also for each domain separately .
+Moreover , the number of model parameters necessary for training the model is reduced by a factor of 7 .
+Our baseline , INDEP , is a reimplementation of the NORECOMBINATION model described in Jia and Liang ( 2016 ) , which achieved average accuracy of 75.8 % ( corresponds to our 75.6 % result ) .
+Jia and Liang ( 2016 )
+Figure 3 shows a learning curve for all models on the test set , when training on a fraction of the training data .
+We observe that the difference between models that share parameters ( INPUTTOKEN , and models that keep most of the pa- rameters separate ( INDEP , MANY2MANY and ONE2 MANY ) is especially pronounced when the amount of data is small , reaching a difference of more than 15 accuracy point with 10 % of the training data .
+This highlights the importance of using additional data from a similar distribution without increasing the number of parameters when there is little data .
+The learning curve also suggests that the MANY2MANY model improves considerably as the amount of data increases , and it would be interesting to examine its performance on larger datasets .
+Analysis
+Learning a semantic parser involves mapping language phrases to KB constants , as well as learning how language composition corresponds to logical form composition .
+We hypothesized that the main benefit of training on multiple KBs lies in learning about compositionality .
+To verify that , we append the domain index to the name of every constant in every KB , and therefore constant names are disjoint across datasets .
+We train DOMAINEN -CODING on this dataset and obtain an accuracy of 79.1 % ( comparing to 79.6 % ) , which hints that most of the gain is attributed to compositionality rather than mapping of language to KB constants .
+We also inspected cases where DOMAINEN - CODING performed better than INDEP , by analyzing errors on a development set ( 20 % of the training data ) .
+We found 45 cases where INDEP makes an error ( and DOMAINENCODING does not ) by predicting a wrong comparative or superlative structure ( e.g. , > instead of ? ) .
+However , the opposite case occurs only 29 times .
+This reiterates how we learn structural linguistic regularities when sharing parameters .
+Lastly , we observed that the domain 's training set size negatively correlates with its relative improvement in performance ( DOMAINENCODING accuracy compared to INDEP ) , where Spearman 's ? = ?0.86 .
+This could be explained by the tendency of smaller domains to cover a smaller fraction of structural regularities in language , thus , they gain more by sharing information .
+Conclusion
+In this paper we address the challenge of obtaining training data for semantic parsing from a new perspective .
+We propose that one can improve parsing accuracy by training models over multiple KBs and demonstrate this on the eight domains of the OVERNIGHT dataset .
+In future work , we would like to further reduce the burden of data gathering by training characterlevel models that learn to map language phrases to KB constants across datasets , and by pre-training language side models that improve the encoder from data that is independent of the KB .
+We also plan to apply this method on datasets where only denotations are provided rather than logical forms .
+" Find a housing that is no more than 800 square feet . " , Type.Housing Unit Size .?
+.800 Domain : PUBLICATIONS
+" Find an article with no more than two authors " Type.Article R [?x.count ( AuthorOf .x ) ] .?
+.2 Example 2 Domain : RESTAURANTS " which restaurant has the most ratings ? " argmax ( Type.
+Restaurant , R [?x.count ( R [ Rating ] . x ) ] )
+Domain : CALENDAR
+" which meeting is attended by the most people ? " argmax ( Type.
+Meeting , R [?x.count ( R [ Attendee ] . x ) ] )

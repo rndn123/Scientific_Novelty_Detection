@@ -1,0 +1,163 @@
+title
+Efficient Path Counting Transducers for Minimum Bayes -Risk Decoding of Statistical Machine Translation Lattices
+abstract
+This paper presents an efficient implementation of linearised lattice minimum Bayes - risk decoding using weighted finite state transducers .
+We introduce transducers to efficiently count lattice paths containing n-grams and use these to gather the required statistics .
+We show that these procedures can be implemented exactly through simple transformations of word sequences to sequences of n-grams .
+This yields a novel implementation of lattice minimum Bayes - risk decoding which is fast and exact even for very large lattices .
+Introduction
+This paper focuses on an exact implementation of the linearised form of lattice minimum Bayesrisk ( LMBR ) decoding using general purpose weighted finite state transducer ( WFST ) operations 1 . The LMBR decision rule in Tromble et al . ( 2008 ) has the form ?
+= argmax E ? ?E ? 0 |E ? | + u?N ? u # u ( E ? ) p ( u|E ) ( 1 ) where E is a lattice of translation hypotheses , N is the set of all n-grams in the lattice ( typically , n = 1 . . . 4 ) , and the parameters ? are constants estimated on held - out data .
+The quantity p( u |E ) we refer to as the path posterior probability of the n-gram u .
+This particular posterior is defined as p( u |E ) = p( E u |E ) = E?Eu P ( E|F ) , ( 2 ) where E u = { E ? E : # u ( E ) > 0 } is the subset of lattice paths containing the n-gram u at least once .
+It is the efficient computation of these path posterior n-gram probabilities that is the primary focus of this paper .
+We will show how general purpose WFST algorithms can be employed to efficiently compute p( u |E ) for all u ?
+N . Tromble et al. ( 2008 ) use Equation ( 1 ) as an approximation to the general form of statistical machine translation MBR decoder ( Kumar and Byrne , 2004 ) : ? = argmin E ? ?E E?E L(E , E ? ) P ( E|F ) ( 3 )
+The approximation replaces the sum over all paths in the lattice by a sum over lattice n-grams .
+Even though a lattice may have many n-grams , it is possible to extract and enumerate them exactly whereas this is often impossible for individual paths .
+Therefore , while the Tromble et al . ( 2008 ) linearisation of the gain function in the decision rule is an approximation , Equation ( 1 ) can be computed exactly even over very large lattices .
+The challenge is to do so efficiently .
+If the quantity p( u|E ) had the form of a conditional expected count c ( u |E ) = E?E # u ( E ) P ( E|F ) , ( 4 ) it could be computed efficiently using counting transducers ( Allauzen et al. , 2003 ) .
+The statistic c ( u |E ) counts the number of times an n-gram occurs on each path , accumulating the weighted count over all paths .
+By contrast , what is needed by the approximation in Equation ( 1 ) is to identify all paths containing an n-gram and accumulate their probabilities .
+The accumulation of probabilities at the path level , rather than the n-gram level , makes the exact computation of p( u |E ) hard .
+Tromble et al. ( 2008 ) approach this problem by building a separate word sequence acceptor for each n-gram in N and intersecting this acceptor with the lattice to discard all paths that do not contain the n-gram ; they then sum the probabilities of all paths in the filtered lattice .
+We refer to this as the sequential method , since p( u |E ) is calculated separately for each u in sequence .
+Allauzen et al. ( 2010 ) introduce a transducer for simultaneous calculation of p( u |E ) for all unigrams u ?
+N 1 in a lattice .
+This transducer is effective for finding path posterior probabilities of unigrams because there are relatively few unique unigrams in the lattice .
+As we will show , however , it is less efficient for higher - order n-grams .
+Allauzen et al. ( 2010 ) use exact statistics for the unigram path posterior probabilities in Equation ( 1 ) , but use the conditional expected counts of Equation ( 4 ) for higher - order n-grams .
+Their hybrid MBR decoder has the form ?
+= argmax E ? ?E ? 0 |E ? | + u?N :1?|u|?k ? u # u ( E ? ) p ( u|E ) + u?N :k<|u|?4 ? u # u ( E ? ) c ( u|E ) , ( 5 ) where k determines the range of n-gram orders at which the path posterior probabilities p( u |E ) of Equation ( 2 ) and conditional expected counts c ( u |E ) of Equation ( 4 ) are used to compute the expected gain .
+For k < 4 , Equation ( 5 ) is thus an approximation to the approximation .
+In many cases it will be perfectly fine , depending on how closely p( u |E ) and c ( u |E ) agree for higher - order n-grams .
+Experimentally , Allauzen et al. ( 2010 ) find this approximation works well at k = 1 for MBR decoding of statistical machine translation lattices .
+However , there may be scenarios in which p( u |E ) and c ( u |E ) differ so that Equation ( 5 ) is no longer useful in place of the original Tromble et al . ( 2008 ) approximation .
+In the following sections , we present an efficient method for simultaneous calculation of p( u |E ) for n-grams of a fixed order .
+While other fast MBR approximations are possible ( Kumar et al. , 2009 ) , we show how the exact path posterior probabilities can be calculated and applied in the implementation of Equation ( 1 ) for efficient MBR decoding over lattices .
+N-gram Mapping Transducer
+We make use of a trick to count higher -order ngrams .
+We build transducer ?
+n to map word se-quences to n-gram sequences of order n. ?
+n has a similar form to the WFST implementation of an ngram language model ( Allauzen et al. , 2003 ) . ?
+n includes for each n-gram u = w n 1 arcs of the form : w n-1 1 w n 2 wn: u
+The n-gram lattice of order n is called E n and is found by composing E ? ? n , projecting on the output , removing ?- arcs , determinizing , and minimising .
+The construction of E n is fast even for large lattices and is memory efficient .
+E n itself may have more states than E due to the association of distinct n-gram histories with states .
+However , the counting transducer for unigrams is simpler than the corresponding counting transducer for higherorder n-grams .
+As a result , counting unigrams in E n is easier than counting n-grams in E .
+Efficient Path Counting Associated with each E n we have a transducer ?
+n which can be used to calculate the path posterior probabilities p( u |E ) for all u ?
+N n .
+In Figures 1 and 2 we give two possible forms 2 of ?
+n that can be used to compute path posterior probabilities over n-grams u 1,2 ?
+N n for some n.
+No modification to the ?- arc matching mechanism is required even in counting higher - order n-grams since all ngrams are represented as individual symbols after application of the mapping transducer ?
+n . Transducer ?
+L n is used by Allauzen et al . ( 2010 ) to compute the exact unigram contribution to the conditional expected gain in Equation ( 5 ) .
+For example , in counting paths that contain u 1 , ?
+L n retains the first occurrence of u 1 and maps every other symbol to ?.
+This ensures that in any path containing a given u , only the first u is counted , avoiding multiple counting of paths .
+We introduce an alternative path counting transducer ?
+R n that effectively deletes all symbols except the last occurrence of u on any path by ensuring that any paths in composition which count earlier instances of u do not end in a final state .
+Multiple counting is avoided by counting only the last occurrence of each symbol u on a path .
+We note that initial ?:?
+arcs in ?
+L n effectively create | N n | copies of E n in composition while searching for the first occurrence of each u. Com - posing with ?
+R n creates a single copy of E n while searching for the last occurrence of u ; we find this to be much more efficient for large N n .
+Path posterior probabilities are calculated over each E n by composing with ?
+n in the log semiring , projecting on the output , removing ?- arcs , determinizing , minimising , and pushing weights to the initial state ( Allauzen et al. , 2010 ) .
+Using either ?
+L n or ?
+R n , the resulting counts acceptor is X n .
+It has a compact form with one arc from the start state for each u i ?
+N n : 0 i ui /-log p( ui|E )
+Efficient Path Posterior Calculation
+Although X n has a convenient and elegant form , it can be difficult to build for large N n because the composition E n ? ? n results in millions of states and arcs .
+The log semiring ?- removal and determinization required to sum the probabilities of paths labelled with each u can be slow .
+However , if we use the proposed ?
+R n , then each path in E n ? ?
+R n has only one non -?
+output label u and all paths leading to a given final state share the same u .
+A modified forward algorithm can be used to calculate p( u |E ) without the costly ?- removal and determinization .
+The modification simply requires keeping track of which symbol u is encountered along each path to a final state .
+More than one final state may gather probabilities for the same u ; to compute p( u |E ) these probabilities are added .
+The forward algorithm requires that E n ?
+R n be topologically sorted ; although sorting can be slow , it is still quicker than log semiring ?- removal and determinization .
+The statistics gathered by the forward algorithm could also be gathered under the expectation semiring ( Eisner , 2002 ) with suitably defined features .
+We take the view that the full complexity of that approach is not needed here , since only one symbol is introduced per path and per exit state .
+Unlike E n ? ?
+R n , the composition E n ? ?
+L n does not segregate paths by u such that there is a direct association between final states and symbols .
+The forward algorithm does not readily yield the per-symbol probabilities , although an arc weight vector indexed by symbols could be used to correctly aggregate the required statistics ( Riley et al. , 2009 ) .
+For large N n this would be memory intensive .
+The association between final states and symbols could also be found by label pushing , but we find this slow for large E n ? ? n .
+Efficient Decoder Implementation
+In contrast to Equation ( 5 ) , we use the exact values of p( u |E ) for all u ?
+N n at orders n = 1 . . . 4 to compute ? = argmin E ? ?E ? 0 |E ? | + 4 n=1 g n ( E , E ? ) , ( 6 ) where g n ( E , E ? ) = u?Nn ? u # u ( E ? ) p ( u|E ) using the exact path posterior probabilities at each order .
+We make acceptors ?
+n such that E ? ? n assigns order n partial gain g n ( E , E ? ) to all paths E ? E. ? n is derived from ?
+n directly by assigning arc weight ? u ?p( u|E ) to arcs with output label u and then projecting on the input labels .
+For each n-gram u = w n 1 in N n arcs of ?
+n have the form : w n-1 1 w n 2 wn / ?u ? p( u|E ) To apply ?
+0 we make a copy of E , called E 0 , with fixed weight ?
+0 on all arcs .
+The decoder is formed as the composition E 0 ? ? 1 ? ? 2 ? ? 3 ? ? 4 and ? is extracted as the maximum cost string .
+Lattice Generation for LMBR ( ?
+L n ) or right-most ( ?
+R n ) counting transducer implementations .
+Arabic ?
+English machine translation task 3 .
+The development set mt0205tune is formed from the odd numbered sentences of the NIST MT02 - MT05 testsets ; the even numbered sentences form the validation set mt0205test .
+Performance on NIST MT08 newswire ( mt08nw ) and newsgroup ( mt08ng ) data is also reported .
+First - pass translation is performed using HiFST ( Iglesias et al. , 2009 ) , a hierarchical phrase - based decoder .
+Word alignments are generated using MTTK ( Deng and Byrne , 2008 ) over 150M words of parallel text for the constrained NIST MT08 Arabic ?
+English track .
+In decoding , a Shallow - 1 grammar with a single level of rule nesting is used and no pruning is performed in generating first - pass lattices ( Iglesias et al. , 2009 ) .
+The first - pass language model is a modified Kneser - Ney ( Kneser and Ney , 1995 ) 4 - gram estimated over the English parallel text and an 881 M word subset of the GigaWord Third Edition ( Graff et al. , 2007 ) .
+Prior to LMBR , the lattices are rescored with large stupid-backoff 5 - gram language models ( Brants et al. , 2007 ) estimated over more than 6 billion words of English text .
+The n-gram factors ?
+0 , . . . , ? 4 are set according to Tromble et al . ( 2008 ) using unigram precision 3 http://www.itl.nist.gov/iad/mig/tests/mt p = 0.85 and average recall ratio r = 0.74 .
+Our translation decoder and MBR procedures are implemented using OpenFst ( Allauzen et al. , 2007 ) .
+LMBR Speed and Performance Lattice MBR decoding performance is shown in Table 1 . Compared to the maximum likelihood translation hypotheses ( row ML ) , LMBR gives gains of + 0.8 to + 1.0 BLEU for newswire data and + 0.5 BLEU for newsgroup data ( row LMBR ) .
+The other rows of Table 1 show the performance of LMBR decoding using the hybrid decision rule of Equation ( 5 ) for 0 ? k ?
+3 . When the conditional expected counts c ( u |E ) are used at all orders ( i.e. k = 0 ) , the hybrid decoder BLEU scores are considerably lower than even the ML scores .
+This poor performance is because there are many unigrams u for which c ( u |E ) is much greater than p ( u |E ) .
+The consensus translation maximising the conditional expected gain is then dominated by unigram matches , significantly degrading LMBR decoding performance .
+Table 1 shows that for these lattices the hybrid decision rule is an accurate approximation to Equation ( 1 ) only when k ?
+2 and the exact contribution to the gain function is computed using the path posterior probabilities at orders n = 1 and n = 2 .
+We now analyse the efficiency of lattice MBR decoding using the exact path posterior probabilities of Equation ( 2 ) at all orders .
+We note that the sequential method and both simultaneous implementations using path counting transducers ?
+L n and ?
+R n yield the same hypotheses ( allowing for numerical accuracy ) ; they differ only in speed and memory usage .
+Posteriors Efficiency Computation times for the steps in LMBR are given in Table 2 .
+In calculating path posterior n-gram probabilities p( u|E ) , we find that the use of ?
+L n is more than twice as slow as the sequential method .
+This is due to the difficulty of counting higher - order n-grams in large lattices . ?
+L n is effective for counting unigrams , however , since there are far fewer of them .
+Using ?
+R n is almost twice as fast as the sequential method .
+This speed difference is due to the simple forward algorithm .
+We also observe that for higher - order n , the composition E n ? ?
+R n requires less memory and produces a smaller machine than E n ? ? L n .
+It is easier to count paths by the final occurrence of a symbol than by the first .
+Decoding Efficiency
+Decoding times are significantly faster using ?
+n than the sequential method ; average decoding time is around 0.1 seconds per sentence .
+The total time required for lattice MBR is dominated by the calculation of the path posterior n-gram probabilities , and this is a function of the number of n-grams in the lattice | N |.
+For each sentence in mt0205tune , Figure 3 plots the total LMBR time for the sequential method ( marked 'o ' ) and for probabilities computed using ?
+R n ( marked ' + ' ) .
+This compares the two techniques on a sentence - by-sentence basis .
+As |N | grows , the simultaneous path counting transducer is found to be much more efficient .
+Conclusion
+We have described an efficient and exact implementation of the linear approximation to LMBR using general WFST operations .
+A simple transducer was used to map words to sequences of ngrams in order to simplify the extraction of higherorder statistics .
+We presented a counting transducer ?
+R n that extracts the statistics required for all n-grams of order n in a single composition and allows path posterior probabilities to be computed efficiently using a modified forward procedure .
+We take the view that even approximate search criteria should be implemented exactly where possible , so that it is clear exactly what the system is doing .
+For machine translation lattices , conflating the values of p( u |E ) and c ( u |E ) for higherorder n-grams might not be a serious problem , but in other scenarios - especially where symbol sequences are repeated multiple times on the same path - it may be a poor approximation .
+We note that since much of the time in calculation is spent dealing with ?- arcs that are ultimately removed , an optimised composition algorithm that skips over such redundant structure may lead to further improvements in time efficiency .
+Figure 1 : Figure 2 : 12 Figure 1 : Path counting transducer ?
+L n matching first ( left-most ) occurrence of each u ?
+N n .

@@ -1,0 +1,131 @@
+title
+Pretrained Language Models for Dialogue Generation with Multiple Input Sources
+abstract
+Large-scale pretrained language models have achieved outstanding performance on natural language understanding tasks .
+However , it is still under investigating how to apply them to dialogue generation tasks , especially those with responses conditioned on multiple sources .
+Previous work simply concatenates all input sources or averages information from different input sources .
+In this work , we study dialogue models with multiple input sources adapted from the pretrained language model GPT2 .
+We explore various methods to fuse multiple separate attention information corresponding to different sources .
+Our experimental results show that proper fusion methods deliver higher relevance with dialogue history than simple fusion baselines .
+Introduction Large-scale pretrained language models ( Devlin et al. , 2019 ; Radford et al. , 2018
+Radford et al. , , 2019 have achieved outstanding performance on various natural language understanding tasks ( Young et al. , 2018 ; . Researchers have then utilized them in dialogue generation tasks ( Budzianowski and Vuli ? , 2019 ; Edunov et al. , 2019 ; Zhang et al. , 2019 ) .
+Many of them simply concatenate the input dialogue history and the output response in finetuning , since the pretrained language model only accepts a single sequence as input .
+However , dialogue generation tasks may involve multiple input sources simultaneously .
+For example , in personalized or knowledge - grounded dialogue generation ( Li et al. , 2016 ; Zhang et al. , 2018 ; Dinan et al. , 2018 ) , a response is generated conditioned on both dialogue history and an auxiliary user profile or knowledge article .
+Despite simple concatenation of all input sources , an important question arises on how we can better adapt a single - input pretrained language model to a multiinput dialogue generation task .
+Some previous work forms an encoder-decoder architecture with both encoder and decoder duplicated from a pretrained language model ( Golovanov et al. , 2019 ; Zheng et al. , 2019 ) .
+Recently , BART ( Lewis et al. , 2019 ) even obtain a complete pretrained model under this architecture directly .
+Taking personalized dialogue generation ( Zhang et al. , 2018 ) as an example , we can treat persona information , dialogue history and previous generated tokens as three different input sources .
+The former two will be encoded firstly and then combined with the last one in the decoder .
+In Golovanov et al. 2019 , the multi-head attention layer in the decoder is copied three times for each input source and mean pooling is used to average results from multiple attentions .
+This encoder-decoder adaptation is shown to outperform simple concatenation .
+However , when dialogue history gets longer , this model tends to use less information of each dialogue history utterance to predict the next token .
+Zheng et al. 2019 add an extra weight predictor to combine multiple attention information , but they do not perform experiments using publicly released pretrained models , nor on public datasets , making their results not directly comparable to other work .
+In this work , we build our dialogue model on the encoder-decoder architecture adapted from the pretrained language model GPT2 ( Radford et al. , 2019 ) .
+Our main contribution is to empirically study the attention fusion methods for multiple information sources in each decoder layer .
+Three kinds of methods are explored in total .
+Our experimental results show performance improvements on both automatic and human evaluations by using proper attention fusion methods , compared to baselines using concatenation or mean pooling .
+Model
+The Encoder-Decoder Architecture Following the former work ( Golovanov et al. , 2019 ) , we use the personalized dialogue generation task on PersonaChat ( Zhang et al. , 2018 ) as an example in our study .
+The pretrained language model GPT2 and its parameters are duplicated to form an encoder-decoder architecture shown in Figure 1 ( a ) .
+We use GPT2 here due to its large-scale pre-training corpus than other models and strong performance in other generation tasks .
+We have three separate inputs : personal profile , dialogue history , and current reply ( or previously generated response during the inference stage ) .
+Embeddings of the former two , which contain embeddings of tokens , positions as well as token types , will be successively put into the encoder , which is a GPT2 model with no attention mask to fit the encoding procedure .
+The encoded representations , together with embeddings of current response tokens will then be used as the input of a modified GPT2 decoder .
+Each decoder block will attend the current state to the three sources using different attentions , then fuse their resulting information as input for the next layer .
+Inspired by multi-task learning ( Zhang and Yang , 2017 ) , we further separate the original loss in language modeling into three parts corresponding to three input sources respectively .
+By applying the same linear prediction layer on the output of both encoder and decoder , three cross-entropy losses between predicted logits and corresponding truth sequences will be weighted by hyperparameters .
+L = ?L persona + ?L history + ?L pred ( 1 ) with Adam optimizer ( Kingma and Ba , 2014 ) .
+Block Details in Decoder Recall that we have three input sources in the decoder , and thus some modifications are needed if the decoder structure is inherited from GPT2 .
+Details of each modified decoder block are shown in Figure 1 ( b ) , in which the most apparent change is the additional two multi-head ( MH ) bidirectional attentions and the attention fusion module that fuses various attention outputs .
+The other parts remain the same as GPT2 .
+In the following , we will first describe the MH Bi-attention .
+Attention fusion will be discussed in the next section .
+The MH self-attention in Transformer ( Vaswani et al. , 2017 ) handles a single input only .
+In order to make it accept two input sources , we regard the current state H c ?
+R L c ?d from the previous layer ( or embedding of reply in the first layer ) as query and encoded state of auxiliary information H a ?
+R L a ?d as key and value in the attention .
+Here L c and L a are corresponding lengths for these input , and H a can be encoded personality H p or dialog history H h .
+The output of each single head in MH Bi-attention can be obtained via A = softmax ( ( H c W Q ) ( H a W K ) T ? d ) ( H a W V ) , ( 2 ) where W Q , W K , W V are learnable matrices .
+In our model , different attentions own separate parameters instead of sharing .
+This differs from the previous work ( Golovanov et al. , 2019 ) which reuses the self-attention for bi-attention .
+Besides , the original GPT2 is a single-directional model using a triangular matrix as the attention mask .
+Since the auxiliary information H a is visible for the current reply at all time steps , no mask exists in MH bi-attention .
+In total , three attention information A c , A p , and A h are obtained by attending the current state to itself , personality , and history respectively , all in the same dimension R L c ?d .
+They need to be fused into one matrix A f ?
+R L c ?d so as to proceed to subsequent decoding layers .
+Attention Fusion
+In this section , we discuss various methods to fuse the multiple attention information obtained above .
+The simplest approach is to average three sources in all dimensions ( Golovanov et al. , 2019 ) , which treats all sources equally .
+However , in different dialogues , we may need to concentrate more on the dialogue history or the persona profile in order to generate proper responses .
+Here we introduce the following three kinds of methods to allow for more flexible information fusion from all input sources .
+?
+Static methods fuse different information using an identical fusion function with no training parameter .
+Except the average pooling ( avg ) which is regarded as a very simple fusion baseline , we also include Maximum ( max ) , and Minimum ( min ) operation for every dimension among all sources .
+?
+Weighting methods try to estimate the global optimal proportion of each source in a given domain by introducing extra learnable weights which are then fixed in inference .
+Such methods can be : ( i ) source - level scalar weights ( sw ) , which means there are three trainable scalars w c , w p , w h for each source in each layer and A f = ( w c A c + w p A p + w h A h ) /( w c + w p + w h ) . ( ii ) source -dimension level ( dw ) , in which weights are learnable vectors w c , w p , w h ?
+R d .
+For each row j of A f and weight vectors w , we perform the weighted combination via A f j = ( w c j A c j + w p j A p j + w h j A h j ) /( w c j + w p j + w h j ) . ( iii ) linear method ( linear ) in which a linear network is used to transform the concatenated attention [ A c ; A p ; A h ] into A f .
+Different from above one , each dimension in the new feature space here contains information from all dimensions of all sources to realize a better interaction .
+?
+Attention - based method fuses the information based on a trainable modified transformer attention ( att ) .
+The attention fusion function changes according to multiple input information as follows Z = softmax ( sign ( A c A pT ) ( | A c A p T | ? d ) A h , ( 3 ) where sign ( ? ) is a function with value 1 when the element is positive or - 1 when negative ; | ?
+| for absolute value ; square root ensures that the value scale remains the same .
+This method utilizes matrix multiplication to make fully interaction between all state values , obtaining the states conditioned on all information sources dynamically .
+History information is selected as the " value " term to get more dialog history involved in the obtained state .
+Experiment
+We employ the PersonaChat ( Zhang et al. , 2018 ; Dinan et al. , 2020 ) dataset in our experiments which has 164,356 utterances in 10,981 dialogues and 1,155 personas .
+Each sample contains dialog history with up to 15 utterances , a gold reply and a persona description with no more than 5 sentences .
+Four kinds of dialogue models using pretrained language models as the initialization are compared : ( i ) TransferTransfo ( Wolf et al. , 2019 ) , a singleinput OpenAI GPT using token type embedding to distinguish different parts of a single concatenated input ( persona profile , dialog history , and reply successively ) .
+We also replace original GPT in this method with GPT2 , denoted as TransferGPT2 .
+( ii ) MI -GPT ( Golovanov et al. , 2019 ) which uses the OpenAI GPT in both encoder and decoder with average pooling as the attention fusion method .
+( iii )
+Our architecture using GPT2 as the base model and average as fusion method ( GPT2 - avg ) , a very simple baseline inherited from MI - GPT .
+( iv) Our model with each of the attention fusion methods discussed in Sec 2.3 , denoted as GPT2 -X , and X is the corresponding fusion method .
+All GPT2 models used here are small size ( 12 layers , hidden size is 768 ) .
+Besides , Seq2seq model with attention ( Bahdanau et al. , 2014 ) using 6 - layer Transformer as the encoder and decoder is also included as an end-to - end single - input baseline .
+1
+The following automatic metrics are considered in our evaluation : BLEU ( Papineni et al. , 2002 ) , METEOR ( Lavie and Agarwal , 2007 ) , NIST - 4 , which indicate the gram-level similarity between the references and generated responses .
+Moreover , Entropy - 4 , corpus-level Distinct - 2 and the average length of replies are used to reflect the diversity of obtained text .
+In addition , human evaluation is also conducted on 200 dialog pairs in terms of fluency ( range : 1 ? 3 ) , relevance with dialogue history ( h-rel , range : 1 ? 3 ) and consistency with personality ( p- consist , { 0 , 1 } ) .
+More experiment configurations can be found in Appendix A .
+Model
+Results Results of different models on both automatic metrics and human evaluations are shown in Table 1 .
+We first analyze results on automatic metrics .
+It can be observed that GPT2 is more powerful than OpenAI GPT under the same architecture .
+Multiinput ( MI ) models that use the encoder-decoder frameworks generally outperform single - input ( SI ) models ( TransferTransfo , TransferGPT2 ) which simply concatenate all inputs .
+Although SI models show higher diversity , their generated texts are generally shorter .
+All attention fusion methods of our model make improvements compared to its baseline GPT2 - avg .
+Among them , weighting methods have higher scores than the other two kinds of fusion methods on most metrics .
+Compared with static methods , weighting methods are more flexible to combine proper proportions of each source , thus it is no surprise that they can outperform static methods .
+Meanwhile , though the attention - based method also allows for non-static attention fusion , it essentially poses dynamic weights on the history state , and thus information of persona and reply is not directly used in the final fused representation and results in its failure
+It is also interesting to find that GTP2 - dw shows no improvement compared to GPT2 -sw , despite it extends the latter one using different weights for each dimension .
+Now we discuss human evaluation results .
+Here , we only conduct human evaluations on baselines and proposed models with the best automatic evaluation results ( i.e. weighting methods ) .
+Fluency scores of generated texts are very close to each other even compared to gold replies , which should be largely benefited from the pretrained model .
+However , h-rel scores ( the relevance between dialog history and current responses ) by models are significantly lower than those by a human .
+Note that compared with SI models , MI models using the average fusion ( MI - GPT , GPT2 - avg ) show lower h-rel scores , though their persona consistency increases much .
+This is also discussed in Golovanov et al. 2019 , and the reason is that SI model is similar to a language model which stays tightly with history , while MI models take persona as a separate input which is easier to reuse personalized word .
+However , our models with the weighting fusion methods can not only improve the persona consistency compared to SI models , but also maintain comparable best history relevance .
+The case study of generated replies is given in Appendix B .
+Influence of Attention Fusion
+In this section , we further investigate how attention fusion affects the generation results , especially why using the average fusion decreases the performance on the relevance between dialog history and generated responses while the weighting fusion methods can survive .
+We group the 200 testing samples for human evaluation by their lengths of history , and then compare the average results on h-rel scores of different methods within each group .
+Results are shown in Table 2 .
+We first compare the weighting fusion methods with the average fusion baseline .
+As can be seen , all methods perform comparably when dialogue history is short .
+With longer dialog history , models with weighting fusion methods perform ) .
+GPT2 - weight : GPT2 -sw and GPT2 - linear , MI baselines : GPT - MI and GPT2 - avg , SI baselines : Trans-ferTransfo and TransferGPT2 .
+much better than GPT2 - avg .
+The reason is that when dialogue history gets longer , the effect by each history token on current reply in bi-attention is averaged out by dialogue history length , making the average fusion method harder to capture key information from any history token to generate the response .
+Next , we compare the GPT2 with weighting fusion methods to TransferGPT2 ( the SI model with GPT2 ) and results indicate that they can also outperform SI models when dialogue history is long .
+Finally , we can see that SI models beat the MI baselines with the average fusion under all conditions , proving the ineffectiveness of the simple average between different information sources .
+Figure 2 further illustrates the estimated optimal weights of each attention information in every decoder layer in GPT2 -sw .
+We observe that attention weights of different input sources are not equal and change over different decoder layers , validating that the use of average fusion is over-simplified .
+The weights of diverse sources tend to be equivalent in high layers while they differ significantly in lower layers because the history and persona information are already encoded and highly abstractive .
+Conclusion
+To handle dialogue generation with multiple input sources , we adapt the pretrained language model GPT2 to an encoder-decoder architecture with multiple independent attentions for different input sources in the decoder .
+We then investigate several attention fusion methods to obtain a preferable representation for dialogue generation .
+Experiments illustrate that weighting methods promote both auto metrics and dialog history relevance scores annotated by human than baselines using average fusion , while they still maintain the persona consistency scores which outperform single - input models .
+And such architecture can be extended to other multiinput dialogue generation tasks having different information source number .

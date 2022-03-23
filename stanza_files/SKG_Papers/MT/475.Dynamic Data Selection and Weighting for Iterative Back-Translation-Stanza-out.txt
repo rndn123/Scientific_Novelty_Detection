@@ -1,0 +1,210 @@
+title
+Dynamic Data Selection and Weighting for Iterative Back- Translation
+abstract
+Back - translation has proven to be an effective method to utilize monolingual data in neural machine translation ( NMT ) , and iteratively conducting back - translation can further improve the model performance .
+Selecting which monolingual data to back - translate is crucial , as we require that the resulting synthetic data are of high quality and reflect the target domain .
+To achieve these two goals , data selection and weighting strategies have been proposed , with a common practice being to select samples close to the target domain but also dissimilar to the average general - domain text .
+In this paper , we provide insights into this commonly used approach and generalize it to a dynamic curriculum learning strategy , which is applied to iterative back - translation models .
+In addition , we propose weighting strategies based on both the current quality of the sentence and its improvement over the previous iteration .
+We evaluate our models on domain adaptation , low-resource , and high- resource MT settings and on two language pairs .
+Experimental results demonstrate that our methods achieve improvements of up to 1.8 BLEU points over competitive baselines .
+1
+Introduction Back-translation ( Sennrich et al. , 2016 b ) is an effective strategy for improving the performance of neural machine translation ( NMT ) using monolingual data , delivering impressive gains over already competitive NMT models ( Edunov et al. , 2018 ) .
+The strategy is simple : given monolingual data in the target language , one can use a translation model in the opposite of the desired translation direction to back - translate the monolingual data , effectively synthesizing a parallel dataset , which is in turn ? :
+Work completed while at Carnegie Mellon University .
+1 Code : https://github.com/zdou0830/ dynamic_select_weight .
+used to train the final translation model .
+Further improvements can be obtained by iteratively repeating this process ( Hoang et al. , 2018 ) in both directions .
+However , not all monolingual data are equally important .
+An envisioned downstream application is very often characterized by a unique data distribution .
+In such cases of domain shift , back - translating target domain data can be an effective strategy for obtaining a better in -domain translation model .
+One common strategy is to select samples that are both ( 1 ) close to the target distribution and ( 2 ) dissimilar to the average generaldomain text ( Moore and Lewis , 2010 ) .
+However , as depicted in Figure 1 , this method is not ideal because the second objective could bias towards the selection of sentences far from the center of the target distribution , potentially leading to selecting a non-representative set of sentences .
+Even if we could select all in- domain monolin-gual data , the back - translation model has not been trained on in-domain parallel data and thus the back - translated data will be of poor quality .
+As we demonstrate in the experiments , the quality of the back - translated data can have a large influence on the final model performance .
+To achieve the two goals of both selecting targetdomain data and back - translating them with high quality , in this paper , we propose a method to combine dynamic data selection with weighting strategies for iterative back - translation .
+Specifically , the dynamic data selection selects subsets of sentences from a monolingual corpus at each training epoch , gradually transitioning from selecting general - domain data to choosing target-domain sentences .
+The gradual transition ensures that the back -translation model of each iteration can adequately translate the selected sentences , as they are close to the distribution of its current training data .
+We also assign weights to the back - translated data that reflect their quality , which further reduces the effect of potential noise due to low quality translations .
+The proposed data selection and weighting strategies are complementary to each other , as the former focuses on domain information while the latter emphasizes the quality of sentences .
+We investigate the performance of our methods in domain adaptation , low-resource and highresource MT settings and on German-English and Lithuanian - English datasets .
+Our strategies demonstrate improvements of up to 1.8 BLEU points over a competitive iterative back -translation baseline and up to 1.2 BLEU points over the best static data selection strategies .
+In addition , our analysis reveals that the selected samples can represent the target distribution well and that the weighting strategies are effective in noisy settings .
+2 Background : Back -Translation Back-translation ( Sennrich et al. , 2016a ) has proven to be an effective way of utilizing monolingual data for machine translation .
+Given a parallel training corpus D F E , we first train a target- tosource machine translation model M EF .
+Then , we use the pre-trained model M EF to translate a target language monolingual corpus D E to the source language and obtain a synthetic parallel corpus ( D F , D E ) .
+Last , we concatenate back - translated data ( D F , D E ) with the original parallel corpus D F E to train a source- to- target model M F E .
+The success of back -translation has motivated re - ( B F , B E ) in ( D F , D E ) do Translate B F into B E using M F E Translate B E into B F using M EF Train M F E with ( B F , B E ) Train M EF with ( B E , B F ) end for end while searchers to investigate and extend the method Zheng et al. , 2020 ) .
+Hoang et al. ( 2018 ) propose to use iterative back -translation and achieve improvements over previous state - of- theart models .
+As shown in Algorithm 1 , at each training step , a batch of monolingual sentences is sampled from one language and back -translated to the other language .
+The back - translated data is utilized to train the model in the other direction .
+The process is repeated in both directions .
+Methods
+In our setting , we are given two MT models M F E and M EF pretrained on parallel data D F E , and both source and target monolingual corpora D F and D E .
+The goal is to select and weight samples from the two monolingual corpora for backtranslation , in order to best improve the performance of the two translation models .
+Data Selection Strategies
+We first describe a commonly used static selection strategy , and then illustrate our dynamic approach .
+The Moore and Lewis ( 2010 ) Method A common approach for data selection is the Moore and Lewis ( 2010 ) method ( and extensions , e.g. Axelrod et al . ( 2011 ) ; Duh et al. ( 2013 ) ; Santamar ?a and Axelrod ( 2019 ) ) , which computes the language model cross-entropy difference for each sentence s in a monolingual corpus : score ( s ) = H LM in ( s ) ? H LMgen ( s ) , ( 1 ) where H LM in ( s ) and H LMgen ( s ) represent the cross-entropy scores of s measured with an indomain and a general - domain language model ( LM ) respectively .
+Sentences with the highest scores will be selected for training .
+Typically , the in- domain language model LM in is trained with a small set of sentences in the target domain and LM gen is trained with all data available . ( s ) = ?( t ) repr ( s ) + ( 1 ? ?( t ) ) simp ( s ) , ( 2 ) where repr ( s ) and simp ( s ) denote the representativeness and simplicity of sentence s respectively , which will be dicussed in the following sections .
+The term ?( t ) balances between the two criteria and is a function of the current epoch t.
+We adopt the square- root growing function for ?
+( Platanios et al. , 2019 ) and set ?( t ) = min( 1 , t 1 ? c 2 0 T + c 2 0 ) , ( 3 ) where c 0 is the initial value and T denotes the time after which we solely select representative samples .
+? increases relatively quickly at first and then its acceleration will be gradually decreased as the training progresses , which is suitable for our task as at first the sentences are relatively simple and thus we will not need much time on those sentences .
+Connections to Moore and Lewis ( 2010 ) .
+Our proposed criteria generalize Moore and Lewis ( 2010 ) .
+The first term of Equation 1 , namely H LM in ( s ) , measures the representativeness of data because the in-domain LM assigns low entropy to sentences that appear frequently in the target domain .
+The second term H LMgen ( s ) , on the other hand , measures the simplicity of the sentences .
+If H LMgen ( s ) is high , it is likely that some n-grams of the sentence s appear frequently in the parallel training data D F E , indicating that the MT models will likely translate the sentence well .
+In other words , the sentence s can provide limited additional information if H LMgen ( s ) is high .
+Therefore , one can view Moore and Lewis ( 2010 ) as selecting the most representative and difficult sentences .
+Representativeness Metrics
+We propose three approaches to measure the sentence representativeness .
+In -Domain Language Model Cross-Entropy ( LM - in ) .
+As in Axelrod et al . ( 2011 ) ; Duh et al. ( 2013 ) , we can use H LM in to measure the representativeness of the instances .
+Concretely , we train a language model LM in with indomain monolingual data and compute the score 1 | s| | s | t=1 log P LM in ( s t |s <t ) for each sentence s. TF - IDF Scores ( TF - IDF ) .
+TF -IDF score is another criterion for data selection ( Kirchhoff and Bilmes , 2014 ) .
+For each sentence s , one can compute its term frequency and inverse document frequency for each word .
+We can thus obtain the TF - IDF vector and calculate the cosine similarity between the TF - IDF vectors of s and each sentence s in in a small in - domain dataset , and treat the maximum value as its representativeness score .
+BERT Representation Similarities ( BERT ) .
+BERT ( Devlin et al. , 2019 ) has proven to be effective for sentence representation learning .
+Following the conclusion of Pires et al . ( 2019 ) , we feed each sentence to the multilingual BERT model and average the hidden states for all the input tokens except [ CLS ] and [ SEP ] at the eighth layer to obtain the sentence representation .
+We then compute the cosine similarity between representations of sentence s in the monolingual corpus and each sentence s in in a small in - domain set , and the maximum value is treated as the representativeness score .
+Simplicity Metrics
+In our experiments , we study two metrics for measuring the simplicity of sentences .
+Note that in the field of quality estimation for MT ( Specia et al. , 2010 ; Fonseca et al. , 2019 ) , researchers have proposed several existing techniques to estimate the simplicity of sentences ( Turchi et al. , 2014 ; Shah et al. , 2015 ; Kim and Lee , 2016 ; Kepler et al. , 2019 ; Zhou et al. , 2019 ; Hou et al. , 2019 ) , and here we select a few representative approaches .
+General -Domain Language Model Cross-Entropy ( LM -gen ) .
+We train a language model LM gen with the one side of the parallel training data D F E .
+Then , for each sentence s we compute the score 1 | s| | s | t=1 log P LMgen ( s t |s <t ) .
+Round-Trip BLEU ( R- BLEU ) .
+Given two pretrained MT models M F E and M EF , round-trip translation first translates a sentence s into another language using M F E and then back - translates the result using M EF , obtaining the reconstructed sentence s .
+The BLEU score between s and s is treated as our simplicity metric .
+Similar ideas have been applied to filter sentences of low quality ( Imankulova et al. , 2017 ) .
+For both the representativeness and simplicity scores , it should be noted that they are separately normalized to [ 0 , 1 ] , using the equation score ( s ) ?
+score min scoremax ?
+score min , where score max and score min are the maximum and minimum scores .
+Weighting Strategies Next , we illustrate how we perform data weighting on the back - translated data .
+Measuring the Current Quality
+As general translation models could perform poorly on the in-domain data , we need ways to measure the current quality of the back - translated sentences in order to down - weight examples of poor quality .
+Encoder Representation Similarities ( Enc ) .
+We feed the source sentence x and the target sentence y to the encoders of M F E and M EF respectively , and average the hidden states at the final layer to obtain the representations enc F E ( x ) and enc EF ( y ) .
+The cosine similarity between them is treated as the quality metric .
+Agreement Between Forward and Backward Models ( Agree ) .
+Inspired by Junczys -Dowmunt ( 2018 ) , the second approach utilizes the agreement of the two translation models .
+For each sentence pair ( x , y ) , we compute the conditional probability H F E ( y|x ) and H EF ( x|y ) , then exponentiate the absolute value between them exp (?( | H F E ( y|x ) ? H EF ( x|y ) | ) ) .
+Intuitively , the back - translated sentences are of poor quality if there are huge disagreements between the two models .
+Measuring Quality Improvements
+In domain adaptation , it is natural that at first the in-domain sentences are poorly translated .
+As training progresses , however , the quality should be improved .
+We therefore propose a metric to measure the improvement in translation quality and combine it with the current quality metric , in order to encourage the inclusion of in-domain sentences where the translation qualities have improved .
+Specifically , every time we obtain the quality score of sentence s , we store it , then the next time we come across the same sentence , we can compare the new quality score with the previous one : Imp ( s ) = clip ( current quality ( s ) previous quality ( s ) , w low , w high ) , where the clipping function limits the weights to a reasonable range .
+We set ( w low , w high ) to ( 1 2 , 2 ) .
+Overall Algorithm : Combining Curriculum and Weighting Strategies
+Our final algorithm is shown in Figure 2 .
+At each epoch , we compute the score for each sentence in monolingual corpora using Equation 2 and select the top p% of sentences , where p is a hyper-parameter .
+Afterwards , we perform backtranslation and data weighting on the selected data , then use the back - translated data to train the translation model .
+The process will be repeated iteratively for both directions , with ? increased at each training epoch .
+The third row lists the translation directions .
+We report the best-performing models of only using selection strategies ( " Best Selection " ) , only using curriculum strategies ( " Best Curriculum " ) , only using weighting strategies ( " Best Weighting " ) and using both the best curriculum and weighting strategies ( " Best Weighting + Best Weighting " ) .
+" Enc - Imp " indicates both the encoder representation similarities and the quality improvement metrics are used for weighting .
+The highest scores are in bold and * indicates statistical significance compared with the best baseline ( p < 0.05 ) .
+Experiments on Domain Adaptation
+We first conduct experiments in the domain adaptation setting , where we adapt models from a general domain to a specific domain .
+Setup Datasets .
+We first train the translation models with ( general- domain ) WMT - 14 German- English dataset , consisting of about 4.5 M training sentences , then perform iterative back - translation with ( in- domain ) law or medical OPUS monolingual data ( Tiedemann , 2012 ) are trained on the WMT training data and the OPUS monolingual data respectively .
+The OPUS development sets are used to compute the TF -IDF and BERT representativeness scores .
+Models .
+We implement our approaches upon the Transformer ( Vaswani et al. , 2017 ) .
+Both the encoder and decoder consist of 6 layers and the hidden size is set to 512 .
+For the translation models , weights of the top 4 layers of the encoders and bottom 4 layers of the decoders are shared between forward and backward models .
+We also tie the source and target word embeddings .
+We build 5 gram language models with modified Kneser - Ney smoothing using KenLM ( Heafield , 2011 ) .
+Hyper-Parameters .
+c 0 and T in Equation 3 are set to 0.1 and 5 .
+We select 30 % of the sentences with the highest score at each epoch for our curriculum methods and 50 % of the sentences for the static data selection baselines .
+Results
+We compare our dynamic curriculum and weighting methods with three baselines : the iterative backtranslation baseline , a baseline trained with only data selection strategies , a baseline trained with only data weighting strategies .
+The results with the best-performing representativeness and simplicity metrics ( TF - IDF and R - BLEU , respectively ) in the domain adaptation setting are listed in Table 1 . Iterative Back - Translation .
+The iterative backtranslation method is rather competitive , as it improves over the unadapted baseline by 9.6 BLEU and simple back - translation by 1.8 BLEU points .
+Selection Strategies .
+We can see from the table that the best-performing selection strategies , namely selecting sentences with high TF - IDF scores , is generally effective and can improve the baseline by about 0.5 BLEU points .
+Curriculum and Weighting Strategies .
+Both our curriculum and weighting strategies outperform the unadapted and the iterative back - translation models , as well as the curriculum method proposed in Zhang et al . ( 2019 ) , with our curriculum learning method achieving better performance and improving the strong iterative back - translation baseline by 1.1 BLEU points .
+Combining curriculum and weighting methods can further improve the performance by up to 0.5 BLEU points , demonstrating the two strategies are complementary to each other .
+Choices of Metrics
+We examine different choices of representativeness and simplicity metrics .
+The performance of different models is listed in Table 2 . Representativeness Metrics .
+All data selection strategies outperform the baseline , with TF - IDF , LM - diff , and BERT metrics exhibiting fairly robust performance in all settings .
+Due to its simplicity , we choose TF - IDF for experiments where a good in - domain development set is available .
+Data Weighting Strategies .
+The agreementbased weighting method ( " Agree " ) performs slightly worse than the encoder-similarity weighting strategy ( " Enc " ) , probably because the two lan - guages are similar and thus encoders with shared parameters can accurately measure the data quality .
+Curriculum Strategies .
+Table 2 demonstrates that TF -IDF is a better metric than other representativeness metrics in both static and dynamic data selection settings .
+Also , the round-trip BLEU score can be better at measuring the simplicity of sentences than LM -gen .
+Last , by comparing the Moore-Lewis method ( " LM - diff " ) with our curriculum strategy ( " LM - in + LM -gen " ) , we can see that our method outperform Moore - Lewis method in 3 out of 4 settings .
+Analysis Next , we investigate how noise in the backtranslated data impacts the model performance , how many sentences we should select , and if our weighting methods assign weights appropriately .
+Effect of Back-Translation Quality .
+We try to generate the back - translated data using sampling , greedy search and beam search for iterative backtranslation and the results are listed in Table 3 .
+We find that the sampling method significantly degrades the model performance , as it introduces more noise than other approaches , demonstrating that noise can have a negative impact in domain adaptation settings .
+The conclusion is similar to the findings in low-resource settings Edunov et al . ( 2018 ) .
+In addition , we find that our weighting strategies are more beneficial in noisy settings .
+Effect of the Percentage p.
+We test how many sentences should be selected at each epoch for our curriculum strategies .
+As shown in Figure 3 , selecting 30 % of the monolingual sentences achieves the best performance in general .
+Selecting fewer samples can discard valuable information whereas choosing more instances can introduce more noise .
+Back - Translated Sentence Weight BLEU Source - wenn der Viehhalter seinen Betrieb einem Nachfolger bis zum dritten Verwandtschaftsgrad ? bergibt ; -- Reference - when the farmer gives over his farm to his family successor up to the third degree of relationship , -- Ite - 5 K - if the livestock farmer hands over his holding to a successor up to the third degree of kinship ; 0.550 0.353 Ite -10K
+- when the livestock farmer passes his holding to a successor up to the third degree of kinship ; 0.572 0.383 Ite -15 K
+- when the livestock farmer gives his holding to a successor up to the third degree of kinship ; 0.585 0.402
+Source folgerichtig sollte dies auch auf Antisubventionsuntersuchungen zutreffen .
+-- Reference the same principles should logically apply to anti - subsidy investigations .
+-- Ite - 5 K this should also be followed up by anti - subsidy investigations . 0.389 0.331
+Ite -10 K it should also be folly to apply to anti - subsidy investigations . 0.403 0.486
+Ite -15 K it should also be folly true to apply to anti - subsidy investigations . 0.397 0.447 Weighting Examples .
+We use our model ( Curri+ Enc ) to back - translate some sentences from the monolingual corpus and Table 4 shows the weights our models assign at different training stages .
+In this example , the assigned weights correlate well with the BLEU scores , demonstrating our methods can perform weighting appropriately in some cases .
+Characteristics of the Selected Data
+In this part , we investigate certain characteristics of the selected samples .
+Lengths .
+Figure 4 shows the average lengths of the selected sentences in each bucket .
+We can see that 1 ) both LM - in and BERT favor long sentences , with one possible explanation being that those sentences are more likely to contain in-domain words ; 2 ) TF -IDF does not share this feature , likely due to the IDF term ; 3 ) sentences with high R - BLEU scores are generally short , likely because NMT models are bad at translating long sentences .
+Unigram Distribution Distance .
+We also compute the unigram distribution distance using the Hellinger distance .
+Concretely , we compute the unigram distribution P and Q for both the selected data and the test set , and calculate 1 ? 2 V i=1 ( ? p i ? ? q i ) 2 , where V is the size of the vocabulary .
+The larger the Hellinger distance is , the more dissimilar the two distributions are .
+Figure 4 shows that both TF -IDF and BERT match the test distribution well .
+Also , LM - in performs better than LM - diff , which confirms our hypothesis that the data selected by the Moore - Lewis method cannot adequately represent the target distribution .
+Diversity Among Selected Data at Each Epoch .
+As our curriculum strategies dynamically select different subsets of data , here we examine how many new sentences are actually introduced at each epoch .
+We find that starting from the second epoch , 12.5 % , 10.4 % , 12.5 % , 18.3 % , 21.5 % of the selected sentences will be replaced at each epoch , and 52.5 % of the monolingual sentences will be selected at least once in total .
+Examples .
+Table 5 shows examples of the selected sentences .
+Sentences with both high TF -IDF and R - BLEU scores are typically short and match the target distribution well .
+Sentences with high TF - IDF but low R - BLEU scores can be long and contain some out - of- vocabulary words , while sentences with low TF - IDF but high R - BLEU scores are generally short and frequently include digits and single characters .
+Most of the sentences with both low TF -IDF and R - BLEU scores are extremely noisy and can be safely discarded .
+Experiments on Low-Resource and High-Resource Scenarios Next , we conduct experiments in both low- and high- resource scenarios over two language pairs : Lithuanian - English and German-English .
+Setup Data statistics are shown in Table 6 .
+When the target distribution is the news domain , we train the in-domain LMs with 500K sentences from the news monolingual data .
+The other settings ( including hyperparameters ) are the same as before .
+Results
+The results are reported in Table 7 .
+We find that LM - in and LM - gen is the best metric combination for curriculum strategies when the target distribution is the news domain .
+TF - IDF and R - BLEU as the representativeness and simplicity metrics are the best in all other settings .
+Low -Resource Settings .
+In low-resource settings , iterative back - translation can improve the baseline model by a large margin , and our curriculum strategies can still outperform the strong baseline by 1.3 BLEU points .
+Weighting methods also generally help and in the best case scenario , our method can improve iterative back - translation by 1.8 BLEU points .
+High - Resource Settings .
+In high- resource settings , our curriculum strategies improve the iterative back - translation baseline by up to 0.3 BLEU points .
+Data weighting strategies do not always help , probably because in high- resource settings the back - translated data is already of high quality .
+In the best case scenario , our method outperforms iterative back - translation by 0.6 BLEU points .
+Related Work Back-translation ( Sennrich et al. , 2016a ) has proven to be effective and several extensions of it have been proposed Cheng et al. , 2016 ; Zhang and Zong , 2016 ; , among which iterative back -translation methods ( Cotterell and Kreutzer , 2018 ; Hoang et al. , 2018 ; Niu et al. , 2018 ; Zheng et al. , 2020 ) have demonstrated strong empirical performance .
+For domain adaptation , Moore and Lewis ( 2010 ) and Kirchhoff and Bilmes ( 2014 ) use language model cross entropy differences and TF - IDF to select data that are similar to in- domain text respectively .
+van der Wees et al. ( 2017 ) propose dynamic data selection strategies for machine translation models , and Zhang et al . ( 2019 ) extend the idea to curriculum strategies .
+As for filtering noisy sentences , Junczys - Dowmunt ( 2018 ) propose to utilize the agreement between forward and backward translation models and Wang et al . ( 2019a ) propose uncertainty - based confidence estimation to improve back -translation .
+Wang et al. ( 2019 b ) compose dynamic domain-data selection with dynamic clean- data selection .
+Our methods generalize previous data selection strategies and our primary focus is to improve iterative back - translation , but our work could be extended to also include training - time dynamic data selection approaches such as the technique of Wang et al . ( 2020 ) .
+Conclusion
+In this paper , we provide a novel insight into a widely - used data selection method ( Moore and Lewis , 2010 ) and generalize it to a curriculum strategy for iterative back - translation .
+We also propose data weighting methods to down - weight examples of poor quality .
+Extensive experiments are performed to evaluate the performance of our methods ; analyses reveal the selected samples can represent the target domain well and our weighting strategies benefit noisy settings the most .
+Figure 1 : 1 Figure1 : The Moore and Lewis ( 2010 ) data selection strategy for domain adaptation constantly selects the same set of sentences which cannot well represent the target domain .
+Our approach , instead , selects different subsets of sentences at each epoch and we gradually shift from selecting samples from the general - domain distribution to samples from the target distribution .

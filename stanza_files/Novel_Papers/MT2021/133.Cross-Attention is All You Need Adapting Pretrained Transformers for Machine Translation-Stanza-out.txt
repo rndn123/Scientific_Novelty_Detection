@@ -1,0 +1,220 @@
+title
+Cross-Attention is All You Need : Adapting Pretrained Transformers for Machine Translation
+abstract
+We study the power of cross-attention in the Transformer architecture within the context of transfer learning for machine translation , and extend the findings of studies into crossattention when training from scratch .
+We conduct a series of experiments through finetuning a translation model on data where either the source or target language has changed .
+These experiments reveal that fine-tuning only the cross-attention parameters is nearly as effective as fine-tuning all parameters ( i.e. , the entire translation model ) .
+We provide insights into why this is the case and observe that limiting fine - tuning in this manner yields crosslingually aligned embeddings .
+The implications of this finding for researchers and practitioners include a mitigation of catastrophic forgetting , the potential for zero-shot translation , and the ability to extend machine translation models to several new language pairs with reduced parameter storage overhead .
+1
+Introduction
+The Transformer ( Vaswani et al. , 2017 ) has become the de facto architecture to use across tasks with sequential data .
+It has been dominantly used for natural language tasks , and has more recently also pushed the state - of - the - art on vision tasks ( Dosovitskiy et al. , 2021 ) .
+In particular , transfer learning from large pretrained Transformer - based language models has been widely adopted to train new models : adapting models such as BERT ( Devlin et al. , 2019 ) and XLM -R ( Conneau et al. , 2020 ) for encoder-only tasks and models such as BART and mBART for encoder - decoder tasks like machine translation ( MT ) .
+This transfer learning is predominantly performed in the form of fine-tuning : using the values of several hundred million parameters from the pretrained model to initialize a model and start training from there .
+Fine-tuning pretrained models often involves updating all parameters of the model without making a distinction between them based on their importance .
+However , copious recent studies have looked into the relative cruciality of multi-headed self - and cross-attention layers when training an MT model from scratch ( Voita et al. , 2019 ; Michel et al. , 2019 ; You et al. , 2020 ) .
+Cross-attention ( also known as encoder- decoder attention ) layers are more important than self-attention layers in the sense that they result in more degradation in quality when pruned , and hence , are more sensitive to pruning ( Voita et al. , 2019 ; Michel et al. , 2019 ) .
+Also , crossattention cannot be replaced with hard -coded counterparts ( e.g. , an input-independent Gaussian distribution ) without significantly hurting the performance , while self-attention can ( You et al. , 2020 ) .
+With the ubiquity of fine-tuning as a training tool , we find a similar investigation focused on transfer learning missing .
+In this work , we inspect cross-attention and its importance and capabilities through the lens of transfer learning for MT .
+At a high level , we look at training a model for a new language pair by transferring from a pretrained MT model built on a different language pair .
+Given that , our study frames and addresses three questions :
+1 ) How powerful is cross-attention alone in terms of adapting to the new language pair while other modules are frozen ?
+2 ) How crucial are the cross-attention layers pretrained values with regard to successful adaptation to the new task ?
+and 3 ) Are there any qualitative differences in the learned representations when cross-attention is the only module that gets updated ?
+To answer these questions , we compare multiple strategies of fine-tuning towards a new language pair from a pretrained translation model that shares one language with the new pair .
+These are depicted in Figure 1 : a ) Ignoring the pretrained parameters and training entirely from randomly initialized parameters ( i.e. ' from scratch ' ) b)
+Fine - tuning all parameters except the embeddings for the language in common , 2 ( i.e. ' regular ' fine- tuning , our upper bound ) , c) Fine-tuning solely the cross-attention layers and new embeddings , and d )
+Fine-tuning only the new embeddings .
+Here , new embeddings refer to randomly initialized embeddings corresponding to the vocabulary of the new language .
+In Figures 1a - 1d , we assume the new language pair has a new source language and not a new target language ; Figure 1e shows an example of target -side transfer .
+In the experiments that follow we will always train new , randomly initialized embeddings for the vocabulary of the newly introduced language .
+Generally , all other parameters are imported from a previously built translation model and , depending on the experiment , some will remain unchanged and others will be adjusted during training .
+Our experiments and analyses show that finetuning the cross-attention layers while keeping the encoder and decoder fixed results in MT quality that is close to what can be obtained when finetuning all parameters ( ?4 ) .
+Evidence also suggests that fine-tuning the previously trained crossattention values is in fact important - if we start with randomly initialized cross-attention parameter values instead of the pretrained ones , we see a quality drop .
+Furthermore , intrinsic analysis of the embeddings learned under the two scenarios reveals that full fine-tuning exhibits different behavior from cross-attention -only fine-tuning .
+When the encoder and decoder bodies are not fine-tuned , we show that the new language 's newly - learned embeddings align with the corresponding embeddings in the pretrained model .
+That is , when we transfer from Fr- En to Ro - En for instance , the resulting Romanian embeddings are aligned with the French embeddings .
+However , we do not observe the same effect when fine-tuning the entire body .
+In ?5 we see how such aligned embeddings can be useful .
+We specifically show they can be used to alleviate forgetting and perform zero-shot translation .
+Finally , from a practical standpoint , our strategy of fine-tuning only cross-attention is also a more lightweight fine-tuning approach ( Houlsby et al. , 2019 ) that reduces the storage overhead for extending models to new language pairs : by fine- tuning a subset of parameters , we only need to keep a copy of those instead of a whole -model 's worth of values for the new pair .
+We quantify this by reporting the fraction of parameters that is needed in our case relative to having to store a full new model for each adapted task .
+Our contributions are : 1 ) We empirically show the competitive performance of exclusively finetuning the cross-attention layers when contrasted with fine-tuning the entire Transformer body ; 2 ) We show that when fine-tuning only the cross-attention layers , the new embeddings get aligned with the respective embeddings in the pretrained model .
+The same effect does not hold when fine-tuning the entire Transformer body ; 3 ) we demonstrate effective application of this aligning artifact in mitigating catastrophic forgetting ( Goodfellow et al. , 2014 ) and zero-shot translation .
+2 Cross-Attention Fine-Tuning for MT Fine-tuning pretrained Transformer models towards downstream tasks has pushed the limits of NLP , and MT has been no exception .
+Despite the prevalence of using pretrained Transformers , recent studies focus on investigating the importance of self - and cross-attention heads while training models from scratch ( Voita et al. , 2019 ; Michel et al. , 2019 ; You et al. , 2020 ) .
+These studies verify the relative importance of cross-attention over self-attention heads by exploring either pruning ( Voita et al. , 2019 ; Michel et al. , 2019 ) or hard -coding methods ( You et al. , 2020 ) .
+Considering these results and the popularity of pretrained Transformers , our goal in this work is to study the significance of cross-attention while focusing on transfer learning for MT .
+This section formalizes our problem statement , introduces the notations we will use , and describes our setup to address the questions we raise .
+Problem Formulation
+In this work , we focus on investigating the effects of the cross-attention layers when fine-tuning pretrained models towards new MT tasks .
+Fine-tuning for MT is a transfer learning method that , in its simplest form ( Zoph et al. , 2016 ) , involves training a model called the ' parent ' model on a relatively high- resource language pair , and then using the obtained parameters to initialize a ' child model ' when further training towards a new , potentially low-resource , language pair .
+Here , high- resource and low-resource refer to the amount of parallel data that is available for the languages .
+Henceforth , we use ' parent ' and ' child ' when referring to training components ( e.g. , model , data , etc. ) in the pretraining and fine-tuning stages , respectively .
+Formal Definition .
+Consider a model f ? trained on the parent dataset , where each training instance ( x sp , y tp ) is a pair of source and target sentences in the parent language pair s p -t p .
+Then fine- tuning is the practice of taking the model 's parameters ? from the model f ? to initialize another model g ? . g ? is then further optimized on a dataset of ( x sc , y tc ) instances in the child language pair s c -t c until it converges to g ? .
+We assume either s c = s p or t c = t p ( i.e. , child and parent language pairs share one of the source or target sides ) .
+Granular Notations .
+It is common practice for fine-tuning to further update all parent parameters ? on the child data without making any distinction between them .
+We instead consider ?
+at a more granular level , namely as : ? = {? src , ? tgt , ? enc , ? dec , ? xattn } where ? src includes source - language token embeddings , source positional embeddings , and source embeddings layer norm parameters ; ? tgt similarly includes target - language ( tied ) input and output token embeddings , target positional embeddings , and target embeddings layer norm parameters ; ? enc includes self-attention , layer norm , and feed-forward parameters in the encoder stack ; ? dec includes selfattention , layer norm , and feed-forward parameters in the decoder stack ; and ? xattn includes crossattention and corresponding layer norm parameters .
+Analysis Setup Inspections like ours into individual modules of Transformer often rely on introducing some constraints in order to understand the module better .
+These constraints come in the form of full removal or pruning ( Tang et al. , 2019 ; Voita et al. , 2019 ) , hard -coding ( You et al. , 2020 ) , and freezing ( Bogoychev , 2020 ) .
+We rely on freezing .
+We proceed by taking pretrained models , freezing certain parts , and recording the effect on performance , measured by BLEU .
+Within the framework of our problem , to address the questions raised in ?1 , our analysis compares full and partially - frozen fine- tuning for MT under several settings , which we summarize here : Cross-attention fine -tuning & embedding finetuning comparative performance .
+This is to realize how much fine-tuning the cross-attention layers helps in addition to fine-tuning respective embeddings alone .
+Cross-attention fine-tuning & full fine-tuning comparative performance .
+We wish to find out where fine-tuning cross-attention stands relative to fine-tuning the entire body .
+This is to confirm whether or not cross-attention alone can adapt to the child language pair while the encoder and decoder layers are frozen .
+Pretrained cross-attention layers & random cross-attention layers .
+We wish to understand how important a role cross-attention 's pretrained values play when single - handedly adapting to a new language pair .
+This determines if the knowledge encoded in cross-attention itself has a part in its power .
+Translation cross-attention & language modelling cross-attention .
+Finally , we contrast the knowledge encoded in cross-attention learned by different pretraining objectives .
+This is to evaluate if the knowledge brought about by a different pretraining objective affects the patterns observed from a cross-attention pretrained on MT while finetuning for MT .
+Experimental Setup
+In this section , we describe our experiments and the data and model that we use to materialize the analysis outlined in ?2.2 .
+Methods
+We first provide the details of our transfer setup , and then describe the specific fine-tuning baselines and variants used in our experiments .
+General Setup .
+An important concern when transferring is initializing the embeddings of the new language .
+When initializing parameters in the child model , there are several ways to address the vocabulary mismatch between the parent and the child model : frequency - based assignment , random assignment ( Zoph et al. , 2016 ) , joint ( shared ) vocabularies ( Nguyen and Chiang , 2017 ; Kocmi and Bojar , 2018 ; Neubig and Hu , 2018 ; Gheini and May , 2019 ; , and no assignment at all , which results in training randomly initialized embeddings ( Aji et al. , 2020 ) .
+In our experiments , we choose to always use new random initialization for the new embeddings ( including token embeddings , positional embeddings , and corresponding layer norm parameters ) .
+This decision is made to later let us study what happens to embeddings under each of the settings , independent of any pretraining artifacts that exist in them .
+For instance , when transferring from Fr- En to { Ro - En , Fr-Es} , respectively , all parameters are reused except for {?
+src , ? tgt } , 3 which get re-initialized given the new { source , target } language .
+The side that remains the same ( e.g. , En when going from Fr- En to Ro-En ) , uses the parent vocabulary and keeps the corresponding embeddings frozen during fine-tuning .
+Fine-tuning Settings .
+With the general transfer setup , we employ different settings in our experiments to address the points in ?2.2 .
+Each finetuning method is clarified based on our notations in ?2.1 : 1 ) { src , tgt } only updates the embeddings {? src , ? tgt } ( Figure 1d ) .
+2 ) { src , tgt } + body additionally updates the entire Transformer body ( {? src , ? tgt } + ? enc + ? dec + ? xattn ) ( Figure 1 b ) .
+3 ) { src , tgt } + xattn only updates the cross-attention layers in addition to the first baseline ( {? src , ? tgt } + ? xattn ) , and keeps the encoder and decoder stacks frozen ( Figure 1 c , 1e ) .
+These collectively address the first and second settings in ?2.2 . 4 ) { src, tgt } + randxattn similarly only updates the cross-attention layers in addition to embeddings , but uses randomly initialized values instead of pretrained values ( Figure 1 f ) .
+This addresses the third setting in ?2.2 .
+For all transfer experiments , we also conduct the scratch variant ( Figure 1 a ) , where we train a model from scratch on the child dataset .
+This is to confirm the effectiveness of transfer under each setting .
+We conduct all the above experiments using a French - English translation model as parent and transferring to six different child language pairs .
+In ?4.1 we conduct an ablation that substitutes mBART as a parent .
+mBART is trained with denoising objective in a self-supervised manner .
+In contrast to a translation model , the cross-attention layers in mBART have thus not been learned using any parallel data .
+This enables us to distinguish between different pretraining objectives , addressing the fourth setting in ?2.2 .
+Data and Model Details Dataset .
+For the choice of language pairs and datasets , we mostly follow You et al . ( 2020 ) ( Fr- En , Ro-En , Ja-En , De-En ) and additionally include Ha-En , Fr-Es , and Fr- De .
+We designate Fr- En as the parent language pair and Ro-En , Ja-En , De-En , Ha-En ( new source ) , Fr-Es , Fr- De ( new target ) as child language pairs .
+Our Fr- En parent model is trained on the Europarl + Common Crawl subset of WMT14 Fr-En , 5 which comprises 5,251,875 sentences .
+Details and statistics of the data for the child language pairs are provided in Table 1 . Model Details .
+We use the Transformer base architecture ( 6 layers of encoder and decoder with model dimension of 512 and 8 attention heads ) for all models , ( Vaswani et al. , 2017 ) and the Fairseq ( Ott et al. , 2019 ) toolkit for all our experiments .
+All models rely on BPE subword vocabularies ( Sennrich et al. , 2016 ) processed through the Sen-tencePiece ( Kudo and Richardson , 2018 ) BPE implementation .
+The vocabulary for the parent model consists of 32 K French subwords on the source side , and 32 K English subwords on the target side .
+The sizes of the vocabularies for child models are also reported in Table 1 .
+We follow the advice from Gowda and May ( 2020 ) when deciding what vocabulary size to choose , i.e. , we choose the maximum number of operations to ensure a minimum of 100 tokens per type .
+Results and Analysis
+Our preliminary empirical results consist of five experiments for each of the child language pairs based on methods described in ?3.1 : scratch , { src , tgt} , { src , tgt} + body , { src , tgt } + xattn , and { src, tgt } + randxattn .
+Our core results , which rely on transferring from the Fr- En parent under each setting , are reported in Table 2 .
+All scores are detokenized cased BLEU computed using SACREBLEU ( Post , 2018 ) .
+6 4.1 Cross-attention 's Power and Importance Translation Quality .
+Table 2 shows that { src , tgt } + xattn substantially improves upon { src , tgt } in all but one case ( Ha - En ) , especially when transferring to a pair with a new target language , and is competitive with { src , tgt } + body across all six language pairs , suggesting that cross-attention is capable of taking advantage of encoded generic translation knowledge in the Transformer body to adapt to each child task .
+Performance gain from { src , tgt } and drop from { src , tgt } + body when changing the target language ( i.e. , Fr- Es and Fr- De ) are more pronounced than when transferring the source .
+This is expected - when changing the target , two out of three cross-attention matrices ( key and value matrices ) are now exposed to a new language .
+When transferring source , only the query matrix is exposed to the new language .
+Storage .
+We also report the fraction of the parameters that need to be updated in each case .
+This is equivalent to the storage overhead that the training process incurs , as the updated parameters need to be stored to be used later .
+However , the parameters that are reused are only stored once .
+The number of parameters updated is dependent on the size of the vocabulary in each experiment , since embeddings for a new vocabulary are included .
+Hence , the single number reported for each fine-tuning strategy is the average across the six language pairs .
+Extending to new language pairs following { src , tgt } + xattn is much more efficient in this regard , as expected .
+We concretely calculate the number of parameters that need to be stored combined for the six new language pairs : { src , tgt } + xattn stores only 124,430,336 parameters compared to { src , tgt} + body 's 313,583,616 .
+Pretrained and Random Values .
+Finally , { src, tgt } + randxattn experiments also offer perspective on the importance of translation knowledge encoded in cross-attention itself .
+Not only does randomly initialized cross-attention fail to perform as well as pretrained cross-attention when being transferred , but in two cases , it even falls behind training from scratch .
+Our results from transferring mBART to the child language pairs also emphatically illustrate the importance of the type of knowledge encoded in cross-attention .
+mBART is a 12 - layer Transformer pretrained with a denoising objective in a self-supervised manner using span masking and sentence permutation noising functions .
+Hence , its cross-attention does not have any translation knowledge a priori , in contrast with the French - English MT parent model .
+We transfer mBART to the same language pairs as in vide the results in Figure 2 .
+Since mBART uses a shared vocabulary and tied embeddings between the encoder and decoder , in Figure 2 we use embed in experiments ' names to signify all embeddings get updated in the case of mBART ( ? src + ? tgt ) .
+mBART is a larger model than our Fr- En parent , both in terms of architecture and training data .
+So a higher range of scores is expected .
+While the same patterns hold across embed +{ body , xattn , randxatnn } finetuning , the crux of the matter is that embed finetuning fails in contrast to the comparable { src , tgt} fine -tuning setting of the translation parent .
+src fine-tuning has higher BLEU than scratch in three cases ( Ro - En , De-En , Ha-En ) .
+However , embed fine-tuning has higher BLEU than the scratch baseline only in the Ja- En case , and even then , very slightly so ( only by 0.1 BLEU ) .
+This shows that absence of translation knowledge in mBART 's pretrained cross-attention leads to its fine- tuning being more crucial in mBART 's functionality for translation adaptation : exclusively finetuning embeddings in mBART simply fails , while doing the same with a translation parent model is more successful .
+Learned Representations Properties
+Given that besides cross-attention , embeddings are the only parameters that get updated in both { src , tgt} + body and { src , tgt } + xattn settings , we take a closer look at them .
+We want to know how embeddings change under each setting .
+To probe the relationship between embeddings learned as a result of different kinds of fine-tuning , we examine the quality of induced 7 bilingual lexicons , a common practice in cross-lingual embeddings literature ( Artetxe et al. , 2017 ) but incidentally learned in this case .
+via nearest neighbor retrieval
+We use the bilingual dictionaries released as a resource in the MUSE ( Lample et al. , 2018 ) repository .
+8 For instance , to compare the German embeddings from each of the src+body and src+xattn De - En models to the French embeddings learned in the parent model , we use the De- Fr dictionary .
+We filter our learned embeddings ( which are , in general , of subwords ) to be compatible with the MUSE vocabulary .
+Of the 8,000 German subwords in the vocabulary , 2,025 are found in MUSE .
+For each of these , we find the closest French embedding by cosine similarity ; if the resulting ( German , French ) pair is in MUSE , we consider this a match .
+Via this method , we find the accuracy of the bilingual lexicon induction through the embeddings of src+ xattn model is 55 % .
+However , the accuracy through the embeddings of src+body is much lower at 19.7 % .
+Due to only considering the exact matches against the gold dictionary , this is a very strict evaluation .
+We also manually look at a sample of 40 words from the German set and check for the correctness of retrieved pairs for those using an automatic translator : while src+ xattn scores in the range of 80 % , src+body scores in the range of 30 % .
+Details of this manual inspection are provided in Table 4 of the appendix .
+We further report the accuracy of the bilingual dictionaries of three other pairs learned under the two fine-tuning settings for which gold dictionaries are available in Figure 3 .
+We do n't limit ourselves to child - parent dictionary induction ; we also consider child - child dictionary induction ( e.g. , De-Es ) which essentially relies on both languages being aligned with the parent ( i.e. , En ) .
+Overall , these results confirm that embeddings learned under { src , tgt } + xattn effectively get aligned with corresponding parent embeddings .
+However , this is not the case with embeddings learned under { src , tgt} + body .
+This suggests such effect is not the default pattern in translation models , but rather an artifact of the freezing choices made in { src , tgt } + xattn .
+Utilities of Aligned Embeddings
+We saw how fine-tuning only cross-attention results in cross-lingual embeddings with respect to parent embeddings .
+That is how cross-attention is able to use the baked - in knowledge in the encoder and decoder without any further updates to them .
+In this section , we discuss two areas where this can be turned to our advantage : mitigating forgetting and performing zero-shot translation .
+Mitigating Forgetting
+One area where the discovery of ?4.2 can be taken advantage of is mitigating catastrophic forgetting .
+Catastrophic forgetting refers to the loss of previously acquired knowledge in the model during transfer to a new task .
+To the best of our knowledge , catastrophic forgetting in MT models has only been studied within the context of inter-domain adaptation ( Thompson et al. , 2019 ; Gu and Feng , 2020 ) , and not inter-lingual adaptation .
+The effectiveness of the cross-lingual embed-dings learned under the { src , tgt } + xattn setting at mitigating forgetting is evident from the results provided in Figure 4 .
+Here we take three of the transferred models , plug back in the appropriate embeddings in them , and compare their performance on the original language pair against the parent model .
+Specifically , we take the De-En , Ro-En , and Fr- Es models transferred from Fr- En under each of the two { src , tgt } + xattn and { src , tgt } + body settings , plug in back the original { Fr , En} embeddings , and evaluate performance on the Fr- En test set .
+This score is then compared against the Fr- En parent model performance on Fr- En test set , which scores 35.0 BLEU .
+While being comparable in terms of performance on the child task as reported in Table 2 , { src , tgt } + xattn constantly outperforms { src, tgt} + body on Fr-En .
+Compared to the original Fr- En model , the source-transferred models ( De- En , Ro -En ) outperform the targettransferred model ( Fr - Es ) .
+However , tgt + xattn is much more robust against forgetting compared to tgt + body , which remembers close to nothing ( 0.2 BLEU ) .
+Zero - Shot Translation
+Another area where well - aligned embeddings from the { src , tgt } + xattn setting can come in handy is zero-shot translation .
+Table 3 : Performance of zero-shot systems for three language pairs .
+De - Es is evaluated on newstest 2013 test set .
+Ro - Es and Ro - De are evaluated on respective TED talks corpus test sets ( Qi et al. , 2018 ) .
+In the case of De-Es , we train two additional models from scratch on 50,000 - and 100,000 - sentence subsets of the training corpus .
+These respectively score 7.2 and 12.0 BLEU on the new-stest2013 De - Es test set ( v.s. zero-shot performance of 9.2 ) .
+Taken together , these results show that the zero-shot methods we obtain from crossattention - based transfer can yield reasonable translation models in the absence of parallel data .
+Related Work Studying Cross-attention .
+Several recent works consider the importance of self - and cross-attention heads in the Transformer architecture ( Voita et al. , 2019 ; Michel et al. , 2019 ; You et al. , 2020 ) .
+The consensus among these works is that crossattention heads are relatively more important than self-attention heads when it comes to introducing restrictions in terms of pruning and hard-coding .
+Module Freezing .
+In terms of restrictions introduced , our work is related to a group of recent works that freeze certain modules while fine-tuning ( Zoph et al. , 2016 ; Artetxe et al. , 2020 ; Lu et al. , 2021 ) . Artetxe et al. ( 2020 ) conduct their study on an encoder-only architecture .
+They show that by freezing a pretrained English Transformer language model body and only lexically ( embedding layers ) transferring it to another language , they can later plug in those embeddings into a fine-tuned downstream English model , achieving zero-shot transfer on the downstream task in the other language .
+Lu et al . ( 2021 ) also work with a decoder-only architecture .
+They show that by only fine-tuning the input layer , output layer , positional embeddings , and layer norm parameters of an otherwise frozen Transformer language model , they can match the performance of a model fully trained on the downstream task in several modalities .
+Lightweight Fine-tuning .
+Houlsby et al. ( 2019 ) reduce the number of parameters to be updated by inserting adapter modules in every layer of the Transformer model .
+Then during fine-tuning , they update the adapter parameters from scratch and fine- tune layer norm parameters while keeping the rest of the parameters frozen .
+Since adapters are only inserted and initialized at the time of fine-tuning , they are not able to reveal anything about the importance of pretrained modules .
+Our approach , however , enables highlighting the crucial role of the encoded translation knowledge by contrasting { src , tgt} + xattn and { src, tgt} + randxattn .
+Bapna and Firat ( 2019 ) devise adapters for MT by inserting language pairspecific adapter parameters in the Transformer architecture .
+In the multilingual setting , they show that by fine-tuning adapters in a shared pretrained multilingual model , they can compensate for the performance drop of high- resource languages incurred by shared training .
+Philip et al. ( 2020 ) replace language pair-specific adapters with monolingual adapters , which enables adapting under the zero-shot setting .
+Another family of lightweight fine-tuning approaches ( Li and Liang , 2021 ; Hambardzumyan et al. , 2021 ; Lester et al. , 2021 ) , inspired by prompt tuning ( Brown et al. , 2020 ) , also relies on updating a set of additional new parameters from scratch towards each downstream task .
+Such sets of parameters equal a very small fraction of the total parameters in the pretrained model .
+By contrast , our approach updates a subset of the model 's own parameters instead of adding new ones .
+We leave a comparison of the relative advantages and disadvantages of these approaches to future work .
+Cross-lingual Embeddings .
+Finally , while we were able to obtain cross-lingual embeddings through our transfer learning approach without using any dictionaries or direct parallel corpora , Wada et al . ( 2020 ) use a direct parallel corpus and a shared LSTM model that does translation and reconstruction at the same time to obtain aligned embeddings .
+Given tremendously large monolingual corpora for embedding construction , cross-lingual embeddings can also be obtained by applying a linear transformation on one language 's embedding space to map it to the second one in a way that minimizes the distance between equivalents in the shared space according to a dictionary ( Mikolov et al. , 2013 ; Xing et al. , 2015 ; Artetxe et al. , 2016 ) .
+These works specifically targeted the parallel dictionary reconstruction task , while we used the task incidentally , to intrinsically evaluate the parameters learned by our methods .
+Conclusion
+We look at how powerful cross-attention can be under constrained transfer learning setups .
+We empirically show that cross-attention can single - handedly result in comparable performance with fine-tuning the entire Transformer body , and it is through no magic : it relies on translation knowledge in the pretrained values to do so and has new embeddings align with corresponding parent language embeddings .
+We furthermore show that such aligned embeddings can be used towards catastrophic forgetting mitigation and zero-shot transfer .
+We hope this investigative study encourages more analyses in the same spirit towards more insights into the inner workings of different modules and how they can be put to good use .
+Figure 1 : 1 Figure 1 : Overview of our transfer learning experiments , depicting ( a ) training from scratch , ( b ) conventional fine-tuning ( src+body ) , ( c ) fine -tuning cross-attention ( src+xattn ) , ( d ) fine - tuning new vocabulary ( src ) , ( e ) fine -tuning cross-attention when transferring target language ( tgt+ xattn ) , ( f ) transfer learning with updating cross-attention from scratch ( src+randxattn ) .
+Dotted components are initialized randomly , while solid lines are initialized with parameters from a pretrained model .
+Shaded , underlined components are fine-tuned , while other components are frozen .

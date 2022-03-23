@@ -1,0 +1,150 @@
+title
+Pushing the Limits of AMR Parsing with Self- Learning
+abstract
+Meaning Representation ( AMR ) parsing has experienced a notable growth in performance in the last two years , due both to the impact of transfer learning and the development of novel architectures specific to AMR .
+At the same time , self- learning techniques have helped push the performance boundaries of other natural language processing applications , such as machine translation or question answering .
+In this paper , we explore different ways in which trained models can be applied to improve AMR parsing performance , including generation of synthetic text and AMR annotations as well as refinement of actions oracle .
+We show that , without any additional human annotations , these techniques improve an already performant parser and achieve state- ofthe - art results on AMR 1.0 and AMR 2.0 .
+Introduction Abstract Meaning Representation ( AMR ) are broad-coverage sentence - level semantic representations expressing who does what to whom .
+Nodes in an AMR graph correspond to concepts such as entities or predicates and are not always directly related to words .
+Edges in AMR represent relations between concepts such as subject / object .
+AMR has experienced unprecedented performance improvements in the last two years , partly due to the rise of pre-trained transformer models ( Radford et al. , 2019 ; Liu et al. , 2019 ) , but also due to AMR - specific architecture improvements .
+A non-exhaustive list includes latent node-word alignments through learned permutations ( Lyu and Titov , 2018a ) , minimum risk training via REINFORCE ( Naseem et al. , 2019 ) , a sequence - to- graph modeling of linearized trees with copy mechanisms and re-entrance features ( Zhang et al. , 2019a ) and more recently a highly performant graph-sequence iterative refinement model ( Cai and Lam , 2020 ) and a hard-attention transition - based parser ( F. A. et al. , 2020 ) , both based on the Transformer architecture .
+Given the strong improvements in architectures for AMR , it becomes interesting to explore alternative avenues to push performance even further .
+AMR annotations are relatively expensive to produce and thus typical corpora have on the order of tens of thousands of sentences .
+In this work we explore the use self-learning techniques as a means to escape this limitation .
+We explore the use of a trained parser to iteratively refine a rule- based AMR oracle ( Ballesteros and Al - Onaizan , 2017 ; F. A. et al. , 2020 ) to yield better action sequences .
+We also exploit the fact that a single AMR graph maps to multiple sentences in combination with AMR - to - text ( Mager et al. , 2020 ) , to generate additional training samples without using external data .
+Finally we revisit silver data training ( Konstas et al. , 2017a ) .
+These techniques reach 77.3 and 80.7 Smatch ( Cai and Knight , 2013 ) on AMR1.0 and AMR2.0 respectively using only gold data as well as 78.2 and 81.3 with silver data .
+Baseline Parser and Setup
+To test the proposed ideas , we used the AMR setup and parser from ( F. A. et al. , 2020 ) with improved embedding representations .
+This is a transitionbased parsing approach , following the original AMR oracle in ( Ballesteros and Al - Onaizan , 2017 ) and further improvements in ( Naseem et al. , 2019 ) .
+Briefly , rather than predicting a graph g from a sentence s directly , transition - based parsers predict instead an action sequence a .
+This action sequence , when applied to a state machine , produces the graph g = M ( a , s ) .
+This turns the problem of predicting the graph into a sequence to sequence problem , but introduces the need for an oracle to determine the action sequence a = O ( g , s ) .
+As in previous works , the oracle in ( F. A. et al. , 2020 ) is rule- based , relying on external word- to- node alignments ( Flanigan et al. , 2014 ; Pourdamghani et al. , 2016 ) to determine action sequences .
+It however force-aligns unaligned nodes to suitable words , notably improving oracle performance .
+As parser , ( F. A. et al. , 2020 ) introduces the stack - Transformer model .
+This is a modification of the sequence to sequence Transformer ( Vaswani et al. , 2017 ) to account for the parser state .
+It modifies the cross-attention mechanism dedicating two heads to attend the stack and buffer of the state machine M ( a , s ) .
+This parser is highly performant achieving the best results for a transition - based parser as of date and second overall for AMR2.0 and tied with the best for AMR1.0 .
+The stack - Transformer is trained as a conventional sequence to sequence model of p( a | s ) with a cross entropy loss .
+We used the full stack and full buffer setting from ( F. A. et al. , 2020 ) with same hyper-parameters for training and testing with the exception of the embeddings strategy detailed below .
+All models use checkpoint averaging ( Junczys - Dowmunt et al. , 2016 ) of the best 3 checkpoints and use a beam size of 10 1 while decoding .
+We refer to the original paper for exact details .
+Unlike in the original work , we use RoBERTalarge , instead of RoBERTa - base embeddings , and we feed the average of all layers as input to the stack - Transformer .
+This considerably strengthens the baseline model from the original 76.3/79.5 for the AMR1.0 / AMR2.0 development sets to 77.6/80.8 Smatch 2 .
+This baseline will be henceforth referred to as ( F. A. et al. , 2020 ) plus Strong Embeddings ( + SE ) .
+Oracle Self-Training
+As explained in Section 2 , transition - based parsers require an Oracle a = O( g , s ) to determine the action sequence producing the graph g = M ( a , s ) .
+Previous AMR oracles ( Ballesteros and Al - Onaizan , 2017 ; Naseem et al. , 2019 ; F. A. et al. , 2020 ) are rule based and rely on external wordto-node alignments .
+Rule - based oracles for AMR are sub-optimal and they do not always recover the original graph .
+The oracle score for AMR 2.0 , measured in Smatch , is 98.1 ( F. A. et al. , 2020 ) and 93.7 for ( Naseem et al. , 2019 ) .
+In this work , we explore the idea of using a previously trained parser , p( a | s ) to improve upon an existing oracle , initially rule-based .
+For each training sentence s with graph g and current oracle action sequence a * , we first sample an action sequence ? ? p( a | s ) .
+Both ? and a * are run through the state machine M ( ) to get graphs g and g * respectively .
+We then replace a * by ? if Smatch ( g , g ) > Smatch ( g * , g ) or ( Smatch ( g , g ) = Smatch ( g * , g ) and |?| < | a * | ) .
+This procedure is guaranteed to either increase Smatch , shorten action length or leave it unaltered .
+The downside is that many samples have to be drawn in order to obtain a single new best action , we therefore refer to this method as mining .
+Starting from the improved ( F. A. et al. , 2020 ) , we performed 2 rounds of mining , stopping after less than 20 action sequences were obtained in a single epoch , which takes around 10 epochs 3 . Between rounds we trained a new model from scratch with the new oracle to improve mining .
+This led to 2.0 % actions with better Smatch and 3.7 % shorter length for AMR1.0 and 2.8 % and 3.2 % respectively for AMR2.0 .
+This results in an improvement in oracle Smatch from 98.0 to 98.2 for AMR 1.0 and 98.1 to 98.3 for AMR 2.0 .
+Table 1 shows that mining AMR leads to an overall improvement of up to 0.2 Smatch across the two tasks with both shorter sequences and better Smatch increasing model performance when combined .
+Example inspection revealed that mining corrected oracle errors such as detached nodes due to wrong alignments .
+It should also be noted that such type of errors are much more present in previous oracles such as ( Naseem et al. , 2019 ( Naseem et al. , ) compared to ( F. A. et al. , 2020
+Self - Training with Synthetic Text AMR abstracts away from the surface forms i.e. one AMR graph corresponds to many different valid sentences .
+The AMR training data , however , provides only one sentence per graph with minor exceptions .
+AMR 1.0 and AMR 2.0 training corpora have also only 10 k and 36 k sentences , respectively , making generalization difficult .
+We hypothesize that if the parser is exposed to allowable variations of text corresponding to each gold graph , it will learn to generalize better .
+To this end , we utilize the recent state - of- theart AMR - to - text system of Mager et al . ( 2020 ) , a generative model based on fine-tuning of GPT - 2 ( Radford et al. , 2019 ) .
+We use the trained model p(s | g ) to produce sentences from gold AMR graphs .
+For each graph g in the training data , we generate 20 sentences via sampling s ? p( s | g ) and one using the greedy best output .
+We then use the following cycle-consistency criterion to filter this data .
+We use the improved stack - Transformer parser in Table 1 to generate two AMR graphs : one from the generated text s , g and one from the original text s , ?.
+We then use the Smatch between these two graphs to filter out samples , selecting up to three samples per sentence if their Smatch was not less than 80.0 .
+We remove sentences identical to the original gold sentence or repeated .
+Filtering prunes roughly 90 % of the generated sentences .
+This leaves us with 18 k additional sentences for AMR 1.0 and 68 k for AMR 2.0 .
+Note that the use of parsed graph , rather than the gold graph , for filtering accounts for parser error and yielded better results as a filter .
+Two separate GPT - 2 - based AMR - to - text systems were fine- tuned using AMR 1.0 and AMR 2.0 train sets and then sampled to generate the respective text data 4 and conventional training was carried out over the extended dataset .
+As shown in Table 2 , synthetic text generation , henceforth denoted synTxt , improves parser performance over the ( F. A. et al. , 2020 ) +SE baseline for AMR2.0 and particularly for AMR1.0 , possibly due to its smaller size .
+Self - Training with Synthetic AMR
+A trained parser can be used to parse unlabeled data and produce synthetic AMR graphs , henceforth synAMR .
+Although these graphs do not have the quality of human-annotated AMRs , they have been shown to improve AMR parsing performance ( Konstas et al. , 2017 b ; van Noord and Bos , 2017 ) .
+The performance of prior works is however not any more comparable to current systems and it is therefore interesting to revisit this approach .
+For this , we used the improved ( F. A. et al. , 2020 ) parser of Sec. 2 to parse unlabeled sentences from the context portion of SQuAD - 2.0 , comprising 85 k sentences and 2.3 m tokens , creating an initial synAMR corpus .
+This set is optionally filtered to reduce the training corpus size for AMR 2.0 experiments and is left unfiltered for AMR 1.0 , due to its smaller size .
+The filtering combines two criteria .
+First , it is easy to detect when the transition - based system produces disconnected AMR graphs .
+Outputs with disconnected graphs are therefore filtered out .
+Second , we use a cycle-consistency criteria as in Section 4 whereby synthetic text is generated for each synthetic AMR with ( Mager et al. , 2020 ) .
+For each pair of original text and generated text , the synAMR is filtered out if BLEU score ( Papineni et al. , 2002 ) is lower than a pre-specified threshold , 5 in our experiments .
+Because the AMRto -text generation system is trained on the humanannotated AMR only , generation performance may be worse on synthetic AMR and out of domain data .
+Consequently we apply BLEU - based filtering only to the input texts with no out of vocabulary ( OOV ) tokens with respect to the original humanannotated corpus .
+After filtering , the synAMR data is reduced to 58 k sentences .
+Following prior work , we tested pre-training on synAMR only , as in ( Konstas et al. , 2017 b ) , or on the mix of human-annotated AMR and synAMR , as in ( van Noord and Bos , 2017 ) and then fine-tuned on the AMR1.0 or AMR2.0 corpora .
+Table 3 shows the results for AMR1.0 and AMR2.0 under the two pre-training options .
+Results show that pre-training on the mix of human-annotated AMR and synAMR works better than pre-training on synAMR only , for both AMR1.0 and AMR 2.0 5 . 6 Detailed Analysis
+Comparison Background
+We compare the proposed methods with recent prior art in Table 4 . Pre-trained embeddings are indicated as BERT base b and large B , RoBERTa base r and large R ( Liu et al. , 2019 ) .
+Note that RoBERTA large , particularly with layer average , can be expected to be more performant then BERT .
+Graph Recategorization is used in ( Lyu and Titov , 2018 b ; Zhang et al. , 2019 b ) and indicated as G .
+This is a pre-processing stage that segments text and graph to identify named entities and other relevant sub-graphs .
+It also removes senses and makes use of Stanford 's CoreNLP to lemmatize input sentences and add POS tags .
+Graph recategorization also requires post-processing with Core-NLP at test time to reconstruct the graph .
+See ( Zhang et al. , 2019b , Sec. 6 ) for details .
+5 human+synAMR and synAMR training take about 54h and 19h respectively for AMR2.0 and 17h and 13h respectively for AMR1.0 .
+Fine-tuning takes 4h for AMR2.0 and 3h for AMR1.0 on a Tesla V100 .
+Model AMR1.0 AMR2.0 ( Lyu and Titov , 2018 b ) Both ( Naseem et al. , 2019 ; F. A. et al. , 2020 ) use a similar transition - based AMR oracle , but ( Naseem et al. , 2019 ) uses stack - LSTM and Reinforcement Learning fine-tuning .
+These oracles require external alignments and a lemmatizer at train time , but only a lemmatizer at test time .
+It is important to underline that for the presented methods we do not use additional human annotations throughout the experiments and that the only external source of data is additional text data for synthetic AMR , which we indicate with U .
+Results
+As displayed in Table 4 , the baseline system is close to the best published system with better results for AMR1.0 ( + 0.8 ) and worse for AMR2.0 ( ?0.5 ) .
+Transition - based systems process the sentence from left to right and model the AMR graph only indirectly through its action history and the alignments of actions to word tokens .
+This can be expected to generate a strong inductive bias that helps in lower resource scenarios .
+Regarding the introduced methods , mining shows close to no improvement in individual results .
+SynAMR provides the largest gain ( 0.7/0.8 ) for AMR1.0 / AMR2.0 while synTxt provides close to half that gain ( 0.4/0.3 ) .
+The combination of both methods also yields an improvement over their individual scores , but only for AMR1.0 with a 0.9 improvement .
+Combination of mining with syn-Txt and synAMR hurt results , however synTxt and synAMR does improve for AMR2.0 attaining a 1.1 improvement .
+Overall , the proposed approach achieves 81.3 Smatch in AMR2.0 combining the three methods , We also provide the detailed AMR analysis from ( Damonte et al. , 2017 ) for the best previously published system , baseline and the proposed methods in Table 5 .
+This analysis computes Smatch for sub-sets of AMR to loosely reflect particular subtasks , such as Word Sense Disambiguation ( WSD ) , Named Entity recognition or Semantic Role Labeling ( SRL ) .
+The proposed approaches and the baseline consistently outperform prior art in a majority of categories and the main observable differences seems due to differences between the transitionbased and graph recategorization approaches .
+Wikification and negation , the only categories where the proposed methods do not outperform ( Cai and Lam , 2020 ) , are handled by graph recategorization post-processing in this approach .
+Graph recategorization comes however at the cost of a large drop in the Name Entity category , probably due to need for graph post-processing using Core-NLP .
+Compared to this , transition - based approaches provide a more uniform performance across categories , and in this context the presented self - learning methods are able to improve in all categories .
+One aspect that merits further study , is the increase in the Negation category when using synTxt , which improves 5.4 points , probably due to generation of additional negation examples .
+Related Works
+Mining for gold , introduced in Section 3 , can be related to previous works addressing oracle limita-tions such as dynamic oracles ( Goldberg and Nivre , 2012 ; Ballesteros et al. , 2016 ) , imitation learning ( Goodman et al. , 2016 ) and minimum risk training ( Naseem et al. , 2019 ) .
+All these approaches increase parser robustness to its own errors by exposing it to actions that are often inferior to the oracle sequence in score .
+The approach presented here seeks only the small set of sequences improving over the oracle and uses them for conventional maximum likelihood training .
+Synthetic text , introduced in Section 4 , is related to Back-translation in Machine Translation .
+The approach presented here exploits however the fact that multiple sentences correspond to a single AMR and thus needs no external data .
+This is closer to recent work on question generation for question answering systems ( Alberti et al. , 2019 ) , which also uses cycle consistency filtering .
+Finally , regarding synthetic AMR , discussed in Section 5 , with respect to prior work ( Konstas et al. , 2017 b ; van Noord and Bos , 2017 ) we show that synthetic AMR parsing still can yield improvements for high performance baselines , and introduce the cycle-consistency filtering .
+Conclusions
+In this work 6 , we explored different ways in which trained models can be applied to improve AMR parsing performance via self-learning .
+Despite the recent strong improvements in performance through novel architectures , we show that the proposed techniques improve performance further , achieving new state - of- the - art on AMR 1.0 and AMR 2.0 tasks without the need for extra human annotations .
+Figure 1 : 1 Figure 1 : Role of sentence s , AMR graph g and oracle actions a in the different self-learning strategies .
+Left : Replacing rule- based actions by machine generated ones .
+Middle : synthetic text generation for existing graph annotations .
+Right : synthetic AMR generation for external data .
+Generated data ( ) . External data ( ) .
+Table 1 : 1 and margins of improvement are therefore smaller .
+Dev-set Smatch for AMR 1.0 and AMR 2.0 for different mining criteria .
+Average results for 3 seeds with standard deviation .
+Technique AMR1.0 AMR2.0 ( F. A. et al. , 2020 ) +SE 77.6 ?0.1 80.8 ?0.1 < length ? > smatch 77.8 ?0.1 80.9 ?0.2
+Table 2 : 2 Dev-set Smatch for AMR 1.0 and AMR 2.0. for synthetic text .
+Average results for 3 seeds with standard deviation .
+Technique AMR1.0 AMR2.0 ( F. A. et al. , 2020 ) +SE 77.6 ?0.1 80.8 ?0.1 synTxt 78.2 ?0.1 81.2 ?0.1
+Table 3 : 3 Dev-set Smatch for AMR1.0 and AMR2.0 . for the baseline parser and synthetic AMR training .
+Average results for 3 seeds with standard deviation .
+Technique AMR1.0 AMR2.0 ( F. A. et al. , 2020 ) +SE 77.6 ?0.1 80.8 ?0.1 synAMR only 78.1?0.0 80.7 ?0.0 human+synAMR 78.6?0.1 81.6 ?0.0
+Table 4 : 4 Test-set Smatch for AMR1.0 and AMR2.0 G 73.7 74.4 ( Naseem et al. , 2019 ) B - 75.5 ( Zhang et al. , 2019 b ) B , G 71.3 77.0 ( F. A. et al. , 2020 ) r 75.4 ?0.0 79.0 ?0.1 ( Cai and Lam , 2020 ) b 74.0 78.7 ( Cai and Lam , 2020 ) b, G 75.4 80.2 ( F. A. et al. , 2020 ) +SE R 76.9 ?0.1 80.2 ?0.0 oracle mining 76.9 ?0.0 80.3 ?0.1 synTxt 77.3 ?0.2 80.7 ?0.2 synAMR U 77.6 ?0.1 81.0 ?0.1 mining + synTxt 77.5 ?0.1 80.4 ?0.0 mining + synAMR U 77.7 ?0.1 80.9 ?0.0 synTxt + synAMR U 78.1 ?0.1 81.0 ?0.2 mining + synTxt + synAMR U 78.2 ?0.1 81.3 ?0.0
+This increased scores at most 0.8/0.4 for AMR1.0/2.0 .
+2
+We used the latest version available , 1.0.4
+One round of mining takes around 20h , while normal model training takes 6h on a Tesla V100 .
+synTxt training takes 17h for AMR 2.0 and 5h hours for AMR 1.0 on a Tesla V100 .
+AMR - to - text training for 15 epochs takes 4.5h on AMR 1.0 and 15h on AMR 2.0 .
+https://github.com/IBM/ transition -amr-parser / .

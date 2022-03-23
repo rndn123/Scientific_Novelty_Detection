@@ -1,0 +1,183 @@
+title
+Large Scale Question Paraphrase Retrieval with Smoothed Deep Metric Learning
+abstract
+The goal of a Question Paraphrase Retrieval ( QPR ) system is to retrieve similar questions that result in the same answer as the original question .
+Such a system can be used to understand and answer rare and noisy reformulations of common questions by mapping them to a set of canonical forms .
+This task has large-scale applications for community Question Answering ( cQA ) and opendomain spoken language question - answering systems .
+In this paper , we describe a new QPR system implemented as a Neural Information Retrieval ( NIR ) system consisting of a neural network sentence encoder and an approximate k-Nearest Neighbour index for efficient vector retrieval .
+We also describe our mechanism to generate an annotated dataset for question paraphrase retrieval experiments automatically from question - answer logs via distant supervision .
+We show that the standard loss function in NIR , triplet loss , does not perform well with noisy labels .
+We propose the smoothed deep metric loss ( SDML ) , and with our experiments on two QPR datasets we show that it significantly outperforms triplet loss in the noisy label setting .
+Introduction
+In this paper , we propose a Question Paraphrase Retrieval ( QPR ) ( Bernhard and Gurevych , 2008 ) system that can operate at industrial scale when trained on noisy training data that contains some number of false- negative samples .
+A QPR system retrieves a set of paraphrase questions for a given input , enabling existing question answering systems to answer rare formulations present in incoming questions .
+QPR finds natural applications in open-domain question answering systems , and is especially relevant to the community Question Answering ( cQA ) systems .
+Open-domain QA systems provide answers to a user 's questions with or without human intervention .
+These systems are employed by virtual assistants such as Alexa , Siri , Cortana and Google Assistant .
+Most virtual assistants use noisy channels , such as speech , to interact with users .
+Questions that are the output of an Automated Speech Recognition ( ASR ) system could contain errors such as truncations and misinterpretations .
+Transcription errors are more likely to occur for rarer or grammatically non-standard formulations of a question .
+For example ' Where Michael Jordan at ? ' could be a reformulation for ' Where is Michael Jordan ?'.
+QPR systems mitigate the impact of this noise by identifying an answerable paraphrase of the noisy query and hence improves the overall performance of the system .
+Another use of QPR is with cQA websites such as Quora or Yahoo Answers .
+These websites are platforms in which users interact by asking questions to the community and answering questions that have been posted by other users .
+The community - driven nature of these platforms leads to problems such as question duplication .
+Therefore , having a way to identify paraphrases can reduce clutter and improve the user experience .
+Question duplication can be prevented by presenting users a set of candidate paraphrase questions by retrieving them from the set of questions that have been already answered .
+Despite some similarities , QPR task differs from the better known Paraphrase Identification ( PI ) task .
+In order to retrieve the most similar question to a new question , QPR system needs to compare the new question with all other questions in the dataset .
+Paraphrase Identification ( Mihalcea et al. , 2006 ; Islam and Inkpen , 2009 ; He et al. , 2015 ) is a related task where the objective is to recognize whether a pair of sentences are paraphrases .
+The largest dataset for this task was released by Quora.com 1 . State - of - the- art approaches on this dataset use neural architectures with attention mechanisms across both the query and candidate questions .
+( Parikh et al. , 2016 ; Wang et al. , 2017 ; Devlin et al. , 2019 ) .
+However , these systems are increasingly impractical when scaled to millions of candidates as in the QPR setting , since they involve a quadratic number of vector comparisons per question pair , which are nontrivial to parallelize efficiently .
+Information Retrieval ( IR ) systems have been very successful to operate at scale for such tasks .
+However , standard IR systems , such as BM25 ( Robertson et al. , 2004 ) , are based on lexical overlap rather than on a deep semantic understanding of the questions ( Robertson et al. , 2009 ) , making them unable to recognize paraphrases that lack significant lexical overlap .
+In recent years , the focus of the IR community has moved towards neural network - based systems that can provide a better representation of the object to be retrieved while maintaining the performance of the standard model .
+Neural representations can capture latent syntactic and semantic information from the text , overcoming the shortcomings of systems based purely on lexical information .
+Moreover , representations trained using a neural network can be task -specific , allowing them to encode domainspecific information that helps them outperform generic systems .
+The major components of a Neural Information Retrieval ( NIR ) system are a neural encoder and a k-Nearest Neighbour ( kNN ) index ( Mitra and Craswell , 2017 ) .
+The encoder is a neural network capable of transforming an input example , in our case a question , to a fixed size vector representation .
+In a standard setting , the encoder is trained via triplet loss ( Schroff et al. , 2015 ; Rao et al. , 2016 ) to reduce the distance between a paraphrase vector when compared to a paraphrase vector with respect to a non-paraphrase vector .
+After being trained for this task , the encoder is used to embed the questions that can be later retrieved at inference time .
+The encoded questions are added to the kNN index for efficient retrieval .
+The input question is encoded and used as a query to the index , returning the top k most similar questions Public datasets , such as Quora Question Pairs , are built to train and evaluate classifiers to iden-tify paraphrases rather than evaluating retrieval systems .
+Additionally , the Quora dataset is not manually curated , thus resulting in a dataset that contains false- negative question paraphrases .
+This problem introduces noise in the training procedure when minimizing the triplet loss , since each question is compared with a positive and a negative example , that could be a false negative , at each training step .
+This noise is further exacerbated in approaches for training that exploit the concept of hard negatives , i.e. , mining the non-paraphrase samples that are close to paraphrase samples in the vector space ( Manmatha et al. , 2017 ; Rao et al. , 2016 ) .
+Rather than treating these false negatives as a quirk of our data generation process , we recognize that false negatives are unavoidable in all large scale information retrieval scenarios with orders of millions or billions of documents - it is not feasible to get complete annotations as that would be of quadratic complexity in the number of documents .
+Usually , in these settings , randomly selected documents are treated as negative examples - thus the presence of noisy annotations with a bias towards false negatives is a recurring phenomenon in machine - learning based information retrieval .
+In this work , we propose a loss function that minimizes the effect of false negatives in the training data .
+The proposed loss function trains the model to identify the valid paraphrase in a set of randomly sampled questions and uses label smoothing to assign some probability mass to negative examples , thus mitigating the impact of false negatives .
+The proposed technique is evaluated on two datasets : a distantly supervised dataset of questions collected from a popular virtual assistant system , and a modified version of the Quora dataset that allows models to be evaluated in a retrieval setting .
+The effect of our proposed loss and the impact of the smoothing parameters are analyzed in Section 4 .
+Question Paraphrase Retrieval
+In QPR the task is to retrieve a set of candidate paraphrases for a given query .
+Formally , given a new query q new , the task is to retrieve k-questions , Q k ( | Q k | = k ) , that are more likely to be paraphrases of the original question .
+The questions need to be retrieved from a given set of questions Q all such that Q k ?
+Q all , e.g. , questions already answered in a cQA website .
+System overview
+The QPR system described in this paper is made of two core components : a neural encoder and an index .
+The encoder ? is a function ( ? : Q ? R n ) that takes as input a question q ?
+Q and maps it to a dense n-dimensional vector representation .
+The index is defined as the encoded set of all the questions that can be retrieved {?( q ) |q ?
+Q all } using the standard kNN search mechanism .
+Encoder
+The encoder ?
+used by our system is a neural network that transforms the input question to a fixed size vector representation .
+To this end , we use a convolutional encoder since it scales better ( is easily parallelizable ) compared to a recurrent neural network encoder and transformers ( Vaswani et al. , 2017 ) , that have quadratic comparisons while maintaining good performance on sentence matching tasks ( Yin et al. , 2017 ) .
+Additionally , convolutional encoders are less sensitive to the global structure of the sentence then recurrent neural network thus being more resilient to noisy nature of user-generated text
+The encoder uses a three -step process : 1 . An embedding layer maps each word w i in the question q to its corresponding word embedding x i ?
+R e dim and thereby generating a sentence matrix X q ?
+R l?e dim , where l is number of words in the question .
+We also use the hashing trick of ( Weinberger et al. , 2009 ) to map rare words to m bins via random projection to reduce the number of false matches at the retrieval time .
+2 . A convolutional layer ( Kim , 2014 ) takes the question embedding matrix X q as input and applies a trained convolutional filter W ?
+R e dim win iteratively by taking at each timestep i a set of win word embeddings .
+This results in the output : h win i = ?( W x i? win 2 :i+ win 2 + b ) ( 1 ) , where ? is a non linearity function , tanh in our case , and b ?
+R is the bias parameter .
+By iterating over the whole sentence it produces a feature map h win = [ h win 1 , .. , h win l ] .
+3 . A global max pooling operation is applied over the feature map ( ? win = max ( h win ) ) to reduce it into a single feature value .
+The convolutional and global max pooling steps described above are applied multiple times ( c dim times ) with varying window size with resultant ?
+values concatenated to get a feature vector h ?
+R c dim which is then linearly projected to an n-dimensional output vector using a learned weight matrix W p ?
+R n?c dim .
+kNN Index Despite there is no restriction on the type of kNN index that can be used , for performance reasons , we use FAISS 2 ( Johnson et al. , 2017 ) as an approximate kNN index 3 .
+All the questions ( Q all ) are encoded offline using the encoder ? and added to the index .
+At retrieval time a new question is encoded and used as a query to the index .
+The kNN index uses a predefined distance function ( e.g. Euclidean distance ) to retrieve the nearest questions in the vector space .
+Training Typical approaches for training the encoder use triplet loss ( Schroff et al. , 2015 ; Rao et al. , 2016 ) .
+This loss attempts to minimize the distance between positive examples while maximizing the distance between positive and negative examples .
+The loss is formalized as follows : N i [ ?( q a i ) ? ?( q p i ) 2 2 ? ?( q a i ) ? ?( q n i ) 2 2 + ?] + ( 2 ) where q a i is a positive ( anchor ) question , q p i is a positive match to the anchor ( a valid paraphrase ) , q n i is a negative match ( i.e. a non-paraphrase ) , ? is a margin parameter and N is the batch size .
+In a recent work by Manmatha et al. 2017 the authors found that better results could be obtained by training the above objective with hard negative samples .
+These hard negatives are samples from the negative class that are the closest in vector space to the positive samples , hence most likely to be misclassified .
+However
+Top K paraphrases Encoding Indexing Encoding Figure 1 : System as negative due to noise ) making the learning process faulty .
+For example in the Quora dataset positive examples are marked as paraphrase , duplicate , by users using the website however there is no manual check for the negative examples , thus leading to a number of false negatives that happens to be close in the vector space .
+Smoothed Deep Metric Learning
+In this paper , we propose a new loss function that overcomes the limitation of triplet loss in the noisy setting .
+Instead of minimizing the distance between positive examples with respect to negative examples , we view the problem as a classification problem .
+Ideally , we would like to classify the paraphrases of the original question amongst all other questions in the dataset .
+This process is infeasible due to time and memory constraints .
+We can , however , approximate this general loss by identifying a valid paraphrase in a set of randomly sampled questions ( Kannan et al. , 2016 ) .
+We map vector distances into probabilities similar to Goldberger et al.
+2005 by applying a softmax operation over the negative squared euclidean distance : p( a , i ) = e ? ?( q a ) ?( q i ) 2 2 N j e ? ?( q a ) ?( q j ) 2 2 ( 3 ) where q a is an anchor question and q j and q i are questions belonging in a batch of size N containing one paraphrase and N ? 1 randomly sampled non-paraphrases .
+The network is then trained to assign a higher probability , hence a shorter distance , to pair of questions that are paraphrases .
+Additionally , we apply the label smoothing regularization technique ( Szegedy et al. , 2016 ) to reduce impact of false negatives .
+This technique reduces the probability of the ground truth by a smoothing factor and redistributes it uniformly across all other values , i.e. , p ( k|a ) = ( 1 ? ) p ( k |a ) + N ( 4 ) where p( k |a ) is the probability for the gold label .
+The new smoothed labels computed in this way are used to train the network using Cross-Entropy ( CE ) or Kullback - Leibler ( KL ) divergence loss 4 .
+In our setting , the standard cross-entropy loss tries to enforce the euclidean distance between all random points to become infinity , which may not be feasible and could lead to noisy training and slow convergence .
+Instead , assigning a constant probability to random interactions tries to position random points onto the surface of a hypersphere around the anchor which simplifies the learning problem .
+The sampling required for this formulation can be easily implemented in frameworks like Py-Torch ( Paszke et al. , 2017 ) or MxNet ( Chen et al. , 2015 ) using a batch of positive pairs < q 1 , j , q 2 , j > derived from a shuffled dataset , as depicted in Figure 2 .
+In this setting , each question q 1 , i would have exactly one paraphrase , i.e. , q 2 , i and N ?1 all other questions q 2 , j when j = i would serve as counterexamples .
+This batched implementation reduces training time and makes sampling tractable by avoiding sampling N questions for each example , reducing the number of forward passes required to encode the questions in a batch from O( N 2 ) in a naive implementation to O ( 2N ) .
+q 2,1 q 2,2 q 2,3 q 1,1 q 1,2 q 1,3 Figure 2 : Batched implementation of the loss with smoothing parameter = 0.3 and batch size N = 3 .
+Each paraphrase pair < q 1 , j , q 2 , j > in the batch is compared with all the others questions in the batch .
+Experiments
+In this section , we present the experimental setup used to validate our approach for QPR using the Smoothed Deep Metric Learning ( SDML ) technique .
+Datasets
+In order to generate a dataset for question paraphrase retrieval , we propose a technique that uses distant supervision to create it automatically from high - precision question - answer ( QA ) logs .
+Additionally , due to the proprietary nature of our internal dataset , we tested our approach on a modified version of the Quora paraphrase identification dataset that has been adapted for the paraphrase retrieval task .
+Open Domain QA dataset
+Our open domain Q&A dataset is created by weak supervision method using high precision QA logs of a large scale industrial virtual assistant .
+From the logs , we retrieve ' clusters ' of questions that are mapped to the same answer .
+However , we notice that this may generate clusters where unrelated questions are mapped to a generic answer .
+For instance , many different math questions may map to the same answer ; e.g. a given number .
+To further refine these clusters , the data is filtered using a heuristic based on an intra-cluster similarity metric that we call cluster coherence , denoted as c .
+We define this metric as the mean Jaccard similarity ( Levandowsky and Winter , 1971 ) of each question in a cluster to the cluster taken as the whole .
+Mathematically , for a given cluster A = {q 1 , q 2 ...q n } and defining T q i = {w i 1 , w i 2 , ...w
+i k } as shorthand for the set of unique tokens present in a given question , the coherence of the cluster is defined as : S = n i=1 T q i ( 5 ) c = 1 n ? n i=1 | T q i ? S| | S| ( 6 ) In practice , we found that even a small coherence filter ( c < 0.1 ) can eliminate all incoherent question clusters .
+Our approach to weak supervision can be considered as a generalized instance of the candidate - generation noise-removal pipeline paradigm used by Kim et al .
+2018 .
+Once the incoherent clusters are removed from the dataset , the remaining clusters are randomly split in an 80:10:10 ratio into training , validation and test sets and question pairs are generated from them 5 .
+A second filter is applied to remove questions in the validation and test sets that overlap with questions in the training set .
+The final output of the weak supervision process is a set of silver labelled clusters with > 99 % accuracy based on spot-checking , a random sample of 200 clusters .
+Quora dataset
+We introduce a variant of the Quora dataset for QPR task .
+The original dataset consists of pairs of questions with a positive label if they are paraphrases , and a negative label if they are not .
+Similarly to Haponchyk et al. ( 2018 ) , we identify question clusters in the dataset by exploiting the transitive property of the paraphrase relation in the original pairs , i.e. , if q 1 and q 2 are paraphrases , and q 2 and q 3 are paraphrases then q 1 and q 3 are also paraphrases , hence q 1 , q 2 , and q 3 belong to the same cluster .
+After iterating over the entire dataset , we identified 60 , 312 question clusters .
+The question clusters are split into the training , validation and test sets such that the resulting validation and test set contains roughly 5 , 000 question pairs each , and the training set contains 219 , 369 question pairs 6 .
+The kNN index is composed of all the questions in the original Quora datasets ( including questions that appear only as negative , thus not being part of any cluster ) for a total of 556 , 107 questions .
+Experimental setup
+We described the architecture of our encoder previously in section 2.1.1 .
+For experimentation , we randomly initialized word embeddings .
+The size of vocabulary for Quora dataset is fixed at 50,000 whereas for the bigger open-domain QA dataset we used a vocabulary of size 100,000 .
+To map rare words we use the hashing trick ( Weinberger et al. , 2009 ) with 5,000 bins for the Quora dataset and 10,000 bins for the QA dataset .
+We set the dimensionality of word embeddings at 300 ( i.e. , e dim = 300 ) ; the convolutional layer uses a window size of 5 ( i.e. , win = 5 ) and the encoder outputs a vector of size n = 300 .
+For triplet loss the network is trained with margin ? = 0.5 .
+The default batch size for all the experiments is 512 ( i.e. , N = 512 ) and the smoothing factor for SDML , , is 0.3 .
+For all experiments training is performed using the Adam optimizer with learning rate ? = 0.001 until the model stops improving on the validation test , using early stopping ( Prechelt , 1998 ) on the ROC AUC metric ( Bradley , 1997 ) .
+Evaluation
+We use IVF2000 , Flat configuration of the FAISS library as our index , which is a hierarchical index consisting of an index of k-means centroids as the top-level index .
+For evaluation , we retrieve 20 questions with 10 probes into the index each returning a pair of paraphrase questions , with an average query time of < 10 ms .
+These questions are used to measure the system performance via standard information retrieval metrics , Hits@N ( H@N ) and Mean Reciprocal Rank ( MRR ) .
+H@N measures if at least one question in the first N that are retrieved is a paraphrase and MRR is the mean reciprocal rank ( position ) at which the first retrieved paraphrase is encountered .
+Results
+In the first set of experiments , we measured the impact of varying the smoothing factor .
+The results for the Quora validation set are presented in Table 1 .
+We observe that the presence of smoothing leads to a significant increase over the baseline ( simple cross-entropy loss ) and increasing this parameter has a positive impact up to = 0.3 .
+In our second experiment , we hold the constant at 0.3 and experiment with varying the num -H@1 H@10 MRR 0 0.5568 0.7381 0.6217 0.1 0.5901 0.7841 0.6591 0.2 0.6030 0.8090 0.6762 0.3 0.6133 0.8113 0.6837 0.4 0.6107 0.8144 0.6815 ber of negative samples .
+Table 2 shows the effect of an increase in the number of negative examples in a batch .
+The model 's performance reaches its maximum value at N = 512 , i.e. , with 511 negative samples for each positive sample .
+We want to point out that we limited our exploration to 1024 due to memory constraints .
+However , better performance may be achieved by further increasing the number of examples , since the batch becomes a better approximation of the real distribution .
+Table 3 and 4 compare the proposed loss with the triplet loss with random sampling , TL ( Rand ) .
+We compared the proposed approach with two variants of triplet loss that uses different distance functions Euclidean Distance ( EUC ) and Sum of Squared Differences ( SSD ) .
+The Euclidean distance is the standard distance function for triplet loss implementation present in popular deep learning frameworks , PyTorch and Mxnet , whereas SSD is the distance function used in the original paper of Schroff et al .
+2015 .
+Our approach improves over the original triplet loss considerably on both datasets .
+The SSD distance also outperforms the EUC implementation of the loss .
+Tables 5 and 6 show the results on the open domain QA dataset validation and test set .
+TL ( Rand ) is the triplet loss with random sampling of negative examples , whereas TL ( Hard ) is a variant with hard negative mining .
+In both cases , the SDML outperforms triplet loss by a considerable mar -
+Loss Dist H@1 H@10 MRR TL ( Rand ) EUC 0.4742 0.6509 0.5359 TL ( Rand ) SSD 0.5763 0.7640 0.6421 SDML SSD 0.6133 0.8113 0.6837
+The results presented in this section are consistent with our expectations based on the design of the loss function .
+Conclusion
+We investigated a variant of the paraphrase identification task - large scale question paraphrase retrieval , which is of particular importance in industrial question answering applications .
+We devised a weak supervision algorithm to generate training data from the logs of an existing high precision question - answering system and introduced a variant of the popular Quora dataset for this task .
+In order to solve this task efficiently , we developed a neural information retrieval system consisting of a convolutional neural encoder and a fast approximate nearest neighbour search index .
+Triplet loss , a standard baseline for learningto-rank setting , tends to overfit to noisy examples in training .
+To deal with this issue , we designed a new loss function inspired by label smoothing , which assigns a small constant probability to randomly paired question utterances in a training mini-batch resulting in a model that demonstrates superior performance .
+We believe that our batchwise smoothed loss formulation will be applicable to a variety of metric learning and information retrieval problems for which triplet loss is currently widespread .
+The loss function framework we describe is also flexible enough to experiment with different priors - for e.g. allocating probability masses based on the distances between the points . , in our case , and in other cases with noisy training data , this technique negatively impacts the performance of the model since it starts focusing disproportionately on any false - negative samples in the data ( i.e. positive examples labelled 2 https://github.com/facebookresearch/ faiss 3 FAISS provides efficient implementations of various approximated kNN search algorithms for both CPU and GPU Training Paraphrase Vector Indexing Inference Index Encoder Encoder Encoder Encoder
+What is a Car? Define Car Who is Obama ? ...
+Where is Rome ? ...

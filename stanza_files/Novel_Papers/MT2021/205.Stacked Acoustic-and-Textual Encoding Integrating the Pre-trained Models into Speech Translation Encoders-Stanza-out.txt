@@ -1,0 +1,239 @@
+title
+Stacked Acoustic-and -Textual Encoding : Integrating the Pre-trained Models into Speech Translation Encoders
+abstract
+Encoder pre-training is promising in end-toend Speech Translation ( ST ) , given the fact that speech - to -translation data is scarce .
+But ST encoders are not simple instances of Automatic Speech Recognition ( ASR ) or Machine Translation ( MT ) encoders .
+For example , we find that ASR encoders lack the global context representation , which is necessary for translation , whereas MT encoders are not designed to deal with long but locally attentive acoustic sequences .
+In this work , we propose a Stacked Acoustic - and - Textual Encoding ( SATE ) method for speech translation .
+Our encoder begins with processing the acoustic sequence as usual , but later behaves more like an MT encoder for a global representation of the input sequence .
+In this way , it is straightforward to incorporate the pre-trained models into the system .
+Also , we develop an adaptor module to alleviate the representation inconsistency between the pre-trained ASR encoder and MT encoder , and develop a multi-teacher knowledge distillation method to preserve the pre-training knowledge .
+Experimental results on the LibriSpeech En-Fr and MuST -C En-De ST tasks show that our method achieves state - of- the - art BLEU scores of 18.3 and 25.2 .
+To our knowledge , we are the first to develop an end-to- end ST system that achieves comparable or even better BLEU performance than the cascaded ST counterpart when large-scale ASR and MT data is available 1 .
+Introduction End-to-end Speech Translation ( E2E ST ) has become popular recently for its ability to free designers from cascading different systems and shorten
+Setting Model the pipeline of translation ( Duong et al. , 2016 ; Berard et al. , 2016 ; Weiss et al. , 2017 ) .
+Promising results on small-scale tasks are generally favorable .
+However , speech- to-translation paired data is scarce .
+Researchers typically use pre-trained Automatic Speech Recognition ( ASR ) and Machine Translation ( MT ) models to boost ST systems ( Berard et al. , 2018 ) .
+For example , one can initialize the ST encoder using a large-scale ASR model ( Bansal et al. , 2019 ) .
+But we note that , despite significant development effort , our end-to - end ST system with pre-trained models was not able to outperform the cascaded ST counterpart when the ASR and MT data size was orders of magnitude larger than that of ST ( see Table 1 ) .
+In this paper , we explore reasons why pretraining has been challenging in ST , and how pretrained ASR and MT models might be used together to improve ST .
+We find that the ST encoder plays both roles of acoustic encoding and textual encoding .
+This makes it problematic to view an ST encoder as either an individual ASR encoder or an individual MT encoder .
+More specifically , there are two problems .
+?
+Modeling deficiency : the MT encoder tries to capture long-distance dependency structures of language , but the ASR encoder focuses more on local dependencies in the input sequence .
+Since the ST encoder is initialized by the pre-trained ASR encoder ( Berard et al. , 2018 ) , it fails to model large contexts in the utterance .
+But a large scope of representation learning is necessary for translation ( Yang et al. , 2018 ) . ?
+Representation inconsistency : on the decoder side of ST , the MT decoder is in general used to initialize the model .
+The assumption here is that the upstream component is an MT - like encoder , whereas the ST encoder actually behaves more like an ASR encoder .
+We address these problems by marrying the world of ASR encoding with the world of MT encoding .
+We propose a Stacked Acoustic- and - Textual Encoding ( SATE ) method to cascade the ASR encoder and the MT encoder .
+It first reads and processes the sequence of acoustic features as a usual ASR encoder .
+Then an adaptor module passes the acoustic encoding output to an MT encoder with two principles : informative and adaptive .
+In this way , pre-trained ASR and MT encoders can work for what we would originally design them , and the incorporation of pre-trained models into ST is more straightforward .
+In addition , we develop a multi-teacher knowledge distillation method to robustly train the ST encoder and preserve the pretrained knowledge during fine-tuning .
+We test our method in a Transformer - based endto- end ST system .
+Experimental results on the Lib-riSpeech En-Fr and MuST -C En- De speech translation benchmarks show that it achieves the stateof - the- art performance of 18.3 and 25.2 BLEU points .
+Under a more challenging setup , where the large-scale ASR and MT data is available , SATE achieves comparable or even better performance than the cascaded ST counterpart .
+We believe that we are the first to present an end-to - end system that can beat the strong cascaded system in unrestricted speech translation tasks .
+Related Work Speech translation aims at learning models that can predict , given some speech in the source language , the translation into the target language .
+The earliest of these models were cascaded : they treated ST as a pipeline of running an ASR system and an MT system sequentially ( Ney , 1999 ; Mathias and Byrne , 2006 ; Schultz et al. , 2004 ) .
+This allows the use of off- the-shelf models , and was ( and is ) popular in practical ST systems .
+However , these systems were sensitive to the errors introduced by different component systems and the high latency of the long pipeline .
+As another stream in the ST area , end-to - end methods have been promising recently ( Berard et al. , 2016 ; Weiss et al. , 2017 ; Berard et al. , 2018 ) .
+The rise of end-to- end ST can be traced back to the success of deep neural models ( Duong et al. , 2016 ) .
+But , unlike other well - defined tasks in deep learning , annotated speech - to-translation data is scarce , which prevents well - trained ST models .
+A simple solution to this issue is data augmentation ( Pino et al. , 2019 ( Pino et al. , , 2020 .
+This method is model - free but generating large-scale synthetic data is time consuming .
+As an alternative , researchers used multi-task learning ( MTL ) to robustly train the ST model so that it could benefit from additional guide signals ( Weiss et al. , 2017 ; Anastasopoulos and Chiang , 2018 ; Berard et al. , 2018 ; Sperber et al. , 2019 ; Dong et al. , 2021 ) .
+Generally , MTL requires a careful design of the loss functions and more complicated architectures .
+In a similar way , more recent work pre-trains different components of the ST system , and consolidates them into one .
+For example , one can initialize the encoder with an ASR model , and initialize the decoder with the target - language side of an MT model ( Berard et al. , 2018 ; Bansal et al. , 2019 ; Stoian et al. , 2020 ) .
+More sophisticated methods include better training and fine-tuning ( Wang et al. , 2020 a , b ) , the shrink mechanism , the adversarial regularizer ( Alinejad and Sarkar , 2020 ) , and etc .
+Although pre-trained models have quickly become dominant in many NLP tasks , they are still found to underperform the cascaded model in ST .
+This motivates us to explore the reasons why this happens and methods to solve the problems accordingly .
+3 Why is ST Encoding Difficult ?
+Following previous work in end-to- end models ( Berard et al. , 2016 ; Weiss et al. , 2017 ) , we envision an encoding - decoding process in which an input sequence is encoded into a representation vector , and the vector is then decoded into an output sequence .
+In such a scenario , all end-to- end ST , ASR and MT systems can be viewed as instances of the same architecture .
+Then , components of these systems can be pre-trained and re-used across them .
+An underlying assumption here is that the ST encoder is doing something quite similar to what the MT ( or ASR ) encoder is doing .
+However , Sperber et al. ( 2018 ) find that the ASR model benefits from a small attention window , which is inconsistent with the MT model ( Yang et al. , 2018 ) .
+To verify this , we compare the behavior of ST , ASR and MT encoders .
+We choose Transformer as the base architecture ( Vaswani et al. , 2017 ) and run experiments on the MuST -C En- De corpus .
+We report the results on the MuST -C En- De tst-COMMON test data .
+For stronger systems , we use Connectionist Temporal Classification ( CTC ) ( Graves et al. , 2006 ) as the auxiliary loss on the encoders when we train the ASR and ST systems ( Watanabe et al. , 2017 ; Karita et al. , 2019 ; Bahar et al. , 2019 ) .
+The CTC loss forces the encoders to learn alignments between speech and transcription .
+It is necessary for the state - of - the - art performance ( Watanabe et al. , 2018 ) .
+Here we define the localness of a word as the sum of the attention weights to the surrounding words ( or features ) within a fixed small window 2 .
+The window size is 10 % of the sequence length .
+Figure 1 ( a ) shows the localness of the attention weights for different layers of the encoders .
+We see that the ST and ASR encoders prefer local attention which indicates a kind of short-distance dependencies in processing acoustics feature sequences .
+Whereas the MT encoder generates a more global distribution of attention weights for word sequences , especially when we stack more layers .
+This result arises a new question :
+Is local attention sufficient for speech translation ?
+Then , we design another experiment to examine if the high localness in attention weights of the ASR and ST encoders is due to the bias imposed by CTC .
+In Figure 1 ( b ) , we use the CTC loss in the intermediate layer and show the average localness of the layers above or below CTC .
+The CTC loss demonstrates strong preference for locally attentive models .
+The upper-level layers act more like an MT encoder , that is , the layers with no CTC loss generates more global distributions .
+Taking this further , Figure 1 ( c ) demonstrates a slightly higher BLEU score when we free more upper-level layers from the guide of CTC .
+Meanwhile , the word error rate ( WER ) increases because only lower parts of the model are learned in a standard manner of ASR .
+Now we have some hints : the ST encoder is not a simple substitution of the ASR encoder or the MT encoder .
+Rather , they are complementary to each other , that is , we need the ASR encoder to deal with the acoustic input , and the MT encoder to generate the representation vector that can work better with the decoder .
+The Method
+In speech translation , we want the encoder to represent the input speech to some sort of decoderfriendly representations .
+We also want the encoder to be " natural " for pre-training .
+In the following , we describe , Stacked Acoustics - and - Textual Encoding ( SATE ) , a new ST encoding method to meet these requirements , and improvements of it .
+Stacked Acoustic-and -Textual Encoding Unlike previous work , the SATE method does not rely on a single encoder to receive the signal from both the CTC loss and the feedback of the decoder .
+Instead , it is composed of two encoders : the first does exactly the same thing as the ASR encoder ( call it acoustic encoder ) , and the other generates a higher - level globally - attentive representation on top of the acoustic encoder ( call it textual encoder ) .
+See Figure 2 for the architecture of SATE .
+The acoustic encoder is trained by CTC in addition to the supervision signal from the translation loss .
+Let ( x , y s , y t ) be an ST training sample , where x is the input feature sequence of the speech , y s is the transcription of x , and y t is the translation in the target language .
+We define the output of the acoustic encoder as : h s = E s ( x ) ( 1 ) where E s ( ? ) is the encoding function .
+Then , we add a Softmax layer on h s to predict the CTC label path ? = (?
+1 , ? ? ? , ? T ) , where T is the length of the input sequence .
+The probability of path P ( ?|h s ) is the product of the probability P ( ?
+t |h s t ) at every time t based on conditionally independent assumption : P (?| h s ) ?
+T t P (? t |h s t ) ( 2 ) CTC works by summing over the probability of all possible alignment paths ?( y s ) between x and y s , as follows : P CTC ( y s |h s ) = ?( y s ) P (?|h s ) ( 3 )
+Then , the CTC loss is defined as : L CTC = ? log P CTC ( y s |h s ; ? CTC ) ( 4 ) where ?
+CTC is the model parameters of the acoustic encoder and the CTC output layer .
+The acoustic encoder is followed by an adaptor .
+It receives h s and P ( ?|h s ) , and produces a new representation required by the textual encoder .
+Let A ( ? , ? ) be the adaptor module .
+Its output is defined as : ?s = A( h s , P (?|h s ) ) ( 5 ) We leave the design of the adaptor to Section 4.2 .
+Furthermore , we stack the textual encoder on the adaptor .
+The output h t is defined as : h t = E t ( ?s ) ( 6 ) where E t ( ? ) is the textual encoder .
+h t is fed into the decoder for computing the translation probability P Trans ( y t |h t ) , as in standard MT systems .
+We define the translation loss as : L Trans = ? log P Trans ( y t |h t ; ? ST ) ( 7 ) where ?
+ST is all model parameters except for the CTC output layer .
+Finally , we interpolate L CTC and L Trans ( with coefficient ?) for the loss of the entire model : L = ? ? L CTC + ( 1 ? ? ) ? L Trans ( 8 ) Since the textual encoder works for the decoder only , it is trained as an MT encoder .
+In this way , the acoustic and textual encoders can do what we would originally expect them to do : the acoustic encoder deals with the acoustic input ( i.e. , ASR encoding ) , and the textual encoder generates a representation for translation ( i.e. , MT encoding ) .
+Also , SATE is friendly to pre-training .
+One can simply use an ASR encoder as the acoustic encoder , and use an MT encoder as the textual encoder .
+Note that SATE is in general a cascaded model , in response to the pioneering work in ST ( Ney , 1999 ) .
+It can be seen as cascading the ASR and MT systems in an end-to - end fashion .
+The Adaptor
+Now we turn to the design of the adaptor .
+Note that the pre-trained MT encoder assumes that the input is a word embedding sequence .
+Simply stacking the MT encoder and the ASR encoder obviously does not work well .
+For this reason , the adaptor fits the output of the ASR encoder ( i.e. , the acoustic encoder ) to what an MT encoder would like to see .
+We follow two principles in designing the adaptor : adaptive and informative .
+We need an adaptive representation to make the input of the textual encoder similar to that of the MT encoder .
+To this end , we generate the soft contextual representation that shares the same latent space with the embedding layer of the MT encoder .
+As shown in Eq. ( 2 ) , the CTC output P ( ?
+t |h s t ) indicates the alignment probability over the vocabulary at time t. Instead of replacing the representation by the embedding of the most-likely token , we employ a soft token which is the expectation of the embedding over the distribution from CTC .
+Let W e be the embedding matrix of the textual encoder , we define the soft representation h s soft as : h s soft = P (?| h s ) ?
+W e ( 9 ) Also , an informative representation should contain information in the original input ( Peters et al. , 2018 ) .
+The output acoustic representation of the ASR encoder generally involves paralinguistic information , such as emotion , accent , and emphasis .
+They are not expressed in the form of text explicitly but might be helpful for translation .
+For example , the generation of the declarative or exclamatory sentences depends on the emotions of the speakers .
+We introduce a single- layer neural network to learn to map the acoustic representation to the latent space of the textual encoder , which preserves the acoustic information : h s map = ReLU ( W map ? h s + b map ) ( 10 ) where W map and b map are the trainable parameters .
+The final output of the adaptor is defined to be : A( h s , P ( ?|h s ) ) = ? ? h s map + ( 1 ? ? ) ? h s soft ( 11 ) where ? is the weight of h s map and set to 0.5 by default .
+Figure 3 shows the architecture of the adaptor .
+Note that , in the adaptor , we do not change the sequence length for textual encoding because such a way is simple for implementation and shows satisfactory results in our experiments .
+Although there is a length inconsistency issue , the sequence representation of the speech should be similar with the Mapping Layer correspond transcription .
+Shrinking the sequence simply results in information incompleteness .
+We will investigate this issue in the future .
+Multi-teacher Knowledge Distillation
+Another improvement here is that we develop a multi-teacher knowledge distillation ( MTKD ) method to preserve the pre-trained knowledge during fine-tuning ( Hinton et al. , 2015 ) .
+The ST model mimics the teacher distribution by minimizing the cross-entropy loss between the teacher and student ( Liu et al. , 2019 ) .
+For a training sample ( x , y s , y t ) , we define two loss functions :
+We can rewrite Eq. ( 8 ) to obtain a new loss : L KD CTC = ? T m=1 | V | k=1 Q ( ? m = v k |x ; ? ASR ) ? log P (? m = v k |x ; ? CTC ) ( 12 ) L KD Trans = ?
+|y t | n=1 | V | k=1 Q(y t n = v k |y s ; ? MT ) ? log P(y t n = v k |x ; ? ST ) ( 13 L = ? ? ? ? L CTC + ( 1 ? ? ) ? L KD CTC +( 1 ? ? ) ? ? ? L Trans + ( 1 ? ? ) ? L KD Trans ( 14 ) where both ? and ? are the hyper-parameters that balance the preference between the teacher distribution and the ground truth .
+Experiments
+Datasets and Preprocessing
+We consider restricted and unrestricted settings on speech translation tasks .
+We run experiments on the LibriSpeech English - French ( En - Fr ) and MuST -C English - German ( En- De ) ( Gangi et al. , 2019 ) corpora , which correspond to the low-resource and highresource datasets respectively .
+Available ASR and MT data is only from the ST data under the restricted setting .
+For comparison in practical scenarios , the unrestricted setting allows the additional data for ASR and MT models .
+LibriSpeech En-Fr Followed previous work , we use the clean speech translation training set of 100 hours , including 45 K utterances and doubled translations of Google Translate .
+We select the model on the dev set ( 1,071 utterances ) and report results on the test set ( 2,048 utterances ) .
+MuST -C En-De MuST - C is a multilingual speech translation corpus extracted from the TED talks .
+We run the experiments on the English - German speech translation dataset of 400 hours speech with 230K utterances .
+We select the model on the dev set ( 1,408 utterances ) and report results on the tst -COMMON set ( 2,641 utterances ) .
+Unrestricted Setting
+We use the additional ASR and MT data for pre-training .
+The 960 hours Lib-riSpeech ASR corpus is used for the English ASR model .
+We extract 10 M sentences pairs from the WMT14 English - French and 18 M sentence pairs from the Opensubtitle2018 3 English - German translation datasets .
+Preprocessing Followed the preprocessing recipes of ESPnet ( Inaguma et al. , 2020 ) , we remove the utterances of more than 3,000 frames and augment speech data by speed perturbation with factors of 0.9 , 1.0 , and 1.1 .
+The 80 - channel log-mel filterbank coefficients with 3 - dimensional pitch features are extracted for speech data .
+We use the lower - cased transcriptions without punctuations .
+The text is tokenized using the scripts of Moses ( Koehn et al. , 2007 ) .
+We learn Byte-Pair Encoding ( Sennrich et al. , 2016 ) subword segmentation with 10,000 merge operations based on a shared source and target vocabulary for all datasets .
+3 http://opus.nlpl.eu/OpenSubtitles-v2018.php
+Model Settings
+All experiments are implemented based on the ES - Pnet toolkit 4 . We use the Adam optimizer with ?
+1 = 0.9 , ? 2 = 0.997 and adopt the default learning schedule in ESPnet .
+We apply dropout with a rate of 0.1 and label smoothing ls = 0.1 for regularization .
+For reducing the computational cost , the input speech features are processed by two convolutional layers , which have a stride of 2 ? 2 and downsample the sequence by a factor of 4 ( Weiss et al. , 2017 ) .
+The encoder consists of 12 layers for both the ASR and vanilla ST models , and 6 layers for the MT model .
+The encoder of SATE includes an acoustic encoder of 12 layers and a textual encoder of 6 layers .
+The decoder consists of 6 layers for all models .
+The weight of CTC objective ? for multitask learning is set to 0.3 for all ASR and ST models .
+The coefficients ? and ? are set to 0.5 in Eq. ( 14 ) for the MTKD method .
+Under the restricted setting , we employ the Transformer architecture , where each layer comprises 256 hidden units , 4 attention heads , and 2048 feed -forward size .
+For the unrestricted setting , we use the superior architecture Conformer ( Gulati et al. , 2020 ) on the ASR and ST tasks and widen the model by increasing the hidden size to 512 and attention heads to 8 .
+The ASR 5 and MT models pre-train with the additional data and fine- tune the model parameters with the task -specific data .
+During inference , we average the model parameters on the best 5 checkpoints based on the performance of the development set .
+We use beam search with a beam size of 4 for all models .
+Different from previous work , we report the case-sensitive SacreBLEU 6 ( Post , 2018 ) for future standardization comparison across papers .
+model significantly .
+This demonstrates the superiority of stacked acoustic and textual encoding for the speech translation task .
+Incorporating the pretrained ASR and MT models into SATE releases the encoding burden of the model and achieves a remarkable improvement .
+The MTKD method provides a strong supervised signal and forces the model to preserve the pre-trained knowledge .
+Furthermore , we utilize the SpecAugment ( Park et al. , 2019 ) which is applied in the input speech features for better generalization and robustness 7 .
+It yields a remarkable improvement of 1.9 BLEU points over the cascaded baseline and achieves a new state- ofthe - art performance .
+Results
+Results on MuST -C En-De Under the unrestricted setting , the large-scale ASR and MT data is available , whereas the ST data is scarce .
+This leads to the cascaded method outperforms the vanilla E2E method with a huge margin of 4.5 BLEU points .
+The pre-training only slightly closes the gap due to the modeling deficiency and representation inconsistency .
+SATE incorporates the pre-trained models fully , which achieves a significant improvement of 3.7 BLEU points .
+With the MTKD and SpecAugment methods , we achieve a comparable performance of 28.1 BLEU points .
+To our knowledge , we are the first to develop an end-to- end ST system that achieves comparable performance with the cascaded counterpart when large-scale ASR and MT data is available .
+it is of small magnitude with clean speech data .
+This results in that the performance of the vanilla E2E baseline is even better than the cascaded counterpart under the restricted setting .
+Furthermore , pre-training helps the model achieve an improvement of 0.8 BLEU points over the cascaded baseline .
+More interestingly , SATE without pre-training outperforms the above methods significantly , even achieves a slight improvement than the MT model .
+A possible reason is that the diverse acoustic representation is fed to the textual encoder , which improves the robustness of the model .
+This demonstrates the superiority of our method .
+Results on LibriSpeech En-Fr Combining our proposed methods yields a substantial improvement of 2.0 BLEU points over the cascaded baseline .
+It is a new state - of - the - art result of 18.3 BLEU points .
+Also , we outperform the cascaded counterpart by 0.2 BLEU points on the unrestricted task .
+Analysis
+Model Performance vs. Speedup In Table 4 , we summarize the performance and inference speedup based on the real time factor ( RTF ) .
+The vanilla E2E ST model yields an inference speedup of 1.91 ?
+than the cascaded counterpart and demonstrates the low latency of the end-to - end methods .
+We increase the encoder layers for comparison with SATE under the similar model parameters .
+However , there is a remarkable gap of 0.5 or 0 .
+Our method not only improves the performance of 1.9 BLEU points but also reaches up to 1.69 ?
+speedup than the cascaded baseline .
+This encourages the application of the end-to- end ST model in practical scenarios .
+Effects of Pre-trained Modules
+The effects of the pre-trained modules are shown in Table 5 .
+The model performance drops significantly without the pre-trained ASR encoder , especially on the MuST - C corpus that contains noisy speech .
+The model parameters of pre-trained MT model are updated for adapting the output representation of the random initialized acoustic encoder .
+This results in the catastrophic forgetting problem ( Goodfellow et al. , 2015 ) .
+The effect of the pretrained MT model is more remarkable on the Lib-riSpeech corpus due to the modeling burden on the translation .
+The benefit of the pre-trained MT decoder is larger than the MT encoder .
+This is contrary to the previous conclusions that the MT encoder helps the performance significantly ASR encoder provides a rich representation and acts as part of the MT encoder , this leads to lower performance degradation when the textual encoder trains from scratch .
+Each pre-trained module has a great effect on the final performance .
+With the complete integration of the pre-trained modules , the model parameters are updated slightly , which preserves the pre-trained knowledge .
+Effects of The Adaptor
+We show the effects of the adaptor in Table 6 .
+The straight connection which omits the representation inconsistency issue results in the lower benefit of pre-training .
+Although the soft representation aims at generating the adaptive representation , there is no obvious improvement on the MuST - C corpus .
+A possible reason is that the noisy speech inputs produce the misalignment probabilities , which disturbs the textual encoding .
+The mapping method achieves a slight improvement by transforming the acoustic representation to the textual representation .
+Fusing the soft and mapping representation enriches the information and avoids the representation inconsistency issue , which achieves the best performances .
+Impact on Localness
+We show the encoder localness of the vanilla E2E ST model and SATE model with pre-training in Figure 4 .
+As mentioned above , the vanilla ST model inherits the preference of ASR , which focuses on short-distance dependencies .
+SATE initializes with the pre-trained ASR and MT encoders , which stacks acoustic and textual encoding .
+The complementary behaviors of the pre-trained models benefit the translation , that is , the lower layers act like an ASR encoder while the upper layers capture global representation like an MT encoder .
+Conclusion
+In this paper , we investigate the difficulty of speech translation and shed light on the reasons why pretraining has been challenging in ST .
+This inspires us to propose a Stacked Acoustic- and - Textual Encoding method , which is straightforward to incorporate the pre-trained models into ST .
+We also introduce an adaptor module and a multi-teacher knowledge distillation method for bridging the gap between pre-training and fine-tuning .
+Results on the LibriSpeech and MuST - C corpora demonstrate the superiority of our method .
+Furthermore , we achieve comparable or even better performance than the cascaded counterpart when large-scale ASR and MT data is available .
+Figure 1 : 1 Figure 1 : ( a) Localness in each layer of the ST , ASR , and MT encoders , ( b ) the impact of CTC position on localness , and ( c ) the impact of CTC position on performance of ST and ASR models .

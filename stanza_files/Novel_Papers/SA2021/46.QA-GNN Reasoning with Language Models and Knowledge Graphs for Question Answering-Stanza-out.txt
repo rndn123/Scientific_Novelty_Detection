@@ -1,0 +1,217 @@
+title
+QA - GNN : Reasoning with Language Models and Knowledge Graphs for Question Answering
+abstract
+The problem of answering questions using knowledge from pre-trained language models ( LMs ) and knowledge graphs ( KGs ) presents two challenges : given a QA context ( question and answer choice ) , methods need to ( i ) identify relevant knowledge from large KGs , and ( ii ) perform joint reasoning over the QA context and KG .
+Here we propose a new model , QA - GNN , which addresses the above challenges through two key innovations : ( i ) relevance scoring , where we use LMs to estimate the importance of KG nodes relative to the given QA context , and ( ii ) joint reasoning , where we connect the QA context and KG to form a joint graph , and mutually update their representations through graph - based message passing .
+We evaluate QA - GNN on the CommonsenseQA and OpenBookQA datasets , and show its improvement over existing LM and LM +
+KG models , as well as its capability to perform interpretable and structured reasoning , e.g. , correctly handling negation in questions .
+Introduction Question answering systems must be able to access relevant knowledge and reason over it .
+Typically , knowledge can be implicitly encoded in large language models ( LMs ) pre-trained on unstructured text ( Petroni et al. , 2019 ; Bosselut et al. , 2019 ) , or explicitly represented in structured knowledge graphs ( KGs ) , such as Freebase ( Bollacker et al. , 2008 ) and ConceptNet ( Speer et al. , 2017 ) , where entities are represented as nodes and relations between them as edges .
+Recently , pre-trained LMs have demonstrated remarkable success in many question answering tasks Raffel et al. , 2020 ) .
+However , while LMs have a broad coverage of knowledge , they do not empirically perform well on structured reasoning ( e.g. , handling negation ) ( Kassner and Sch?tze , 2020 ) .
+On the other hand , KGs are more suited for structured reasoning and enable explainable predictions e.g. , by providing reasoning paths ( Lin et al. , 2019 ) be noisy ( Bordes et al. , 2013 ; Guu et al. , 2015 ) .
+How to reason effectively with both sources of knowledge remains an important open problem .
+Combining LMs and KGs for reasoning ( henceforth , LM + KG ) presents two challenges : given a QA context ( e.g. , question and answer choices ; Figure 1 purple box ) , methods need to ( i ) identify informative knowledge from a large KG ( green box ) ; and ( ii ) capture the nuance of the QA context and the structure of the KGs to perform joint reasoning over these two sources of information .
+Previous works ( Bao et al. , 2016 ; Sun et al. , 2018 ; Lin et al. , 2019 ) retrieve a subgraph from the KG by taking topic entities ( KG entities mentioned in the given QA context ) and their few-hop neighbors .
+However , this introduces many entity nodes that are semantically irrelevant to the QA context , especially when the number of topic entities or hops increases .
+Additionally , existing LM + KG methods for reasoning ( Lin et al. , 2019 ; Wang et al. , 2019a ; Feng et al. , 2020 ; Lv et al. , 2020 ) Figure 2 : Overview of our approach .
+Given a QA context ( z ) , we connect it with the retrieved KG to form a joint graph ( working graph ; ?3.1 ) , compute the relevance of each KG node conditioned on z ( ?3.2 ; node shading indicates the relevance score ) , and perform reasoning on the working graph ( ?3.3 ) .
+neural networks ( GNNs ) to the KG , and do not mutually update or unify their representations .
+This separation might limit their capability to perform structured reasoning , e.g. , handling negation .
+Here we propose QA - GNN , an end-to- end LM +
+KG model for question answering that addresses the above two challenges .
+We first encode the QA context using an LM , and retrieve a KG subgraph following prior works ( Feng et al. , 2020 ) .
+Our QA - GNN has two key insights : ( i ) Relevance scoring :
+Since the KG subgraph consists of all few-hop neighbors of the topic entities , some entity nodes are more relevant than others with respect to the given QA context .
+We hence propose KG node relevance scoring : we score each entity on the KG subgraph by concatenating the entity with the QA context and calculating the likelihood using a pretrained LM .
+This presents a general framework to weight information on the KG ; ( ii ) Joint reasoning :
+We design a joint graph representation of the QA context and KG , where we explicitly view the QA context as an additional node ( QA context node ) and connect it to the topic entities in the KG subgraph as shown in Figure 1 .
+This joint graph , which we term the working graph , unifies the two modalities into one graph .
+We then augment the feature of each node with the relevance score , and design a new attention - based GNN module for reasoning .
+Our joint reasoning algorithm on the working graph simultaneously updates the representation of both the KG entities and the QA context node , bridging the gap between the two sources of information .
+We evaluate QA - GNN on two question answering datasets that require reasoning with knowledge : CommonsenseQA ( Talmor et al. , 2019 ) and OpenBookQA , using the ConceptNet KG ( Speer et al. , 2017 ) . QA - GNN outperforms strong fine- tuned LM baselines as well as the existing best LM + KG model ( with the same LM ) by up to 5.7 % and 3.7 % respectively .
+In particular , QA - GNN exhibits improved performance on some forms of structured reasoning ( e.g. , correctly han-dling negation and entity substitution in questions ) : it achieves 4.6 % improvement over fine- tuned LMs on questions with negation , while existing LM + KG models are + 0.6 % over fine- tuned LMs .
+We also show that one can extract reasoning processes from QA - GNN in the form of general KG subgraphs , not just paths ( Lin et al. , 2019 ) , suggesting a general method for explaining model predictions .
+Problem Statement
+We aim to answer natural language questions using knowledge from a pre-trained LM and a structured KG .
+We use the term language model broadly to be any composition of two functions , f head ( f enc ( x ) ) , where f enc , the encoder , maps a textual input x to a contextualized vector representation h LM , and f head uses this representation to perform a desired task ( which we discuss in ?3.2 ) .
+In this work , we specifically use masked language models ( e.g. , RoBERTa ) as f enc , and let h LM denote the output representation of a [ CLS ] token that is prepended to the input sequence x , unless otherwise noted .
+We define the knowledge graph as a multi-relational graph G = ( V,E ) .
+Here V is the set of entity nodes in the KG ; E ? V ?R?V is the set of edges that connect nodes in V , where R represents a set of relation types .
+Given a question q and an answer choice a ?
+C , we follow prior work ( Lin et al. , 2019 ) to link the entities mentioned in the question and answer choice to the given KG G .
+We denote V q ?
+V and V a ?
+V as the set of KG entities mentioned in the question ( question entities ; blue entities in Figure1 ) and answer choice ( answer choice entities ; red entities in Figure1 ) , respectively , and use V q, a :=
+V q ?V a to denote all the entities that appear in either the question or answer choice , which we call topic entities .
+We then extract a subgraph from G for a question - choice pair , G q, a sub = ( V q, a sub , E q, a sub ) , 1 which comprises all nodes on the k-hop paths between nodes in V q, a .
+3 Approach : QA-GNN
+537
+As shown in Figure 2 , given a question and an answer choice a , we concatenate them to get the QA context [ q ; a ] .
+To reason over a given QA context using knowledge from both the LM and the KG , QA - GNN works as follows .
+First , we use the LM to obtain a representation for the QA context , and retrieve the subgraph G sub from the KG .
+Then we introduce a QA context node z that represents the QA context , and connect z to the topic entities V q, a so that we have a joint graph over the two sources of knowledge , which we term the working graph , G W ( ?3.1 ) .
+To adaptively capture the relationship between the QA context node and each of the other nodes in G W , we calculate a relevance score for each pair using the LM , and use this score as an additional feature for each node ( ?3.2 ) .
+We then propose an attention - based GNN module that does message passing on the G W for multiple rounds ( ?3.3 ) .
+Finally , we make the final prediction using the LM representation , QA context node representation and a pooled working graph representation ( ?3.4 ) .
+Joint graph representation
+To design a joint reasoning space for the two sources of knowledge , we explicitly connect them in a common graph structure .
+We introduce a new QA context node z which represents the QA context , and connect z to each topic entity in V q,a on the KG subgraph G sub using two new relation types r z , q and r z, a .
+These relation types capture the relationship between the QA context and the relevant entities in the KG , depending on whether the entity is found in the question portion or the answer portion of the QA context .
+Since this joint graph intuitively provides a reasoning space ( working memory ) over the QA context and KG , we term it working graph G W = ( V W , E W ) , where V W = V sub ? {z} and E W = E sub ?{( z, r z, q , v ) | v ? V q }? {( z, r z, a , v ) | v ?
+V a }.
+Each node in the G W is associated with one of the four types : T = { Z , Q , A , O} , each indicating the context node z , nodes in V q , nodes in V a , and other nodes , respectively ( corresponding to the node color , purple , blue , red , gray in Figure1 and 2 ) .
+We denote the text of the context node z ( QA context ) and KG node v ?
+V sub ( entity name ) as text ( z ) and text ( v ) .
+We initialize the node embedding for z using the LM representation of the QA context ( z LM = f enc ( text ( z ) ) ) , and each node on the G sub using the entity embedding from Feng et al . ( 2020 ) .
+In the subsequent sections , we will reason over the working graph in order to score a given ( question , answer choice ) pair .
+KG node relevance scoring Many nodes on the KG subgraph G sub ( i.e. , those heuristically retrieved from the KG ) can be irrelevant under the current QA context .
+As an example shown in Figure 3 , the retrieved KG subgraph G sub with few-hop neighbors of the V q,a may include nodes that are uninformative for the reasoning process , e.g. , nodes " holiday " and " river bank " are off-topic ; " human " and " place " are generic .
+These irrelevant nodes may result in overfitting or introduce unnecessary difficulty in reasoning , an issue especially when V q,a is large .
+For instance , we empirically find that using the ConceptNet KG ( Speer et al. , 2017 ) , we will retrieve a KG with | V sub | > 400 nodes on average if we consider 3 - hop neighbors .
+In response , we propose node relevance scoring , where we use the pre-trained language model to score the relevance of each KG node v ?
+V sub conditioned on the QA context .
+For each node v , we concatenate the entity text ( v ) with the QA context text ( z ) and compute the relevance score : ? v = f head ( f enc ( [ text ( z ) ; text ( v ) ] ) ) , ( 1 ) where f head ?f enc denotes the probability of text ( v ) computed by the LM .
+This relevance score ?
+v captures the importance of each KG node relative to the given QA context , which is used for reasoning or pruning the working graph G W .
+GNN architecture
+To perform reasoning on the working graph G W , our GNN module builds on the graph attention framework ( GAT ) ( Veli?kovi ?
+et al. , 2018 ) , which induces node representations via iterative message passing between neighbors on the graph .
+Specifically , in a L-layer QA - GNN , for each layer , we update the representation h ( ) t ?
+R D of each node t ?
+V W by h ( + 1 ) t = f n s?Nt ? { t} ? st m st +h ( ) t , ( 2 ) where N t represents the neighborhood of node t , m st ?
+R D notes the message from each neighbor node s to t , and ?
+st is an attention weight that scales each message m st from s to t .
+The sum of the messages is then passed through a 2 - layer MLP , f n : R D ? R D , with batch normalization ( Ioffe and Szegedy , 2015 ) .
+For each node t ?
+V W , we set h ( 0 ) t using a linear transformation f h that maps its initial node embedding ( described in ?3.1 ) to R D .
+Crucially , as our GNN message passing operates on the working graph , it will jointly leverage and update the representation of the QA context and KG .
+We further propose an expressive message ( m st ) and attention ( ? st ) computation below .
+Node type & relation - aware message .
+As G W is a multi-relational graph , the message passed from a source node to the target node should capture their relationship , i.e. , relation type of the edge and source / target node types .
+To this end , we first obtain the type embedding u t of each node t , as well as the relation embedding r st from node s to node t by u t = f u ( u t ) , r st = f r ( e st , u s , u t ) , ( 3 ) where u s , u t ?
+{ 0,1 } m st = f m ( h ( ) s , u s , r st ) , ( 4 ) where f m : R 2.5D ? R D is a linear transformation .
+Node type , relation , and score-aware attention .
+Attention captures the strength of association between two nodes , which is ideally informed by their node types , relations and node relevance scores .
+We first embed the relevance score of each node t by ?
+t = f ? ( ? t ) , ( 5 ) where f ? : R ? R D/2 is an MLP .
+To compute the attention weight ? st from node s to node t , we obtain the query and key vectors q , k by q s = f q ( h ( ) s , u s , ? s ) , ( 6 ) k t = f k ( h ( ) t , u t , ?
+t , r st ) , ( 7 ) where f q : R 2D ? R D and f k : R 3D ? R D are linear transformations .
+The attention weight is then ? st = exp ( ?
+st ) t ?Ns ?{s} exp (? st ) , ? st = q s k t ? D . ( 8 )
+Inference & Learning Given a question q and an answer choice a , we use the information from both the QA context and the KG to calculate the probability of it being the answer p( a | q ) ? exp ( MLP ( z LM , z GNN , g ) ) , where z GNN = h ( L ) z and g denotes the pooling of { h ( L ) v | v ?
+V sub }.
+In the training data , each question has a set of answer choices with one correct choice .
+We optimize the model ( both the LM and GNN components end-to-end ) using the cross entropy loss .
+Computation complexity
+We analyze the time and space complexity of our method and compare with prior works , KagNet ( Lin et al. , 2019 ) and MHGRN ( Feng et al. , 2020 ) in Table 1 .
+As we handle edges of different relation types using different edge embeddings instead of designing an independent graph networks for each relation as in RGCN ( Schlichtkrull et al. , 2018 ) or MHGRN , the time complexity of our method is constant with respect to the number of relations and linear with respect to the number of nodes .
+We achieve the same space complexity as MHGRN ( Feng et al. , 2020 ) .
+Experiments
+Datasets
+We evaluate QA - GNN on two question answering datasets : CommonsenseQA ( Talmor et al. , 2019 ) and OpenBookQA . CommonsenseQA is a 5 - way multiple choice QA task that requires reasoning with commonsense knowledge , containing 12,102 questions .
+The test set of CommonsenseQA is not publicly available , and model predictions can only be evaluated once every two weeks via the official leaderboard .
+Hence , 539 Model Time Space G is a dense graph L-hop KagNet O | R| L |V| L+1 L O |R| L |V| L+1 L L-hop MHGRN O | R| 2 | V| 2 L O ( |R | | V|L ) L-layer QA-GNN O | V| 2 L O ( |R | | V|L )
+G is a sparse graph with maximum node degree ?
+| V | we perform main experiments on the in-house ( IH ) data split used in Lin et al . ( 2019 ) , and also report the score of our final system on the official test set .
+L-hop KagNet O | R| L |V|L ? L O |R| L |V|L ?
+L L-hop MHGRN O | R| 2 | V|L ? O ( |R | | V|L ) L-layer QA -GNN O ( |V|L ? ) O ( |R | | V|L ) OpenBookQA is a 4 - way multiple choice QA task that requires reasoning with elementary science knowledge , containing 5,957 questions .
+We use the official data split .
+Knowledge graphs
+We use ConceptNet ( Speer et al. , 2017 ) , a generaldomain knowledge graph , as our structured knowledge source G for both of the above tasks .
+Given each QA context ( question and answer choice ) , we retrieve the subgraph G sub from G following the pre-processing step described in Feng et al . ( 2020 ) , with hop size k = 2 .
+Henceforth , in this section ( ?4 ) we use the term " KG " to refer to G sub .
+Implementation & training details
+We set the dimension ( D = 200 ) and number of layers ( L = 5 ) of our GNN module , with dropout rate 0.2 applied to each layer ( Srivastava et al. , 2014 ) .
+The parameters of the model are optimized by RAdam , with batch size 128 , gradient clipping 1.0 ( Pascanu et al. , 2013 ) , and learning rate 1e - 5 and 1e - 3 for the LM and GNN components respectively .
+Each model is trained using two GPUs ( GTX Titan X ) , which takes ?20 hours on average .
+The above hyperparameters were tuned on the development set .
+Baselines Fine-tuned LM .
+To study the role of KGs , we compare with a vanilla fine- tuned LM , which does not use the KG .
+We use RoBERTa - large for CommonsenseQA , and RoBERTa-large and AristoRoBERTa 2 ( Clark et al. , 2019 ) for 2 OpenBookQA provides an extra corpus of scientific facts in a textual form .
+AristoRoBERTa uses the facts corresponding to each question , prepared by Clark et al . ( 2019 ) ( Wang et al. , 2019a ) 72.61 ( ?0.39 ) 68.59 ( ?0.96 ) + KagNet ( Lin et al. , 2019 ) 73.47 ( ?0.22 ) 69.01 ( ?0.76 ) + RN ( Santoro et al. , 2017 ) 74.57 ( ?0.91 ) 69.08 ( ?0.21 ) + MHGRN ( Feng et al. , 2020 ) 74 ( Lv et al. , 2020 ) 75.3 RoBERTa+MHGRN
+( Feng et al. , 2020 ) 75.4 Albert + PG ( Wang et al. , 2020 b ) 75.6 Albert ( Lan et al. , 2020 ) ( ensemble ) 76.5 UnifiedQA * ( Khashabi et al. , 2020 ) 79.1 RoBERTa + QA-GNN ( Ours ) 76.1 Table 3 : Test accuracy on CommonsenseQA 's official leaderboard .
+The top system , UnifiedQA ( 11B parameters ) is 30x larger than our model .
+OpenBookQA .
+Existing LM + KG models .
+We compare with existing LM + KG methods , which share the same high - level framework as ours but use different modules to reason on the KG in place of QA - GNN ( " yellow box " in Figure2 ) : ( 1 ) Relation Network ( RN ) ( Santoro et al. , 2017 ) , ( 2 ) RGCN ( Schlichtkrull et al. , 2018 ) , ( 3 ) GconAttn ( Wang et al. , 2019a ) , ( 4 ) KagNet ( Lin et al. , 2019 ) , and ( 5 ) MHGRN ( Feng et al. , 2020 ) . ( 1 ) , ( 2 ) , ( 3 ) are relation - aware GNNs for KGs , and ( 4 ) , ( 5 ) further model paths in KGs .
+MHGRN is the existing top performance model under this LM + KG framework .
+For fair comparison , we use the same LM in all the baselines and our model .
+The key differences between QA - GNN and these are that they do not perform relevance scoring or joint updates with the QA context ( ?3 ) .
+4 show the results on Common-senseQA and OpenBookQA , respectively .
+On both datasets , we observe consistent improvements over fine- tuned LMs and existing LM + KG models , e.g. , on OpenBookQA , + 5.7 % over RoBERTa , and + 3.7 % over the prior best LM + KG system , additional input to the QA context . ( 2019 ) as an additional input to the QA context .
+Main results
+Table 2 and Table
+Methods Test Careful Selection ( Banerjee et al. , 2019 ) 72.0 AristoRoBERTa 77.8 KF + SIR ( Banerjee and Baral , 2020 ) 80.0 AristoRoBERTa + PG ( Wang et al. , 2020 b ) 80.2 AristoRoBERTa + MHGRN ( Feng et al. , 2020 ) 80.6 Albert + KB 81.0 T5 * ( Raffel et al. , 2020 ) 83.2 UnifiedQA * ( Khashabi et al. , 2020 ) 87.2 AristoRoBERTa + QA-GNN ( Ours ) 82.8 MHGRN .
+The boost over MHGRN suggests that QA - GNN makes a better use of KGs to perform joint reasoning than existing LM + KG methods .
+We also achieve competitive results to other systems on the official leaderboards ( Table 3 and 5 ) .
+Notably , the top two systems , T5 ( Raffel et al. , 2020 ) and UnifiedQA ( Khashabi et al. , 2020 ) , are trained with more data and use 8x to 30x more parameters than our model ( ours has ?360 M parameters ) .
+Excluding these and ensemble systems , our model is comparable in size and amount of data to other systems , and achieves the top performance on the two datasets .
+Analysis
+Ablation studies
+Table 6 summarizes the ablation study conducted on each of our model components ( ?3.1 , ?3.2 , ?3.3 ) , using the CommonsenseQA IHdev set .
+Graph connection ( top left table ) :
+The first key component of QA - GNN is the joint graph that connects the z node ( QA context ) to QA entity nodes V q,a in the KG ( ?3.1 ) .
+Without these edges , the QA context and KG cannot mutually update their representations , hurting the performance : 76.5 % ?74.8 % , which is close to the previous LM + KG system , MHGRN .
+If we connected z to all the nodes in the KG ( not just QA entities ) , the performance is comparable or drops slightly ( - 0.16 % ) .
+KG node relevance scoring ( top right table ) :
+We find the relevance scoring of KG nodes ( ?3.2 ) provides a boost : 75.56 % ? 76.54 % .
+As a variant of the relevance scoring in Eq. 1 , we also experimented with obtaining a contextual embedding w v for each node v ?
+V sub and adding to the node features : w v = f enc ( [ text ( z ) ; text ( v ) ] ) .
+However , we find that it does not perform as well ( 76.31 % ) , and using both the relevance score and contextual embedding performs on par with using the score alone , suggesting that the score has a sufficient information in our tasks ; hence , our final system simply uses the relevance score .
+GNN architecture ( bottom tables ) :
+We ablate the information of node type , relation , and relevance score from the attention and message computation in the GNN ( ?3.3 ) .
+The results suggest that all these features improve the model performance .
+For the number of GNN layers , we find L = 5 works the best on the dev set .
+Our intuition is that 5 layers allow various message passing or reasoning patterns between the QA context ( z ) and KG , such as " z ? 3 hops on KG nodes ? z" .
+Model interpretability
+We aim to interpret QA - GNN 's reasoning process by analyzing the node-to-node attention weights induced by the GNN .
+Figure 4 shows two examples .
+In ( a ) , we perform Best First Search ( BFS ) on the working graph to trace high attention weights from the QA context node ( Z ; purple ) to Question entity nodes ( blue ) to Other ( gray ) or Answer choice entity nodes ( orange ) , which reveals that the QA context z attends to " elevator " and " basement " in the KG , " elevator " and " basement " both attend strongly to " building " , and " building " attends to " office building " , which is our final answer .
+In ( b ) , we use BFS to trace attention weights from two directions : Z ? Q ?
+O and Z ? A ?
+O , which reveals concepts ( " sea " and " ocean " ) in the KG that are not necessarily mentioned in the QA context but bridge the reasoning between the question entity ( " crab " ) and answer choice entity ( " salt water " ) .
+While prior KG reasoning models ( Lin et al. , 2019 ; Feng et al. , 2020 ) enumerate individual paths in the KG for model interpretation , QA - GNN is not specific to paths , and helps to find more general reasoning structures ( e.g. , a KG subgraph with multiple anchor nodes as in example ( a ) ) .
+Structured reasoning Structured reasoning , e.g. , precise handling of negation or entity substitution ( e.g. , " hair " ? " art " in Figure 5 b ) in question , is crucial for making robust predictions .
+Here we analyze QA - GNN 's ability to perform structured reasoning and compare with baselines ( fine - tuned LMs and existing LM + KG models ) .
+Quantitative analysis .
+Table 7 compares model performance on questions containing negation words ( e.g. , no , not , nothing , unlikely ) , taken from the CommonsenseQA IHtest set .
+We find that previous LM + KG models ( KagNet , MHGRN ) provide limited improvements over RoBERTa on questions with negation ( + 0.6 % ) ; whereas QA - GNN exhibits a bigger boost ( + 4.6 % ) , suggesting its strength in structured reasoning .
+We hypothesize that QA - GNN 's joint updates of the representations of the QA context and KG ( during GNN message passing ) allows the model to integrate semantic nuances expressed in language .
+To further study this hypothesis , we remove the connections between z and KG nodes from our QA - GNN ( Table 7 bottom ) : now the performance on negation becomes close to the prior work , MHGRN , suggesting that the joint message passing helps for performing structured reasoning .
+Qualitative analysis .
+Figure 5 shows a case study to analyze our model 's behavior for structured reasoning .
+The question on the left contains negation " not used for hair " , and the correct answer is " B. art supply " .
+We observe that in the 1st layer of QA - GNN , the attention from z to question entities ( " hair " , " round brush " ) is diffuse .
+After multiples rounds of message passing on the working graph , z attends strongly to " round brush " in the final layer of the GNN , but weakly to the negated entity " hair " .
+The model correctly predicts the answer " B. art supply " .
+Next , given the original question on the left , we ( a ) drop the negation or ( b ) modify the topic entity ( " hair " ? " art " ) .
+In ( a ) , z now attends strongly to " hair " , which is not negated anymore .
+The model predicts the correct answer " A. hair brush " .
+In ( b ) , we observe that QA - GNN recognizes the same structure as the original question ( with only the entity swapped ) : z attends weakly to the negated entity ( " art " ) like before , and the model correctly predicts " A. hair brush " over " B. art supply " .
+Table 8 shows additional examples , where we compare QA - GNN 's predictions with the LM baseline ( RoBERTa ) .
+We observe that RoBERTa tends to make the same prediction despite the modifications we make to the original questions ( e.g. , drop / insert negation , change an entity ) ; on the other hand , QA - GNN adapts predictions to the modifications correctly ( except for double negation 542
+Related work and discussion Knowledge - aware methods for NLP .
+Various works have studied methods to augment NLP systems with knowledge .
+Existing works ( Pan et al. , 2019 ; Ye et al. , 2019 ; Petroni et al. , 2019 ; Bosselut et al. , 2019 ) study pre-trained LMs ' potential as latent knowledge bases .
+To provide more explicit and interpretable knowledge , several works integrate structured knowledge ( KGs ) into LMs ( Mihaylov and Frank , 2018 ; Lin et al. , 2019 ; Wang et al. , 2019a ; Wang et al. , 2020 b ; Bosselut et al. , 2021 ) .
+Other works on scoring or pruning KG nodes / paths rely on graph - based metrics such as PageRank , centrality , and off- the-shelf KG embeddings ( Paul and Frank , 2019 ; Fadnis et al. , 2019 ; Bauer et al. , 2018 ; Lin et al. , 2019 ) , without reflecting the QA context .
+Other QA tasks .
+Several works study other forms of question answering tasks , e.g. , passagebased QA , where systems identify answers using given or retrieved documents ( Rajpurkar et al. , 2016 ; Joshi et al. , 2017 ; , and
+543 KBQA , where systems perform semantic parsing of a given question and execute the parsed queries on knowledge bases ( Berant et al. , 2013 ; Yih et al. , 2016 ; Yu et al. , 2018 ) .
+Different from these tasks , we approach question answering using knowledge available in LMs and KGs .
+Knowledge representations .
+Several works study joint representations of external textual knowledge ( e.g. , Wikipedia articles ) and structured knowledge ( e.g. , KGs ) ( Riedel et al. , 2013 ; Toutanova et al. , 2015 ; Xiong et al. , 2019 ; Wang et al. , 2019 b ) .
+The primary distinction of our joint graph representation is that we construct a graph connecting each question and KG rather than textual and structural knowledge , approaching a complementary problem to the above works .
+Graph neural networks ( GNNs ) .
+GNNs have been shown to be effective for modeling graphbased data .
+Several works use GNNs to model the structure of text ( Yasunaga et al. , 2017 ; Yasunaga and Liang , 2020 ) or KGs ( Wang et al. , 2020a ) .
+In contrast to these works , QA - GNN jointly models the language and KG .
+Graph Attention Networks ( GATs ) ( Veli?kovi ?
+et al. , 2018 ) perform attention - based message passing to induce graph representations .
+We build on this framework , and further condition the GNN on the language input by introducing a QA context node ( ?3.1 ) , KG node relevance scoring ( ?3.2 ) , and joint update of the KG and language representations ( ?3.3 ) .
+Conclusion
+We presented QA - GNN , an end-to - end question answering model that leverages LMs and KGs .
+Our key innovations include ( i ) Relevance scoring , where we compute the relevance of KG nodes conditioned on the given QA context , and ( ii ) Joint reasoning over the QA context and KGs , where we connect the two sources of information via the working graph , and jointly update their representations through GNN message passing .
+Through both quantitative and qualitative analyses , we showed QA - GNN 's improvements over existing LM and LM + KG models on question answering tasks , as well as its capability to perform interpretable and structured reasoning , e.g. , correctly handling negation in questions .
+Figure 3 : 3 Figure 3 : Relevance scoring of the retrieved KG : we use a pre-trained LM to calculate the relevance of each KG entity node conditioned on the QA context ( ?3.2 ) .

@@ -1,0 +1,132 @@
+title
+Multi-step Entity-centric Information Retrieval for Multi-Hop Question Answering
+abstract
+Multi-hop question answering ( QA ) requires an information retrieval ( IR ) system that can find multiple supporting evidence needed to answer the question , making the retrieval process very challenging .
+This paper introduces an IR technique that uses information of entities present in the initially retrieved evidence to learn to ' hop ' to other relevant evidence .
+In a setting , with more than 5 million Wikipedia paragraphs , our approach leads to significant boost in retrieval performance .
+The retrieved evidence also increased the performance of an existing QA model ( without any training ) on the HOTPOTQA benchmark by 10.59 F1 .
+Introduction Multi-hop QA requires finding multiple supporting evidence , and reasoning over them in order to answer a question ( Welbl et al. , 2018 ; Talmor and Berant , 2018 ; Yang et al. , 2018 ) .
+For example , to answer the question shown in figure 1 , the QA system has to retrieve two different paragraphs and reason over them .
+Moreover , the paragraph containing the answer to the question has very little lexical overlap with the question , making it difficult for search engines to retrieve them from a large corpus .
+For instance , the accuracy of a BM25 retriever for finding all supporting evidence for a question decreases from 53.7 % to 25.9 % on the ' easy ' and ' hard ' subsets of the HOTPOTQA training dataset .
+1
+We hypothesize that an effective retriever for multi-hop QA should have the " hopiness " built into it , by design .
+That is , after retrieving an initial set of documents , the retriever should be able to " hop " onto other documents , if required .
+We note that , many supporting evidence often share common ( bridge ) entities between them ( e.g. " Rochester Hills " in figure 1 ) .
+In this work , we introduce a model that uses information about entities present in an initially retrieved paragraph to jointly find a passage of text describing the entity ( entity - linking ) and also determining whether that passage would be relevant to answer the multi-hop query .
+A major component of our retriever is a re-ranker model that uses contextualized entity representation obtained from a pre-trained BERT ( Devlin et al. , 2018 ) language model .
+Specifically , the entity representation is obtained by feeding the query and a Wikipedia paragraph describing the entity to a BERT model .
+The re-ranker uses representation of both the initial paragraph and the representation of all the entities within it to determine which evidence to gather next .
+Essentially , our method introduces a new way of multi-step retrieval that uses information about intermediate entities .
+A standard way of doing multistep retrieval is via pseudo-relevance feedback ( Xu and Croft , 1996 ; Lavrenko and Croft , 2001 ) in which relevant terms from initial retrieved documents are used to reformulate the initial question .
+A few recent works learn to reformulate the query using task specific reward such as document recall or performance on a QA task ( Nogueira and Cho , 2017 ; Buck et al. , 2018 ; Das et al. , 2019 ) .
+However , these methods do not necessarily use the information about entities present in the evidence as they might not be the more frequent / salient terms in it .
+Note the presence of self-loop from the initial paragraphs to accommodate for questions that do not require ' hopping ' to a new paragraph .
+Finally , the paragraph at the end of every chain is reported in the order in which the chain it belongs to is ranked .
+Empiricially , our method outperforms all of these methods significantly for multi-hop QA .
+Our work is most closely related to the recently proposed BERT re-ranker model of Nogueira and Cho ( 2019 ) .
+However , unlike us , they do not model the chains of evidence paragraphs required for a multi-hop question .
+Secondly , they also do not have a entity linking component to identify the relevant paragraphs .
+Our model out -performs them for multi-hop QA .
+To summarize , this paper presents an entitycentric IR approach that jointly performs entity linking and effectively finds relevant evidence required for questions that need multi-hop reasoning from a large corpus containing millions of paragraphs .
+When the retrieved paragraphs are supplied to the baseline QA model introduced in Yang et al . ( 2018 ) , it improved the QA performance on the hidden test set by 10.59 F1 points .
+2
+Methodology
+Our approach is summarized in Figure 2 .
+The first component of our model is a standard IR system that takes in a natural language query ' Q ' and returns an initial set of evidence .
+For our experiments , we use the popular BM25 retriever , but this component can be replaced by any IR model .
+We assume that all spans of entity mentions have been identified in the paragraph text by a one-time preprocessing , with an entity tagger .
+3 2 Code , pre-trained models and retrieved paragraphs are releasedhttps://github.com/ameyagodbole/ entity-centric-ir-for-multihop-qa
+3
+We plan to explore joint learning of entity tagging with linking and retrieval as future work .
+Entity Linking
+The next component of our model is an entity linker that finds an introductory Wikipedia paragraph describing the entity , corresponding to each entity mention .
+Several IR approaches ( Xiong et al. , 2016 ; Raviv et al. , 2016 ) use an off-the-shelf entity linker .
+However , most entity linking systems ( Ganea and Hofmann , 2017 ; Raiman and Raiman , 2018 ) have been trained on Wikipedia data and hence using an off-the-shelf linker would be unfair , since there exists a possibility of test-time leakage .
+To ensure strictness , we developed our own simple linking strategy .
+Following the standard approach of using mention text and hyper-link information ( Cucerzan , 2007 ; Ji and Grishman , 2011 ) , we create a mapping ( alias table ) between them .
+The alias table stores mappings between a mention string ( e.g. " Bill " ) and various entities it can refer to ( e.g. Bill Clinton , Billy Joel , etc ) .
+The top -40 documents returned by the BM25 retriever on the dev and test queries are also ignored while building the alias table .
+At test time , our reranker considers all the candidate entity paragraphs that a mention is linked to via the alias table .
+Although simple , we find this strategy to work well for our task and we plan to use a learned entity linker for future work .
+Re-ranker
+The next component of our model is a BERT - based re-ranker that ranks the chains of paragraphs obtained from the previous two components of the model .
+Let Q denote the query , D denote a paragraph in the initial set of paragraphs returned by the BM25 retriever .
+Let e denote an entity mention present in D and E be the linked document returned by the linker for e .
+If there are multiple linked documents , we consider all of them .
+Although our retriever is designed for multi-hop questions , in a general setting , most questions are not multi-hop in nature .
+Therefore to account for questions that do not need hopping to a new paragraph , we also add a ' self - link ' ( Figure 2 ) from each of the initial retrieved paragraph , giving the model the ability to stay in the same paragraph .
+To train the re-ranker , we form query - dependent passage representation for both D and E .
+The query Q and the paragraph E are concatenated and fed as input to a BERT encoder and the corresponding [ CLS ] token forms the entity representation e. Similarly , the document representation d is set to the embedding of the [ CLS ] token obtained after encoding the concatenation of Q and D .
+The final score that the entity paragraph E is relevant to Q is computed by concatenating the two query - aware representation d and e and passing it through a 2 - layer feed - forward network as before .
+It should be noted , the final score is determined by both the evidence paragraphs D and E and as we show empirically , not considering both leads to decrease in performance .
+During training , we mark a chain of paragraphs as a positive example , if the last paragraph of the chain is present in the supporting facts , since that is a chain of reasoning that led to a relevant paragraph .
+All other paragraph chains are treated as negative examples .
+In our experiments , we consider chains of length 2 , although extending to longer chains is straightforward .
+The training set had on an avg .
+6.35 positive chains per example suggesting a multi-instance learning training setup ( Surdeanu et al. , 2012 ) .
+However , for this work , we treat each chain independently .
+We use a simple binary cross-entropy loss to train the network .
+Experiments
+For all our experiment , unless specified otherwise , we use the open domain corpus 4 released by Yang et al . ( 2018 ) which contains over 5.23 million Wikipedia abstracts ( introductory paragraphs ) .
+To identify spans of entities , we use the implementation of the state - of - the - art entity tagger presented in Peters et al . ( 2018 ) .
+5
+For the BERT encoder , we use the BERT - BASE - UNCASED model .
+6
+We use the implementation of widely - used BM25 retrieval
+The PRF methods assume that the top retrieved documents in response to a given query are relevant .
+Based on this assumption , they expand the query in a weighted manner .
+PRF has been shown to be effective in various retrieval settings ( Xu and Croft , 1996 ) .
+We compare with two widely used PRF models - The Rocchio 's algorithm on top of the TF - IDF retrieval model ( PRF - TFIDF ) ( Rocchio , 1971 ) and the relevance model ( RM3 ) based on the language modeling framework in information retrieval ( PRF - RM ) ( Lavrenko and Croft , 2001 ) .
+Following prior work ( Nogueira and Cho , 2017 ) , we use query likelihood retrieval model with Dirichlet prior smoothing ( Zhai and Lafferty , 2001 ) for first retrieval run .
+Nogueira and Cho ( 2017 ) proposed a new way of query reformulation - incorporating reward from a document- relevance task ( PRF - TASK ) and training using reinforcement learning .
+Recently , Nogueira and Cho ( 2019 ) proposed a BERT based passage re-ranker ( BERT - re-ranker ) that has achieved excellent performance in several IR benchmarks .
+But , its performance has not been evaluated on multi-hop queries till now .
+For a fair comparison with our model which looks at paragraphs corresponding to entities , we use top 200 paragraphs retrieved by the initial IR model for BERT - re-ranker instead of 25 for our model .
+8 Table 1 reports the accuracy ( @k ) of retrieving all 9 the relevant paragraphs required for answering a question in HOTPOTQA 10 within the top k paragraphs .
+We also report the mean average precision score ( MAP ) which is a strict metric that takes into account the relative position of the relevant document in the ranked list ( Kadlec et al. , 2017 ) .
+As we can see , our retrieval technique vastly outperforms other existing retrieval systems with an absolute increase of 26.5 % ( accuracy @10 ) and 18.4 % ( MAP ) , when compared to BERT - re-ranker .
+The standard PRF techniques do not perform well for this task .
+This is primarily because the PRF methods rely on statistical features like frequency of terms in the document , and fail to explicitly use information about entities , that may not be frequently occurring the paragraph .
+In fact , their performance is a little behind the standard retrieval results of BM25 , suggesting that this benchmark dataset needs entitycentric information retrieval .
+The PRF -TASK does slightly better than other PRF models , showing that incorporating task -specific rewards can be beneficial .
+However , as we find , RL approaches are slow to converge 11 as rewards from a down-stream tasks are sparse and action space in information retrieval is very large .
+Ablations .
+We investigate whether modeling the chain of paragraphs needed to reach the final paragraph is important or not .
+As an ablation , we ignore the representation of the initial retrieved document D 1 and only consider the final document representing the entity ( QUERY + E - DOC ) .
+Table 1 shows that , indeed modeling the chain of documents is important .
+This makes intuitive sense , since to answer questions such as the county where a person is from ( figure 1 ) , modeling context about the person , should be helpful .
+We also evaluate , if our model performs well on single - hop questions as well .
+This evaluation is a bit tricky to do in HOTPOTQA , since the evaluataion set only contains questions from ' hard ' subset ( Yang et al. , 2018 ) .
+However , within that hard subset , we find the set of question , that has the answer span present in all the supporting passages ( SINGLE - HOP ( HARD ) ) and only in one of the supporting passages ( MULTI - HOP ( HARD ) ) 12 .
+The intuition is that if there are multiple evidence Model EM F1 Baseline Reader ( Yang et al. , 2018 ) containing the answer spans then it might be a little easier for a downstream QA model to identify the answer span .
+Figure 3 shows that our model performs equally well on both type of queries and hence can be applied in a practical setting .
+Performance on HOTPOTQA
+Table 2 shows the performance on the QA task .
+We were able to achieve better scores than reported in the baseline reader model of Yang et al . ( 2018 ) by using Adam ( Kingma and Ba , 2014 ) instead of standard SGD ( our re-implementation ) .
+Next , we use the top -10 paragraphs retrieved by our system from the entire corpus and feed it to the reader model .
+We achieve a 10.59 absolute increase in F1 score than the baseline .
+It should be noted that we use the simple baseline reader model and we are confident that we can achieve better scores by using more sophisticated reader architectures , e.g. using BERT based architectures .
+Our results show that retrieval is an important component of an opendomain system and equal importance should be given to both the retriever and reader component .
+Zero-shot experiment on Wikihop
+We experiment if our model trained on HOTPOTQA can generalize to another multi-hop dataset - WIK -IHOP ( Welbl et al. , 2018 ) paragraph as the textual description of that entity .
+For instance , if the first entity mention in the paragraph is ' Mumbai ' , we assign that paragraph as the textual description for the entity ' Mumbai ' .
+This assumption is often true for the introductory paragraphs of a Wikipedia article .
+Next , we perform entity linking of mentions by just simple string matching ( i.e. linking strings such as ' mumbai ' to the previous paragraph ) .
+After constructing a small subgraph from the candidate paragraphs , we apply our model trained on HOTPOTQA .
+Since the dataset does not provide explicit supervision for which paragraphs are useful , we mark a paragraph as ' correct ' if it contains the answer string .
+The baseline models we compare to are a BM25 retriever and a BERT - re-ranker model of ( Nogueira and Cho , 2019 ) that ranks all the candidate supporting paragraphs for the question .
+Table 3 shows our model outperforms both models in zero-shot setting .
+Related Work Document retrieval using entities .
+Analysis of web-search query logs has revealed that there is a large portion of entity seeking queries ( Liu and Fang , 2015 ) .
+There exists substantial work on modeling documents with entities occurring in them .
+For example , Xiong et al . ( 2016 ) represents a document with bag-of-entities and Raviv et al . ( 2016 ) use entity - based language modeling for document retrieval .
+However , they depend on an off-the-shelf entity tagger , where as we jointly perform linking and retrieval .
+Moreover , we use contextualized entity representations using pre-trained LMs which have been proven to be better than bag-of-words approaches .
+There has been a lot of work which leverages knowledge graphs ( KGs ) to learn better entity representations ( Xiong and Callan , 2015 ; Xiong et al. , 2017 ; Liu et al. , 2018 ) and for better query reformulation ( Cao et al. , 2008 ; Dalton et al. , 2014 ; Dietz and Verga , 2014 ) .
+Our work is not tied to any specific KG schema , instead we encode entities using its text description .
+Neural ranking models have shown great potential and have been widely adopted in the IR community ( Dehghani et al. , 2017 ; Guo et al. , 2019 ; Mitra et al. , 2017 ; Zamani et al. , 2018 , inter-alia ) .
+Bagof-words and contextual embedding models , such as word2vec and BERT , have also been explored extensively for various IR tasks , from document to sentence - level retrieval ( Padigela et al. , 2019 ; Croft , 2016 , 2017 ) .
+Conclusion
+We introduce an entity -centric approach to IR that finds relevant evidence required to answer multihop questions from a corpus containing millions of paragraphs leading to significant improvement to an existing QA system .
+Figure 1 : 1 Figure 1 : Multi-hop questions require finding multiple evidence and the target document containing the answer has very little lexical overlap with the question .

@@ -1,0 +1,243 @@
+title
+Frustratingly Easy Model Ensemble for Abstractive Summarization
+abstract
+Ensemble methods , which combine multiple models at decoding time , are now widely known to be effective for text - generation tasks .
+However , they generally increase computational costs , and thus , there have been many studies on compressing or distilling ensemble models .
+In this paper , we propose an alternative , simple but effective unsupervised ensemble method , post-ensemble , that combines multiple models by selecting a majority - like output in post-processing .
+We theoretically prove that our method is closely related to kernel density estimation based on the von Mises - Fisher kernel .
+Experimental results on a newsheadline - generation task show that the proposed method performs better than the current ensemble methods .
+Introduction Recent success in deep learning , especially encoder-decoder models ( Sutskever et al. , 2014 ; Bahdanau et al. , 2015 ) , has dramatically improved the performance of various text- generation tasks , such as translation ( Johnson et al. , 2017 ) , summarization ( Ayana et al. , 2017 ) , question - answering ( Choi et al. , 2017 ) , and dialogue response generation ( Dhingra et al. , 2017 ) .
+In these studies on neural text generation , it has been known that a modelensemble method , which predicts output text by averaging multiple text- generation models at decoding time , is effective even for text - generation tasks , and many state - of - the - art results have been obtained with ensemble models .
+However , an ensemble method has a clear drawback in that it increases computational costs , i.e. , the increase in time as the number of models increases , since it averages the word-prediction probabilities of all models in each decoding step .
+Therefore , there have been many studies on model compression or distillation for ensemble methods , each of which has successfully shrunk an ensemble model ( Hinton et al. , 2015 ; Chebotar and Waters , 2016 ; Kuncoro et al. , 2016 ; Kim and Rush , 2016 ; Stahlberg and Byrne , 2017 ; Freitag et al. , 2017 ) .
+In this paper , we propose an alternative method for model ensemble inspired by the majority vote in classification tasks ( Littlestone and Warmuth , 1994 ) .
+Majority vote is a method that selects the most frequent label from the predicted labels of multiple classifiers in post-processing .
+Similarly , our method involves selecting a majoritylike output from the generated outputs of multiple text- generation models in post-processing as in Fig. 1 ( b ) , instead of averaging models at decoding time as in Fig. 1 ( a ) .
+The difference between a classification task and text - generation task is that we need to consider a sequence of labels for each model output in a text- generation task , although we consider only one label in a classification task .
+This means a majority output may not exist since each output will be basically different from other outputs , which are generated from different models .
+To overcome this problem , we propose an unsupervised method for selecting a majority - like output close to the other outputs by using cosine similarity .
+The idea is quite simple , but experiments showed that our method is more effective than the current ensemble methods .
+Our work can open up a new direction for two research communities : model ensemble and hypotheses reranking ( see Sec. 6 for detailed descriptions of the related studies ) .
+For the first , we suggest a new category of ensemble algorithms that corresponds to the output selection in classification tasks .
+In classification tasks , there are roughly three approaches for model ensemble : model selection in preprocessing , model average at runtime , and output selection in post-processing .
+In text generation studies , model selection by crossvalidation and model average with an ensemble decoder have been frequently used , but output selection as typified by majority vote has received less attention because of the fact that a majority output may not exist , as described above .
+Therefore , there is enough room to study this direction in the future .
+Since our algorithm in this paper is quite simple , we expect that more sophisticated methods can improve the results even over our approach .
+For the hypotheses reranking research community , we suggest a new category of reranking tasks , where we need to select the best output from the generated outputs of multiple models , instead of the N-best hypotheses of a single model .
+Hypotheses reranking for a text-generation model is related to our task , but in this case , a reranking method based on a language model is frequently used and is basically enough to correct the scoring of a beam search with a single model ( Chen et al. , 2006 ; Vaswani et al. , 2013 ; Luong and Popescu-Belis , 2016 ) since the purpose is to obtain a fluent output and remove erroneous outputs , assuming the model can generate good outputs .
+A clear difference between our task and the reranking task is that we should consider all outputs to decide the goodness of an output because a fluent output is not always appropriate in this task .
+This is similar to extractive summarization ( Erkan and Radev , 2004 ) but is significantly different from our task in that our output candidates have almost the same meaning .
+Our contributions in this paper are as follows .
+?
+We propose a simple , fast , and effective method for unsupervised ensembles of text generation models , where ( i ) the implementation is " frustratingly easy " without any modification of model code ( Alg. 1 ) , ( ii ) the computational time is enough for practical use ( Sec. 5.3 ) , i.e. , an ensemble time of 3.7 ms per sentence against a decoding time of 44 ms , and ( iii ) the performance is competitive with the state - of - the - art results ( Sec. 5.2 ) , i.e. , our method ( ensemble of 32 models ) for 37.52 ROUGE - 1 against the state - of- the - art method ( single model ) for 37.27 ROUGE - 1 on a news- headline - generation task . ?
+We prove that our method is an approximation of finding the maximum density point by kernel density estimation based on the von Mises - Fisher kernel ( Sec. 4 ) .
+In addition , we derive a formula of the error bound of this approximation .
+?
+We will release the 128 prepared models used in this paper ( Sec. 5.1 ) , each of which was trained for more than two days , as a new dataset to improve ensemble methods .
+Preliminaries In Sec. 2.1 , we briefly explain an encoder-decoder model for text generation , and in Sec. 2.2 , we discuss the current ensemble methods for combining multiple text generation models at decoding time .
+Encoder-Decoder Model
+An encoder- decoder model is a conditional language generation model , which can learn rules for generating an appropriate output sequence corresponding to an input sequence by using the statistics of many correct pairs of input and output sequences , e.g. , news articles and their headlines .
+When training this model , we calculate a conditional likelihood , p(y | x ) = T ?1 t=1 p(y t+ 1 | y ?t , x ) , ( 1 ) with respect to each pair ( x , y ) of input sequence x = x 1 ? ? ? x S and output sequence y = y 1 ? ? ? y T , where y ?t = y 1 ? ? ? y t , and maximize its mean .
+The model p(y | x ) in Eq. ( 1 ) is achieved by combining two recurrent neural networks , called an encoder and decoder .
+The former reads an input sequence x to recognize its content , and the latter predicts an output sequence y corresponding to the content .
+After training , we can obtain an output y from an input x by using a learned model p(y | x ) .
+Since the calculation of an optimal output is clearly intractable , most studies used a beam search , which is a greedy search algorithm that keeps a limited number of best partial solutions , whose size is called the beam size .
+Formally , a set of best partial solutions of beam size b at step t is represented as Y b ?t , which is recursively defined as the top b elements with respect to p(y ?t | x ) , where y ?t ? Y b ?t?1 ? Y .
+The Y is a set of available elements for y i , or a target dictionary .
+Let start and goal meta symbols be < s> and </s > , respectively .
+A beam search procedure starts from Y ?0 = {< s > } and finishes when the last symbols of all elements in Y b ?t are the goal element </ s> or when its length t becomes larger than some threshold .
+Runtime-Ensemble
+In a text- generation task , model ensemble is a method of predicting a next word by averaging the word-prediction probabilities of multiple textgeneration models at decoding time .
+Fig. 1 ( a ) shows a flow chart of the current ensemble methods , which we call runtime -ensemble to distinguish them from our method .
+There are mainly two variants of runtime- ensemble using arithmetic mean p a and geometric mean p g , which are defined as p a ( y ?t | x ) = 1 | M | p?M p(y ?t | x ) , ( 2 ) p g ( y ?t | x ) = p?M p(y ?t | x ) 1 | M | , ( 3 ) where M is a set of learned models .
+We call the former EnsSum and the latter EnsMul .
+Although there have been no comparative experiments , EnsMul is usually used since most decoding programs keep log p and calculating p?M log p is enough to obtain the top b words with respect to p g for a beam search procedure .
+Post-Ensemble
+Our alternative ensemble method combines multiple text-generation models by selecting a majority - like output close to the other outputs , which is calculated with a similarity function such as cosine similarity .
+We call this method postensemble since it is executed in post-processing , i.e. , after a decoding process .
+Fig. 1 ( b ) shows a flow chart of post-ensemble , and Alg.
+1 shows its algorithm .
+When our method receives an input x , a normal decoder calculates the output s of each model p from the input in parallel ( lines 2 - 4 ) , and the output selector selects the majority - like output y from all outputs ( lines 6 - 9 ) .
+In line 7 , we calculate the score c of each output s by using a similarity function K , where K(s , s ) represents the similarity between s and s .
+A higher score means that the output s is in a denser part in the output space since the score c means the average similarity in other outputs .
+The post-ensemble procedure has two main advantages compared with the current runtimeensemble procedure .
+One is that we do not need to develop an ensemble decoder by modifying a decoding program on a deep learning framework .
+The concept of runtime- ensemble is simple , but its implementation is not that simple in recent sophisticated open source software .
+For example , we need to modify about 100 lines to add an ensemble feature to the decoding program of an open source neural machine translator , OpenNMT 1 , which requires understanding the overall mechanism of the software .
+The other advantage is that we can easily parallelize decoding processes in our method since each output can be calculated by using a single model .
+If we have a server program for text generation , we can improve its performance with all our machine resources ( ideally ) by assigning a server to each model and allowing the output selector to communicate with it .
+One drawback of our method is that its expressive power is basically the same as that of each single model .
+However , this alternatively means that the lower bound of the quality of each output is guaranteed with the worst case of the outputs of single models , while the current runtime - ensemble method can perform worse than each single model for the worst case input .
+Furthermore , experiments showed our post-ensemble method is more effective than the current runtime - ensemble methods .
+Theoretical Analysis
+In this section , we prove that when K(s , s ) = cos(s , s ) , Alg.
+1 is an approximation of find-ing the maximum density point by kernel density estimation based on the von Mises - Fisher kernel .
+First , we briefly explain kernel density estimation and how to apply it to our method in Sec. 4.1 .
+Then , we introduce the von Mises - Fisher kernel used in this analysis and later experiments in Sec. 4.2 .
+Finally , we prove a theorem that guarantees the approximation error in Sec. 4.3 .
+Kernel Density Estimation Kernel density estimation is a non-parametric method for estimating the probability density function of a random variable .
+Let ( X 1 , ? ? ? , X n ) be an independent and identically distributed ( i.i.d. ) sample that was drawn from a distribution with an unknown density function f .
+The kernel density estimator based on the sample is defined as f ( X ) = 1 n n i=1 K ( X , X i ) .
+( 4 ) Using an appropriate kernel such as the Gaussian kernel , this estimator f converges to the true density f , and it can be proved that there is no nonparametric estimator that converges faster than this kernel density estimator ( Wahba , 1975 ) .
+Here , let us consider our outputs ( s 1 , ? ? ? , s n ) , which correspond to S in Alg .
+1 . They are generated from text generation models ( p 1 , ? ? ? , p n ) , which correspond to M in Alg .
+1 . We assume that these models are trained with randomly initialized parameters ( ?
+1 , ? ? ? , ? n ) , each of which includes a random seed for the optimizer , and the other settings are deterministic .
+In this case , we can construct a function F : P ?
+O that maps the parameter space P onto the output space O .
+In other words , if each parameter ?
+i is an i.i.d. random variable , the corresponding output s i = F ( ? i ) is also an i.i.d. random variable .
+Therefore , Eq. ( 4 ) can be directly used for line 7 in Alg .
+1 . Our method can be regarded as a heuristic approach based on the characteristics of our encoderdecoder model , where there are many local solutions for optimization .
+We expect that our method can be applied to other models on the basis of a theoretical study ( Kawaguchi , 2016 ) , that showed that deep neural networks can have many local optima , but there are no poor local optima ( formally , every local minimum of deep neural networks is a global minimum under a certain condition ) .
+We do not consider this direction since theoretical justification is beyond our scope .
+von Mises - Fisher Kernel
+The von Mises - Fisher kernel ( Hall et al. , 1987 ) is a natural extension of the Gaussian kernel to a unit hypersphere .
+This kernel is especially useful for directional or angular statistics , so it is expected to be compatible with the cosine similarity frequently used in natural language processing .
+The definition is K vmf ( s , s ) = C q ( ? ) exp (? cos( s , s ) ) , ( 5 ) where ? is a smoothing factor called the concentration parameter , and cos is a cosine similarity , i.e. , cos(s , s ) = s?s ||s|| 2 ||s || 2 . C q ( ? ) is the normalization constant , which is defined as C q ( ? ) = ? q?1 2 ( 2 ? ) q+1 2 I q?1 2 ( ? ) , ( 6 ) where I v is the modified Bessel function of the first kind at order v , and q is the dimension of directional data ( angular expression of data ) .
+In the experiments described later , we implemented Alg.
+1 with this kernel by using the log-sum - exp trick ( Nielsen and Sun , 2016 ) to avoid overflow / underflow problems since argmax exp ( x ) = argmax log exp ( x ) .
+In addition , we used Garcia- Portugues 's rule ( Garcia - Portugues , 2013 ) to adjust the concentration parameter ? = ?2 , defined as ? = ? ? 4 ? 1 2 I q?1 2 ( ? ) 2 ? q+1 2 2 qI q+1 2 ( 2 ? ) +( 2+q ) ? I q+3 2 ( 2 ? ) n ? ? 1 4 + q ( 7 ) where ? is an approximation of ? derived from the maximum likelihood estimation ( Sra , 2012 ) , defined as ? = ?( q? ) 1 ? 2 , where ? is the sample mean of the directional data in a unit hypersphere .
+Approximation Error Analysis
+We prove an approximation error bound of Alg. 1 when K(s , s ) = cos(s , s ) , as shown in the following theorem .
+Theorem 1 .
+The output y of Alg. 1 with K(s , s ) = cos(s , s ) is equivalent to the maximization of the first order Taylor series approximation p of the kernel density estimator p based on the von Mises - Fisher kernel , i.e. , p( y ) = max s?S p( s ) , where the approximation error R * of the output y with respect to the true density estimator p , i.e , .
+R * = max s?S p( s ) ? p( y ) , is bounded by R * ? C q ( ? ) ? 2 exp ( ? ) ( ?
+2 + ? 2 ) , ( 9 ) where ? = max s?S E s [ cos ( s , s ) ] , and ?
+2 = max s?S V s [ cos( s , s ) ] .
+Proof sketch .
+Eq. ( 8 ) can be obtained by using the first order Taylor series approximation at 0 of exp ( x ) , i.e. , exp ( x ) ? 1 + x , and the nature of argmax , i , e. , argmax ( 1 + ?x ) = argmax x. Eq. ( 9 ) can be derived by the Lagrange error bound R ( x ) for exp ( x ) ? 1 + x , where x = ? cos(s , s ) , and ? ? x ? ? , as R ( x ) = max x exp( x ) 2 ! x 2 ? exp ( ? )
+2 x 2 . ( 10 ) See Appendix
+A for the complete proof .
+This theorem implies that the approximation error becomes smaller as ? becomes smaller .
+Since ? is the concentration parameter , the shape of the density estimation will be smooth when ?
+is small , while it will be a peak when ? is large .
+This means that , when ? is large , the density estimation is almost the same as the majority vote .
+Therefore , we can naturally choose a small value for ? for our purpose .
+In fact , the concentration parameter was set as ? = 0.69 by using Garcia- Portugues 's rule in our experiments .
+The normalization constant using ? was calculated as C q ( ? ) = 0.14 , and the average values of ? and ? with respect to the set S of output candidates were E S [ ? ] = 0.30 and E S [ ? ] = 0.78 , respectively .
+In this case , the theoretical average approximation error was calculated as E S [ R * ] ? 0.093 = 0.14 ? 0.69 2 ? exp( 0.69 ) ? ( 0.78 2 + 0.30 2 ) .
+This is quite small in view of the approximation error for a probability .
+In addition , the actual average approximation error can be much smaller , and it was about 1.95 ? 10 ?7 in our experiments .
+The accuracy defined by the rate at which the approximate maximum is the true maximum , i.e. , p( y ) = max s?S p( s ) , was 96.36 % .
+Detail on the settings of our experiments will be given in the next section .
+Experiments
+We first explain the basic settings of our experiments in Sec. 5.1 and report a comparative experiment and analysis on the news- headlinegeneration task in Sec. 5.2 .
+Then , we discuss the change in some of the settings to conduct an experiment by changing the number of models and the settings of model preparation in Sec. 5.3 and Sec. 5.4 , respectively .
+Basic Settings
+Dataset :
+We used a well -known dataset Gigaword of a news- headline - generation task , which was prepared by Rush et al . ( 2015 ) .
+This dataset has been extensively used in recent studies on abstractive summarization ( Takase et al. , 2016 ; Chopra et al. , 2016 ; Kiyono et al. , 2017 ; Zhou et al. , 2017 ; Cao et al. , 2018 ) .
+The Gigaword dataset was created from the English Gigaword corpus 2 , in which the input is the first sentence in a news article , and the output is the headline of the article .
+The training , validation , and test sets included 3.8 M , 189K , and 2 K sentences , respectively .
+The preprocessed data are publicly available 3 .
+The dataset is also used to train official pretrained models of OpenNMT 4 .
+Model and Training :
+We basically used the default PyTorch implementation of OpenNMT 5 on June 11 , 2017 throughout our experiments , but the unidirectional long short - term memory ( LSTM ) for the encoder was replaced with a bidirectional one to obtain nearly state - of - the - art results .
+The basic settings are as follows .
+Our model consisted of a bidirectional LSTM for the encoder and a stacked LSTM with input feeding for the decoder .
+These LSTMs had two layers with 500 dimensional hidden layers whose dropout rates were 0.3 , and their input vectors were created by a 500 - dimensional word-embedding layer .
+The model was trained with a stochastic gradient descent method with a learning rate of 1.0 , where the mini-batch size was set to 64 .
+The learning process ended in 13 epochs , decaying the learning rate with a decay factor of 0.5 in each epoch after 8 epochs .
+These training settings are the same as the training of the official pretrained models of OpenNMT , and we confirmed that these settings performed better than training with Adam ( Kingma and Ba , 2014 ) in our preliminary experiments .
+We prepared 10 learned models by random initialization for the ensemble methods in our experiments .
+Decoding and Evaluation :
+When decoding input sequences , we used a beam-search algorithm with a beam width of 5 .
+The maximum size of decoded sequences was 100 .
+The generated unknown token < unk > was replaced by the source word with the highest attention weight .
+To evaluate decoded sequences , we calculated ROUGE -1 , ROUGE - 2 , and ROUGE -L ( Lin , 2004 ) , mainly used in the headline - generationtask ( Rush et al. , 2015 ) . ROUGE - 1 and ROUGE - 2 are the co-occurrence rates of unigrams and bigrams , respectively , between a generated headline and its reference .
+ROUGE -L is the rate of the longest common subsequence between them to the reference length .
+We used a Python wrapper of the ROUGE -1.5.5.pl script 6 and took the average value of 10 times , each of which used 10 models .
+( Erkan and Radev , 2004 ) .
+We used a Python implementation 7 , where a graph is constructed on the basis of cosine similarities between the tf-idf vectors ( without stop-words ) of candidate outputs .
+The idf weights are calculated from the training set .
+?
+LMRank selects an output that maximizes the likelihood of a ( non-conditional ) language model p LM , i.e. , y = argmax s?S p LM ( s ) , as in ( Vaswani et al. , 2013 ) .
+We used the decoder part of the encoder-decoder model described in Sec. 5.1 , which was trained with both source and target sentences in the training set .
+This allows this model to learn the fluency in both normal and headline - like sentences .
+?
+PostCosE and PostVmfE select an output on the basis of Alg. 1 with the cosine similarity i.e. , K(s , s ) = cos(s , s ) , and the von Mises - Fisher kernel , i.e. , K(s , s ) = K vmf ( s , s ) in Eq. ( 5 ) , respectively .
+The feature of each output is the average of pretrained 300 - dimensional word embeddings 8 . ? PostCosB and PostVmfB are variants of PostCosE and PostVmfE with simple bag-ofwords features ( sparse vectors ) , respectively .
+In addition , we used the following measurements for analysis .
+MaxRef represents the upper bound for the performance of our method .
+Mean , Max , and Min represent the performance statistics of the single models .
+?
+MaxRef selects the best output with respect to ROUGE - 1 , which is calculated by using the references in the test set .
+?
+Mean , Max , and Min are the mean , maximum , and minimum of the ( non- ensemble ) ROUGE - 1 values for the 10 models , respectively .
+The difference between Single and Max is that the former uses the validation set , while the latter uses the test set .
+Main Results
+We conducted a comparative experiment on the news - headline - generation task to verify the effectiveness of our post-ensemble method compared with the current runtime - ensemble methods .
+Tab .
+1 shows the experimental results for the Gigaword dataset , including the results of our method with 32 models and other previous results .
+First of all , we can see that the variant of our post-ensemble method , PostCosB , clearly outperformed the runtime- ensemble methods ( strong baselines ) , EnsSum and EnsMul , and the other baselines .
+The differences between our best method PostCosB and the best baseline EnsSum were all statistically significant on the basis of a one-tailed , paired t-test ( p < 0.05 ) .
+Comparing with the recent results of Cao et al . ( 2018 ) obtained with open information extraction and dependency parse technologies and the other previous results 9 , our method with 32 models also performed better , although the algorithm of our Reference : interpol asks world govts to make rules for global policing Input : top interpol officers on wednesday asked its members to devise rules and procedures for policing at the global level and providing legal status to red corner notices against wanted fugitives .
+( Rush et al. , 2015 ) 31.00 12.65 28.34 ( Takase et al. , 2016 ) 31.64 12.94 28.54 ( Chopra et al. , 2016 ) 33.78 15.96 31.15 ( Kiyono et al. , 2017 ) 35.79 17.84 33.34 ( Zhou et al. , 2017 ) 36.15 17.54 33.63 Nagata , 2017 ) 36.30 17.31 33.88 ( Cao et al. , 2018 ) 37.27 17.65 34.24 Table 1 : F-measure ROUGE -1 , ROUGE - 2 , and ROUGE -L scores ( % ) for news - headline - generation task .
+Bold and underlined scores represent best scores for ensembles of 10 models and all methods excluding measurements with " * , " respectively .
+Results with " " are taken from corresponding papers .
+method is quite simple .
+Note that our method can be easily applied to their models to improve their results .
+Looking at the row for MaxRef , the results imply that our post-ensemble method still has room for improvement without any changes to model structure .
+Although we also conducted an experiment by changing the settings of model preparation , the results had a similar tendency to those of the main results ( see Sec. 5.4 ) .
+Fig. 2 illustrates how our method worked with kernel density estimation ( see the figure caption for detailed descriptions ) .
+The left scatter - plot shows a two -dimensional visualization of 10 outputs generated from the 10 models and the estimated densities ( represented by color intensity in the right bar ) .
+Looking at the center part of the plot , we can see that there are many good outputs with high ROUGE - 1 results ( noted in brackets in the plot ) in the dense part .
+The right list shows the corresponding outputs of the points in the left plot , where these outputs are sorted by the estimated density .
+The list shows that our method successfully obtained the majority - like output ( model ID of 0 ) in the dense part of the output space , although there are no exact match outputs .
+Looking at the bottom part of the list , we can see that our method clearly eliminated unpromising outputs ( model ID of 7 , 8 , and 9 ) with less information , since they are scattered .
+Effect of Number of Models
+We compared the effect of changing the number of models on the performance of our best method PostCosB and the best baseline EnsSum .
+We pre - Fig. 3 shows the performance of our best method PostCosB , the corresponding true estimator PostVmfB , the best baseline EnsMul , and the most widely - used baseline LexRank versus the number of models .
+Note that we could not calculate the results of EnsMul for more than 16 models due to out of memory errors .
+The figure shows that PostCosB performed better than EnsMul even for these 16 models .
+We obtained a 37.48 ROUGE - 1 score with 32 models , which was better than the state - of - the - art results in Tab.
+1 , but the performance seems to be saturated with more than 32 models .
+Looking at PostCosB and PostVmfB , we can see that the performances are almost the same , which also supports our theoretical analysis in Sec.
+4 . LexRank did not work well even though the number of models was large .
+The complexity of the post-ensemble procedure in Alg. 1 is O ( ? +? 2 ) , where ? is the number of models , ? is the dimension of the output space , and ? is the number of operations of the beam-search .
+We can reduce it to O ( ?+? ) by simply parallelizing lines 2 - 4 and 6 - 8 in Alg .
+1 without any change to the model code on the deep learning framework .
+Since the operations of ?
+includes all matrix calculations in the model , we can basically assume ? ?.
+In fact , the actual calculation times of PostCosE and PostCosB with a naive implementation in Python were 0.0097 and 0.0037 seconds per sentence when ? = 32 , respectively .
+They are enough for practical use in comparison with the decoding speeds of 0.044 ( GPU ) and 0.49 ( CPU ) seconds per sentence .
+In addition , the complexity of the runtime- ensemble is O ( ? ) , which cannot be parallelized without modifying more than a hundred lines of code after understanding a whole system .
+Effect of Model Preparation
+We conducted experiments to verify the effect of changing the model preparation on post-ensemble performance .
+In addition to random initialization ( random-ensemble ) , we address three variations of model preparation : self-ensemble , heteroensemble , and bagging -ensemble .
+The first one , self-ensemble , is a method of extracting models from " checkpoints " saved in each epoch in a training .
+We prepared the models of self-ensemble by using 10 checkpoints from 4 - 13 epochs .
+The second one , hetero-ensemble , is a method of training models varying in model structure .
+We prepared 10 models for hetero-ensemble , consisting of 8 models prepared by changing the number of layers in the LSTM encoder / decoder in { 2 , 3 } , the size of LSTM hidden states in { 250 , 500 } , and the size of word embedding in { 250 , 500 } , and two models prepared by replacing the bidirectional encoder with a unidirectional encoder and a bidirectional encoder with a different merge action , i.e. , summation instead of concatenation .
+The third one , bagging - ensemble , is a method of training models by bagging of training data .
+We randomly extracted 80 % of the training data 10 times and prepared 10 models for baggingensemble .
+We used the same dictionary of the original data for these models , since the runtimeensemble methods , EnsSum and EnsMul , failed to average the models with different dictionaries .
+Note that the outputs for self-ensemble and heteroensemble cannot be regarded as i.i.d samples , but we believe the basic idea can be practically applied .
+Tab .
+2 shows the F-measure ROUGE - 1 scores for the Gigaword dataset of the above three variations , self - , hetero - , and bagging -ensembles , as well as random-ensemble .
+The table indicates that all variants of our post-ensemble method performed better than the current runtime -ensemble methods , EnsSum and EnsMul , for all variations of model preparation .
+Looking at the row for PostCosE , random-ensemble was the most effective , while self-ensemble was the worst , as expected .
+Bagging -ensemble was relatively effective for post-ensemble according to the relative improvement from Single , despite the fact that we trained the models with 80 % of the training data .
+Hetero-ensemble performed worse than randomensemble for these settings , but we expect that if the model structure can be randomly chosen , hetero- ensemble will perform better .
+Related Work Distillation techniques for an ensemble of multiple models have been widely studied ( Kuncoro et al. , 2016 ; Chebotar and Waters , 2016 ; Kim and Rush , 2016 ; Freitag et al. , 2017 ; Stahlberg and Byrne , 2017 ) , especially after a study by Hinton et al . ( 2015 ) . Kuncoro et al. ( 2016 ) and Chebotar and Waters ( 2016 ) studied distillation techniques for ensembles of multiple dependency parsers and speech recognition models , respectively .
+There are several ensemble methods for ensembles of machine translation models ( Kim and Rush , 2016 ; Freitag et al. , 2017 ; Stahlberg and Byrne , 2017 ) .
+For example , Stahlberg and Byrne ( 2017 ) proposed a method of unfolding an ensemble of multiple translation models into a single large model once and shrinking it down to a small one .
+However , all methods require extra implementation on a deep-learning framework , and it is not easy to apply them to other models .
+Our post-ensemble method does not require such coding skills .
+In addition , since the predictions of post-ensemble can be regarded as a teacher model , these distillation techniques should be combined with a teacher model based on post-ensemble .
+Hypotheses reranking of language generation has been extensively studied , but most studies focused on discriminative training using costly an-notated data ( Shen et al. , 2004 ; White and Rajkumar , 2009 ; Duh et al. , 2010 ; Kim and Mooney , 2013 ; Mizumoto and Matsumoto , 2016 ) .
+The main stream of our focused unsupervised approach was a reranking method based on a language model ( Chen et al. , 2006 ; Vaswani et al. , 2013 ; Luong and Popescu-Belis , 2016 ) , and other approaches include reranking methods based on key phrase extraction ( Boudin and Morin , 2013 ) , dependency analysis ( Hasan et al. , 2010 ) , and search results ( Peng et al. , 2013 ) .
+All of the above described studies were not used for model ensemble .
+Tomeh et al. ( 2013 ) used an ensemble learning , but the purpose was to improve the performance of the reranking model for hypotheses reranking of a single model .
+Li et al. ( 2009 ) , which work is the most related one , proposed a reranking algorithm for model ensemble .
+However , their method was constructed to perform at decoding time , so it can be regarded as runtimeensemble .
+The term " frustratingly easy " in this paper is borrowed from " frustratingly easy " papers ( Daum ?
+III , 2007 ; Daum ?
+III et al. , 2010 ; Tommasi and Caputo , 2013 ; .
+Conclusion
+We proposed a simple but effective modelensemble method , called post-ensemble , for abstractive - summarization models , i.e. , encoderdecoder models .
+We verified the effectiveness of our method on the news - headline - generation task .
+We will release the 128 prepared models used in this paper 10 , each of which was trained for more than two days , as a new dataset for improving ensemble methods .
+For example , future research includes applying learning - to - rank regarding all outputs as features , conducting active learning to select a new model setting online , and developing boosting - like -ensemble based on the bagging of training data .
+Figure 1 : Flow charts of current runtime-ensemble ( a ) and our proposed post-ensemble ( b ) .

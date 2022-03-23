@@ -1,0 +1,189 @@
+title
+Widening the Representation Bottleneck in Neural Machine Translation with Lexical Shortcuts
+abstract
+The transformer is a state - of - the - art neural translation model that uses attention to iteratively refine lexical representations with information drawn from the surrounding context .
+Lexical features are fed into the first layer and propagated through a deep network of hidden layers .
+We argue that the need to represent and propagate lexical features in each layer limits the model 's capacity for learning and representing other information relevant to the task .
+To alleviate this bottleneck , we introduce gated shortcut connections between the embedding layer and each subsequent layer within the encoder and decoder .
+This enables the model to access relevant lexical content dynamically , without expending limited resources on storing it within intermediate states .
+We show that the proposed modification yields consistent improvements over a baseline transformer on standard WMT translation tasks in 5 translation directions ( 0.9 BLEU on average ) and reduces the amount of lexical information passed along the hidden layers .
+We furthermore evaluate different ways to integrate lexical connections into the transformer architecture and present ablation experiments exploring the effect of proposed shortcuts on model behavior .
+1
+Introduction
+Since it was first proposed , the transformer model ( Vaswani et al. , 2017 ) has quickly established itself as a popular choice for neural machine translation , where it has been found to deliver state - ofthe - art results on various translation tasks ( Bojar et al. , 2018 ) .
+Its success can be attributed to the model 's high parallelizability allowing for significantly faster training compared to recurrent neural 1 Our code is publicly available to aid the reproduction of the reported results : https://github.com/demelin/ transformer_lexical_shortcuts networks , superior ability to perform lexical disambiguation , and capacity for capturing long-distance dependencies on par with existing alternatives ( Tang et al. , 2018 ) .
+Recently , several studies have investigated the nature of features encoded within individual layers of neural translation models ( Belinkov et al. , 2017 ( Belinkov et al. , , 2018 .
+One central finding reported in this body of work is that , in recurrent architectures , different layers prioritize different information types .
+As such , lower layers appear to predominantly perform morphological and syntactic processing , whereas semantic features reach their highest concentration towards the top of the layer stack .
+One necessary consequence of this distributed learning is that different types of information encoded within input representations received by the translation model have to be transported to the layers specialized in exploiting them .
+Within the transformer encoder and decoder alike , information exchange proceeds in a strictly sequential manner , whereby each layer attends over the output of the immediately preceding layer , complemented by a shallow residual connection .
+For input features to be successfully propagated to the uppermost layers , the translation model must therefore store them in its intermediate representations until they can be processed .
+By retaining lexical content , the model is unable to leverage its full representational capacity for learning new information from other sources , such as the surrounding sentence context .
+We refer to this limitation as the representation bottleneck .
+To alleviate this bottleneck , we propose extending the standard transformer architecture with lexical shortcuts which connect the embedding layer with each subsequent self-attention sub-layer in both encoder and decoder .
+The shortcuts are defined as gated skip connections , allowing the model to access relevant lexical information at any point , instead of propagating it upwards from the embedding layer along the hidden states .
+We evaluate the resulting model 's performance on multiple language pairs and varying corpus sizes , showing a consistent improvement in translation quality over the unmodified transformer baseline .
+Moreover , we examine the distribution of lexical information across the hidden layers of the transformer model in its standard configuration and with added shortcut connections .
+The presented experiments provide quantitative evidence for the presence of a representation bottleneck in the standard transformer and its reduction following the integration of lexical shortcuts .
+While our experimental efforts are centered around the transformer , the proposed components are compatible with other multi-layer NMT architectures .
+The contributions of our work are as follows : 1 . We propose the use of lexical shortcuts as a simple strategy for alleviating the representation bottleneck in NMT models .
+2 . We demonstrate significant improvements in translation quality across multiple language pairs as a result of equipping the transformer with lexical shortcut connections .
+3 . We conduct a series of ablation studies , showing that shortcuts are best applied to the self-attention mechanism in both encoder and decoder .
+4 . We report a positive impact of our modification on the model 's ability to perform word sense disambiguation .
+2 Proposed Method
+Background :
+The transformer
+As defined in ( Vaswani et al. , 2017 ) , the transformer is comprised of two sub-networks , the encoder and the decoder .
+The encoder converts the received source language sentence into a sequence of continuous representations containing translation - relevant features .
+The decoder , on the other hand , generates the target language sequence , whereby each translation step is conditioned on the encoder 's output as well as the translation prefix produced up to that point .
+Both encoder and decoder are composed of a series of identical layers .
+Each encoder layer contains two sub-layers : A self-attention mechanism and a position - wise fully connected feed -forward network .
+Within the decoder , each layer is extended with a third sub-layer responsible for attending over the encoder 's output .
+In each case , the attention mechanism is implemented as multihead , scaled dot-product attention , which allows the model to simultaneously consider different context sub-spaces .
+Additionally , residual connections between layer inputs and outputs are employed to aid with signal propagation .
+In order for the dot-product attention mechanism to be effective , its inputs first have to be projected into a common representation sub-space .
+This is accomplished by multiplying the input arrays H S and H T by one of the three weight matrices K , V , and Q , as shown in Eqn. 1 - 3 , producing attention keys , values , and queries , respectively .
+In case of multi-head attention , each head is assigned its own set of keys , values , and queries with the associated learned projection weights .
+Q = W Q H S ( 1 ) K = W K H T ( 2 ) V = W V H T ( 3 )
+In case of encoder-to- decoder attention , H T corresponds to the final encoder states , whereas H S is the context vector generated by the preceding self-attention sub-layer .
+For self-attention , on the other hand , all three operations are given the output of the preceding layer as their input .
+Eqn. 4 defines attention as a function over the projected representations .
+Attention ( Q , K , V ) = softmax ( QK T ? d k ) V ( 4 )
+To prevent the magnitude of the pre-softmax dot-product from becoming too large , it is divided by the square root of the total key dimensionality d k .
+Finally , the translated sequence is obtained by feeding the output of the decoder through a softmax activation function and sampling from the produced distribution over target language tokens .
+Lexical shortcuts Given that the attention mechanism represents the primary means of establishing parameterized connections between the different layers within the transformer , it is well suited for the re-introduction of lexical content .
+We achieve this by adding gated connections between the embedding layer and each subsequent self-attention sub-layer within the encoder and the decoder , as shown in Figure 1 .
+To ensure that lexical features are compatible with the learned hidden representations , the retrieved embeddings are projected into the appropriate latent space , by multiplying them with the layer -specific weight matrices W K SC l and W V SC l .
+We account for the potentially variable importance of lexical features by equipping each added connection with a binary gate inspired by the Gated Recurrent Unit ( Cho et al. , 2014 ) .
+Functionally , our lexical shortcuts are equivalent to highway connections of ( Srivastava et al. , 2015 ) that span an arbitrary number of intermediate layers .
+K SC l = W K SC l E ( 5 ) After situating the outputs of the immediately preceding layer H l?1 and the embeddings E within a shared representation space ( Eqn. 5 - 8 ) , the relevance of lexical information for the current attention step is estimated by comparing lexical and latent features , followed by the addition of a bias term b ( Eqn. 9 -10 ) .
+The respective attention key arrays are denoted as K SC l and K l , while V SC l and V l represent the corresponding value arrays .
+The result is fed through a sigmoid function to obtain the lexical relevance weight r , used to calculate the weighted sum of the two sets of features , where denotes element -wise multiplication .
+Next , the key and value arrays K l and V l are passed to the multi-head attention function as defined in Eqn. 4 , replacing the original K l and V l .
+V SC l = W V SC l E ( 6 ) K l = W K l H l?1 ( 7 ) V l = W V l H l?1 ( 8 ) r K l = sigmoid ( K SC l + K l + b K l ) ( 9 ) r V l = sigmoid ( V SC l + V l + b V l ) ( 10 ) K l = r K l K SC l + ( 1 ? r K l ) K l ( 11 ) V l = r V l V SC l + ( 1 ? r V l ) V l ( 12 )
+In an alternative formulation of the model , referred to as ' feature-fusion ' from here on , we concatenate E and H l?1 before the initial linear projection , splitting the result in two halves along the feature dimension and leaving the rest of the shortcut definition unchanged 2 .
+This reduces Eqn. 5 - 8 to Eqn. 13 - 14 , and enables the model to select relevant information by directly inter-relating lexical and hidden features .
+As such , both K SC l and K l encode a mixture of embedding and hid -den features , as do the corresponding value arrays .
+While this arguably diminishes the contribution of the gating mechanism towards feature selection , preliminary experiments have shown that replacing gated shortcuts with gate-less residual connections ( He et al. , 2016 ) produces models that fail to converge , characterized by poor training and validation performance .
+For illustration purposes , figure 2 depicts the modified computation path of the lexically - enriched attention key and value vectors .
+K SC l , K l = W K l [ E ; H l?1 ] ( 13 ) V SC l , V l = W V l [ E ; H l?1 ] ( 14 )
+Other than the immediate accessibility of lexical information , one potential benefit afforded by the introduced shortcuts is the improved gradient flow during back - propagation .
+As noted in ( Huang et al. , 2017 ) , the addition of skip connections between individual layers of a deep neural network results in an implicit ' deep supervision ' effect ( Lee et al. , 2015 ) , which aids the training process .
+In case of our modified transformer , this corresponds to the embedding layer receiving its learning signal from the model 's overall optimization objective as well as from each layer it is connected to , making the model easier to train .
+Experiments
+Training
+To evaluate the efficacy of the proposed approach , we re-implement the transformer model and extend it by applying lexical shortcuts to each selfattention layer in the encoder and decoder .
+A detailed account of our model configurations , data pre-processing steps , and training setup is given in the appendix ( A.1- A.2 ) .
+Data
+We investigate the potential benefits of lexical shortcuts on 5 WMT translation tasks : German ? English ( DE?EN ) , English ? German ( EN?DE ) , English ? Russian ( EN?RU ) , English ? Czech ( EN? CS ) , and English ? Finnish ( EN? FI ) .
+Our choice is motivated by the differences in size of the training corpora as well as by the typological diversity of the target languages .
+To make our findings comparable to related work , we train EN ?
+DE models on the WMT14 news translation data which encompasses ?4.5 M sentence pairs .
+EN ?
+RU models are trained on the WMT17 version of the news translation task , consisting of ?24.8 M sentence pairs .
+For EN ?CS and EN ?
+FI , we use the respective WMT18 parallel training corpora , with the former containing ?50.4 M and the latter ?3.2 M sentence pairs .
+We do not employ backtranslated data in any of our experiments to further facilitate comparisons to existing work .
+Throughout training , model performance is validated on newstest2013 for EN?DE , new-stest2016 for EN?RU , and on newstest2017 for EN ?
+CS and EN?FI .
+Final model performance is reported on multiple tests sets from the news domain for each direction .
+Translation performance
+The results of our translation experiments are summarized in Tables 1 - 2 .
+To ensure their comparability , we evaluate translation quality using sacre- BLEU ( Post , 2018 ) .
+As such , our baseline performance diverges from that reported in ( Vaswani et al. , 2017 ) .
+We address this by evaluating our EN ?
+DE models using the scoring script from the tensor2tensor toolkit 3 ( Vaswani et al. , 2018 ) on the tokenized model output , and list the corresponding BLEU scores in the first column of Table 1 .
+Our evaluation shows that the introduction of lexical shortcuts consistently improves translation quality of the transformer model across different test-sets and language pairs , outperforming transformer - BASE by 0.5 BLEU on average .
+With feature -fusion , we see even stronger improvements , yielding total performance gains over transformer - BASE of up to 1.4 BLEU for EN ?
+DE ( averaging to 1.0 ) , and 0.8 BLEU on average for the other 4 translation directions .
+We furthermore observe that the relative improvements from the addition of lexical shortcuts are substantially smaller for transformer - BIG compared to transformer - BASE .
+One potential explanation for this drop in efficacy is the increased size of latent representations the wider model is able to learn , which we discuss in section 4.1 .
+Furthermore , it is worth noting that transformer - BASE equipped with lexical connections performs comparably to the standard transformer - BIG , despite containing fewer than half of its parameters and being only marginally slower to train than our unmodified transformer - BASE implementa- tion .
+A detailed overview of model sizes and training speed is provided in the supplementary material ( A.1 ) .
+Concerning the examined language pairs , the average increase in BLEU is highest for EN?RU ( 1.1 BLEU ) and lowest for DE?EN ( 0.6 BLEU ) .
+A potential explanation for why this is the case could be the difference in language topology .
+Of all target languages we consider , English has the least complex morphological system where individual words carry little inflectional information , which stands in stark contrast to a highly inflectional language with a flexible word order such as Russian .
+It is plausible that lexical shortcuts are especially important for translation directions where the target language is morphologically rich and where the surrounding context is essential to accurately predicting a word 's case and agreement .
+With the proposed shortcuts in place , the transformer has more capacity for modeling such context information .
+To investigate the role of lexical connections within the transformer , we conduct a thorough examination of our models ' internal representations and learning behaviour .
+The following analysis is based on models utilizing lexical shortcuts with feature -fusion , due to its superior performance .
+Analysis
+Representation bottleneck
+The proposed approach is motivated by the hypothesis that the transformer retains lexical features within its individual layers , which limits its capacity for learning and representing other types of relevant information .
+Direct connections to the embedding layer alleviate this by providing the model with access to lexical features at each processing step , reducing the need for propagating them along hidden states .
+To investigate whether this is indeed the case , we perform a probing study , where we estimate the amount of lexical content present within each encoder and decoder state .
+We examine the internal representations learned by our models by modifying the probing technique introduced in ( Belinkov et al. , 2017 ) .
+Specifically , we train a separate lexical classifier for each layer of a frozen translation model .
+Each classifier receives hidden states extracted from the respective transformer layer 4 and is tasked with reconstructing the sub-word corresponding to the position of each hidden state .
+Encoder-specific classifiers learn to reconstruct sub-words in the source sen - tence , whereas classifiers trained on decoder states are trained to reconstruct target sub-words .
+The accuracy of each layer -specific classifier on a withheld test set is assumed to be indicative of the lexical content encoded by the corresponding transformer layer .
+We expect classification accuracy to be high if the evaluated representations predominantly store information propagated upwards from the embeddings at the same position and to decrease proportionally to the amount of information drawn from the surrounding sentence context .
+Figures 3 and 4 offer a side-by-side comparison of the accuracy scores obtained for each layer of the base transformer and its variant equipped with lexical shortcut connections .
+Based on the observed classification results , it appears that immediate access to lexical information does indeed alleviate the representation bottleneck by reducing the extent to which ( sub - ) word - level content is retained across encoder and decoder layers .
+By introducing shortcut connections , we effectively reduce the amount of lexical information the model retains within its intermediate states , thereby increasing its capacity for exploiting sentence context .
+The effect is consistent across multiple language pairs , supporting its generality .
+Additionally , to examine whether lexical retention depends on the specific properties of the input tokens , we track classification accuracy conditioned on part- of-speech tags and sub-word frequencies .
+While we do not discover a pronounced effect of either category on classification accuracy , we present a summary of our findings as part of the supplementary material for future reference ( A.3 ) .
+Another observation arising from the probing analysis is that the decoder retains fewer lexical features beyond its initial layers than the encoder .
+This may be due to the decoder having to represent information it receives from the encoder in addition to target - side content , necessitating a lower rate of lexical feature retention .
+Even so , by adding shortcut connections we can increase the dissimilarity between the embedding layer and the subsequent layers of the decoder , indicating a noticeable reduction in the retention and propagation of lexical features along the decoder 's hidden states .
+A similar trend can be observed when evaluating layer similarity directly , which we accomplish by calculating the cosine similarity between the embeddings and the hidden states of each transformer layer .
+Echoing our findings so far , the addition of lexical shortcuts reduces layer similarity relative to the baseline transformer for both encoder and decoder .
+The corresponding visualizations are also provided in the appendix ( A.3 ) .
+Overall , the presented analysis supports the existence of a representation bottleneck in NMT models as one potential explanation for the efficacy of the proposed lexical shortcut connections .
+Model
+Model size Next , we investigate the interaction between the number of model parameters and improvements in translation quality afforded by the proposed lexical connections .
+Following up on findings presented in section 3.1 , we hypothesize that the benefit of lexical shortcuts diminishes once the model 's capacity is sufficiently large .
+To establish whether this decline in effectiveness is gradual , we scale down the standard transformer , halving the size of its embeddings , hidden states , and feed-forward sub-layers .
+Table 3 shows that , on average , quality improvements are comparable for the small and standard transformer ( 1.0 BLEU for both ) , which is in contrast to our observations for transformer - BIG .
+One explanation is that given sufficient capacity , the model is capable of accommodating the upward propagation of lexical features without having to neglect other sources of information .
+However , as long as the model 's representational capacity is within certain limits , the effect of lexical shortcuts remains comparable across a range of model sizes .
+With this in mind , the exact interaction between model scale and the types of information encoded in its hidden states remains to be fully explored .
+We leave a more fine- grained examination of this relationship to future research .
+Shortcut variants
+Until now , we focused on applying shortcuts to self-attention as a natural re-entry point for lexical content .
+However , previous studies suggest that providing the decoder with direct access to source sentences can improve translation adequacy , by conditioning decoding on relevant source tokens ( Kuang et al. , 2017 ; Nguyen and Chiang , 2017 ) .
+To investigate whether the proposed method can confer a similar benefit to the transformer , we apply lexical shortcuts to decoder-to-encoder attention , replacing or adding to shortcuts feeding into self-attention .
+Formally , this equates to fixing E to E enc in Eqn. 5 - 6 and can be regarded as a variant of source -side bridging proposed by ( Kuang et al. , 2017 ) .
+As Table 4 shows , while integrating shortcut connections into the decoder-to-encoder attention improves upon the base transformer , the improvement is smaller than when we modify selfattention .
+Interestingly , combining both methods yields worse translation quality than either one does in isolation , indicating that the decoder is un - able to effectively consolidate information from both source and target embeddings , which negatively impacts its learned latent representations .
+We therefore conclude that lexical shortcuts are most beneficial to self-attention .
+A related question is whether the encoder and decoder benefit from the addition of lexical shortcuts to self-attention equally .
+We explore this by disabling shortcuts in either sub-network and comparing the so obtained translation models to one with intact connections .
+Figure 5 illustrates that best translation performance is obtained by enabling shortcuts in both encoder and decoder .
+This also improves training stability , as compared to the decoder-only ablated model .
+The latter may be explained by our use of tied embeddings which receive a stronger training signal from shortcut connections due to ' deep supervision ' , as this may bias learned embeddings against the sub-network lacking improved lexical connectivity .
+While adding shortcuts improves translation quality , it is not obvious whether this is predominantly due to improved accessibility of lexical content , rather than increased connectivity between network layers , as suggested in ( Dou et al. , 2018 ) .
+To isolate the importance of lexical information , we equip the transformer with nonlexical shortcuts connecting each layer n to layer n ? 2 , e.g. layer 6 to layer 4 . 5
+As a result , the number of added connections and parameters is kept identical to lexical shortcuts , whereas lexical accessibility is disabled , allowing for minimal comparison between the two configurations .
+Test - BLEU reported in Table 4 suggests that while non-lexical shortcuts improve over the baseline model , they perform noticeably worse than lexical connections .
+Therefore , the increase in translation quality associated with lexical shortcuts is not solely attributable to a better signal flow or the increased number of trainable parameters .
+Word-sense disambiguation
+Beyond the effects of lexical shortcuts on the transformer 's learning dynamics , we are interested in how widening the representation bottleneck affects the properties of the produced translations .
+One challenging problem in translation which intuitively should benefit from the model 's increased capacity for learning information drawn from sentence context is word-sense disambiguation .
+We examine whether the addition of lexical shortcuts aids disambiguation by evaluating our trained DE ?EN models on the ContraWSD corpus ( Rios et al. , 2017 ) .
+The contrastive dataset is constructed by paring source sentences with multiple translations , varying the translated sense of selected source nouns between translation candidates .
+A competent model is expected to assign a higher probability to the translation hypothesis containing the appropriate word-sense .
+While the standard transformer offers a strong baseline for the disambiguation task , we nonetheless observe improvements after adding direct connections to the embedding layers .
+Specifically , our baseline model reaches an accuracy of 88.8 % , which improves to 89.5 % with lexical shortcuts .
+Related Work Within recent literature , several strategies for altering the flow of information within the transformer have been proposed , including adaptive model depth ( Dehghani et al. , 2018 ) , layer - wise transparent attention , and dense inter-layer connections ( Dou et al. , 2018 ) .
+Our investigation bears strongest resemblance to the latter work , by introducing additional connectivity to the model .
+However , rather than establishing new connections between layers indiscriminately , we explicitly seek to facilitate the accessibility of lexical features across network layers .
+As a result , our proposed shortcuts remain sparse , while performing comparably to their best , more elaborate strategies that rely on multi-layer attention and hierarchical state aggregation .
+Likewise , studies investigating the role of lexical features in NMT are highly relevant to our work .
+Among them , ( Nguyen and Chiang , 2017 ) note that improving accessibility of source words in the decoder benefits translation quality for low-resource settings .
+In a similar vein , attend both encoder hidden states and source embeddings as part of decoder-to-encoder attention , while ( Kuang et al. , 2017 ) provide the decoder-to-encoder attention mechanism with improved access to source word representations .
+We have found a variant of the latter method , which we adapted to the Transformer architecture , to be less effective than applying lexical shortcuts to self-attention , as discussed in section 4.3 .
+Another line of research from which we draw inspiration concerns itself with the analysis of the internal dynamics and learned representations within deep neural networks ( Karpathy et al. , 2015 ; Shi et al. , 2016 ; Qian et al. , 2016 ) .
+Here , ( Belinkov et al. , 2017 ) and ( Belinkov et al. , 2018 ) serve as our primary points of reference by offering a thorough and principled investigation of the extent to which neural translation models are capable of learning linguistic properties from raw text .
+Our view of the transformer as a model learning to refine input representations through the repeated application of attention is consistent with the iterative estimation paradigm introduced in ( Greff et al. , 2016 ) .
+According to this interpretation , given a stack of connected layers sharing the same dimensionality and interlinked through highway or residual connections , the initial layer generates a rough version of the stack 's final output , which is iteratively refined by successive layers , e.g. by enriching localized features with information drawn from the surrounding context .
+The re-sults of our probing studies support this analysis , further suggesting that different layers not only refine input features but also learn entirely new information given sufficient capacity , as evidenced by the decrease in similarity between embeddings and hidden states with increasing model depth .
+Conclusion
+In this paper , we have proposed a simple yet effective method for widening the representation bottleneck in the transformer by introducing lexical shortcuts .
+Our modified models achieve up to 1.4 BLEU ( 0.9 BLEU on average ) improvement on 5 standard WMT datasets , at a small cost in computing time and model size .
+Our analysis suggests that lexical connections are useful to both encoder and decoder , and remain effective when included in smaller models .
+Moreover , the addition of shortcuts noticeably reduces the similarity of hidden states to the initial embeddings , indicating that dynamic lexical access aids the network in learning novel , diverse information .
+We also performed ablation studies comparing different shortcut variants and demonstrated that one effect of lexical shortcuts is an improved WSD capability .
+The presented findings offer new insights into the nature of information encoded by the transformer layers , supporting the iterative refinement view of feature learning .
+In future work , we intend to explore other ways to better our understanding of the refinement process and to help translation models learn more diverse and meaningful internal representations .

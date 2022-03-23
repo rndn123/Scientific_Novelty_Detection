@@ -1,0 +1,125 @@
+title
+Incorporating a Local Translation Mechanism into Non-autoregressive Translation
+abstract
+In this work , we introduce a novel local autoregressive translation ( LAT ) mechanism into non-autoregressive translation ( NAT ) models so as to capture local dependencies among target outputs .
+Specifically , for each target decoding position , instead of only one token , we predict a short sequence of tokens in an autoregressive way .
+We further design an efficient merging algorithm to align and merge the output pieces into one final output sequence .
+We integrate LAT into the conditional masked language model ( CMLM ; Ghazvininejad et al. , 2019 ) and similarly adopt iterative decoding .
+Empirical results on five translation tasks show that compared with CMLM , our method achieves comparable or better performance with fewer decoding iterations , bringing a 2.5x speedup .
+Further analysis indicates that our method reduces repeated translations and performs better at longer sentences .
+Introduction Traditional neural machine translation ( NMT ) models ( Sutskever et al. , 2014 ; Gehring et al. , 2017 ; Vaswani et al. , 2017 ) commonly make predictions in an incremental token - by - token way , which is called autoregressive translation ( AT ) .
+Although this strategy can capture the full translation history , it has relatively high decoding latency .
+To make the decoding more efficient , non-autoregressive translation ( NAT ) ( Gu et al. , 2018 ) is introduced to generate multiple tokens at once instead of one-by-one .
+However , with the conditional independence property ( Gu et al. , 2018 ) , NAT models do not directly consider the dependencies among output tokens , which may cause errors of repeated translation and * Zhisong and Xiang contributed equally for this paper Figure 1 : An example of the LAT mechanism .
+For each decoding position , a short sequence of tokens is generated in an autoregressive way .
+sop is the special startof-piece symbol .
+' pos * ' denotes the hidden state from the decoder at that position .
+incomplete translation .
+There have been various methods in previous work ( Stern et al. , 2019 ; Gu et al. , 2019 ; Ma et al. , 2018 ; Ma et al. , 2019 ; Tu et al. , 2020 ) to mitigate this problem , including iterative decoding ( Lee et al. , 2018 ; Ghazvininejad et al. , 2019 ) .
+In this work , we introduce a novel mechanism , i.e. , local autoregressive translation ( LAT ) , to take local target dependencies into consideration .
+For a decoding position , instead of generating one token , we predict a short sequence of tokens ( which we call a translation piece ) for the current and next few positions in an autoregressive way .
+A simple example is shown in Figure 1 .
+With this mechanism , there can be overlapping tokens between nearby translation pieces .
+We take advantage of these redundancies , and apply a simple algorithm to align and merge all these pieces to obtain the full translation output .
+Specifically , our algorithm builds the output by incrementally aligning and merging adjacent pieces , based on the hypothesis that each local piece is fluent and there are overlapping tokens between adjacent pieces as aligning points .
+Moreover , the final output se-quence is dynamically decided through the merging algorithm , which makes the decoding process more flexible .
+We integrate our mechanism into the conditional masked language model ( CMLM ) ( Ghazvininejad et al. , 2019 ) and similarly adopt iterative decoding , where tokens with low confidence scores are masked for prediction in more iterations .
+With evaluations on five translation tasks , i.e. , WMT '14 EN?DE , WMT '16 EN?RO and IWSLT '14 DE?EN , we show that our method could achieve similar or better performance compared with CMLM and AT models while gaining nearly 2.5 and 7 times speedups , respectively .
+Furthermore , our method is shown to effectively reduce repeated translations and perform better at longer sentences .
+CMLM with LAT
+Model
+We integrate our LAT mechanism into CMLM , which predicts the full target sequence based on the source and partial target sequence .
+We adopt a lightweight LSTM - based sequential decoder as the local translator upon the CMLM decoder outputs .
+For a target position i , the CMLM decoder produces a hidden vector pos i , based on which the local translator predicts a short sequence of tokens in an autoregressive way , i.e. , t 1 i , t 2 i , ... , t K i .
+Here K is the number of location translation steps , which is set to 3 in our experiments to avoid affecting the speed much .
+Decoding During inference , a special token , sop ( start of piece ) is fed into the local translator to generate a short sequence based on the pos i .
+After generating the local pieces for all target positions in parallel , we adopt a simple algorithm to merge them into a full output sequence .
+This merging algorithm is described in detail in Section 3 .
+We also perform iterative decoding following the same Mask - Predict strategy ( Ghazvininejad et al. , 2019 ; Devlin et al. , 2019 ) .
+In each iteration , we take the output sequence from the last iteration and mask a subset of tokens with low confidence scores by a special mask symbol .
+Then the masked sequence is fed together with the source sequence to the decoder for the next decoding iteration .
+Following Ghazvininejad et al. ( 2019 ) , a special token LENGTH is added to the encoder , which is utilized to predict the initial target sequence length .
+Nevertheless , our algorithm can dynamically adjust the final output sequence and we find that our method is not sensitive to the choice of target length as long as it falls in a reasonable range .
+Training
+The training procedure is similar to that of Ghazvininejad et al . ( 2019 ) .
+Given a pair of source and target sequences S and T , we first sample a masking size from a uniform distribution from [ 1 , N ] , where N is the target length .
+Then this size of tokens are randomly picked from the target sequence and replaced with the mask symbol .
+We refer to the set of masked tokens as T mask .
+Then for each target position , we adopt a teacher - forcing styled training scheme to collect the cross-entropy losses for predicting the corresponding groundtruth local sequences , the size of which is K = 3 .
+Assume that we are at position i , we simply setup the ground - truth local sequence t 1 i , t 2 i , ... , t K i as T i , T i+1 , ... , T i+K?1 , where T i denotes the i-th token in the full target ground - truth sequence .
+We include all tokens in our final loss , whether they are in T mask or not , but adopt different weights for the masked tokens that do not appear in the inputs .
+Therefore , our token prediction loss function is : L = ?
+N i=1 K j=1 1 t j i ?
+T mask log ( p( t j i ) ) ?
+N i=1 K j=1 1 t j i / ?
+T mask ? log ( p( t j i ) )
+Here , we adopt a weight ? for the tokens that are not masked in the target input , which is set as 0.1 so that the model could be trained more on the unseen tokens .
+Furthermore , we randomly delete certain positions ( the number of deletion is randomly sampled from [ 1 , 0.15 * N ] ) from the target inputs to encourage the model to learn insertion -styled operations .
+The final loss is the addition of the token prediction and the target length prediction loss .
+Merging Algorithm
+In decoding , the model generates local translation pieces for all decoding positions .
+We adopt a simple algorithm that incrementally builds the output through a piece-by- piece merging process .
+Our hypothesis is that if the local autoregressive translator is well - trained , then 1 ) the token sequence inside each piece is fluent and well - translated , 2 ) there are overlaps between nearby pieces , acting as aligning points for merging .
+We first illustrate the core operation of merging two consecutive pieces of tokens .
+Algorithm 1 describes the procedure and Figure 2 provides an example .
+Given two token pieces s1 and s2 , we first use the Longest Common Subsequence ( LCS ) algorithm to find matched tokens ( Line 1 ) .
+If there is nothing that can be matched , then we simply do concatenation ( Line 3 ) , otherwise we solve the conflicts of the alternative spans by comparing their confidence scores ( Line 9 - 14 ) .
+Finally we can arrive at the merged output after resolving all conflicted spans .
+In the above procedure , we need to specify the score of a span .
+Through preliminary experiments , we find a simple but effective scheme .
+From the translation model , each token gets a model score of its log probability .
+For the score of a span , we average the scores of all the tokens inside .
+If the span is empty , we utilize a pre-defined value , which is empirically set to log 0.25 .
+For aligned tokens , we choose the highest scores among them for later merging process ( Line 16 ) .
+With this core merging operation , we apply a left-to- right scan to merge all the pieces in a pieceby - piece fashion .
+For each merging operation , we only take the last K tokens of s1 and the first K tokens of s2 , while other tokens are directly copied .
+This ensures that the merging will only be local , to mitigate the risk of wrongly aligned tokens .
+Here , K is again the local translation step size .
+Our merging algorithm can be directly applied at the end of each iteration in the iterative decoding .
+However , since the output length of the merging algorithm is not always the same as the number of input pieces , we further adopt a length adjustment procedure for intermediate iterations .
+Briefly speaking , we adjust the output length to the predicted length by adding or deleting certain amounts of special mask symbols .
+Please refer to the Ap- Algorithm 1 : Merging two pieces .
+pendix for more details .
+Although our merging algorithm is actually autoregressive , it does not include any neural network computations and thus can run efficiently .
+In addition to efficiency , our method also makes the decoding more flexible , since the final output is dynamically created through the merging algorithm .
+Experiments
+Experimental Setup
+We evaluate our proposed method on five translation tasks , i.e. , WMT '14 EN?DE , WMT '16 EN ?RO and IWSLT '14 DE?EN .
+Following previous works ( Hinton et al. , 2015 ; Kim and Rush , 2016 ; Gu et al. , 2018 ; Zhou et al. , 2020 ) , we train a vanilla base transformer ( Vaswani et al. , 2017 ) on each dataset and use its translations as the training data .
+The BLEU score ( Papineni et al. , 2002 ) is used to evaluate the translation quality .
+Latency , the average decoding time ( ms ) per sentence with batch size 1 , is employed to measure the inference speed .
+All models ' decoding speed is measured on a single NVIDIA TITAN RTX GPU .
+We follow most of the hyperparameters for the CMLM ( Ghazvininejad et al. , 2019 ) LSTM - based neural network of size 512 .
+Finally , we average 5 best checkpoints according to the validation loss as our final model .
+Please refer to the Appendix for more details of the settings .
+Main results
+The main results are shown in Table 1 . Compared with CMLM at the same number of decoding iterations ( row 2 vs.
+3 and row 4 vs. 5 ) , LAT performs much better while keeping similar speed , especially when the iteration number is 1 .
+Note that since our method is not sensitive to predicted length , we only take one length candidate from our length predictor instead of 5 as in CMLM .
+Furthermore , LAT with 4 iterations could achieve similar or better results than CMLM with 10 iterations ( row 5 vs. 6 ) but have a nearly 2.5x decoding speedup .
+Analysis
+On local translation step .
+We also explore the effects of the number of local translation steps ( K ) on the IWSLT '14 DE - EN dataset .
+The results are shown in Table 3 .
+Generally , with more local translation steps , there can be certain improvements on BLEU but with an extra cost at inference time .
+On repeated translation .
+We compute the ngram repeat rate ( nrr , what percentage of n-grams are repeated by certain nearby n-grams ) of different systems on WMT '14 EN - DE test set and the result is shown in Table 2 .
+The nrr of CMLM with one iteration is much higher than other systems , showing that it suffers from a severe repeated translation problem .
+On the other hand , LAT can mitigate this problem thanks to the merging algorithm .
+On sentence length .
+We explore how various systems perform on sentences with various lengths .
+The WMT '14 EN - DE test set is split into 5 length buckets by target length .
+Figure 3 show that LAT performs better than CMLM on longer sentences , which indicates the effectiveness of our methods at capturing certain target dependencies .
+5 Related Work Gu et al. ( 2018 ) begin to explore nonautoregressive translation , the aim of which is to generate sequences in parallel .
+In order to mitigate multimodality issue , recent work mainly tries to narrow the gap between NAT and AT .
+Libovick ? and Helcl ( 2018 ) design a NAT model using CTC loss .
+Lee et al. ( 2018 ) uses iteration decoding to refine translation .
+The conditional masked language model ( CMLM ) ( Ghazvininejad et al. , 2019 )
+Conclusion
+In this work , we incorporate a novel local autoregressive translation mechanism ( LAT ) into nonautoregressive translation , predicting multiple short sequences of tokens in parallel .
+With a simple and efficient merging algorithm , we integrate LAT into the conditional masked language model ( CMLM Ghazvininejad et al. , 2019 ) and similarly adopt iterative decoding .
+We show that our method could achieve similar results to CMLM with less decoding iterations , which brings a 2.5x speedup .
+Moreover , analysis shows that LAT can reduce repeated translations and perform better at longer sentences .
+steps , and then decays with the inverse square- root schedule .
+We train our models for 300k steps with batch size 128 k ( Ghazvininejad et al. , 2019 ) for WMT datasets .
+For the IWSLT dataset , we train our models for 50 k steps with batch size 32k .

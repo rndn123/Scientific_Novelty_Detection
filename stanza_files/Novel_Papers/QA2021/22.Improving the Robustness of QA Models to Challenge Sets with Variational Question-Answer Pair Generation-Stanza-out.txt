@@ -1,0 +1,418 @@
+title
+Improving the Robustness of QA Models to Challenge Sets with Variational Question - Answer Pair Generation
+abstract
+Question answering ( QA ) models for reading comprehension have achieved human-level accuracy on in-distribution test sets .
+However , they have been demonstrated to lack robustness to challenge sets , whose distribution is different from that of training sets .
+Existing data augmentation methods mitigate this problem by simply augmenting training sets with synthetic examples sampled from the same distribution as the challenge sets .
+However , these methods assume that the distribution of a challenge set is known a priori , making them less applicable to unseen challenge sets .
+In this study , we focus on question - answer pair generation ( QAG ) to mitigate this problem .
+While most existing QAG methods aim to improve the quality of synthetic examples , we conjecture that diversity - promoting QAG can mitigate the sparsity of training sets and lead to better robustness .
+We present a variational QAG model that generates multiple diverse QA pairs from a paragraph .
+Our experiments show that our method can improve the accuracy of 12 challenge sets , as well as the in-distribution accuracy .
+1
+Introduction
+Machine reading comprehension has gained significant attention in the NLP community , whose goal is to devise systems that can answer questions about given documents ( Rajpurkar et al. , 2016 ; Joshi et al. , 2017 ) .
+Such systems usually use neural models , which require a substantial number of question - answer ( QA ) pairs for training .
+To reduce the considerable manual cost of dataset creation , there has been a resurgence of studies on automatic QA pair generation ( QAG ) , consisting of a pipeline of answer extraction ( AE ) and question generation ( QG ) , to augment question answering ( QA ) datasets ( Yang et al. , 2017a ; Du and Cardie , 2018 ; Subramanian et al. , 2018 ; . For the downstream QA task , most existing studies have evaluated QAG methods using a test set from the same distribution as a training set ( Yang et al. , 2017a ; Zhang and Bansal , 2019 ; Liu et al. , 2020 ) .
+However , when a QA model is evaluated only on an in- distribution test set , it is difficult to verify that the model is not exploiting unintended biases in a dataset ( Geirhos et al. , 2020 ) .
+Exploiting an unintended bias can degrade the robustness of a QA model , which is problematic in real-world applications .
+For example , recent studies have observed that a QA model does not generalize to other QA datasets ( Yogatama et al. , 2019 ; Talmor and Berant , 2019 ; Sen and Saffari , 2020 ) .
+Other studies have found a lack of robustness to challenge sets , such as paraphrased questions ( Gan and Ng , 2019 ) , questions with low lexical overlap ( Sugawara et al. , 2018 ) , and questions that include noise ( Ravichander et al. , 2021 ) .
+While existing studies have proposed data augmentation methods targeting a particular challenge set , they are only effective at the expense of the indistribution accuracy ( Gan and Ng , 2019 ; Ribeiro et al. , 2019 ; Ravichander et al. , 2021 ) .
+These methods assume that the target distribution is given a priori .
+However , identifying the type of samples that a QA model cannot handle in advance is difficult in real-world applications .
+We conjecture that increasing the diversity of a training set with data augmentation , rather than augmenting QA pairs similar to the original training set , can improve the robustness of QA models .
+Poor diversity in QA datasets has been shown to result in the poor robustness of QA models ( Lewis and Fan , 2019 ; Geva et al. , 2019 ; Ko et al. , 2020 ) , supporting our hypothesis .
+To this end , we propose a variational QAG model ( VQAG ) .
+We introduce two independent latent random variables into our model to learn the two one- to -many relationships in AE and QG by utilizing neural variational inference ( Kingma and Welling , 2013 ) .
+Incorporating the randomness of these two latent variables enables our model to generate diverse answers and questions separately .
+We also study the effect of controlling the Kullback - Leibler ( KL ) term in the variational lower bound for mitigating the posterior collapse issue ( Bowman et al. , 2016 ) , where the model ignores latent variables and generates outputs that are almost the same .
+We evaluate our approach on 12 challenge sets that are unseen during training to assess the improved robustness of the QA model .
+In summary , our contributions are three - fold : ?
+We propose a variational question - answer pair generation model with explicit KL control to generate significantly diverse answers and questions . ?
+We construct synthetic QA datasets using our model to boost the QA performance in an in-distribution test set , achieving comparable scores with existing QAG methods .
+?
+We discover that our method achieves meaningful improvements in unseen challenge sets , which are further boosted using a simple ensemble method .
+2 Related Work
+Answer Extraction AE aims to extract question - worthy phrases , which are worth being asked about , from each textual context without looking at the questions .
+AE has been performed mainly in two ways : rule-based and neural methods .
+Yang et al. ( 2017a ) extracted candidate phrases using rule- based methods such as named entity recognition ( NER ) .
+However , not all the named entities , noun phrases , verb phrases , adjectives , or clauses in the given documents are used as gold answer spans .
+As such , these rulebased methods are likely to extract many trivial phrases .
+Therefore , there have been studies on training neural models to identify question - worthy phrases .
+Du and Cardie ( 2018 ) framed AE as a sequence labeling task and used BiLSTM -CRF ( Huang et al. , 2015 ) . Subramanian et al. ( 2018 ) treated the positions of answers as a sequence and used a pointer network ( Vinyals et al. , 2015 ) . used a pointer network and Match-LSTM Jiang , 2016 , 2017 ) . made use of pretrained BERT .
+However , these neural AE models are trained with maximum likelihood estimation ; that is , each model is optimized to produce an answer set closest to the gold answers .
+In contrast , our model incorporates a latent random variable and is trained by maximizing the lower bound of the likelihood to extract diverse answers .
+In this study , we assume that there should be question - worthy phrases that are not used as the gold answers in a manually created dataset .
+We aim to extract such phrases .
+Question Generation Traditionally , QG was studied using rule- based methods ( Mostow and Chen , 2009 ; Heilman and Smith , 2010 ; Lindberg et al. , 2013 ; Labutov et al. , 2015 ) . After Du et al. ( 2017 ) proposed a neural sequence - to-sequence model for QG , neural models that take context and answer as inputs have started to be used to improve question quality with attention ( Bahdanau et al. , 2014 ) and copying ( Gulcehre et al. , 2016 ; Gu et al. , 2016 ) mechanisms .
+Most works focused on generating relevant questions from context - answer pairs ( Zhou et al. , 2018 ; Kim et al. , 2019 ; Qiu and Xiong , 2019 ) .
+These works showed the importance of answers as input features for QG .
+Other works studied predicting question types Kang et al. , 2019 ) , modeling a structured answer-relevant relation ( Li et al. , 2019 ) , and refining generated questions ( Nema et al. , 2019 ) .
+To further improve question quality , policy gradient techniques have been used Yang et al. , 2017a ; Yao et al. , 2018 ; . Dong et al. ( 2019 ) used a pretrained language model .
+The diversity of questions has been tackled using variational attention ( Bahuleyan et al. , 2018 ) , a conditional variational autoencoder ( CVAE ) ( Yao et al. , 2018 ) , and top p nucleus sampling ( Sultan et al. , 2020 ) .
+Our study is different from these studies wherein we study QAG by introducing variational methods into both AE and QG . is the closest to our study in terms of the modeling choice .
+While Lee et al. ( 2020 ) introduced an information - maximizing term to improve the consistency of QA pairs , our study uniquely controls the diversity by explicitly controlling KL values .
+Despite the potential of data augmentation with QAG to mitigate the sparsity of QA datasets and avoid overfitting , not much is known about the robustness of QA models reinforced with QAG to more challenging test sets .
+We comprehensively evaluate QAG methods on challenging QA test sets , such as hard questions ( Sugawara et al. , 2018 ) , implications ( Ribeiro et al. , 2019 , and paraphrased questions ( Gan and Ng , 2019 ) .
+Variational Autoencoder
+The variational autoencoder ( VAE ) ( Kingma and Welling , 2013 ) is a deep generative model consisting of a neural encoder ( inference model ) and decoder ( generative model ) .
+The encoder learns to map from an observed variable to a latent random variable and the decoder works vice versa .
+The techniques of VAE have been widely applied to NLP tasks such as text generation ( Bowman et al. , 2016 ) , machine translation , and sequence labeling .
+The CVAE is an extension of the VAE , in which the distribution of a latent variable is explicitly conditioned on certain variables and enables generation processes to be more diverse than a VAE Zhao et al. , 2017 b ; Shen et al. , 2017 ) .
+The CVAE is trained by maximizing the variational lower bound of the log likelihood .
+VQAG : Variational Question -Answer Pair Generation Model
+Problem Definition
+Our problem is to generate QA pairs from textual contexts .
+We focus on extractive QA in which an answer is a text span in context .
+We use c , q , and a to represent the context , question , and answer , respectively .
+We assume that every QA pair is sampled independently given a context .
+Thus , the problem is defined as maximizing the conditional log likelihood log p( q , a |c ) averaged over all samples in a dataset .
+Variational Lower Bound with Explicit KL Control Generating questions and answers from different latent spaces makes sense because multiple questions can be created from a context -answer pair and multiple answer spans can be extracted from a context .
+Thus , we introduce two independent latent random variables to assign the roles of diversifying AE and QG to z and y , respectively .
+VAEs often suffer from posterior collapse , where the model learns to ignore latent variables and generates outputs that are almost the same ( Bowman et al. , 2016 ) .
+Many approaches have been proposed to mitigate this issue , such as weakening the generators ( Bowman et al. , 2016 ; Yang et al. , 2017 b ; Semeniuta et al. , 2017 ) , or modifying the objective functions ( Tolstikhin et al. , 2018 ; Zhao et al. , 2017a ; Higgins et al. , 2017 ) .
+To mitigate this problem , we use a variant of the modified ?- VAE ( Higgins et al. , 2017 ) proposed by Burgess et al . ( 2018 ) , which uses two hyperparameters to control the KL terms .
+Our modified objective function is : L = E q ? ( z , y |q , a , c ) [ log p ? ( q|y , a , c ) + log p ? ( a | z , c ) ] ? | D KL ( q ? ( z|a , c ) | |p ? ( z| c ) ) ? C a | ? | D KL ( q ? ( y|q , c ) | | p ? ( y | c ) ) ? C q | , ( 1 ) where D KL is the KL divergence , ? ( ? ) is the parameters of the generative ( inference ) model , and C a , C q ?
+0 . See Appendix
+A for the derivation of the objective .
+Tuning C a and C q was enough to regularize the KL terms in our case ( see Appendix B ) .
+C a and C q can explicitly control the KL values because the KL terms are forced to get closer to these values during training .
+We mathematically show that the KL control can be interpreted to control the conditional mutual information I ( z ; a ) and I(y ; q ) .
+This is the major difference between our model and , where I ( q ; a ) is maximized to improve consistency of QA pairs .
+See Appendix C for the mathematical interpretation .
+Model Architecture
+An overview of VQAG is given in Figure 1 .
+We denote c i , q i , and a i as the i-th word in context , question , and answer , respectively .
+See Appendix D for the details of the implementation .
+Embedding and Contextual Embedding Layer First , in the embedding layer , the i-th word , w i , of a sequence of length L is simultaneously converted into word - and character - level embedding vectors by using a CNN based on Kim ( 2014 ) .
+Then , we concatenate the embedding vectors .
+After that , we pass the embedding vectors to the contextual embedding layer consisting of bidirectional LSTMs ( BiLSTM ) .
+We obtain H ? R L?2d , which is the Prior and Posterior Distributions Following Zhao et al . ( 2017 b ) , we hypothesized that the prior and and posterior distributions of the latent variables follow multivariate Gaussian distributions with diagonal covariance .
+The mean ? and log variance log ?
+2 of these prior and posterior distributions of z and y are computed with linear transformation from h C , h A , and h Q . Next , latent variable z and y are obtained using the reparameterization trick ( Kingma and Welling , 2013 ) .
+Then , z and y are passed to the AE and QG models , respectively .
+z and y are sampled from the posteriors during training and the priors during testing .
+Answer Extraction Model
+We regard AE as two-step autoregressive decoding , i.e. , p( a| c ) = p( c start | c ) p ( c end | c start , c ) , that predicts the start and end positions of an answer span in this order .
+For AE , we modify a pointer network ( Vinyals et al. , 2015 ) to take as input the initial hidden state computed from linear transformation from z , which in the end diversifies AE by learning the mappings from z to a .
+We use an LSTM as a decoder and compute attention scores over H C .
+Answer - aware Context Encoder
+To compute answer - aware context information for QG , we use another BiLSTM .
+We concatenate H C and one hot vectors of start and end positions of answer , which are fed to the BiLSTM .
+We obtain H CA ?
+R L?2d , which is the concatenated outputs from the LSTMs in each direction .
+H CA is used as the source for attention and copying in QG .
+Question Generation Model For QG , we modify an LSTM decoder with attention and copying mechanisms to take as input the initial hidden state computed from linear transformation from y , which in the end diversifies QG .
+At each time step , the probability distribution of generating words from vocabulary P v ( q i ) is computed using attention ( Bahdanau et al. , 2014 ) , and the probability distributions of copying words ( Gulcehre et al. , 2016 ; Gu et al. , 2016 ) from context P c ( c j ) are computed using attention .
+In parallel , the switching probability p s is linearly estimated from the hidden state vector .
+Lastly , we compute the probability of q i as : p( q i ) = p s P v ( q i ) + ( 1 ? p s ) j:c j =q i P c ( c j ) .
+( 2 ) 4 Experiments and Results
+Dataset
+We used SQuAD v1.1 ( Rajpurkar et al. , 2016 ) , a large scale QA dataset consisting of documents collected from Wikipedia and 100k QA pairs created by crowdworkers , as a source dataset for QAG .
+Answers to questions in SQuAD can be extracted from textual contexts .
+Since the SQuAD test set has not been released , we use the split of the dataset , SQuAD - Du ( Du et al. , 2017 )
+Answer Extraction First , we conducted the AE experiment where inputs were the contexts and outputs were a set of multiple answer spans .
+The objective of this experiment is to measure the diversity and the extent to which our extracted answers cover the ground truths .
+We also study the effect of C a in Eq. 1 . Table 2 : Results of answer- aware QG on the test set .
+One question per input is evaluated in the upper part , while 50 questions per input are evaluated in the lower part to assess their diversity .
+Metrics
+To measure the accuracy of multi-span extraction , we computed Proportional Overlap ( Prop . ) and Exact Match ( Exact ) metrics ( Breck et al. , 2007 ; Johansson and Moschitti , 2010 ; Du and Cardie , 2018 ) for each pair of extracted and ground truth answer spans , and then we report their precision and recall .
+2 Prop. is proportional to the amount of overlap between two phrases .
+Our models extracted 50 answers from each context .
+To measure the diversity , we defined a Dist score , which is the the total number of distinct contextanswer pairs .
+Baselines
+We used three baselines : named entity recognition ( NER ) , Harvesting QG ( Har QG ) Cardie , 2018 ) , and InfoHCVAE ( Lee et al. , 2020 ) .
+For NER , we used spaCy ( Honnibal et al. , 2020 ) .
+For HarQG , we directly copied the scores from Du and Cardie ( 2018 ) .
+For InfoHCVAE , we trained the model on the training set , and extracted 50 answers randomly from each context for a fair comparison .
+Result Table 1 shows the result .
+While we tested various values of C a ranging from 0 to 100 , we only report the selected values here for brevity .
+When using C a larger than 20 , the scores did not get improved .
+Our model with C a = 5 performed the best in terms of the recall scores , while surpassing the diversity of NER .
+The highest Dist scores did not occur together with the highest recall scores .
+When C a is 0 , the Dist score is fairly low .
+This implies the posterior collapse issue , though the precision scores are the best .
+We assert that low precision scores do not necessarily mean poor performance in our experiment because even the original test set does not cover all the valid answer spans .
+Answer-aware Question Generation
+We also conducted answer - aware QG experiments where the contexts and ground truth answer spans were the inputs to assess diversity and relevance to the gold questions .
+Metrics
+To evaluate the diversity of the generated questions , our models generated 50 questions from each context -answer pair .
+We reported the recall scores ( denoted as " - R " ) of BLEU - 1 ( B1 ) , METEOR ( ME ) , and ROUGE -L ( RL ) per reference question .
+We do not report precision scores here because our motivation is to improve diversity .
+To measure diversity , we reported Dist - 1 ( D1 ) , Entropy - 4 ( E4 ) ( Serban et al. , 2017 ; , and Self - BLEU - 4 ( SB4 ) ( Zhu et al. , 2018 ) .
+3 Baselines
+We compared our models with SemQG ( Zhang and Bansal , 2019 ) . 4
+We used diverse beam search ( Li et al. , 2016 b ) , sampled the top 50 questions per answer from SemQG , and used them to calculate the metrics as the baseline for a fair comparison Result
+The results in Table 2 show that our model can improve diversity while degrading the recall scores compared to SemQG .
+Using C q larger than 20 did not lead to improved diversity .
+More detailed analysis of C a and C q is provided in Appendix F.
+Synthetic Dataset Construction
+We created three synthetic QA datasets , denoted as D 5,5 , D 20,20 , and D 5,20 , using VQAG beyonc ?
+'s vocal range spans ? ? ? ? ? ? four octaves . ? ? ? jody rosen highlights her tone and timbre as particularly distinctive , describing her voice as " one of the most compelling instruments in popular music " . while another critic says she is a " vocal acrobat , being able to sing long and complex melismas and vocal runs effortlessly , and in key .
+? ? ? her vocal abilities mean she is identified as the centerpiece of destiny 's child .
+? ? ? the daily mail calls beyonc ?
+'s voice " ? ? ? versatile " , capable of exploring power ballads , soul , rock belting , operatic flourishes , and ? ? ? hip hop . jon pareles of the new york times commented that her voice is " velvety yet ? ? ? tart , with an insistent flutter and reserves of soul belting " .
+Q : how can one find her vocal abilities in key music ?
+A : she is identified as the centerpiece of destiny 's child Q : how many octaves spans beyonc ?
+'s vocal range ?
+A : spans four Q : how many octaves 's vocal range spans the beyonc ?
+hop vocal range ?
+A : four Q : who commented that her voice is tart yet tart ?
+A : jon pareles Table 3 : Heatmap of extracted answer spans and generated samples using our model .
+The darker the color is , the more often the word is extracted .
+The phrases surrounded by black boxes are the ground truth answers in SQuAD .
+with the different configurations , ( C a , C q ) = ( 5 , 5 ) , ( 20 , 20 ) , ( 5 , 20 ) respectively .
+These configurations are chosen based on the recall - based metrics and diversity scores in the AE and QG results .
+VQAG generated 50 QA pairs from each paragraph in SQuAD Du train to construct each D .
+It is generally known that VAEs generate diverse but low-quality data unlike GANs .
+We used heuristics to filter out low-quality generated QA pairs , dropping questions that are longer than 20 words or shorter than 5 words and answers that are longer than 10 words , keeping questions that have at least one interrogative word , and removing n-gram repetition in questions .
+While some existing works used the BERT QA model or an entailment model as a data filter Zhang and Bansal , 2019 ; Liu et al. , 2020 ) , our heuristics are enough to obtain improvement in the downstream QA task as shown in ?4.6 .
+Some samples in our datasets are given in Table 3 , showing that the diverse QA pairs are generated .
+See Appendix G to see how VQAG maps latent variables to QA pairs .
+Human Evaluation
+We assess the quality of the synthetic QA pairs by conducting human evaluation on Amazon Mechanical Turk .
+For human evaluation , we randomly chose 200 samples from synthetic QA pairs generated by Zhang and Bansal ( 2019 ) and our model with ( C a , C q ) = ( 5 , 5 ) , ( 20 , 20 ) from the paragraphs in SQuAD Du test .
+We also chose 100 samples from SQuAD Du test .
+In addition to the three items proposed by Liu et al . ( 2020 ) , we asked annotators if an given answer is important , i.e. , it is worth being asked about .
+We showed the workers a triple ( passage , question , answer ) and asked them to answer the four questions shown in Table 4 . See Appendix H for the details .
+We report the responses obtained using the majority vote .
+According to the results in ingful , and 30 % of our answers are incorrect for the generated questions .
+This result indicates that our synthetic datasets contain a considerable number of noisy QA pairs in these two aspects .
+However , 90 % of the generated questions are relevant to the passages , and 90 % of the answers extracted by our models are question -worthy .
+As we will verify in ?4.6 , our noisy but diverse synthetic datasets are effective in enhancing the QA performance in the in - and out - of- distribution test sets .
+Question Answering
+We evaluated QAG methods on the downstream QA task .
+We evaluated our method on 12 challenge sets in addition to the in-distribution test set .
+Baselines
+We compared our method with the following baselines .
+? SQuAD ? SemQG ( Zhang and Bansal , 2019 ) uses reinforcement learning to generate more SQuAD - like questions .
+We reran the trained model , and generated questions from the same context -answer pairs as HarQG .
+? InfoHCVAE ( Lee et al. , 2020 ) uses a variational QAG model with an informationmaximizing term .
+We trained this model 6 on SQuAD Du train , and then generated 50 QA pairs from each context in SQuAD Du train for a fair comparison with VQAG .
+Training Details
+We trained pretrained BERT - base models on each synthetic dataset , and then fine-tuned it on SQuAD Du train .
+We adopted this procedure following existing data augmentation approach for QA ( Dhingra et al. , 2018 ; Zhang and Bansal , 2019 ) .
+In our study , the order in which our synthetic datasets D were given to a QA model was tuned on the dev set .
+We used the Hugging Face 's implementation of BERT ( Wolf et al. , 2020 ) .
+We used Adam ( Kingma and Ba , 2014 ) with epsilon as 1e - 8 for the optimizer .
+The batch size was 32 .
+In both the pretraining and fine-tuning procedure , the learning rate decreased linearly from 3e - 5 to zero .
+We conducted the training for one epoch using a synthetic dataset and two epochs using the original training set .
+In addition to the performance of Single models , we reported the performance of Ensemble models , where the output probabilities of three different QA models are simply averaged .
+In practice , the top 20 candidate answer spans predicted by each QA model were used for the final prediction .
+Challenge Sets
+We assessed the robustness of the QA models to the following 12 challenge sets , as well as SQuAD Du test . ? NewsQA ( News ) : 5,166 QA pairs created from CNN articles by crowdworkers , transformed into the SQuAD format following Sen and Saffari ( 2020 ) .
+? Natural Questions ( NQ ) ( Kwiatkowski et al. , 2019 ) : 2,356 questions from real users for Wikipedia articles .
+We reframed NQ as extractive QA by using long answers in NQ as contexts following Sen and Saffari ( 2020 ) .
+7 ? Non-Adversarial Paraphrased Test Set ( Para ) ( Gan and Ng , 2019 ) : 1,062 questions paraphrased with slight perturbations from SQuAD using a trained paraphrased model .
+? Adversarial Paraphrased Test Set ( APara ) ( Gan and Ng , 2019 ) : 56 questions manually paraphrased using context words near a confusing answer from SQuAD .
+? Hard Subset ( Hard ) ( Sugawara et al. , 2018 ) :
+A subset of the SQuAD dev set , which consists of 1,661 questions that require less word matching and more knowledge inference and multiple sentence reasoning .
+? Implications ( Imp ) ( Ribeiro et al. , 2019 ) : 13,371 QA pairs automatically derived from the SQuAD dev set with a linguistic rulebased method .
+8 ? AddSent ( Add ) & AddOneSent ( AddO ) ( Jia and Liang , 2017 ) :
+Adversarial SQuAD dataset created using handcrafted rules designed for fooling a QA model .
+The sizes of Add and AddO are 3,560 and 1,787 , respectively .
+?
+Quoref ( Quo ) ( Dasigi et al. , 2019 ) : 2,418 questions requiring coreference resolution created by humans .
+We used the dev set .
+? Natural Machine Translation Noise ( MT ) ( Ravichander et al. , 2021 ) :
+A subset of NoiseQA , consisting of 1,190 English translated questions produced by Google 's commercial translation system from the XQuAD dataset ( Artetxe et al. , 2020 ) .
+This creation introduces naturally occurring noise caused by machine translation .
+Results
+The overall results are given in Table 5 . First , we discovered that the QA model without data augmentation degraded the performance on the 12 challenge sets , showing a lack of the robustness to the natural and adversarial distribution shifts in contexts , questions , and answers .
+9 With data augmentation using QAG , the indistribution scores were generally improved , except for HarQG .
+In the Single model setting on the challenge sets , SemQG achieved the best performance on Quo and Add .
+InfoHCVAE achieved the best performance on News , NQ , Hard , AddO , MT , ASR , and KB .
+VQAG achieved the best performance on Para , APara , and Imp .
+These results imply that different QAG methods have different benefits .
+In the Ensemble setting , taking the best of the three , the scores on SQuAD Du test , News , MT , and ASR were further improved with { + Sem , + Info , +V} .
+We also attached scores that are obtained if challenge set is known in Table 5 ; that is , natural or synthetic samples from the same distributions as the challenge sets are available during training .
+For News , NQ , and Quo , we trained the BERT - base model on the corresponding training sets , which are annotated by humans .
+For paraphrased ques-tions ( Para , APara ) and NoiseQA ( MT , ASR , and KB ) , the scores were taken from Gan and Ng ( 2019 ) and Ravichander et al . ( 2021 ) , respectively .
+These scores can be considered as the upper bounds .
+In NoiseQA , the QAG methods consistently improved the scores , even though they were not designed for the noise .
+This may be because the lack of quality in synthetic datasets , as shown in Table 4 , unintentionally improved the robustness to the noise .
+However , the most significant performance gap ( > 30 F1 ) between the upper bound and the no data augmentation baseline was observed in Quo .
+This result indicates that a QA model does not acquire coreference resolution from SQuAD , even though approximately 18 % of SQuAD questions require coreference resolution ( Sugawara et al. , 2018 ) .
+The QAG methods mitigated this gap to some extent , but there is a significant room for improvement .
+The improvement in NQ is generally more prominent than that in News .
+This may be because both SQuAD and NQ contain paragraphs in Wikipedia .
+Utilizing unlabeled documents in domains such as news articles may improve the generalization to other domains , such as News .
+In our experiment , our model and InfoHCVAE improved the scores despite generating QA pairs from only the paragraphs in SQuAD Du train , unlike SemQG and HarQG , which generated QA pairs from paragraphs out of SQuAD in Wikipedia .
+Using paragraphs in and out of SQuAD Du train as the source for QAG may be more effective .
+In paraphrased questions ( Gan and Ng , 2019 ) , implications ( Ribeiro et al. , 2019 ) ( Ravichander et al. , 2021 ) , augment questions that are similar to the corresponding challenge sets , that is , generating paraphrases , implications , and questions including the noise , successfully improved the robustness to these perturbations .
+While these methods slightly degraded or maintained the indistribution score , we showed that QAG methods are less likely to exhibit a trade - off between the inand out - of- distribution accuracies .
+Notably , VQAG did not degrade the scores on all the 12 challenge sets while improving the in-distribution score .
+In contrast , SemQG degraded the scores on Hard and MT , and InfoHCVAE degraded the score on Para .
+This property of VQAG may be because it can significantly improve the diversity by combining different configurations of the KL control .
+Moreover , the size of synthetic dataset created by VQAG was the smallest among the QAG methods .
+If the diversity is assured sufficiently , significantly increasing the quantity may not be necessary .
+In Add and AddO , we showed that the QAG methods consistently improved adversarial robustness , which has not been studied in the QAG literature .
+Analysis
+To assess the usefulness of each dataset D in VQAG , we conducted an ablation study .
+As shown in Table 6 , each dataset D has meaningful effect on the performance .
+This result implies that creating more synthetic datasets using different configurations may further improve the performance .
+To understand the differences in each dataset in terms of diversity , we conducted a simple analysis on the question type .
+As shown in Table 7 , VQAG with different configurations corresponds to different distributions of question types , while more than 50 % of the questions in the other datasets contain " what " .
+Among the QAG methods , this point is unique to VQAG .
+Discussion and Conclusion
+We presented a variational QAG model , incorporating two independent latent random variables .
+We showed that an explicit KL control can enable our Dataset what how who which when where why SQuAD model to significantly improve the diversity of QA pairs .
+Our synthetic datasets were shown to be noisy in terms of the grammaticality and answerability of questions , but effective in improving the QA performance in the in-distribution test set and the 12 challenge sets .
+While out synthetic datasets are noisy , they may unintentionally improve the robustness to the noise that can occur in real applications .
+However , we should pay attention to the negative effect of using our noisy dataset .
+For example , the lack of the answerability of our synthetic questions may lead to the poor performance in handling unanswerable questions , such as SQuAD v2.0 .
+Moreover , QAG methods led to improvements in most of the 12 challenge sets while being agnostic to the target distributions during training .
+We need to pursue such a target -unaware method to improve the robustness of QA models , because it is quite difficult for developers to know the types of questions a QA model cannot handle in advance .
+In summary , our experimental results showed that the diversity of QA datasets plays a nonnegligible role in improving its robustness , which can be boosted with QAG .
+We will consider using unlabeled documents in other domains to further improve the robustness to other domain corpora in our future study .
+log p ? ( q , a| c ) = E z,y?q ? ( z , y |q , a , c ) [ log p ? ( q , a | c ) ] = E z,y log p ? ( q , a |z , y , c ) p ? ( z , y|c ) p ? ( z , y|q , a , c ) = E z,y log p ? ( q , a |z , y , c ) p ? ( z , y|c ) p ? ( z , y|q , a , c ) + log q ? ( z , y|q , a , c ) q ? ( z , y|q , a , c ) = E z,y log p ? ( q|y , a , c ) p ? ( y|c ) p ? ( y|q , c ) + log p ? ( a|z , c ) p ? ( z|c ) p ? ( z|a , c ) + log q ? ( y|q , c ) q ? ( y|q , c ) + log q ? ( z|a , c ) ? ( z|a , c ) = E z,y [ log p ? ( q|y , a , c ) + log p ? ( a|z , c ) + log p ? ( y |c ) q ? ( y|q , c ) + log q ? ( y|q , c ) p ? ( y|q , c ) + log p ? ( z| c ) q ? ( z|a , c ) + log q ? ( z|a , c ) p ? ( z|a , c ) = E z,y [ log p ? ( q|y , a , c ) + log p ? ( a |z , c ) ] ?D KL ( q ? ( y|q , c ) | |p ? ( y | c ) ) + D KL ( q ? ( y|q , c ) | | p ? ( y|q , c ) ) ?D KL ( q ? ( z|a , c ) | |p ? ( z| c ) ) + D KL ( q ? ( z|a , c ) | |p ? ( z|a , c ) ) ?
+E z,y [ log p ? ( q|y , a , c ) + log p ? ( a |z , c ) ] ?D KL ( q ? ( y|q , c ) | |p ? ( y | c ) ) ?D KL ( q ? ( z|a , c ) | |p ? ( z| c ) ) .
+B Distribution Modeling Capacity
+We originally developed QA modeling task to evaluate and compare QA pair generation models .
+We compared models based on the probability they assigned to the ground truth QA pairs .
+We used the negative log likelihood ( NLL ) of QA pairs as the metric , namely , ? log p( q , a | c ) .
+Since variational models can not directly compute NLL , we estimate NLL with importance sampling .
+We also estimate each term in decomposed NLL , i.e. , NLL a = ? log p( a|c ) and NLL q = ? log p( q|a , c ) .
+The better a model performs in this task , the better it fits the test set .
+As a baseline , to assess the effect of incorporating latent random variables , we implemented a pipeline model similar to Subramanian et al . ( 2018 ) using a deterministic pointer network .
+Result Table 8 shows the result of QA pair modeling .
+First , our models with C = 0 are superior to the pipeline model , which means that introducing latent random variables aid QA pair modeling capacity .
+However , the KL terms converge to zero with C = 0 .
+When we set C > 0 , KL values are greater than 0 , which implies that latent variables have non-trivial information about questions and answers .
+Also , we observe that the target value of KL C can control the KL values , showing the potential to avoid the posterior collapse issue .
+= 100 199.43 81.01 112.37 92.342 91.635
+Table 8 : QA pair modeling capacity measured on the test set .
+We used the same value C for the target values of KL C a and C q for simplicity .
+NLL : negative log likelihood of QA pairs .
+NLL a ( NLL q ) : NLL of answers ( questions ) .
+D KLz and D KLy are Kullback - Leibler divergence in Ineq 1 .
+NLL for our models are estimated with importance sampling using 300 samples .
+C Information Theoretic Interpretation of the KL control
+When training our models , we miximized the variational lower bound in Ineq .
+1 is averaged over the training samples .
+In other words , the expectation with respect to the data distribution is maximized .
+In the ideal case , the approximated posterior q ? ( z|a , c ) is equal to the true posterior p ? ( z|a , c ) .
+Then , the expectation of the KL terms with respect to the data distribution is equivalent to the conditional mutual information I ( a , y|c ) .
+Mathematically , when the approximated posterior q ? is equal to the true posterior p ? , the expectation of the KL terms in Eq. 1 with respect to the data distribution is :
+Thus , controlling the KL terms is equivalent to control the conditional mutual information .
+The same is true for question q. E p( q , a , c ) [ D KL ( p( z|a , c ) | | p ( z | c ) ) ]
+D Model Architechture Prior and Posterior Distribution Following Zhao et al. ( 2017 b ) , we hypothesized that the prior and posterior distributions of the latent variables follow multivariate Gaussian distributions with diagonal covariance .
+The distributions are described as follows : z|a , c ? N ( ? post Z , diag ( ?
+2 post Z ) ) ( 3 ) z|c ? N (? prior Z , diag ( ?
+2 prior Z ) ) ( 4 ) y|q , c ? N ( ? post Y , diag ( ?
+2 post Y ) ) ( 5 ) y|c ? N (? prior Y , diag ( ?
+2 prior Y ) . ( 6 )
+The prior and posterior distributions of the latent variables , z and y , are computed as follows : ? post Z log ( ?
+2 post Z ) = W post Z h C h A + b post Z ( 7 ) ? prior Z log ( ?
+2 prior Z ) = W prior Z h C + b prior Z ( 8 ) ? post Y log ( ?
+2 post Y ) = W post Y h C h Q + b post Y ( 9 ) ? prior Y log ( ?
+2 prior Y ) = W prior Y h C + b prior Y . ( 10 )
+Then , latent variable z ( and y ) is obtained using the reparameterization trick ( Kingma and Welling , 2013 ) : z = ? + ? , where represents the Hadamard product , and ? N ( 0 , I ) .
+Then , z and y is passed to the AE and QG models , respectively .
+Answer Extraction Model which predicts the start and end positions of an answer span in this order .
+For AE , we modify a pointer network ( Vinyals et al. , 2015 ) to take into account the initial hidden state h AE 0 = W 1 z + b 1 , which in the end diversify AE by learning the mappings from z to a .
+The decoding process is as follows : h IN i = e( ? ) if i = 1 H C t i?1 if i = 2 ( 12 ) h AE i = LSTM ( h AE i?1 , h IN i ) ( 13 ) u AE ij = ( v AE ) T tanh ( W 2 H C j + W 3 h AE i + b 2 ) ( 14 ) p( c t i |c t i?1 , c ) = softmax ( u i ) ( 15 ) where 1 ? i ?
+2 , 1 ? j ?
+L C , h AE i is the hidden state vector of the LSTM , h IN i is the i-th input , t i denotes the start ( i=1 ) or end ( i=2 ) positions in c , and v , W n and b n are learnable parameters .
+We learn the embedding of the special token " ? " as the initial input h IN 1 .
+When we used the embedding vector e t i as h IN i+ 1 , instead of H C t i , following Subramanian et al . ( 2018 ) , we observed that the extracted spans tended to be long and unreasonable .
+We assume that this is because the decoder cannot get the positional information from the input in each step .
+Question Generation Model For QG , we modify an LSTM decoder with attention and copying mechanisms to take the initial hidden state h QG 0 = W 4 y + b 3 as input to diversify QG .
+In detail , at each time step , the probability distribution of generating words from vocabulary using attention ( Bahdanau et al. , 2014 ) is computed as : h QG i = LSTM ( h QG i?1 , q t?1 ) ( 16 ) u att ij = ( v att ) T tanh ( W 5 h QG i + W 6 H CA j + b 4 ) ( 17 ) a att i = softmax ( u att i ) ( 18 ) ?i = j a att ij H CA j ( 19 ) hi = tanh ( W 7 ( [ ?i ; h QG i ] + b 5 ) ) ( 20 ) P vocab = softmax ( W 8 ( hi ) + b 6 ) , ( 21 ) and the probability distributions of copying ( Gulcehre et al. , 2016 ; Gu et al. , 2016 ) from context are computed as : u copy ij = ( v copy ) T tanh ( W 9 h QG i + W 10 H CA j + b 7 ) ( 22 ) a copy i = softmax ( u copy i ) ( 23 )
+Accordingly , the probability of outputting q i is : p g = ?( W 11 h QG i ) ( 24 ) p( q i |q 1:i?1 , a , c ) ( 25 ) = p g P vocab ( q i ) + ( 1 ? p g ) j:c j =q i a copy ij ( 26 ) where ? is the sigmoid function .
+213
+E Training Details
+We use pretrained GloVe ( Pennington et al. , 2014 ) vectors with 300 dimensions and freeze them during training .
+The pretrained word embeddings were shared by the input layer of the context encoder , the input and output layers of the question decoder .
+The vocabulary has most frequent 45 k words in our training set .
+The dimension of character - level embedding vectors is 32 .
+The number of windows is 100 .
+The dimension of hidden vectors is 300 .
+The dimension of latent variables is 200 .
+Any LSTMs used in this paper has one layer .
+We used Adam ( Kingma and Ba , 2014 ) for optimization with initial learning rate 0.001 .
+All the parameters were initialized with Xavier Initialization ( Glorot and Bengio , 2010 ) .
+Models were trained for 16 epochs with a batch size of 32 .
+We used a dropout ( Srivastava et al. , 2014 ) rate of 0.2 for all the LSTM layers and attention modules .
+F Answer Extraction and Question Generation Tables 9 and 10 show the detailed results of AE and QG .
+Various values of C a and C q are explored .
+G Latent Interpolation
+Table 11 shows the latent interpolation between two ground - truth QA pairs using VQAG with ( C a , C q ) = ( 5 , 20 ) .
+This result shows that z controls answer and y controls question .
+H Human Evaluation
+We conducted human evaluation to assess the quality of QA pairs by asking the following questions .
+1 . Is the question well - formed in itself ?
+The workers are asked to select yes if a given question is both grammatical and meaningful .
+The workers select understandable if a question is not grammatical but meaningful .
+2 . Is the question relevant to the passage ?
+This is to check whether a question is relevant to the content of a passage .
+3 . Is the answer a correct answer to the question ?
+If a given answer partially overlaps with the true answer in a passage , the workers select partially .
+4 . Is the meaning of the answer in itself related to the main topic of the passage ?
+This is to check the importance of an answer .
+We designed this question to assess the questionworthiness of an answer .
+Each triple is evaluated by three crowdworkers .
+( Zhang and Bansal , 2019 ) with diverse beam search ( Li et al. , 2016 b ) with a beam size 50 .
+Bn : BLEU -n , ME : METEOR , RL : ROUGE -L , Token : the total number of the generated words , Dn : Dist-n , E4 : Ent -4 ( entropy of 4 - grams ) , SB4 : Self - BLEU -4 . " - R " represents recall .
+( e.g. B1 - R is the recall of B1 . )
+One question per answer-context pair is evaluated in the upper part , while 50 questions per answer -context pair are evaluated in the lower part to assess their diversity .
+Table 11 : Latent interpolation with VQAG with ( C a , C q ) = ( 5 , 20 ) .
+The samples in the upper left and lower right are the ground truth QA pairs from the same paragraph of SQuAD .
+The linearly interpolated samples show how our generative model learns mapping from latent space to QA pairs .
+Figure 1 : 1 Figure 1 : Overview of the model architecture .
+The latent variables z and y are sampled from the posteriors when computing the variational lower bound and from the priors during generation .
+See ?3.3 for the details .
+p ( a , c , z ) log p ( a , z |c ) p( z| c ) p ( a | c ) = I ( a , z | c ) .
+We regard answer extraction as two -step sequential decoding , i.e. , p( a| c ) = p( c end |c start , c ) p( c start | c ) ,
+, where the original training set is split into the training set ( SQuAD Du train ) and the test set ( SQuAD Du test ) , and the original development set is used as the dev set ( SQuAD Du dev ) .
+The sizes of SQuAD Du train , SQuAD Du dev , and SQuAD
+Du test are 75,722 , 10,570 , and 11,877 , respectively .
+See Appendix E for the training details of VQAG .
+Table 1 : 1 Results of AE on the test set .
+Relevance Diversity Precision Recall Dist Prop . Exact Prop . Exact NER 34.44 19.61 64.60 45.39 30.0 k HarQG 45.96 33.90 41.05 28.37 - InfoHCVAE 31.59 16.18 78.75 59.32 70.1 k VQAG Ca = 0 58.39 47.15 21.82 16.38 3.1 k Ca = 5 30.16 13.41 83.13 60.88 71.2 k Ca = 20 21.95 5.75 72.26 42.15 103.3 k
+Relevance Diversity B1 -R ME-R RL -R Token D1 E4 SB4 SemQG 62.32 36.77 62.87 7.0M 15.8 k 18.28 91.44 VQAG Cq = 0 35.57 18.31 33.92 7.6M 14.4 k 17.33 97.61 Cq = 5 44.19 25.84 45.18 11.5M 19.0k 19.71 82.59 Cq = 20 48.19 25.29 48.26 4.9M 22.4 k 19.72 44.41
+Table 4 , nearly 25 % of our questions are not understandable or mean- Experiments SemQG ( Ca , Cq ) = ( 5 , 5 ) ( 20 , 20 ) SQuAD Question is well - formed No Understandable 34.5 % 16.0 % 17.0 % 10.5 % 2.9 % 23.1 % 27.8 % 2.3 % Yes 62.6 % 60.9 % 55.1 % 87.2 % Question is No 2.5 % 9.5 % 11.5 % 4.0 % relevant Yes 97.5 % 90.5 % 88.5 % 96.0 % Answer is correct No Partially Yes 2.8 % 28.8 % 30.5 % 21.8 % 28.1 % 26.6 % 11.8 % 7.5 % 75.4 % 43.2 % 42.9 % 80.6 % Answer is No 1.5 % 10.0 % 5.0 % 6.0 % important Yes 98.5 % 90.0 % 95.0 % 94.0 %
+Table 4 : 4 Human evaluation of the quality of QA pairs .
+Table 5 : 5 QA performance ( F1 score ) on SQuAD
+Du test and the 12 challenge sets .
+The abbreviations of the challenge sets are explained in ?4.6 .
+Curly brackets denote an ensemble of different models ( e.g. , {+ VQAG }* 3 denotes the ensemble of three QA models , trained with different random seeds after data augmentation with VQAG ) .
+The best scores for each of the Single and Ensemble models are boldfaced .
+The degraded scores compared to the no data augmentation baseline ( the 1st line ) are in red .
+Sem : SemQG , Info : InfoHCVAE , V : VQAG .
+tions in questions , adversarial examples , and noise that may occur in real-world applications .
+? Natural Automatic Speech Recognition Noise ( ASR ) ( Ravichander et al. , 2021 ) :
+An- other subset of NoiseQA , consisting of 1,190 questions that include automatic speech recog- nition error .
+? Natural Keyboard Noise ( KB ) ( Ravichan - der et al. , 2021 ) :
+Another subset of NoiseQA , consisting of 1,190 questions that include nat- ural character - level typos introduced by typ - ing questions on a keyboard .
+These challenge sets enable us to evaluate the QA models ' robustness to other domain corpora , varia - vided by Sen and Saffari ( 2020 ) .
+We did not use the MRQA shared task version as Lee et al . ( 2020 ) did .
+Table 6 : 6 , and NoiseQA Ablation study on SQuAD Du dev .
+Training Source ( Size ) EM F1 VQAG ( 432 k ) 81.49 88.61 ?D5,5 ( 251 k ) 81.04 88.39 ? D5,20 ( 113 k ) 81.00 88.48 ? D20,20 ( 68 k ) 81.14 88.52
+Table 7 : 7 Percentages ( % ) of each question type in each dataset .
+The largest number in each line is underlined .
+Du train 58.3 10.4 10.3 6.7 6.7 4.2 1.5 SQuAD Du test 56.5 12.1 11.5 8.6 6.0 3.8 0.8 HarQG 61.3 7.8 13.8 0.7 10.1 5.8 0.5 SemQG 71.1 8.1 12.8 1.3 3.6 2.7 0.2 InfoHCVAE 77.1 6.6 5.0 1.6 5.6 3.3 0.5 VQAG D5,5 36.6 54.9 4.9 0.5 0.3 0.5 2.3 D5,20 9.5 35.5 3.6 49.2 1.2 0.9 0.0 D20,20 28.2 36.7 6.3 23.2 0.2 1.6 3.9
+NLL NLLa NLLq DKL z DKL y Pipeline 36.26 3.99 32.50 - - VQAG C = 0 34.46 4.46 30.00 0.027 0.036 C = 5 37.00 5.15 31.51 4.862 4.745 C = 20 59.66 14.38 43.56 17.821 17.038 C
+Table 9 : 9 Detailed results of AE on the test set .
+Table 10 : 10 Each task costs 0.08 USD .
+44.19 27.09 16.33 9.71 25.84 45.18 11.5M 19.0 k 481.1 k 19.71 82.59 Cq = 10 44.00 27.15 16.78 10.24 25.64 44.78 10.2M 18.8 k 461.5 k 19.69 80.39 Cq = 15 45.23 27.91 16.67 10.11 26.12 45.41 11.3M 19.5 k 381.5 k 19.40 84.56 Cq = 20 48.19 32.87 22.96 14.94 25.29 48.26 4.9M 22.4 k 549.2 k 19.72 44.41 Cq = 25 47.20 31.16 21.15 13.66 25.30 45.97 6.8M 22.3 k 706.9 k 20.34 47.00 Cq = 30 47.96 31.69 21.26 13.83 24.95 47.07 7.3M 22.9 k 732.8 k 18.54 50.32 Cq = 40 46.31 31.29 21.52 13.94 23.73 46.46 5.4M 21.0 k 487.8 k 19.39 55.95 Cq = 50 43.92 25.95 15.54 9.61 23.61 43.18 10.8M 22.2 k 527.2 k 19.29 73.78 Cq = 100 35.22 19.88 13.25 9.20 22.27 37.55 8.2M 22.1 k 508.8 k 19.74 44.22
+Detailed results of answer- aware QG on the test set .
+Paragraph - level contexts and answer spans are used as input .
+The baseline model is ELMo+ QPP&QAP 214
+Our code and data are available at https://github.
+com/KazutoshiShinoda/VQAG .
+We exclude Binary Overlap , which assigns higher scores to systems that extract the entire input context and is not a reliable metric as Breck et al . ( 2007 ) discussed .
+We computed Dist - 1 following the definition of Xu et al . ( 2018 ) , wherein Dist - 1 is the number of distinct unigrams .
+Dist - 1 is often defined as the ratio of distinct unigrams ( Li et al. , 2016 a ) but this is not fair when the number of generated sentences differs among models , so we did not use this .
+SB4 was calculated per 50 questions generated from each input .4
+We reran the ELMo+QPP&QAP model , which is available at https://github.com/ZhangShiyue/ QGforQA .
+https://github.com/xinyadu/ harvestingQA
+https://github.com/seanie12/ Info-HCVAE7
+We used answerable questions for NewsQA and NQ pro -
+For example , " Q : Who died in 1285 ?
+A : Zhenjin " is derived from " Q : When did Zhenjin die ?
+A : 1285 "
+The score on Para - 85.7 F1 is degraded when compared to the score on the SQuAD dev set - 87.9 F1 , which is the source for creating Para .
+This means the lack of robustness to paraphrased questions .

@@ -1,0 +1,242 @@
+title
+Learning to Ask Conversational Questions by Optimizing Levenshtein Distance
+abstract
+Conversational Question Simplification ( CQS ) aims to simplify self-contained questions into conversational ones by incorporating some conversational characteristics , e.g. , anaphora and ellipsis .
+Existing maximum likelihood estimation based methods often get trapped in easily learned tokens as all tokens are treated equally during training .
+In this work , we introduce a Reinforcement Iterative Sequence Editing ( RISE ) framework that optimizes the minimum Levenshtein distance through explicit editing actions .
+RISE is able to pay attention to tokens that are related to conversational characteristics .
+To train RISE , we devise an Iterative Reinforce Training ( IRT ) algorithm with a Dynamic Programming based Sampling ( DPS ) process to improve exploration .
+Experimental results on two benchmark datasets show that RISE significantly outperforms state - of - the - art methods and generalizes well on unseen data .
+Introduction Conversational information seeking ( CIS ) Ren et al. , 2021 b ) has received extensive attention .
+It introduces a new way to connect people to information through conversations ( Qu et al. , 2020 ; Gao et al. , 2021 ; Ren et al. , 2020 ) .
+One of the key features of CIS is mixed initiative behavior , where a system can improve user satisfaction by proactively asking clarification questions ( Zhang et al. , 2018 ; Aliannejadi et al. , 2019 ; Xu et al. , 2019 ) , besides passively providing answers ( Croft et al. , 2010 ; Radlinski and Craswell , 2017 ; Lei et al. , 2020 ) .
+Previous studies on asking clarification questions can be grouped into two categories : conversational question generation ( Duan et al. , 2017 ) and conversational question ranking ( Aliannejadi et al. , 2019 ) . * * Corresponding authors .
+The former directly generates conversational questions based on the dialogue context .
+However , the generated questions may be irrelevant and meaningless ( Rosset et al. , 2020 ) .
+A lack of explicit semantic guidance makes it difficult to produce each question token from scratch while preserving relevancy and usefulness at the same time ( Wang et al. , 2018 ; Chai and Wan , 2020 ) .
+Instead , the latter proposes to retrieve questions from a collection for the given dialogue context , which can usually guarantee that the questions are relevant and useful ( Shen et al. , 2018 ; Rosset et al. , 2020 ) .
+However , question ranking methods do not lead to a natural communication between human and machine ( Pulman , 1995 ) , as they neglect important characteristics in conversations , e.g. , anaphora and ellipsis .
+As shown in Fig. 1 , the self-contained question ( SQ4 ) lacks these characteristics , which makes it look unnatural .
+In this work , we study the task of Conversa-tional Question Simplification ( CQS ) .
+Given a dialogue context and self-contained question as input , CQS aims to transform the self-contained question into a conversational one by simulating conversational characteristics , such as anaphora and ellipsis .
+For example , in Fig. 1 , four simplification operations are applied to obtain the conversational question ( CQ4 ) , which is context-dependent and superior to its origin one ( SQ4 ) in terms of naturalness and conveying .
+The reverse process , i.e. , Conversational Question Rewriting ( CQR ) ( Elgohary et al. , 2019 ; Voskarides et al. , 2020 ) which rewrites CQ4 into SQ4 , has been widely explored in the literature ( Vakulenko et al. , 2020 ; .
+Although the proposed methods for CQR can be easily adopted for CQS , they do not always generate satisfactory results as they are all trained to optimize a maximum likelihood estimation ( MLE ) objective , which gives equal attention to generate each question token .
+Therefore , they often get stuck in easily learned tokens , i.e. , tokens appearing in input , ignoring conversational tokens , e.g. , him , which is a small but important portion of output .
+To address the above issue , we propose a new scheme for CQS , namely minimum Levenshtein distance ( MLD ) .
+It minimizes the differences between input and output , forcing the model to pay attention to contributing tokens that are related to conversational tokens , e.g. , " Ira Hay " and " him " in Fig.
+1 . Therefore , MLD is expected to outperform MLE for CQS .
+However , MLD cannot be minimized by direct optimization due to the discrete nature , i.e. , minimizing the number of discrete edits .
+We present an alternative solution , a Reinforcement Iterative Sequence Editing ( RISE ) framework for the optimization of MLD .
+We formulate RISE as a Hierarchical Combinatorial Markov Decision Process ( HCMDP ) consisting of an editing Markov Decision Process ( MDP ) to predict multiple edits for all tokens in the selfcontained question , e.g. , ' Keep ( K ) ' to keep a token , and a phrasing MDP to predict a phrase if the edit is ' Insert ( I ) ' or ' Substitute ( S ) ' .
+We only have the self-contained and conversational question pairs in the dataset while the demonstrations of the editing iterations are lacked .
+Thus , we cannot train each editing iteration of RISE with teacher forcing .
+To this end , we devise an Iterative Reinforce Training ( IRT ) algorithm that allows RISE to do some exploration itself .
+The exploration can be rewarded according to its Levenshtein distance ( LD ) with the demonstrated conversational question .
+Traditional exploration methods like - sampling ( Sutton and Barto , 1998 ) neglect the interdependency between edits for all tokens , resulting in poor exploration .
+Thus , we further introduce a Dynamic Programming based Sampling ( DPS ) process that adopts a Dynamic Programming ( DP ) algorithm to track and model the interdependency in IRT .
+Experiments on the CANARD ( Elgohary et al. , 2019 ) and CAsT ( Dalton et al. , 2019 )
+Maximum likelihood estimation for CQS A commonly adopted paradigm for tasks similar to CQS , e.g. , CQR , is to model the task as a conditional sequence generation process parameterized by ? , which is usually optimized by MLE : L ? = ? log p ? ( y * |x , C ) = ? |y * | t=1 log p ? ( y * t |y * <t , x , C ) , ( 1 ) where y * is the target question and y * <t denotes the prefix y * 1 , y * 2 , . . . , y * t?1 .
+As we can see , MLE gives equal weight to each token and falls in easily learned tokens , the overwhelming duplicate tokens between x and y , while underestimating subtle differences of tokens related to conversational characteristics .
+Minimum Levenshtein distance for CQS Inspired by Arjovsky et al. ( 2017 ) , to minimize the distance between two distributions , we propose to minimize the LD between the target question y * and the model output y so as to leverage the high overlap between x and y and focus on subtle different tokens : L ? = LD(y , y * ) .
+( 2 ) Unfortunately , it is impossible to directly optimize Eq. 2 because the LD between y and y * is the minimum number of single - token edits ( insertions , deletions or substitutions ) required to change y into y * , which is discrete and non-differentiable .
+RISE
+To optimize MLD in Eq. 2 , we devise the Reinforcement Iterative Sequence Editing ( RISE ) framework , which reformulates the optimization of MLD as a Hierarchical Combinatorial Markov Decision Process ( HCMDP ) .
+Next , we first describe our HCMDP formulation of RISE .
+We then detail the modeling of each ingredient in RISE .
+Finally , we present the training process of RISE .
+HCMDP formulation for RISE RISE produces its output y by iteratively editing x with four types of edit , i.e. , ' K ' to keep a token , ' Delete ( D ) ' to delete a token , ' I ' to insert a phrase ( a sequence of tokens ) after a token , and ' S ' to substitute a phrase by a new one .
+If a token is predicted as ' I ' or ' S ' , we need to further predict a corresponding phrase .
+Note that we only predict one phrase for successive ' S ' edits .
+We formulate RISE as a Hierarchical Combinatorial Markov Decision Process ( HCMDP ) consisting of ( 1 ) an editing MDP to predict multiple edits for all tokens , and ( 2 ) a phrasing MDP to predict a phrase if the edit is ' I ' or ' S ' .
+The editing MDP can be formulated as a tuple S e , A e , T e , R , ? e .
+Here , s e t ?
+S e denotes the question at t-th iteration y t together with the context C , i.e. , s e t = ( y t , C ) .
+Note that s e 0 = ( x , C ) .
+a e t = [ a e t,1 , a e t,2 , . . . , a e t , |y t | ] ?
+A e is a combinatorial action consisting of several interdependent edits .
+The number of edits corresponds to the length of y t .
+For example , in Fig. 2 , a e t = [ ' K ' , ' K ' , ' K ' , ' K ' , ' S ' , ' S ' , ' K ' , ' K ' ] .
+In our case , the transition function T e is deterministic , which means that the next state s e t+1 is obtained by applying the predicted actions from both the editing MDP and phrasing MDP to the current state s e t . r t ?
+R is the reward function , which estimates the joint effect of taking the predicted actions from both the edit-ing and phrasing MDPs .
+?
+e is the editing policy network .
+The phrasing MDP can be formulated as a tuple S p , A p , T p , R , ? p .
+Here , s p t ?
+S p consists of the current question y t , the predicted action from the editing MDP a e t , and the context C , i.e. , s p t = ( y t , a e t , C ) .
+a p t = [ a p t,1 , a p t,2 , . . .] ?
+A p is also a combinatorial action , where a p t, i denotes a phrase from a predefined vocabulary and i corresponds to the index of the ' I ' or ' S ' edits , e.g. , in Fig. 2 , 'a p t,1 = him ' is the predicted phrase for the first ' S ' edit .
+The length of the action sequence corresponds to the number of ' I ' or ' S ' edits .
+The transition function T p returns the next state s p t+1 by applying the predicted actions from the phrasing MDP to the current state s p t . r t ?
+R is the shared reward function .
+? p is the phrasing policy network .
+RISE tries to maximize the expected reward : J ( ? ) = E a e t ?
+e , a p t ? p [ r t ] , ( 3 ) where ? is the model parameter which is optimized with the policy gradient : ?J ( ? ) = E a e t ?
+e , a p t ? p [ r t ( ? log ?
+e ( a e t |s e t ) + ? log ? p ( a p t |s p t ) ) ] , ( 4 ) Next , we will show how to model ?
+e ( a e t |s e t ) , ? p ( a p t |s p t ) , and r t .
+Policy networks
+We implement the editing and phrasing policy networks ( ?
+e and ? p ) based on BERT2BERT ( Rothe et al. , 2020 ) as shown in Fig. 2 .
+The editing policy network is implemented by the encoder to predict combinatorial edits , and the phrasing policy network is implemented by the decoder to predict phrases .
+Editing policy network
+We unfold all tokens of the utterances in the context into a sequence C = ( w 1 , . . . , w c ) , where w i denotes a token and we add " [ SEP ] " to separate different utterances .
+Then the context and input question in t-th iteration are concatenated with " [ SEP ] " as the separator .
+Finally , we feed them into the encoder of BERT2BERT to obtain hidden representations for tokens in question H t = ( h
+BERT2BERT BERT2BERT Figure 2 : Architecture of our policy network .
+A combinatorial of all tokens edits is predicted by editing policy , and for each ' I ' or ' S ' edit , a phrase will be predicted by phrasing policy .
+Phrasing policy network
+We first extract the spans corresponding to the ' I ' or ' S ' edits from the question .
+If the edit is ' I ' , the question span span t i consists of tokens before and after this insertion , i.e. , span t i = [ y t j , y t j +1 ] ; if the edit is ' S ' , the question span span t i consists of successive tokens corresponding to the ' S ' edit , i.e. , span t i = [ y t j , . . . , y t k ] , where a e t, j: k ='S ' and a e t, k+ 1 = ' S ' .
+We only predict once for successive ' S ' edits , e.g. , in Fig. 2 , the phrase ' him ' is predicted to substitute question span [ " Ira " , " Hayes " ] .
+For the i-th ' I ' or ' S ' edit with a question span span t i , we concatenate the span and " [ CLS ] " token as input tokens , and feed them into the decoder of BERT2BERT to obtain a hidden representation of " [ CLS ] " token s t i .
+We obtain S t by concatenating each s t i and predict the phrases for all ' S ' and ' I ' edits by a linear layer with parameter W p : ? p ( a p t |s p t ) = softmax ( W p S t ) . ( 6 )
+Reward R
+We devise the reward r t to estimate the effect of taking the joint action ( a e t , a p t ) by encouraging actions that can result in low LD values between y t+1 and y * , i.e. , minimizing Eq. 2 .
+Besides , we discourage those actions to achieve same y t+1 with extra non ' K ' edits : r t = 1 1 + LD(y t+1 , y * ) ? l ? t ( a e t = ' K ' ) + 1 , l = LD(y t , y * ) ? LD(y t+ 1 , y * ) , ( 7 ) where 1 1 + LD(y t+1 , y * ) will reward actions that result in low LD values between y t+1 and y * and ( l ? t ( a e t = ' K ' ) ) will punish those actions with unnecessary non ' K ' edits .
+Training
+To train RISE , we need training samples in the form of a tuple ( s e t , a e t , s p t , a p t , r t ) .
+However , we only have ( y 0 = x , y * ) in our dataset .
+Traditional exploration methods like - greedy sampling sample edits for all tokens independently , ignoring the interdependency between them .
+Instead , we devise an Iterative Reinforce Training ( IRT ) algorithm to sample an edit for each token by considering its future expectation , i.e. , sampling a e t, i based on expectation of a e t,:i?1 from i = |y t | to 1 .
+We maintain a matrix M t for this expectation based on both y t and y * , which is computed by a Dynamic Programming based Sampling ( DPS ) process due to the exponential number of edit combinations of a e t , : i .
+The details of IRT are provided in Alg. 1 ; it contains a DPS process that consists of two parts : computing the matrix M t ( line 4 - 8 ) and sampling actions ( a e t , a p t ) ( line 10 ) based on M t .
+Computing the matrix M t Given ( y t , y * ) with length m and n , we maintain a matrix M t ? R ( m+1 ) ? ( n+ 1 ) ( including ' [ SEP ] ' , see the upper right part in Fig. 3 ) where each element M t i , j tracks the expectation of a e t , :i to convert y t :i to y * :j : M t i , j = E p i , j ( a e t , i ) [ E p( a e t ,:i?1 ) ? y t :i ?>y * :j ( a e t , : i ) ]
+= E p i , j ( a e t , i ) ? ? ? ? ? ? ?
+e ( a e t, i |y t , C ) ? ? ? ? ? ? ? ? ? ? ? ? M t i?1 , j?1 , if a e t, i = ' K ' M t i?1 , j , if a e t, i = ' D ' M t i , j? 1 , if a e t, i = ' I ' M t i?1 , j?1 , if a e t, i = ' S ' ? ? ? ? ? ? , ( 8 ) where a e t , :i is the combinational edits for tokens y t :i and ?
+e ( a e t, i |y t , C ) is calculated by Eq. 5 ( see the upper left part in Fig. 3 ) .
+M t 0,0 is initialized to 1 .
+We will first introduce p i , j ( a e t , i ) and then introduce ? y t :i ?>y * :j ( a e t , : i ) in Eq. 8 . Traditional sampling methods sample each edit a e t, i independently , based on model likelihood ?
+e ( a e t, i |y t , C ) .
+Instead , we sample each edit with probability p i , j ( a e t , i ) based on edits expectation M t , which is modeled as : p i , j ( a e t , i ) = 1 Z t i , j ?( a e t, i |y t , C ) ?
+? ? ? ? ? ? ? ? ? ? ? M t i?1 , j?1 , if a e t, i = ' K ' M t i?1 , j , if a e t, i = ' D ' M t i , j? 1 , if a e t, i = ' I ' M t i?1 , j?1 , if a e t, i = ' S ' , ( 9 ) where Z t i , j is the normalization term .
+We give an example on computing M t 1,2 in the bottom part of Fig. 3 . For edit ' I ' in M t 1,2 , its probability is 1 , and its value is ?
+e ( a e t, i = ' I ' |y t , C ) ? M t 1,1 = 0.008 .
+For the other edits , the probability is 0 .
+Therefore , M t 1,2 = 0.008 .
+? y t :i ?>y * :j ( a e t , : i ) is the probability of conducting edits a e t , :i to convert y t :i to y * :j : ? y t :i ?>y * :j ( a e t , : i ) = ?
+e ( a e t, i |y t , C ) ?
+? ? ? ? ? ? ? ? ? ? ? ? ? ? y t :i?1 ?>y * :j?1 ( a e t , :i?1 ) , if a e t, i?1 = ' K ' ? y t :i?1 ?>y * :j ( a e t , :i?1 ) , if a e t, i?1 = ' D ' ? y t :i ?>y * :j?1 ( a e t , : i ) , if a e t, i = ' I ' ? y t :i?1 ?>y * :j?1 ( a e t , :i?1 ) , if a e t, i?1 = ' S ' , ( 10 )
+To convert y t :i to y * :j , we need to make sure that y t i can convert to y * j and that y t :i?1 can convert to y * :j?1 , which can be calculated recursively .
+Note that we only allow ' S ' and ' D ' for y t i when y t i = y * j and ' K ' and ' I ' for y t i when y t i = y * j .
+And M t i?1 , j?1 = E p( a e t ,:i?1 ) ? y t :i?1 ?>y * :j?1 ( a e t , :i?1 ) .
+Sampling ( a e t , a p t )
+We sample ( a e t , a p t ) based on matrix M t by backtracking from i = m , j = n.
+For example , as shown in the upper right in Fig. 3 , we backtrack along the blue arrows .
+In this truncated sample , we start from M t 7,6 , sample an edit ' K ' to keep ' revealing ' based on p 7,6 ( a e t,7 ) in Eq. 9 , and move to M t 6,5 .
+Then , we sample ' S ' to substitute ' Ira Hayes ' to ' him ' and move to M t 4,4 .
+Finally , we sample ' K ' in [ M t 4,4 , M t 3,3 , M t 2,2 M t 1,1 , M t 0,0 ] to keep [ ' to ' , ' op - posed ' , ' anyone ' , ' Was ' , ' [ SEP ] ' ] .
+Therefore , we can obtain a e t = [ K , K , K , K , K , S , S , K ] , a p t = [ ' him ' ] .
+Note that we obtain a p t by merging all corresponding tokens y * j as the phrase for each ' I ' edit and successive ' S ' edits and we only substitute once .
+The backtracking rule can be formulated as : M t i , j ? ? ? ? ? ? M t i?1 , j?1 , if a e t, i ? [ ' K ' , ' S ' ]
+M t i?1 , j , if a e t, i = ' D ' M t i , j? 1 , if a e t, i = ' I ' . ( 11 )
+Inference During inference , RISE iteratively edits x until it predicts ' K ' edits for all tokens or it achieves the maximum iteration limit .
+For example , for editing iteration t in Figure 2 , it predicts ' S ' for ' Ira ' and ' Hayes ' to substitute it to ' him ' and ' K ' for other tokens , which results in ' Was anyone opposed to him revealing . . . ' as output .
+The output in iteration t is the input of iteration t + 1 .
+The actual editing iteration times vary with different samples .
+Experiments
+Datasets
+As with previous studies ( Elgohary et al. , 2019 ; Vakulenko et al. , 2020 ; Lin et al. , 2020a ) , we conduct experiments on the CANARD 1 ( Elgohary et al. , 2019 ) dataset , which is a large open-domain dataset for conversational question answering ( with over 30 k training samples ) .
+Each sample in the CANARD dataset includes a conversational context ( historical questions and answers ) , an self-contained question , and its corresponding conversational question under the context .
+The questions always have clear answers , e.g. , ' Did he win the lawsuit ? '
+We follow the CANARD splits for training and evaluation .
+In addition , we evaluate the model performance on the CAsT 2 dataset ( Dalton et al. , 2019 ) , which is built for conversational search .
+Different from CANARD , its context only contains questions without corresponding answers .
+Besides , most questions in the CAsT dataset are exploring questions to explore relevant information , e.g. , ' What about for great whites ? '
+Since the CAsT dataset only contains 479 samples from different domains compared to CANARD , we use it for testing .
+Evaluation metrics Following Su et al. ( 2019 ) ; , we use BLEU -1 , BLEU -2 , BLEU -3 , BLEU - 4 ( Papineni et al. , 2002 ) , ROUGE -L ( Lin , 2004 ) , and CIDEr ( Vedantam et al. , 2015 ) for automatic evaluation .
+BLEU -n and ROUGE -L measure the word overlap between the generated and golden questions .
+CIDEr measures the extent to which important information is missing .
+Elgohary et al . ( 2019 ) ; Lin et al. ( 2020a ) ; have shown that automatic evaluation has a high correlation with human judgement on this task , so we do not conduct human evaluation in this paper .
+Baselines
+We compare with several recent state - of - the - art methods for this task or closely related tasks : ?
+Origin uses the original self-contained question as output .
+?
+Rule employs two simple rules to mimic two conversational characteristics : anaphora and ellipsis .
+? QGDiv ( Sultan et al. , 2020 ) uses RoBERTa ( Liu et al. , 2019 ) with beam search ( Wiseman and Rush , 2016 ) for generation .
+? Trans ++ ( Vakulenko et al. , 2020 ) predicts several word distributions , and combines them to obtain the final word distribution when generating each token .
+?
+QuerySim adopts a GPT - 2 ( Radford et al. , 2019 ) model to generate conversational question .
+We also found some methods from related tasks .
+But they do not work on this task for various reasons .
+For example , due to the lack of labels needed for training , we cannot compare with the methods proposed by Rosset et al . ( 2020 ) and .
+Su et al. ( 2019 ) propose a model that can only copy tokens from input ; it works well on the reverse task ( i.e. , CQR ) , but not on CQS .
+Implementation details
+We use BERT2BERT for the modeling of the editing and phrasing parts ( Rothe et al. , 2020 ) , as other pretrained models like GPT - 2 ( Radford et al. , 2019 ) cannot work for both .
+The hidden size is 768 and phrase vocabulary is 3461 following ( Malmi et al. , 2019 ) .
+We use the BERT vocabulary ( 30,522 tokens ) for all BERT - based or BERT2BERT - based models .
+We use the Adam optimizer ( learning rate 5e - 5 ) ( Kingma and Ba , 2015 ) to train all models .
+In particular , we train all models for 20,000 warm - up steps , 5 epochs with pretrained model parameters frozen , and 20 epochs for all parameters .
+For RISE , the maximum editing iteration times is set to 3 .
+We use gradient clipping with a maximum gradient norm of 1.0 .
+We select the best models based on the performance on the validation set .
+During inference , we use greedy decoding for all models .
+Results
+We list the results of all methods on both CANARD and CAsT in Table 1 . From the results , we have two main observations .
+First , RISE significantly outperforms all base -
+Note that we denote BLEU -n as B-n and ROUGE -L as R-L.
+CANARD ( % ) CAsT ( % ) ( unseen ) lines on both datasets .
+Specifically , RISE outperforms the strongest baseline QuerySim by ?4 % in terms of ROUGE -L .
+The reason is that RISE enhanced by DPS has a better ability to emphasize conversational tokens , rather than treating all tokens equally .
+Second , RISE is more robust , which generalizes better to unseen data of CAsT .
+The results of the neural methods on CANARD are much better than those on CAsT .
+But , RISE is more stable than the other neural models .
+For example , RISE outperforms QuerySim by 0.6 % in BLEU - 4 on CANARD , while 1.3 % on CAsT .
+The reason is that RISE learns to cope with conversational tokens only , while other models need to generate each token from scratch .
+Method B-1 B-2 B-3 B-4 R-L CIDEr B-1 B-2 B-3 B-4 R-L CIDEr
+Analysis
+Ablation study
+To analyze where the improvements of RISE come from , we conduct an ablation study on the CANARD and CAsT datasets ( see Table 2 ) .
+We consider two settings : ? - DPS .
+Here , we replace DPS by - greedy sampling ( = 0.2 ) ( Sutton and Barto , 1998 ) . ? - MLD .
+Here , we replace MLD by MLE in RISE .
+The results show that both parts ( DPS and MLD ) are helpful to RISE as removing either of them leads to a decrease in performance .
+Without MLD , the performance drops a lot in terms of all metrics , e.g. , 3 % and 7 % in BLEU - 4 on CANARD and CAsT , respectively .
+This indicates that optimizing MLD is more effective than optimizing MLE .
+Besides , MLD generalizes better on unseen CAsT as it drops slightly in all metrics , while with MLE , we see a drop of 10 % in BLEU -1 .
+Without DPS , the results drop dramatically , which indicates that DPS can do better exploration than - greedy and is of vital importance for RISE .
+For example , - DPS tends to sample more non ' K ' edits ( RISE vs - DPS : 10 % vs 22 % on CANARD ) , which is redundant and fragile .
+The performance of - DPS is even worse than Origin in CAsT in BLEU -4 .
+This may be because CAsT is unseen .
+Editing iterations
+To analyze the relation between the number of editing iterations of RISE and the editing difficulty , we plot a heatmap in Fig. 4 , where the deeper color represents a larger number of editing iterations .
+The x-axis denotes the number of tokens shown in input x but not shown in output y and the y-axis denotes the number of tokens shown in y but not in x .
+As the number of different tokens between x and y increases , the number of editing iterations increases too .
+For example , when the y-axis is 1 , as the x-axis ranges from 1 to 10 , the number of
+CANARD ( % ) CAsT ( % ) ( unseen ) editing iterations increases from 1.2 to 2.6 because more ' D ' edits are needed .
+We also found that when the x-axis is between 3 and 7 and the y-axis is between 1 and 4 , only 1 - 2 editing iterations are needed .
+Usually , this is because RISE only needs 1 or 2 successive ' S ' edits for simulating anaphora .
+Method B-1 B-2 B-3 B-4 R-L CIDEr B-1 B-2 B-3 B-4 R-L
+Influence of the number of editing iterations
+The overall performance of RISE improves as the number of editing iterations increases .
+RISE achieves 70.5 % in BLEU - 4 in the first iteration ( even worse than QuerySim in Table 1 ) but 71.5 % and 71.6 % in the second and third iterations .
+This shows that some samples are indeed more difficult to be directly edited into conversational ones , and thus need more editing iterations .
+Even though it will not hurt the performance a lot , more editing iterations are not always helpful .
+About 5 % of the samples achieve worse BLEU - 4 scores as the number of editing iterations increases .
+For example , RISE edits ' where did humphrey lyttelton go to school at ? ' into ' where did he go to school at ? ' in the first iteration , which is perfect .
+But RISE continues to edit it into ' where did he go to school ? ' in the second iteration , which is undesirable .
+This is because RISE fails to decide whether to stop or continue editing .
+Case Study In Table 3 we present two examples of the output of RISE .
+We present the context , the original self-contained question , the target conversational question , and the output of RISE in the n-th iteration , denoted as ' Context ' , ' Question ' , ' Target ' and ' Rewrite # n ' , respectively .
+We have two main observations .
+First , it is helpful to edit iteratively .
+As shown in Example 1 , RISE first replaces ' Abu ' as ' he ' in the first iteration and then deletes ' bakr ' in the second iteration , which simulates anaphora by editing twice .
+In Example 2 , RISE simulates el- possible , where the result may be uncontrollable .
+In future work , we will add a discriminator to check the necessary information .
+Related work Studies on asking conversational question can be divided into two categories : conversational question generation and conversational question ranking .
+Conversational question generation aims to directly generate conversational questions conditioned on the dialogue context ( Sultan et al. , 2020 ; Ren et al. , 2021a ) . and Qi et al . ( 2020 ) define a question utility function to guide the generation of conversational questions .
+Nakanishi et al. ( 2019 ) ; Jia et al. ( 2020 ) incorporate knowledge with auxiliary tasks .
+These methods may generate irrelevant questions due to their pure generation nature .
+Conversational question ranking ( Aliannejadi et al. , 2019 ) retrieves questions from a collection based on the given context , so the questions are mostly relevant to the context .
+Kundu et al. ( 2020 ) propose a pair-wise matching network between context and question to do question ranking .
+Some studies also use auxiliary tasks to improve ranking performance , such as Natural Language Inference ( Kumar et al. , 2020 ) and relevance classification ( Rosset et al. , 2020 ) .
+The retrieved questions are often unnatural without considering the conversational characteristics , e.g. , anaphora and ellipsis .
+CQS rewrites the retrieved self-contained questions into conversational ones by incorporating the conversational characteristics .
+Existing applicable methods for CQS are all MLE based Lin et al. , 2020 b ; Vakulenko et al. , 2020 ) , which often get stuck in easily learned tokens as each token is treated equally by MLE .
+Instead , we propose a MLD based RISE framework to formulate CQS as a HCMDP , which is able to discriminate different tokens through explicit editing actions , so that it can learn to emphasize the conversational tokens and generate more natural and appropriate questions .
+Conclusion
+In this paper , we have proposed a minimum Levenshtein distance ( MLD ) based Reinforcement Iterative Sequence Editing ( RISE ) framework for Conversational Question Simplification ( CQS ) .
+To train RISE , we have devised an Iterative Reinforce Training ( IRT ) algorithm with a novel Dynamic Programming based Sampling ( DPS ) process .
+Extensive experiments show that RISE is more effective and robust than several state - of - the - art CQS methods .
+A limitation of RISE is that it may fail to decide whether to stop or continue editing and leave out necessary information .
+In future work , we plan to address this issue by learning a reward function that considers the whole editing process through adversarial learning ( Goodfellow et al. , 2014 ) .

@@ -1,0 +1,227 @@
+title
+Multilingual Domain Adaptation for NMT : Decoupling Language and Domain Information with Adapters
+abstract
+Adapter layers are lightweight , learnable units inserted between transformer layers .
+Recent work explores using such layers for neural machine translation ( NMT ) , to adapt pre-trained models to new domains or language pairs , training only a small set of parameters for each new setting ( language pair or domain ) .
+In this work we study the compositionality of language and domain adapters in the context of Machine Translation .
+We aim to study , 1 ) parameter - efficient adaptation to multiple domains and languages simultaneously ( fullresource scenario ) and 2 ) cross-lingual transfer in domains where parallel data is unavailable for certain language pairs ( partial - resource scenario ) .
+We find that in the partial resource scenario a naive combination of domain-specific and language -specific adapters often results in ' catastrophic forgetting ' of the missing languages .
+We study other ways to combine the adapters to alleviate this issue and maximize cross-lingual transfer .
+With our best adapter combinations , we obtain improvements of 3 - 4 BLEU on average for source languages that do not have in - domain data .
+For target languages without in- domain data , we achieve a similar improvement by combining adapters with back - translation .
+Supplementary material is available at https://tinyurl.com/ r66stbxj .
+*
+Work done during an internship at NAVER LABS Europe .
+Introduction Multilingual Neural Machine Translation ( NMT ) has made a lot of progress recently ( Johnson et al. , 2017 ; Aharoni et al. , 2019 ; Zhang et al. , 2020 ; Fan et al. , 2020a ) and is now widely adopted by the community and MT service providers .
+Multilingual NMT models handle multiple language directions at once and allow for knowledge transfer to low-resource languages .
+Machine translation systems often need to be adapted to specific domains like legal or medical text .
+However , when adapting multilingual systems , in - domain data for most language pairs might not exist .
+We would like to be able to leverage data in a subset of language pairs to transfer domain knowledge to other languages .
+Straightforward methods of domain adaptation include fine-tuning ( Freitag and Al - Onaizan , 2016 ) or usage of domain tags ( Kobus et al. , 2017 ; Britz et al. , 2017 ) for different domains .
+For these methods each new domain request would require retraining the whole model , which is a costly procedure .
+And naive training on a subset of languages typically reduces performance on all other languages ( Garcia et al. , 2021 ) , a phenomenon known as ' catastrophic forgetting ' ( McCloskey and Cohen , 1989 ) .
+An alternative technique for adapting such models to new language - pairs or domains are ' adapter layers ' , lightweight , learnable units inserted between transformer layers .
+A previously trained large multilingual model can be adapted to each language - pair by learning only these small units , and keeping the rest of the model frozen .
+This procedure also allows for the incremental adding of new language pairs and / or domains to the pre-trained model , reducing the cost of adaptation .
+Previous studies have shown it is possible to combine language -specific ( as opposed to language - pair specific ) adapters , or language and task adapters trained independently , enabling zero-shot compositions of adapters .
+Our ultimate goal is , for ease of deployment and storage , a single model that can handle all languages and domains .
+In this work we analyse how to combine language adapters with domain adapters in multilingual NMT , and study to what extent the domain knowledge can be transferred across languages .
+First , we show it is hard to decouple language knowledge from domain knowledge when finetuning multilingual MT systems on new domains .
+In Section 5.2 we demonstrate that adapters learnt on a subset of language pairs fail to generate into languages not in that subset .
+Such generation into the wrong language is referred to as ' off-target ' translation .
+We additionally find combinations of domain and language adapters not seen at training time lead to bad performance .
+We examine how adapter placement and other techniques can improve the compositionality of language and domain adapters when dealing with source or target languages that do not have in - domain data ( which we refer to throughout this work as " out-of- domain languages " ) .
+Our key contributions are : ?
+We examine domain adaptation capacity in the multi-lingual , multi-domain setting .
+We find that encoder-only adapters can be just as effective as default adapters added in every layer , and that composing domain adapters with language adapters outperforms language adapters alone , although fine-tuning with domain tags performs better for most domains .
+?
+We improve the cross-lingual transfer of domain knowledge for adapters .
+We analyse different language and domain adapter combinations that improve performance and reduce off-target translations .
+Our best results for translation into out - of- domain languages use decoder-only domain adapters , regularisation with domain adapter dropout , and data augmentation with English-centric backtranslation .
+Related Work Cross-lingual transfer
+Many works have demonstrated that large pre-trained multilingual models ( Devlin et al. , 2019 ; Conneau et al. , 2020 ; fine -tuned on high- resource languages ( or language pairs ) can transfer to lower -resource languages in various tasks : Natural Language Inference , Question Answering ( Clark et al. , 2020 ) , Named Entity Recognition ( Pires et al. , 2019 ; K et al. , 2020 ) , Neural Machine Translation and others ( Hu et al. , 2020 ) . Domain adaptation in NMT Domain adaptation has been discussed extensively for bilingual NMT models .
+A typical approach is to fine- tune a model trained on a large corpus of ' generic ' data on a smaller in- domain corpus ( Luong and Manning , 2015 ; Neubig and Hu , 2018 ) .
+A common technique to make use of monolingual in- domain data is to do back - translation ( Sennrich et al. , 2016a ; Berard et al. , 2019a ; Jin et al. , 2020 ) .
+Although effective , it is expensive to create back - translated data , especially when one needs to cover multiple language pairs .
+Multi-domain models can be trained with domain tags ( Kobus et al. , 2017 ; Britz et al. , 2017 ; Berard et al. , 2019a ; Stergiadis et al. , 2021 ) that can encode domain-specific information .
+However , domain tags do not allow incrementally adding new domains to a model : each new domain adaptation requires retraining the full model ( as opposed to adapter layers that can be trained independently for each language / domain ) .
+There are a number of works ( Jiang et al. , 2020 ; Britz et al. , 2017 ; Dabre et al. , 2020 ) trying to explicitly decouple domainspecific representations from domain independent representations in bilingual settings .
+In our work we try to decouple language and domain specific representations through adapter layers .
+Adapter layers introduce adapter layers for NMT as a lightweight alternative to fine-tuning .
+They study both adding language - pair specific adapters to multilingual NMT models to match the performance of a bilingual version , and domain-specific adapters for parameter - efficient domain adaptation .
+train adapters for each language instead of language - pair and show that composing such adapters improves zero-shot translation in Englishcentric settings , and can adapt a model to all language directions in a scalable way .
+Pfeiffer et al. ( , 2021 study adapter layers for pre-trained language models evaluated on NLU tasks .
+They show it is possible to compose language and task adapters .
+Combining language adapters trained with a masked language modelling objective for language x and task adapters trained on a classification task in language y can transfer to classification in language x .
+We have a similar objective to Pfeiffer et al . ( 2020 ) , but for NMT where in addition to encoding sentences we need to generate text for new language and domain combinations .
+To the best of our knowledge none of the works above study composing language and domain adapters for generation tasks ( such as translation ) which is the goal of this work .
+Composing Adapter Modules Adapter modules ( Rebuffi et al. , 2017 ; Houlsby et al. , 2019 ) are randomly initialised modules inserted between the layers of a pre-trained network and fine-tuned on new data .
+An adapter layer is typically a down projection to a bottleneck dimension followed by an up projection to the initial dimension , which we write as FFN ( h ) = W up f ( W down h ) , with f ( ? ) a non-linearity .
+The bottleneck controls the parameter count of the module ; typically NMT requires slightly larger parameter counts than classification to match fine-tuning Cooper Stickland et al. , 2021 ) .
+With a residual connection and a nearidentity initialization the original model is ( approximately ) retained at the beginning of optimization , keeping at least the performance of the parent model .
+Stacking Domain and Language Adapters
+In this work we study ' stacking ' adapter modules , i.e. each language and domain has a unique adapter module associated with it .
+When passing a batch with source language x , target language y , and domain z , we only ' activate ' the adapters for {x , y , z} .
+The encoder adapters for x and decoder adapters for y are activated .
+We mostly follow the architecture of .
+Language adapters LA are defined as : LA ( h l ) = FFN lg ( LN lg ( h l ) ) + h l ( 1 ) where h l is the Transformer hidden state at layer l and LN lg is a newly initialised layer - norm .
+Let z = LA ( h l ) ; when stacking domain and language adapters , the layer output h l , out is given by : h l , out = FFN dom ( LN dom ( z ) ) + z ( 2 ) For all models without any stacking we obtain layer output as in Eq. 2 but replace LA ( ? ) with the identity operation .
+use a different formulation that empirically performed well for them , but that in initial experiments produced worse results in our setting .
+We list the corresponding equations and results in Appendix B and Appendix D.
+Improving the Compositionality of Adapters
+In our initial experiments ( Section 5.2 ) we found that ( unlike naive stacking of language and domain adapters does not work very well for unseen combinations of language and domains , and often results in off-target translation ( i.e. translations into the wrong language ) .
+Therefore , we study several strategies to improve the compositionality of adapters in the context of NMT : 1 ) Using decoder-only domain adapters when translating from an out-of- domain source language into an in- domain 1 target language , and encoderonly domain adapters when translating from an indomain source language into an out-of- domain target language .
+This means we never stack together a combination of language and domain adapter that was not seen at training time .
+We also find empirically that decoder-only adapters work well with back - translation , perhaps because they can ' ignore ' the noisy synthetic source-side data .
+2 ) Domain adapter dropout ( DADrop ) .
+Similar to layer - drop ( Fan et al. , 2020 b ) but specialised to adapter layers , or AdapterDrop ( R?ckl ?
+et al. , 2020 ) but without targeting specific layers , we randomly ' drop ' ( i.e. skip ) the domain adapter 2 and only pass the hidden state through the language adapter .
+This means the adapter stack in the layer above can more easily adapt to unfamiliar input , and encourages domain and language adapters to be more independent of each other .
+3 ) Data augmentation .
+We often have access to monolingual data in a domain even when no parallel data is available .
+In this work we leverage English-centric back - translation ( BT ) , i.e. translating monolingual data in some languages into English ( thus avoiding the more expensive step of translating from each language into every other language ) .
+We examine the ability of such data to help cross-lingual transfer to unseen combinations of source and target language ( BT means we have artificial data for every language in combination with English ) .
+We briefly explore ' denoising auto-encoder ' style objectives as in unsupervised MT or sequence - to-sequence pre-training .
+1 Reminder we refer to the subset of languages we have parallel data for in a particular domain as ' in - domain ' , and all other languages as ' out - of- domain ' .
+2
+We could additionally drop the language adapter , but since this was frozen in many experiments we limit ourselves to domain adapters for simplicity 4 Experimental Settings
+Data
+For studying the domain transfer across languages we select four diverse domains that have data available in most language directions : translations of the Koran ( Koran ) ; medical text from the European Medicines Agency ( Medical ) ; translation of TED Talks transcriptions ( TED ) ; various technical IT text , e.g. the Ubuntu manual ( IT ) .
+All data was obtained from the OPUS repository ( Tiedemann , 2012 ) .
+We create validation and test sets of around 2000 sentences each , and avoid overlap with training data ( including parallel sentences in any language ) with a procedure described in Appendix A. Note that Medical , Koran and IT are from the same source as those of Aharoni and Goldberg ( 2020 )
+Models
+In multilingual settings we concentrate on 12 high- resource European languages 3 due to the availability of domain-specific parallel data for most language pairs .
+Our baseline model is a Transformer Base ( Vaswani et al. , 2017 ) trained on English-centric ParaCrawl v7.1 data ( Ba? n et al. , 2020 ) with all 12 languages ( 803 M line pairs in total ) .
+It is trained with fairseq ( Ott et al. , 2019 ) for 800k updates , with a batch size of maximum 4000 tokens and accumulated gradients over 64 steps ( Ott et al. , 2018 ) . 4
+The source / target embeddings are shared and tied with the output layer .
+We tokenize the data with a shared BPE model of size 64 k with inline casing ( Berard et al. , 2019 b )
+Both the multilingual models and BPE model are trained with temperature - based sampling with T = 5 ( Arivazhagan et al. , 2019 ) .
+We calculate all BLEU scores with Sacrebleu 5 ( Post , 2018 ) .
+On the recommendation of Marie et al . ( 2021 ) we additionally report chrF ( Popovi ? , 2015 ) calculated using Sacrebleu 6 for most models in the Appendix .
+We use adapter bottleneck size of 1024 unless stated otherwise , and when using DADrop ( Section 3.2 ) use a 20 % chance of skipping the domain adapter .
+We additionally train monolingual language adapters for all 12 languages on multi-parallel ParaCrawl data , which we obtain by aligning all languages through their English side , like Freitag and Firat ( 2020 ) .
+The adapters are trained for another 1 M steps , without accumulated gradients .
+We report the results of models finetuned on both all the domains simultaneously , or each domain separately , with access to in-domain data available for all the languages .
+Both serve as a potential upper bound for cross-lingual transfer .
+We train the same model ( i.e. with access to all languages ) with domain tags : one special token per domain prepended to each source sequence ( Kobus et al. , 2017 ) .
+We also measure the cross-lingual transfer ability of domain tags , by training a model with domain tags on all 4 domains but with indomain data in only 4 languages ( fr , de , cs and en ) .
+Because the latter model exhibits catastrophic forgetting issues in the other languages , we also train the same model with ParaCrawl data in all language directions ( with a " paracrawl " domain tag ) .
+ParaCrawl line pairs are sampled with probability 0.5 .
+More training hyper-parameters are given in Appendix A .
+Our model pipelines
+We perform two series of experiments .
+Multilingual multi-domain models .
+Firstly , we experiment with different ways of multi-domain adaptation of multilingual models .
+We adapt the English-centric ParaCrawl pre-trained model to four domains ( Koran , Medical , IT and TED ) and every language direction simultaneously .
+We test models with language adapters , language + domain adapters , and domain tags .
+There is no crosslingual domain transfer needed 7 since all language 5 Signature : BLEU+case.mixed+lang.m2m-en+numrefs.1+smooth.exp+tok.13a+version.1.5.0.
+6 Signature : chrF2+numchars.6+space.false+version.1.5.1 7
+There is obviously cross-lingual domain transfer that may take place when all the domains are trained jointly , but we do directions are included in the training data .
+Results for this scenario are reported in Section 5.1 .
+Cross-lingual domain transfer .
+In the second experiment we try to decouple the notion of domain from language via analysing the zero-shot composition of domain and language adapters .
+This is described in a toy diagram in Figure 1 .
+We first extend the baseline multilingual English-centric model with 12 ( one for each language ) monolingual language adapters trained on multi-parallel ParaCrawl .
+We then test the crosslingual domain transfer ability of our proposed combinations of adapters by training on data in a particular domain with a subset of four languages ( referred to as ' in - domain ' ; in Figure 1 en and fr would be in- domain ) .
+We test our model on all language directions from the set of all twelve languages .
+This will include cases where we do n't have in - domain data for either the source or target language , which we refer to as ' out - of - domain ' ( in Figure 1 de would be out-of- domain ) .
+Finally , we extend the above mentioned scenario with back - translated ( BT ) data from out - of- domain languages into English .
+To create the BT data , we use the model with language adapters trained on ParaCrawl ( 11 ) ( which has not seen any in - domain data ) on the English - aligned training data for each not explicitly study this in the first experiment .
+language and domain , and use beam search with a beam size of 5 .
+Results for this scenario are reported in Section 5.2 .
+To train language and domain adapters , we freeze all model parameters except for adapter parameters , and use a fixed learning rate schedule with learning rate 5 ? 10 ?5 .
+Following , when training language adapters without domain adapters we build homogeneous batches ( i.e. only containing sentences for one language direction ) and activate only the corresponding adapters .
+When training language and domain adapters together , we build homogeneous batches that only contain sentences for the same combination of language direction and domain .
+Results and Discussion First , in Section 5.1 we discuss the results of experiments testing the domain adaptation capacity of various models , assuming access to data for all language pairs .
+In Section 5.2 we analyse domain transfer across languages with adapters and other methods .
+We first demonstrate problems with cross-lingual generalisation during domain adaption for ' naive ' methods , and then propose potential solutions .
+Note we concentrate on the medical domain and a particular language subset for convenience .
+Appendix D has results in IT Koran Medical TED Params ( M ) ( Table 3 : BLEU score of various models trained on the {en , fr , de , cs} subset of the Medical domain , except ' Oracle ' models trained on all language pairs .
+LA = language adapters , DA = domain adapters .
+' Out?in ' is the average score when translating from an out-of- domain source language into {en , fr , de , cs} .
+' In ?out ' corresponds to when the out-of- domain language is the target language .
+' In ? in ' refers to average score when source and target are in the set {en , fr , de , cs} .
+' Out?out ' is the average score when both the source and target language are unseen during domain adaptation .
+We note percentage of on- target ( correct language ) translations in brackets , when it is less than 90 % only .
+other domains and language subsets , and also chrF ( Popovi ? , 2015 ) scores ; we find similar trends to those reported in Section 5.2 .
+Multilingual multi-domain models
+Table 2 reports the results from the challenging task of adapting a multilingual NMT model to multiple domains and language directions simultaneously .
+In this scenario , we assume access to in- domain data in all the language directions , and so we are testing the capacity of various models for domain adaptation , rather than cross-lingual transfer .
+Models are compared against a baseline ( 1 ) not trained on in- domain data .
+We report the results for naive fine-tuning on the concatenation of in-domain parallel datasets for all the languages and all the domains ( 2 ) .
+On all domains we improve on these results by finetuning with domain tags ( 3 ) ( a similar result to Jiang et al . ( 2020 ) in the bilingual setting ) .
+Finetuning with domain tags ( 3 ) outperforms the model with stacked adapters ( 9 ) .
+A fine- grained comparison of these models is in Figure 5 in the Appendix .
+For the IT and Medical domains the model with tags ( 3 ) is clearly better for all language directions .
+For the lowest resource domains , Koran and TED , most of the differences are not statistically significant , except for English -centric language pairs for TED , where the adapter model ( 9 ) is better .
+Exploring the combination of domain tags and adapters could be an interesting future research direction .
+Stacking domain and language adapters ( 9 ) results in better performance than a model with the same parameter budget devoted to language adapters only ( 5 ) .
+We believe this is because it allows the model to ( partially ) decouple domain from language -specific information , and better exploit the allocated parameter budget .
+Even a higher capacity language adapter model ( 6 ) does not perform as well .
+We also note that usage of encoder-only domain adapters ( 8 ) outperforms the decoder-only domain adapter model ( 7 ) .
+This is perhaps because the encoder representations influence the whole model ( it is directly connected to the decoder at all layers with encoder- decoder attention ) as opposed to the the decoder adapters that only impact decoder representations .
+We find a similar trend in bilingual domain adaptation , see Appendix C .
+The strong performance of encoder-only adapters has interesting implications for inference speed .
+With an auto-regressive decoder , the computational bottleneck is on the decoder side .
+The encoder output is computed all at once , while computing the decoder output requires L steps , where L is the output length .
+This implies devoting more capacity to encoder adapters would achieve similar performance and faster inference ( more details in Appendix C ) .
+Cross-lingual Domain Transfer
+To study the capacity of our models to transfer domain knowledge across languages , we perform domain adaptation using parallel datasets for a subset of language pairs , and evaluate on the test sets available for all language pairs .
+In this section we report the results for adaptation to the medical domain using the subset of all the language directions including {en , fr , de , cs} languages ( Table 3 ) .
+We refer to these languages as in- domain languages , and out - of- domain languages would include all the other languages , { de , nl , sv , es , it , pt , pl } ( referred to as In and Out respectively in Table 3 ) .
+We report BLEU scores averaged across test sets of different categories of language - directions depending on whether the source / target language was observed during the domain adaptation training :
+In ? in for language pairs observed during DA , Out ? out for fully zero-shot DA performance , and In?out , Out ? in for translation directions combining in- domain and out -of- domain languages .
+First , we report the results for Oracle models providing an upper bound for the scores models could achieve with access to in- domain data for all the languages : model ( 10 ) was fine-tuned on medical data for all the language directions 8 , and a model with domain tags ( 3 ) discussed in section 5.1 .
+Baseline models include the default multilingual English-centric model ( 1 ) , as well as model ( 11 ) with language adapters trained on multi-parallel ParaCrawl data .
+Comparing against this baseline shows us improvements from domain-specific ( rather than language-specific ) information .
+Straightforward Methods
+We train several ' straightforward ' adapter models for the subset of in-domain languages on the top of the baseline model , one with no language adapters , model ( 12 ) , and model ( 13 ) with domain and language adapters ( where language adapters are frozen ) , stacking them in the encoder and decoder .
+Both of these models achieve good scores when translating into in- domain languages ( the In?in and Out? in categories ) , on par or better than Oracle scores and much higher than the baselines .
+On the other hand they suffer from significant drops in performance when translating into out - of- domain languages ( the In?out and Out?out categories ) .
+The model ( 16 ) trained with tags on a subset of in-domain languages suffers from the same low performance translating into out - of- domain languages and additionally has low performance with out-ofdomain source languages .
+Looking closer at the translations of the above models , we see that many translations are either generated in English , copy the source language , or mix words between English and the true target language ; see Table 4 in the Appendix for illustrative examples .
+We refer to this phenomenon as " off-target " translation .
+We report the percentage of translations generated in the correct target language in Table 3 when it is lower than 90 % 9 .
+We believe this phenomenon is partly due to decoder domain adapters having never been exposed to out - of- domain language generation .
+Encoder domain adapters seem to be less sensitive to composition with new language adapters ( as observed by for NLU tasks , and Table 3 in the Out ?
+In column ) .
+To investigate this , we train models ( 14 ) and ( 15 ) with encoder-only and decoder-only adapters .
+Figure 2 compares the performances of these models as well as model ( 13 ) trained with encoder and decoder domain adapters , ( 14 ) , ( 15 ) against the baseline model ( 11 ) .
+The decoder-only model ( 15 ) can better translate from out - of- domain languages and the encoder-only model ( 14 ) slightly improves for translations into out - of- domain languages .
+However the problem of off-target translation persists for both models and neither improves over ParaCrawl LA ( 11 ) .
+Therefore , we conclude that a straightforward combination of domain and language adapters leads to catastrophic forgetting both in the encoder and the decoder , but the encoder is less important for this effect .
+Effect of data augmentation
+We train models ( 17 ) , ( 18 ) ( 19 ) , ( 20 ) with additional data ( either a portion of ParaCrawl data , or back - translation of in- domain data ) to alleviate potential forgetting of representations for out - of- domain languages .
+All of these models improve the translation quality into out - of- domain languages .
+The model with tags ( 17 ) reaches competitive results and can be considered as a strong baseline .
+For models with back - translation data , the decoder-only adapter ( 20 ) model outperforms the encoder-only adapter ( 19 ) model on out - of- domain target languages ( as opposed to the case without BT ) and has the strongest results overall on translating into out - of- domain languages .
+While the BT models are trained on exactly the same data , this effect is possibly due the encoder adapters being more influenced by potentially noisy synthetic source -side data , whereas decoder adapters are more influenced by clean reference translations .
+The decoder-only BT model ( 20 ) improves over the baseline for all the language directions except for translation into English ; see Figure 3 .
+We report results for the other data augmentation methods ( see Section 3.2 ) in Appendix D ; these only improve over the ParaCrawl LA baseline in limited settings . 22 ) ) allows to solve the problem of off-target translation .
+We also note slight decreases in in- domain performance for those models , perhaps due to underfitting .
+Domain adapter dropout Models Increasing adaptation capacity
+When naively increasing model capacity by unfreezing LA stacked with decoder DA ( 23 ) , the model seems to mostly devote this capacity to In? in category , and suffers on other language pair groups .
+This trend seems to be similar to the un-augmented model with tags ( 16 ) .
+However , once regularized with DADrop ( 24 ) , and augmented with backtranslation ( 25 ) it reaches very competitive results .
+Figure 4 shows fine- grained results for different models with DADrop , back - translation and unfrozen LA .
+Back-translation improves performance on the Out?out and In?out groups , but decreases performance on the Out ? in group .
+Finally , unfreezing language adapters decreases the performance on Out ? in but improves on the Out?out group .
+-5 -8.3 - 7.2 - 11 - 12 - 15 -5.6 16 17 0 18 -4.1 -6.8 - 4.3 - 5.6 - 4.4 -6 - 2.7 20 17 17 0 -10 -5 - 11 -7.8 - 6.8 - 15 - 10 6.6 6.8 4.8 5.4 0 -8 - 13 -9 -7.1 - 11 -7.9 7.3 8.1 4.3 11 - 6.3 0 -9 - 10 -7.5 - 9.4 - 4.7 7.3 8 6.7 4.9 - 11 - 7.9 0 -10 -8 - 12 -8.9 6.8 7.2 9.3 11 -6 -7.9 - 8.5 0 -9.9 - 10 -7 5.4 5.5 8.2 8 -7.2 -8.3 - 8.5 - 12 0 -11 -7.2 8.4 6.6 9 5.1 - 11 -7.8 - 12 - 12 -9 0 -9 8.2 7.3 8.3 1.6 - 7.2 - 3.7 - 8.8 - 6 - 5.8 - 10 0 Freeze LA + enc. & dec .
+DA en fr de cs da nl sv es it pt pl en fr de cs da nl sv es it pt pl 0 14 14 16 - 1.7 - 4.3 - 2.6 - 5.2 -5.1 -3.9 - 1.8 12 0 13 15 1.4 -0.6 -0.5 -3.3 - 3.7 -3.9 -0.8 15 15 0 17 2.3 -1 2.2 1 0.1 1.7 1.4 17 15 15 0 -5.9 1.8 -3.4 -0.6 - 1.7 - 6.9 - 4.8 3.7 4.2 3 2.7 0 -3.9 - 7.1 - 4.7 -3.8 - 6.9 -4 3.8 5.6 2.1 8 - 2.1 0 -4.3 - 5.5 -3.8 -4 -0.6 4.2 4.6 4.1 2.1 - 5.7 - 3.5 0 -5.9 - 4.7 - 7.5 - 4.9 4.2 4.7 6.5 7.4 -2 -2.6 - 2.9 0 -6 -3.9 - 2.5 2.9 2.3 5 5.4 - 3.2 -3.9 - 3.7 - 6.7 0 -4.7 - 2.5 4.7 3.7 6.7 1.9 - 6.3 - 3.4 - 6.8 - 5.5 - 5.1 0 -5 4.5 4.1 5.5 0.1 -3.6 -0.8 -5 - 2.5 - 3.3 - 5.5 0 * * * * * * * * Freeze LA + enc .
+DA en fr de cs da nl sv es it pt pl en fr de cs da nl sv es it pt pl 0 14 13 16 - 6.1 - 8.4 - 8.3 - 8.9 - 7.7 - 5.8 - 6.1 11 0 12 14 -5 -7.2 - 6.8 - 8.5 - 7.8 - 6.5 - 5.5 14 14 0 16 -2.8 -7 - 2.7 - 4.3 -3.6 - 2.3 - 2 16 13 14 0 -7.2 - 5.5 - 8.5 - 7 -6.6 -8.2 -9 11 11 9.7 9.6 0 -6.1 - 11 -6.2 - 5.5 - 6.5 - 6.2 12 13 9.5 15 - 4.7 0 -6.3 - 7.4 - 5.5 - 4.8 -3.9 12 13 11 9.2 - 11 -6.5 0 -7 -6.2 -8 -7.2 9.4 10 11 13 - 6.1 - 7.8 - 7.5 0 -9.6 -8.5 - 6.1 11 11 13 14 - 4.7 - 6.6 - 6.4 - 10 0 -7.3 - 5.5 12 12 13 9.7 - 7.7 - 6.3 - 10 -8.8 - 7.4 0 -7.7 12 11 12 6.7 - 6 -4.3 - 7.8 - 5.9 - 6.2 - 7.2 0 Freeze LA + dec. DA 1.6 3.8 5.1 5.9 5.5 1.5 8.7 7.4 7.7 0 -4 -2 -4.2 -2 -1.1 1.2 1.2 11 7.4 13 3.1 0 2 -3.6 - 2.1 4.5 6.9 1.2 10 8.1 6.2 -0.4 - 3.9 0 -5.7 - 4.2 -0.9 1 0.1 8.2 9.7 11 0.7 -2.8 - 2.4 0 -1.5 0.2 6.2 1.1 7.5 9.2 10 - 1.5 - 4.7 - 2.9 -6.1 0 -1 3.6 0.9 8.9 11 7.5 - 4.1 - 4.6 - 7.4 - 6.5 -3.6 0 2.2 0.9 9.6 9.9 4.1 - 1.7 - 2.3 -3 - 2.1 - 1.5 - 0. 7.2 3.6 9.9 1.7 0 0.2 -3.6 - 2.7 2.8 4.8 0.9 7.6 6.5 4.1 - 1.4 -5 0 -5.5 - 4.7 - 1.5 0.2 0.4 6.1 7.5 8.7 - 1.2 - 5.3 - 3.9 0 -4 -0.3 4.2 1 5.6 6.6 7.5 -3 - 5.7 - 4.6 - 4.4 0 0.3 3.1 1.1 6.3 8.4 4.7 - 5.7 - 6.8 - 8.1 -7.6 - 5.9 0 0.4 0.6 6.9 7.2 1.8 - 2.8 -3.9 - 4.8 -3.1 - 2. 0 13 13 16 9.1 6.3 9 6.6 8.9 14 11 9.9 0 11 14 5.5 3.7 6.3 4.2 5.3 9.7 8.5 12 13 0 15 8.8 3.7 8.9 4.1 5.6 11 11 14 13 13 0 3.7 4 4 5 5.7 7.6 5.7 1.3 11 9.7 9 0 3 4 4 5.2 7 5.6 0.8 12 8.7 14 8.1 0 8.7 4.8 6.1 12 10 0.7 12 11 9 3.4 3.9 0 4.4 5.3 7.1 6 0.5 9.4 11 13 6.1 4.7 6.8 0 5.8 10 9 0.7 10 12 13 5.5 3.9 6.4 4.1 0 9.9 8.8 0.8 12 13 9.3 3.2 4.1 3.8 3.1 5.6 0 7 0.9 10 11 6.4 2.7 3.3 3.3 3.9 3.9 5 . 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.1 0 0.1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.0
+Conclusion
+In this work we studied multilingual domain adaptation both in the full resource setting where indomain parallel data is available for all the language pairs , as well as the partial resource setting , where in - domain data is only available for a small set of languages .
+In particular , we study how to better compose language and domain adapter modules in the context of NMT .
+We find that while adapters for encoder architectures like BERT can be safely composed , this is not true for NMT adapters : domain adapters learnt in the partial resource scenario struggle to generate into languages they were not trained Delta( BLEU ) 0 14 14 17 - 5.7 - 8.8 - 8.3 - 10 -7.3 - 7.6 -5 .1 12 0 13 15 -3.3 - 5.9 - 5.1 -7.2 -8 - 9.5 - 4.1 14 15 0 17 - 2.5 - 4.8 - 2.5 -4 -2.8 -2 -1.1 17 15 15 0 -5.3 -3.1 - 7.2 - 6.6 -4 - 10 -8.6 7.4 6.9 5.1 5.2 0 - 7 . 1 - 11 -8.8 - 5.6 - 9.5 - 7.3 7.4 8.2 4.8 11 - 5.2 0 -7.5 - 8.7 - 5.6 - 7.2 -3 8 8 7.1 4.4 - 9.1 - 6.5 0 -9.2 -5.9 - 10 -7.5 6.5 7.2 8.8 10 -5 -6.8 - 6.4 0 -8.4 - 7.7 - 5.2 6.8 5.9 8.1 8.4 - 5.5 - 7 - 7.4 - 9.7 0 -7.8 - 5.1 9 6.7 9.4 5.6 -8.6 - 6.5 - 10 - 9.7 - 7 0 -8.2 7.7 6.9 7.8 1.9 - 5. 7 -3.4 - 8.3 - 5.5 - 4.3 -8 0 15 14 16 8.7 6.5 8.4 7.7 9.9 16 11 12 0 13 15 5.3 3.8 5 3.4 5.5 9.6 9.3 13 14 0 16 8.7 3.4 9.1 5.6 6.7 12 11 16 15 15 0 3.1 3.9 3.1 4.8 6.1 7.2 5.8 1.7 8.9 7.4 7.4 0 -2.7 -0.3 - 1.5 0.1 1.5 2.2 1.8 11 7.4 14 3.9 0 2.9 - 1.1 1.2 5.9 7.7 1 10 8.9 7.3 0.8 - 1.9 0 -1.7 -0.7 1.8 2.3 0.5 9.1 10 12 2.1 -0.7 0.5 0 1.6 6.8 6.9 1.2 8.7 11 11 -0.2 -2.2 -1 - 1.5 0 4 5.8 1.1 9.1 11 8.1 -3.2 -2.2 -3.9 - 2.9 -0.3 0 3.7 1.2 9 10 4.2 -0.9 -0.5 - 2.1 - 0.4 0 . Delta( BLEU ) 0 17 17 19 -4.9 - 6.5 - 8.4 - 8.5 - 7.5 - 6.2 -6.2 15 0 16 18 -3.6 - 4.7 - 5.2 - 9.6 -8.8 - 7.8 - 5.1 18 18 0 20 -2.5 - 5.5 - 4.5 -3 -3.2 -2.2 -3.2 21 18 18 0 -7 -2.9 -8.5 - 5.1 -5.3 - 7.6 - 10 6.4 8 6.6 5.7 0 -1.6 - 1.8 - 2.3 - 1.3 - 1.3 - 2.3 6.6 9.2 5.3 12 -0.6 0 -1.8 - 2.2 -1.4 - 1.3 - 1.2 6.2 8 7.3 5.8 - 1.5 - 1.5 0 -2.5 - 1.7 - 1.4 - 2.2 4.9 7.6 7.9 10 -0.4 - 1.9 -0.9 0 -2.6 - 1.6 - 1.8 6 8 8.4 9.4 -0.6 - 1.4 - 1.6 - 2.7 0 -1.9 - 1.4 6.5 7.7 8.3 6.3 - 1.2 -0.6 - 1.7 - 1.6 - 1.7 0 -1.9 6.5 6 6.7 3.6 - 1.1 -0.7 - 1.8 - 1.7 - 2 - 1.9 0 * * Unfreeze LA + dec. DA + DADrop en fr de cs da nl sv es it pt pl en fr de cs da nl sv es it pt pl 0 16 16 18 9.1 7.6 10 9 11 16 12 14 0 16 17 7.6 6.1 9.4 3.9 5 8.9 11 17 17 0 18 9.9 5.3 11 8.3 9.7 13 12 20 18 18 0 6.3 8.6 7.5 8.7 9.2 9.4 7.1 0.6 3.6 3.3 3.8 0 0.2 2.2 1.2 1.6 3.8 2.7 0.4 3.2 2 8.4 3.3 0 3.2 1 1.9 5.8 5.5 0.3 3.3 3.2 3.3 0.9 0.5 0 0 0.7 3 2.3 0 3.1 3.9 6.5 2 1.1 2.6 0 0.9 6.6 5.1 0.4 3.9 3.7 6 1.5 0.7 2.6 1.4 0 6.5 4.6 0.1 2.9 3.4 3.9 -0.2 -0.6 0.1 0.3 1.6 0 3.5 0.5 3.4 3.5 3.1 0.7 1.2 0.6 0.4 0. on , even though the original model they are inserted in was trained on those languages .
+We found that randomly dropping the domain adapter and backtranslation can regularize the training and lead to less catastrophic forgetting for when generating into out - of- domain languages , although they do not fully solve the problem of off-target translation .
+We experimented with different adapter placement and found that devoting additional capacity to encoder adapters can lead to better results compared to when the same capacity is shared between the encoder and the decoder .
+Similarly , in the partial resource scenario , models with encoder-only domain adapters suffer less from catastrophic forgetting when translating into out - of- domain languages .
+In contrast , decoder-only domain adapters perform well when translating from out - of- domain into in- domain languages , and combine well with back - translation , perhaps due to their ability to ignore noisy synthetic source data .
+Finally we note that a model fine-tuned with domain tags serves as a very competitive baseline for multilingual domain adaptation .
+On the other hand , domain adaptation with adapters offers modularity , and allows incrementally adapting to new domains without retraining the full model .
+Future research directions could explore multi-task training combining parallel and monolingual in- domain data in other ways to alleviate the need for backtranslation .
+Our work is the first attempt to combine domain adapters and language adapters for a generation task ( NMT ) .
+Although such combinations have shown to be successful for NLU tasks , obtaining good representations for generating unseen target languages proves to be a difficult problem .
+We believe a fine- grained study of where to use language or domain-specific capacity could lead to better cross-lingual domain transfer in future .
+Finally , we provide supplementary material to facilitate reproducibility .
+10

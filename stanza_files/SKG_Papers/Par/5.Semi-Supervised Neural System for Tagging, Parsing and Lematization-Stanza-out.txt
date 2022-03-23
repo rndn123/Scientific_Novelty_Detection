@@ -1,0 +1,208 @@
+title
+Semi-Supervised Neural System for Tagging , Parsing and Lemmatization
+abstract
+This paper describes the ICS PAS system which took part in CoNLL 2018 shared task on Multilingual Parsing from Raw Text to Universal Dependencies .
+The system consists of jointly trained tagger , lemmatizer , and dependency parser which are based on features extracted by a biL - STM network .
+The system uses both fully connected and dilated convolutional neural architectures .
+The novelty of our approach is the use of an additional loss function , which reduces the number of cycles in the predicted dependency graphs , and the use of self-training to increase the system performance .
+The proposed system , i.e. ICS PAS ( Warszawa ) , ranked 3th / 4th in the official evaluation 1 obtaining the following overall results : 73.02 ( LAS ) , 60.25 ( MLAS ) and 64.44 ( BLEX ) .
+Introduction
+Most of contemporary NLP systems for machine translation , question answering , sentiment analysis , etc. operate on preprocessed texts , i.e. texts with tokenised , part- of-speech tagged , and possibly syntactically parsed sentences .
+Therefore , the development of high-quality pipelines of NLP tools or entire systems for language preprocessing is still an important issue .
+The vast majority of language preprocessing frameworks take advantage of the statistical methods , especially the supervised or semi-supervised statistical methods .
+Based on training data , language preprocessing tools learn to analyse sentences and to predict morphosyntactic annotations of these sentences .
+The supervised methods require gold -standard training data whose creation is a time - consuming and expensive process .
+Nevertheless , the morphosyntactically annotated data sets are publicly available for many languages , in particular within Universal Dependencies initiative ( UD , Nivre et al. , 2016 ) .
+The initiators of UD aim at developing a cross-linguistically consistent annotation schema and at building a large multilingual collection of sentences annotated according to this schema with the universal part- of-speech tags and the universal dependency trees .
+UD treebanks are nowadays used for multilingual system development .
+The history of developing multilingual systems dates back to 2006 and 2007 , when two shared tasks on multilingual dependency parsing were organised at the Conference on Computational Natural Language Learning ( CoNLL , Buchholz and Marsi , 2006 ; Nivre et al. , 2007 ) .
+After 10 years , the shared task was organised again in 2017 ( Zeman et al. , 2017 ) , and currently there is its fourth edition .
+In this paper we describe our solution submitted to the CoNLL 2018 Universal Dependency shared task .
+The system and the trained models for participating treebanks are publicly available .
+2
+Our system takes a tokenised sentence as input .
+The sentence tokenisation is predicted by the baseline model ( Straka and Strakov ? , 2017 ) .
+Each word is represented both as an external word embedding and as a character - based word embedding estimated by a dilated convolutional neural network encoder ( CNN , Yu and Koltun , 2016 ) .
+The concatenation of these embeddings is fed to a bidirectional long short- term memory network ( biLSTM , Graves and Schmidhuber , 2005 ; Hochreiter and Schmidhuber , 1997 ) which ex-tracts the final features ( see Section 2.1 ) .
+The tagger takes extracted features and predicts universal part- of-speech tags , language -specific tags and morphological features using three separate fully connected neural networks with one hidden layer ( see Section 2.2 ) .
+The lemmatizer uses a dilated CNN to predict lemmas based on characters of corresponding words and features previously extracted by a biLSTM encoder ( see Section 2.3 ) .
+As a scoring function , the graph- based dependency parser uses simple dot product of the vector representations of a dependent and its governor .
+These representations are output by two single fully connected layers which take feature vectors extracted by a biLSTM encoder as input .
+A novel loss function penalizes cycles , in order to reduce their number in the predicted dependency graphs ( see Section 2.4.2 ) .
+Chu-Liu-Edmonds algorithm ( Chu and Liu , 1965 ; Edmonds , 1967 ) constructs the final dependency tree .
+The dependency labels are predicted with a fully connected neural network based on the dependent and its governor embeddings as well ( see Section 2.4 for more details on the parser 's architecture ) .
+The system architecture is schematised in Figure 1 .
+The whole system is end-to - end trained , separately for each treebank provided for the purposes of the shared task .
+The technical details of the implemented system are given in Section 3 .
+Additionally , for 20 selected treebanks self-training is used to increase the performance of the models ( see Section 3.4 ) .
+The proposed technique of self-training has an impact on the quality of tagging , lemmatisation and parsing ( see Section 4.3 ) .
+The article ends with the presentation of the results achieved by our system ( see Section 4 ) and some conclusions ( see Section 5 ) .
+Architecture Overview
+Feature Extraction
+The system accepts an input in the form of tokenised sentences that can be annotated with additional morphosyntactic information : lemmas , partof-speech tags , and morphological features .
+However , as the goal of the shared task is to predict not only dependency trees but also parts of speech , lemmas and morphological features , 3 we decide to use words as the only input .
+3
+Not all treebanks are annotated with lemmas and morphological features .
+The schema of the system architecture .
+Word Level Embedding Each input word is represented as a vector using the external pre-trained embedding .
+Words not present in the external embedding are replaced with the " unknown " word and represented as a random vector drawn from the normal distribution with the mean and the variance calculated based on other word embedding vectors .
+Both the external embedding itself and the vector representing " unknown " word are fixed during the training , but they are transformed by a single fully connected layer .
+This transformation serves similar purpose as a trainable embedding , but helps with generalization , since it will also transform vectors for words available in the external embedding , but not in the training set .
+Character Level Embedding Additionally , each word is represented as the character - based word embedding extracted with a dilated convolutional neural network ( CNN ) .
+We decide to use the dilated CNN instead of commonly used biLSTM encoder to speed up the training of the system .
+First , each word is transformed to a sequence of the trainable character embeddings .
+Moreover , the special symbols " beginning - of- word " and " end - of- word " are added to the sequence to represent the beginning and the end of the word .
+Then the dilated CNN encoder is used .
+Since the encoder also outputs a sequence , we use the global max-pooling operation to obtain the final word embedding .
+This procedure is reasonable for estimating embeddings of out - of- vocabulary words , especially in languages with rich morphology .
+Sentence Level biLSTM
+Both word representations are concatenated together and fed into the sentence level biLSTM network .
+The network learns contexts for each word and extracts the final features for each of these words .
+Tagger
+Part-of-Speech Tags
+The tagger is implemented as a fully connected network with one hidden layer and soft-max activation function .
+The tagger takes the features extracted by the biLSTM as input and predicts a universal part- of-speech tag and a language -specific tag for each word .
+Morphological Features Similar approach is used to predict morphological features .
+Each morphological feature is represented as an attribute- value pair ( e.g. Num-ber =Sing ) and each word is annotated with a set of appropriate attribute - value pairs in training data .
+We therefore decide to treat the problem of morphological features prediction as several classification problems ( see Figure 2 ) .
+For each attribute its value is predicted with a fully connected network with one hidden layer and soft-max activation function .
+Various words are defined by the sets of various morphological features .
+Since for each word only some attributes are present in the set of morphological features , the possible values are extended with " not applicable " label .
+It allows the model to learn that an attribute is not present in the set of morphological features of a particular word .
+Lemmatizer Lemmatizer takes two different inputs .
+First , features extracted by the biLSTM encoder are used , however their dimensionality is reduced with a single fully connected layer .
+Next , the word , for which we want to predict a lemma , is converted to a sequence of characters .
+The special symbols " beginning - of- word " and " end - of- word " are added to the sequence to represent the beginning and the end of the word .
+Each character in the sequence is represented as a trainable embedding vector .
+The final input to the lemmatizer is a sequence of character embeddings concatenated with the reduced version of features extracted by the biLSTM encoder .
+Note that each character embedding is concatenated with exactly the same extracted feature vector .
+Then the dilated convolutional neural network followed by soft-max function converts given in - put to the sequence of probabilities of one- hot encoded characters of the predicted lemma ( see Figure 3 ) .
+Parser
+Arc Prediction
+Two single fully connected layers transform features extracted by the biLSTM encoder into head and dependent vector representations .
+A fully connected dependency graph is defined with an adjacency matrix .
+The columns of the matrix correspond to heads represented with heads ' vector representations and the rows correspond to dependents represented with dependents ' vector representations .
+The elements of the adjacency matrix , in turn , are dot products of all pairs of the head and dependent vector representations .
+Soft-max function is then applied to each row of the matrix to predict the adjacent head- dependent pairs ( see Figure 4 ) .
+Loss Function
+In order to force the network to predict the correct head for each dependent and thus a correct dependency tree , the cross-entropy loss function is used for each row in the adjacency matrix .
+Note however that such formulation of the problem can lead the network to predict an adjacency matrix with cycles .
+We aim to get an adjacency matrix for which a simple greedy algorithm would suffice to con-struct the correct tree .
+Therefore , we propose an additional ' cycle-penalty ' loss function which reduces the number of cycles in the predicted adjacency matrix : loss ( A ) = K k=1 tr ( A k )
+The non-zero trace of A k indicates that there are the paths of the length k in the graph represented by the adjacency matrix A ( Norman , 1965 ) .
+Therefore , by minimizing the sum of the traces of the subsequent powers of A we reduce the number of cycles in the predicted graph .
+In an ideal scenario K should be equal to the length of the sentence , but in practice even K = 3 helps to reduce the number of cycles .
+The final loss used to train the arc prediction model is a sum of cross-entropy loss and ' cycle-penalty ' loss .
+If the smoothed adjacent matrix still contains cycles , Chu-Liu-Edmonds algorithm ( Chu and Liu , 1965 ; Edmonds , 1967 ) is applied to extract the properly built dependency tree in the final step of the prediction procedure .
+Label Prediction
+In order to predict the label for each arc of the predicted dependency tree , the vector representations of the arc 's head and its dependent are calculated .
+These representations do not correspond to those used during the arc prediction , but they are obtained in a similar way .
+The estimated vector of the dependent is concatenated with the weighted average of its predicted head vector .
+The weights correspond to probabilities of a word being the dependent 's head predicted by the arc model described in the previous section .
+It is not possible to take just the vector of a single predicted head , because it would prevent the model to be trained together with the rest of the system , as argmax operation is not differentiable .
+The concatenated vector representations are then fed to a single fully connected layer with soft-max activation function .
+3 Implementation Details
+Network Hyperparameters Word Embedding
+We use 300 - dimensional fastText word embeddings ( Grave et al. , 2018 ) , 4 which are then converted to 100 - dimensional vectors by a single fully connected layer .
+The embedding is not available for some languages , i.e. for Old Church Slavonic ( ' cu proiel ' ) , Old French ( ' fro srcmf ' ) , Gothic ( ' got proiel ' ) , Kurmanji ( ' kmr mg ' ) , North S?mi ( ' sme giella ' ) or it seems incorrect , i.e. in Slovak ( 'sk snk ' ) .
+Therefore , we estimate the embedding for these languages during the training of the whole system .
+Character Embedding
+The character level embedding is calculated with three convolutional layers with 512 , 128 and 64 filters with dilation rates equal to 1 , 2 and 4 .
+All of the filters have the kernel of size 3 .
+The input character embedding has the size of 64 .
+Final Word Embedding
+The final word embedding is the concatenation of the 100 - dimensional word embedding and the 64 - dimensional character - based word embedding .
+It has thus 164 dimensions .
+Feature Extraction
+Two biLSTM layers with 512 hidden units are used to extract the final features .
+Tagger
+The tagger uses a fully connected network with the hidden layer of the size 64 .
+The model to predict morphological features uses the hidden layer of 128 neurons .
+Lemmatizer
+The lemmatizer uses three convolutional layers with 256 filters and dilation rates equal to 1 , 2 and 4 .
+All of the filters have the kernel of size 3 .
+Then the final convolutional layer with the kernel size equal to 1 is used to predict lemmas .
+The input characters , represented as the embeddings with 256 dimensions , are concatenated with the features extracted with the biLSTM encoder and reduced to 32 dimensions with a single fully connected layer .
+Parser
+The arc model uses heads ' and dependents ' vector representations with 512 dimensions .
+The labelling model uses 128 - dimensional vectors .
+All fully connected layers use tanh activation function and all convolutional layers use rectified linear unit ( ReLU , Nair and Hinton , 2010 ) .
+Regularization
+We apply both Gaussian Dropout ( with the dropout rate of 0.25 ) and Gaussian Noise ( with the standard deviation on 0.2 ) to the final word embedding 5 and after processing each biLSTM layer .
+All fully connected layers use the standard dropout ( Srivastava et al. , 2014 ) with the dropout rate of 0.25 .
+The biLSTM layers use both the standard and recurrent dropout with the rate of 0.25 .
+Moreover , the biLSTM and convolutional layers use L2 regularization with the rate of 1 ? 10 ?6 and the trainable embeddings use L2 regularization with the rate of 1 ? 10 ?5 .
+Training
+We use cross-entropy loss for all parts of the system .
+The loss for the arc prediction model is a sum of cross-entropy loss and novel loss ( see Section 2.4.2 ) .
+The final loss is the weighted sum of losses with the following weights for each task : ? 0.05 for part- of-speech tagging , ? 0.2 for morphological features prediction , ? 0.05 for lemmatization , ? 0.2 for arc prediction , ? 0.8 for label prediction .
+The whole system is optimized with ADAM ( Kingma and Ba , 2014 ) with the learning rate equal to 0.002 and ?
+1 = ? 2 = 0.9 .
+Typically , the batch size of approximately 2500 words is used , however for a few of the smallest treebanks the batch size is reduced to 1000 or even 75 words .
+Each batch consists of sentences with a similar length , but the ordering of batches is randomized within each epoch .
+Each observation ( i.e. sentence ) is weighted with the log of the sentence length that forces the model to focus on longer ( and usually more difficult ) sentences .
+The model is trained for maximum of 400 epochs and the learning rate is reduced twice by the factor of two when the validation score reaches plateau .
+For languages with multiple treebanks , first a general model is trained on all sentences from these treebanks and then the model is fine-tuned for each treebank .
+Self-training
+For 20 arbitrarily selected treebanks , mostly the smallest ones , self-training method ( Triguero et al. , 2015 ) is used to increase the performance of 50 the system .
+First the model is trained in a standard way , as described in the previous sections .
+Then the ' semi-supervised ' training set is built .
+It contains sentences with the total of approximately 25 M words taken from raw data 6 provided by CoNLL 2018 organizers .
+For Uyghur language only 3 M words are available .
+The provided data sets come either from Wikipedia or Commom Crawl .
+Where it is possible we choose the sentences from Common Crawl , due to longer ( on average ) sentence sizes .
+The pre-trained model is then used to predict dependency trees , lemmas and part- of-speech tags for all sentences in the ' semisupervised ' training set .
+Finally , the new model is trained on this ' semi-supervised ' training set for only one epoch and fine-tuned on the goldstandard training data , using the standard training procedure .
+Languages with No Resources
+Our solution for processing treebanks with no training data is very simple .
+We choose another language for which training data is available and train the model on this data .
+The estimated model is used for predictions in the language with no training data .
+We use the following treebank pairs : ? ' br keb ' ( Breton ) 7 -' ga idt ' ( Irish ) , ? ' fo oft ' ( Faroese ) -' no nynorsk ' ( Norwegian ) , ? ' pcm nsc ' ( Naija ) -'en ewt ' ( English ) , ? 'th pud ' ( Thai ) -' vi vtb ' ( Vietnamese ) .
+The parallel UD treebanks for Czech , English , Finish , and Swedish , and the treebank for modern Japanese are processed with the models estimated on other treebanks for the respective languages : ? ' cs pud ' -' cs pdt ' ( Czech ) , ? 'en pud ' -'en ewt ' ( English ) , ? ' fi pud ' -' fi tdt ' ( Finish ) , ? ' sv pud ' -' sv talbanken ' ( Swedish ) , ? ' ja modern ' -' ja gsd ' ( Japanese ) .
+6 https://lindat.mff.cuni.cz/ repository/xmlui/handle/11234/1-1989
+7
+The first language in each row has no training data and is parsed with the model estimated for the second language in the pair .
+Results
+Overview
+In the official evaluation 8 our system ranks 3th / 4th for all three main metrics ( ex aequo with LATTICE and UDPipe Future for LAS ) .
+It performs particularly well on small treebanks with no development data , but a reasonable size of the training set .
+For example , the system ranks 1st in terms of all three measures on Russian 'ru taiga ' treebank , 1st ( MLAS and BLEX ) and 2nd ( LAS ) on Latin 'la perseus ' treebank and spoken Slovenian ' sl sst ' treebank , and 1st ( MLAS and BLEX ) and 3rd ( LAS ) on spoken Norwegian ' no nynorsklia ' treebank .
+It is worth noting that overall MLAS and BLEX scores obtained by our system trained on small treebanks are currently the state of the art ( see Table 1 ) .
+With respect to LAS score , our system ranks 3rd .
+Regarding to processing big treebanks , our system performs very well on Czech ' cs fictree ' treebank and English 'en gum ' treebank ( 1st place in MLAS and BLEX , and 2nd place in LAS ) , and Latin ' la ittb ' treebank ( 1st place in MLAS and BLEX , and 3rd place in LAS ) .
+It is very important to note that most of the mentioned languages , i.e. Russian , Latin , Slovenian , Norwegian , and Czech , are Indo-European languages ( fusional ) .
+Furthermore , for other fusional languages , e.g. Galician , Ancient Greek , Polish , Ukrainian , Dutch , Swedish , French , Italian , Spanish , Basque , our system provides quite satisfying results as well .
+It follows that our system is especially appropriate for processing fusional languages .
+Category
+Our last observation concerns the usefulness of external word embeddings for NLP system with a neural architecture .
+The languages without external word embeddings ( see Section 3.1 ) are pro-cessed by our system significantly below its overall performance .
+Hence , the external word embeddings are crucial for a neural NLP system .
+Impact of Loss Function
+For 15 arbitrarily selected treebanks we train the models without the additional loss function and we compare UAS scores of these models with UAS scores obtained by the models estimated with the additional loss function ( with K = 3 , see Section 2.4.2 ) .
+Moreover for each treebank we calculate what would be the fraction of trees with cycles if we use the greedy algorithm to construct the predicted trees .
+Note that the following results cannot be directly compared to the official test results .
+First we report the scores on the validation set .
+Second we use the gold-standard segmentation instead of the segmentation predicted by the baseline model .
+The additional loss only slightly decreases UAS ( see the second and the third column in Table 2 ) .
+However , it also has only a small impact on the cycles reduction ( see the fourth and the fifth column in Table 2 ) .
+If there is a lot of cycles in the graphs predicted without the additional loss , e.g. 7.7 % cycles in ' ar padt ' ( Arabic ) , the number of cycles is significantly reduced with the addi-tional loss function , i.e. the reduction by 3.2 p.p .
+If the rate of cycles is lower , e.g. 4.19 % in ' cu proiel ' ( Old Church Slavonic ) , fewer cycles are corrected , i.e. the reduction by 0.28 p.p.
+Finally , there are four treebanks -' bg btb ' ( Bulgarian ) , 'es ancora ' ( Spanish ) , ' pt bosque ' ( Portuguese ) , and ' ro rrt ' ( Romanian ) , for which the additional loss function slightly increases the number of cycles .
+Treebank
+Impact of Self-training
+We test the impact of self-training method on the performance of the system trained on 20 selected treebanks .
+Again the models are tested on the validation set with the gold-standard segmentation .
+Comparing the results of the models estimated on training data with the results of the models estimated with the self-training method ( see Table 3 ) , we notice that self-training significantly increases the performance of the system .
+There is an increase for all metrics for all treebanks except for 'zh gsd ' ( Chinese ) .
+On average there is an increase of 1.2 p.p. for LAS , 2.9 p.p. for MLAS and 1.7 p.p. for BLEX .
+Conclusion
+We described the ICS PAS system which took part in CoNLL 2018 shared task .
+Our goal was to build one system for preprocessing natural languages , i.e. for part- of-speech tagging , lemmatisation and dependency parsing .
+The three system 's modules - tagger , lemmatizer and parser - are jointly trained .
+The proposed neural system ranks 3th/ 4th in the official evaluation of the shared task .
+It is worth nothing that the system is especially useful for estimating the models on relative sparse data ( small treebanks ) , as it overcame other systems in terms of MLAS and BLEX .
+Furthermore , our system is especially appropriate for processing Indo-European fusional languages .
+The self-training procedure significantly increases the performance of the system .
+The proposed loss function , in turn , has only a slight impact on the cycles reduction and UAS scores .
+The external word embeddings are crucial for our neural - based system .
+Figure 1 : 1 Figure 1 : The schema of the system architecture .

@@ -1,0 +1,183 @@
+title
+Data-Efficient Goal-Oriented Conversation with Dialogue Knowledge Transfer Networks
+abstract
+Goal-oriented dialogue systems are now being widely adopted in industry where it is of key importance to maintain a rapid prototyping cycle for new products and domains .
+Datadriven dialogue system development has to be adapted to meet this requirement - therefore , reducing the amount of data and annotations necessary for training such systems is a central research problem .
+In this paper , we present the Dialogue Knowledge Transfer Network ( DiKTNet ) , a stateof - the - art approach to goal-oriented dialogue generation which only uses a few example dialogues ( i.e. few-shot learning ) , none of which has to be annotated .
+We achieve this by performing a 2 - stage training .
+Firstly , we perform unsupervised dialogue representation pre-training on a large source of goal-oriented dialogues in multiple domains , the MetaLWOz corpus .
+Secondly , at the transfer stage , we train DiKTNet using this representation together with 2 other textual knowledge sources with different levels of generality : ELMo encoder and the main dataset 's source domains .
+Our main dataset is the Stanford Multi-Domain dialogue corpus .
+We evaluate our model on it in terms of BLEU and Entity F1 scores , and show that our approach significantly and consistently improves upon a series of baseline models as well as over the previous state - of - the - art dialogue generation model , ZSDG .
+The improvement upon the latter - up to 10 % in Entity F1 and the average of 3 % in BLEU score - is achieved using only 10 % equivalent of ZSDG 's in- domain training data .
+Introduction
+Machine learning - based dialogue systems , while still being a relatively new research direction , are experiencing increasingly wide adoption in industry .
+Large-scale dialogue assistant platforms such as Google Assistant , Amazon Alexa , and Apple Siri provide a unified conversational user interface ( CUI ) for third - party applications and services .
+Furthermore , products like Google Dialogflow , Wit.ai , Microsoft LUIS , and Rasa offer means for rapid development of a dialogue system 's core modules .
+In addition , with the recently adopted technique of training dialogue systems end-to - end data- efficiency of such systems becomes the key question in their adoption in practical applications .
+Currently , while being extremely flexible and requiring little to no programming of in-domain business logic ( see e.g. Ultes et al . ( 2018 ) ; ; Rojas-Barahona et al. ( 2017 ) ) , such systems have too high data consumption - including both collection and annotation effort - in order for them to be used in rapidly paced industrial product cycles .
+Therefore , approaches to training such systems with extremely limited data ( i.e. zero- , one - and few-shot training ) are a priority research direction in the dialogue systems area .
+In this paper , we present the Dialogue Knowledge Transfer Network ( or DiKTNet ) , a generative goal-oriented dialogue model designed for fewshot learning , i.e. training only using a small number of complete in-domain dialogues .
+The key underlying concept of this model is transfer learning : DiKTNet makes use of the latent text representation learned from several sources ranging from large-scale general - purpose textual corpora to similar dialogues in the domains different to the target one .
+We use the evaluation framework of and the same dataset , and mainly compare our approach to theirs .
+While their method does n't require complete in-domain dialogues and uses annotated utterances instead ( and is therefore described as " zero-shot " ) , we show that our model achieves superior performance with roughly the same amount of data ( with respect to in - domain utterances ) while requiring no annotations whatsoever .
+Related Work
+The problem of data efficiency of dialogue systems has been extensively researched in the past .
+Starting with domain adaptation of a dialogue state tracker ( Henderson et al. , 2014 ) approached using Bayesian Processes and Recurrent Neural Networks ( Mrksic et al. , 2015 ) , there has been significant work on training different dialogue system components using as little data as possible .
+As such , Williams et al . ( 2017 ) introduced a dialogue management model designed for bootstrapping from limited training data and further fine-tuning .
+A recent paper by Vlasov et al . ( 2018 ) introduced a dialogue management model which uses a unified embedding space for user and system turns allowing efficient cross-domain knowledge transfer .
+There also exist approaches to end-to - end dialogue generation .
+proposed a linguistically informed model based on an incremental semantic parser ( Eshghi et al. , 2011 ) combined with a reinforcement learning - based agent .
+The parser was used for both maintaining the agent 's state and pruning the agent 's incremental , word - level generation actions ( only the actions leading to syntactically correct word sequences were allowed for the agent to take ) .
+While outperforming end-to- end dialogue models on bAbI Dialog Tasks in a zero-shot setup due to its prior linguistic knowledge in the form of a dialogue grammar , this method inherited the limitations of it as well .
+Specifically , it 's limited to a single domain until a wide - coverage grammar is available .
+Meta-learning has also gained a lot of attention as a way to train models for maximally efficient adaptation to new data .
+As such , Qian and Yu ( 2019 ) presented such approach for fast adaptation of a dialogue model to a new domain .
+While highly promising , its main result was achieved on a synthetic dataset and would ideally need more testing on real data .
+Finally , the method we directly compare our approach to is that of who introduced the Zero - Shot Dialogue Generation ( ZSDG ) task and the corresponding model .
+In their work , they use a unified latent space for user utterances , system turns , and domain descriptions in the form of utterance -annotation pairs .
+Since they only used such utterances and no full dialogues for the target domain , they presented this approach as " zero-shot " learning .
+In our approach , we do use complete in- domain dialogues , but with significantly less data with respect to the number of in-domain utterances .
+Moreover , our method requires no annotation whatsoever .
+Recent research in Natural Language Processing has shown that the transfer of text representation learned on larger data sources benefits target models ' performance , just as was the case with ImageNet - based computer vision models ( Deng et al. , 2009 ) .
+For text , the main means for transfer was Word2Vec and GloVe embeddings ( Mikolov et al. , 2013 ; Pennington et al. , 2014 ) recently extended with context - aware models like ELMo ( Peters et al. , 2018 ) and BERT ( Devlin et al. , 2018 ) .
+Trained on large and diverse textual corpora , they were shown to improve target models ' performance on a number of Natural Language Processing tasks .
+Although highly beneficial , those models ' use may not be sufficient for the case of dialogue as response generation for goal-oriented dialogue from extremely limited data requires specialized tools .
+General - purpose embeddings lack specificity for close dialogue domains since they have been learned from very heterogeneously distributed data : in dialogue , the distribution of word sequences is highly specific to a given domain or task , i.e. word sequences in dialogue can take on an astonishingly wide variety of meanings in dif-ferent contexts .
+In this paper , we will work with autoencoders , a class of unsupervised text representation models working via reconstructing the input - specifically , a Variational Autoencoder ( VAE ) was considered the main means to learn robust text representations ( Bowman et al. , 2016 ) .
+Although the model itself was challenging to train and was mainly used with plenty of workarounds , and recently there started to appear variants of this model with improved stability .
+One such model we will use in this paper is that of ( see Section 4.1 for more detail ) .
+Few - Shot Dialogue Generation
+We first describe the task we are addressing in this paper , and the corresponding base model .
+Specifically , we have a set of dialogues in source domains and just a few seed dialogues in the target domain .
+And the model 's task is , having been trained on all the available source data , to fine-tune on the target data to be further evaluated on the full set of target-domain dialogues .
+We are basing our model for this task on a Hierarchical Encoder -Decoder ( HRED ) architecture with attention - based copying ( Merity et al. , 2017 ) .
+The base optimization objective is as follows : L HRED = log p F d ( x sys | F e ( c , x usr ) ) ( 1 ) where x usr is user 's query , x sys is the system 's response , c is the dialogue context , and F e and F d are respectively hierarchical encoder and decoder .
+We work with goal-oriented dialogues , so it 's natural in our setting to take into account an underlying Knowledge Base ( or API ) providing results on the user 's queries .
+Given that such KB information may contain unseen token sequences for the most part , especially in the target domain , we use a copy mechanism in order to be able to use this information in the system 's responses .
+More specifically , we represent KB info as token sequences and concatenate it to the dialogue context similarly to CopyNet setup of Eric et al . ( 2017 ) .
+Our copy mechanism 's implementation is the Pointer-Sentinel Mixture Model ( Merity et al. , 2017 ; : p( w t | s t ) = gp vocab ( w t | s t ) + ( 1 ? g ) p ptr ( w t | s t ) ( 2 )
+In the formula above , w t and s t are respectively the output word and the decoder state at step t ; p ptr is the probability of attention - based copying of the word w t , and g is the mixture weight : p ptr ( w t | s t ) = ? k j ?I ( w , x ) ? k j , t ( 3 ) g = Softmax ( u T tanh ( W ? s i ) ) ( 4 ) where ?
+k j , t is the attention weight for kth token in flattened dialogue context at the decoding step t and u is the sentinel vector - for more detail , see .
+Dialogue Knowledge Transfer Network
+Transfer learning is considered the key means for efficient training with minimal data , and our DiKTNet model essentially introduces several knowledge - transfer augmentations to the base HRED model described above .
+DiKTNet training is performed in two stages described below .
+Stage 1 .
+Dialogue representation pre-training Dialogue structure -e.g. word sequencesis highly specific to a given domain or task , and the meaning of conversational utterances is highly contextual , i.e. similar utterances may have different meanings depending on the context .
+Nevertheless , there is a lot of similarity in dialogue structure - i.e. sequences of dialogue actionsacross domains , e.g. a conversation normally starts with a mutual greeting and a question is very often followed by an answer .
+Here , we propose to exploit this phenomenon in the form of learning a latent dialogue action representation in order to better capture the dialogue structure by abstracting away from surface forms .
+Crucially , we learn such representation from MetaLWOz ( Lee et al. , 2019 ) , a dataset specifically created for the purposes of meta-learning and transfer learning and consisting of human-human conversations in 51 unique domains ( for more detail , see Section 6 ) .
+For this stage of training we use unsupervised , variational autoencoder - based ( VAE ) representation learning following the Latent Action Encoder -Decoder ( LAED ) approach of .
+LAED 's underlying model is called Discrete Information VAE ( DI - VAE ) , a variant of a VAE with two modifications .
+Firstly , its optimization objective accounts for the mutual information I between the input and the latent variable which is implicitly discouraged in the original VAE objective ( see Eqs. 5 and 6 ) .
+L V AE = E x [ E q R ( z|x ) [ log p G ( x | z ) ] ? KL ( q ( z ) ?p( z ) ) ] = E q(z| x ) p( x ) [ log p G ( x | z ) ] ? I ( Z , X ) ? KL ( q ( z ) ?p( z ) ) , ( 5 ) L DI-V AE = L V AE + I ( Z , X ) = E q R ( z| x ) p ( x ) [ log p G ( x | z ) ] ? KL ( q ( z ) ?p( z ) ) ( 6 ) where x is the input utterance , z is the latent variable ( X and Z corresponding to their batchwise vectors ) , R and G are the recognition and generation models ( implemented as RNNs ) respectively , and q(z ) = E x [ q R ( z | x ) ] .
+Secondly , the latent variable z in DI - VAE is discrete as opposed to the continuous one in a vanilla VAE .
+The discrete latent code lends itself well to interpretation and can be viewed as a form of unsupervised dialogue act tagging .
+The discrete nature also makes the calculation of the KL - term more tractable via the Batch Prior Regularization technique : KL ( q ? ( z ) ?p( z ) ) = K ? k=1 q ? ( z = k ) log q ? ( z = k ) p( z = k ) ( 7 ) where K is the number of z's possible values and q ? ( z ) is the approximation to q(z ) over N data points : q ? ( z ) = 1 N N ? n=1 q R ( z | x n ) ( 8 )
+In addition , we employ DI - VST , DI - VAE 's counterpart working in a Variational Skip - Thought manner ( Hill et al. , 2016 ) and reconstructing the input x's previous ( x p ) and next ( x n ) context utterances instead : L DI-V ST = E q R ( z| x ) p ( x ) [ log p n G ( x n | z ) p p G ( x p | z ) ] ? KL ( q ( z ) ?p( z ) ) ( 9 ) DI - VAE and DI - VST models are visualized in Figure 1 .
+In the downstream DiKTNet model , we use DI - VAE autoencoder in order to obtain the representation of the user 's query : z usr = DI - VAE ( x usr ) .
+In turn , DI - VST is used to obtain a prediction of the system 's action z sys in the discretized latent form given the user 's input x usr as well as the full dialogue context c.
+For that , DI - VST autoencoder is used as part of a hierarchical , contextaware encoder-decoder response generation model ( we refer to it as LAED itself ) .
+Its optimization objective is as follows : L LAED ( ?
+F , ? ? ) = E q R ( zsys|xsys ) p( xsys , c ) [ log p ?
+( z sys | c ) + log p F ( x sys | z sys , c ) ] ( 10 ) where ?
+F is the set of parameters of the contextaware encoder and decoder , ? ? is the set of parameters of the policy ? ? . ? ? is the component trained to directly predict z sys from the context c.
+We use different models for different aspects of the dialogue : DI - VAE for user 's utterance representation , and DI - VST - based LAED - for the system 's action prediction .
+In that , we follow the intuition of who said that DI - VAE is better at capturing specific words of an utterance , while DI - VST represents the overall dialogue action better .
+We train these two models on MetaLWOz in an unsupervised way with the objectives as described above , and use their discretized latent codes z usr and z sys respectively in the downstream model at the next stage of training .
+Stage 2 . Transfer
+At this stage , we train directly for our target task , few -shot dialogue generation , and thus go back to the model described in Section 3 .
+While the training procedure of this model naturally assumes domain transfer , we will provide it with more sources of textual and dialogue knowledge of varying generality described below .
+As opposed to direct domain transfer , we incorporate domain-general dialogue understanding from the LAED representation trained on Met-aLWOz at the previous stage .
+LAED captures the background top-down dialogue structure : sequences of dialogue acts in a cooperative conversation , latent dialog act-induced clustering of utterances , and the overall phrase structure of spoken utterances .
+We incorporate this information into the model by conditioning HRED 's decoder on the combined latent codes from Stage 1 and refer to this model as HRED + LAED .
+L HRED + LAED = E p(xusr , c ) p ( zusr|xusr ) p?( zsys|xusr , c ) [ log p F d ( x sys | ?
+F e ( x usr , c ) , z usr , z sys ? ) ] . ( 11 ) where z usr and z sys are respectively samples obtained from the DI - VAE user utterance model and LAED / DI - VST system action model , and { } is the concatenation operator .
+The last , most general source of knowledge we use is a pre-trained ELMo model ( Peters et al. , 2018 ) .
+Apart from using an underlying bidirectional RNN encoder , ELMo captures both tokenlevel and character - level information which is especially crucial in understanding unseen tokens and KB items in the underrepsesented target domain .
+HRED model with ELMo as the utterancelevel encoder is referred to as HRED +ELMo .
+Finally , DiKTNet is HRED augmented with both ELMo encoder and LAED representation .
+DiKTNet is visualized in Figure 2 .
+The model ( as well as its variants listed above ) is implemented in PyTorch ( Paszke et al. , 2017 ) , and the code is openly available 1 .
+Baselines
+We perform an exhaustive ablation study of DiKTNet by comparing it to all its variations mentioned above : HRED , HRED +ELMo , and HRED + LAED .
+In addition to that , we have the HRED + VAE -a version of HRED + LAED for which we use a regular , continuous VAE behind DI - VAE and DI - VST in order to see the impact of discretized latent codes ( see Eq 5 for the corresponding objective function ) .
+Furthermore , we compare DiKTNet to the previous state - of- the - art approach , Zero - Shot Dialogue Generation .
+This model did n't use any complete in-domain dialogues but instead it relied on annotated utterances in all of the domains .
+We use it as - is ( ZSDG ) as well its variation as follows .
+We make use of its central idea of ' domain descriptions ' bridging dialogue understanding across domains , but instead of using manually annotated utterances , we employ automatic Natural Language Understanding markup .
+Our NLU annotations include : ? Named Entity Recognition - Stanford NER model ensemble of case-sensitive and caseless models ( Finkel et al. , 2005 ) , ? date / time markup - Stanford SUTime ( Chang and Manning , 2012 ) , ? Wikidata entity linking - Yahoo FEL ( Blanco et al. , 2015 ; Pappu et al. , 2017 ) .
+We serialize annotations from these sources into token sequences and make domain description tuples out of all the utterances in the source and target domains .
+This way , most of our domain descriptions share the structure and content of the original ones .
+For example , for the phrase ' Will it be cloudy in Los Angeles on Thursday ? ' , the original ZSDG annotation is of the form " request # goal cloudy # location Los Angeles # date Thursday " .
+Our NLU annotation for this phrase is " LOCATION Los Angeles DATE Thursday " .
+We have two models in this setup , with ( NLU ZSDG + LAED ) and without the use of LAED representation ( NLU ZSDG ) respectively .
+mains : appointment scheduling , city navigation , and weather information .
+Each dialogue has to do with a single task queried by the user and thus comes with additional knowledge base information coming from implicit querying of the underlying domain-specific API .
+Although sharing some common features ( the setting of an intelligent in - car assistant and the use of the underlying KB ) , the dialogues differs significantly across domains which makes doamin transfer sufficiently challenging .
+Datasets
+For the latent representation learning , we use MetaLWOz , a goal-oriented dialogue dataset containing human-human dialogues in diverse domains and several tasks in each of those .
+The dialogues are collected in a Wizard - of - Oz method where human participants were given a problem domain and a specific task in it , and were asked to complete the task via dialogue .
+No domainspecific APIs or knowledge bases were available for the participants , and in the actual dialogues they were free to use fictional names and entities in a consistent way .
+The dataset 's statistics are shown in Table 2 .
+All the domains available in the Met-aLWOz dataset are listed in the Table 6 of the Appendix A .
+Experimental setup and evaluation
+Our few -shot setup is as follows .
+Given the target domain , we first train LAED model ( s ) on the MetaLWOz data - here we exclude from training every domain that might overlap with the target one .
+Specifically , for the Navigation domain in SMD , it 's Store Details , for Weather it 's Weather Check , and for Schedule it 's Update Calendar and Appointment Reminder .
+In our final setup , at Stage 1 we used a DI - VSTbased LAED and a DI - VAE , both of the size 10 ? 5 . Next , having trained and frozen Stage 1 models , we train DiKTNet on all the source domains from the SMD dataset .
+We use a random sample of the target domain utterances together with their contexts and KB info , varying the amount of those from 1 % to 10 % of all available target data .
+For the NLU ZSDG setup , we annotated all available SMD data and randomly selected a subset of 1000 utterances from each source domain , and 200 utterances from the target domain .
+For source domains , this number amounts to roughly a quarter of all available training data - we chose it in order to make use of as much annotated data as possible while keeping the domain description task secondary .
+For the target domain , we made sure to keep under roughly the same in - domain data requirements as the ZSDG baseline .
+For evaluation , we follow the approach of Zhao and Esk?nazi ( 2018 ) and report BLEU and Entity F1 scores .
+Given the non-deterministic nature of our training setup , we report means and variances of our results over 10 runs with different random seeds .
+We also perform an additional evaluation of DiKTNet 's performance with extended amounts of target data and compare it to the original Key -Value Retrieval Network ( KVRet ) by Eric et al . ( 2017 ) which was originally trained with all the available data .
+In this case we average BLEU scores across all 3 SMD domains in order to be consistent with the form the corresponding results are presented in the original paper .
+We train our models with the Adam optimizer ( Kingma and Ba , 2014 ) with learning rate 0.001 .
+Our hierarchical models ' utterance encoder is an LSTM cell ( Hochreiter and Schmidhuber , 1997 ) of size 256 , and the dialog- level encoder is a GRU ( Cho et al. , 2014 ) of size 512 .
+Results and discussion
+Our results are shown in Table 1 - our objective here is maximum accuracy with minimum training data required .
+Results for the few-shot setup
+It can be seen that few-shot models with LAED representation are the best performing models for this objective .
+While improvements upon ZSDG can already be seen with simple HRED in a fewshot setup , the use of the LAED representation and domain-general ELMo encoding helps significantly reduce the amount of in- domain training data needed : at 1 % of in- domain dialogues , we see that DiKTNet consistently and significantly improves upon ZSDG in every domain .
+In SMD , with its average dialogue length of 5.25 turns , 1 % of training dialogues amounts to approximately 40 in- domain training utterances .
+In contrast , the ZSDG setup used approximately 150 training utterance -annotation pairs for each domain , including the target one , totalling about 450 annotated utterances .
+Although in our few-shot approach we use full in - domain dialogues , we end up having significantly less in - domain training data , with the crucial difference that none of those has to be annotated for our approach .
+Therefore , the method we introduced attains state - of - the - art in both accuracy and data-efficiency .
+In turn , the results of the ZSDG NLU setup demonstrate that single utterance annotations , if not domain-specific and produced by human experts , do n't provide as much signal as full dialogues , even without annotations at all .
+Even the significant number of such annotated utterances per domain did n't make a difference in this case .
+We would also like to point out that , as can be seen in the table , our results have quite high variance - the main source of it is the nature of our training / evaluation setup where we average over 10 runs with 10 different sets of seed dialogues .
+However , in the majority of cases with comparable means , DiKTNet has a lower variance than the alternative models at the same percentage of seed data .
+And in the extreme case with 1 % target data , DiKTNet improves on all the other models in terms of both means and variances .
+Discussion of the latent representations
+The comparison of the setups with different latent representations also gives us some insight : while the VAE - powered HRED model improves on the baseline in multiple cases , it lacks generalization potential compared to the LAED setup .
+The reason for that might be inherently more stable training of LAED due to its modified objective function which in turn results in a more informative representation providing better generalization .
+In order to have a glimpse into the LAED - produced clustering , in Table 5 we present a snippet of the utterance clusters sharing the same , most frequent latent codes throughout the dataset ( the clustering is obtained with LAED model trained on every domain but ' Store details ' , i.e. the one for the evaluation on ' Navigate ' SMD domain ) .
+From this snippet , it can be seen that those clusters work well for domain separation , as well as capturing dialogue intents .
+Results with extended data
+We performed an additional experiment with extended target data ( see Figure 3 of Appendix A ) .
+It showed that DiKTNet , when trained with as little as 5 % of target data , can outperform a KVRet trained using the entire dataset .
+Furthermore , with 50 % of the target data , DiKTNet becomes more than twice as good as KVRet in terms of overall language generation .
+However , goal-oriented metrics such as Entity F1 are more challenging to bootstrap .
+As such , DiKTNet outperforms KVRet on ' Weather ' domain starting at 10 % of the target data , but only has a trend on narrowing down the performance gap with KVRet on ' Navigate ' , and certainly needs more training data in ' Schedule ' domain .
+The explanation to that might be that most of the dialogue entities come from the KB snippets which are the least represented resource in our setup .
+They are n't available in MetaLWOz , and in SMD , KB snippets share little in common across domains .
+Therefore , in order to increase Entity F1 , KB information should be directly copied to the output more efficiently - and increasing the robustness of the copy - augmented decoder is one of our future research directions .
+Discussion of the evaluation metrics
+We use BLEU as one of the main evaluation metrics in this paper - we do it in order to fully conform with the setup of which we base our work on .
+But while being widely adopted as a general - purpose language generation metric , BLEU might not be sufficient in the dialogue settings ( see Novikova et al . ( 2017 ) for a review ) .
+Specifically , we have observed several cases where the model would produce an overall grammatical response with the correct dialogue intent ( e.g .
+" You are welcome !
+Anything else ? " ) , but BLEU would output a lower score for it due to word mismatch ( e.g . " You 're welcome ! " ; see more examples in Table 4 ) .
+This is a general issue in dialogue model evaluation since the variability of possible responses equivalent in meaning is very high in dialogue .
+In future work , we will put more emphasis on the meaning of utterances , for example by incorporating external dialogue act tagging resources in the evaluation setup which , together with general language generation metrics like perplexity , can make for more robust evaluation criteria than word overlap .
+Conclusion and future work
+In this paper , we have introduced DiKTNet , a model achieving state - of - the - art dialogue generation performance in a few-shot setup , without using any annotated data .
+By transferring latent dialogue knowledge from multiple sources of varying generality , we obtained a model with superior generalization to an underrepresented domain .
+Specifically , we showed that our few-shot approach achieves state - of - the art results on the Stanford Multi-Domain dataset while being more dataefficient than the previous best model , by requiring significantly less data none of which has to be annotated .
+While being state - of- the-art , the accuracy scores themselves still suggest that our technique is not ready for immediate adoption for real-world production purposes , and the task of few-shot generalization to a completely new dialogue domain remains an area of active research .
+In our own future work , we will try and find ways to improve the unsupervised representation ( Shi et al. , 2019 ) in order to increase the transfer potential .
+We will also explore ways to enable more efficient copying from the input which is crucial for correctly handling entities and therefore attaining high goal-oriented performance of the system .
+Apart from that , we will consider alternative evaluation criteria to account for rich surface variability of natural speech .
+Figure 1 : 1 Figure 1 : DI -VAE and DI -VST ( DiKTNet Stage 1 )

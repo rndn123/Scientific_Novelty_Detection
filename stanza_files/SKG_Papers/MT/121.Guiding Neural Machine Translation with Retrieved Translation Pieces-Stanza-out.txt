@@ -1,0 +1,160 @@
+title
+Guiding Neural Machine Translation with Retrieved Translation Pieces
+abstract
+One of the difficulties of neural machine translation ( NMT ) is the recall and appropriate translation of low-frequency words or phrases .
+In this paper , we propose a simple , fast , and effective method for recalling previously seen translation examples and incorporating them into the NMT decoding process .
+Specifically , for an input sentence , we use a search engine to retrieve sentence pairs whose source sides are similar with the input sentence , and then collect n-grams that are both in the retrieved target sentences and aligned with words that match in the source sentences , which we call " translation pieces " .
+We compute pseudoprobabilities for each retrieved sentence based on similarities between the input sentence and the retrieved source sentences , and use these to weight the retrieved translation pieces .
+Finally , an existing NMT model is used to translate the input sentence , with an additional bonus given to outputs that contain the collected translation pieces .
+We show our method improves NMT translation results up to 6 BLEU points on three narrow domain translation tasks where repetitiveness of the target sentences is particularly salient .
+It also causes little increase in the translation time , and compares favorably to another alternative retrievalbased method with respect to accuracy , speed , and simplicity of implementation .
+Introduction Neural machine translation ( NMT ) ( Bahdanau et al. , 2014 ; Sennrich et al. , 2016a ; Wang et al. , 2017 b ) is now the state - of - the - art in machine translation , due to its ability to be trained end-toend on large parallel corpora and capture complex parameterized functions that generalize across a variety of syntactic and semantic phenomena .
+However , it has also been noted that compared to alternatives such as phrase - based translation ( Koehn et al. , 2003 ) , NMT has trouble with lowfrequency words or phrases ( Arthur et al. , 2016 ; Kaiser et al. , 2017 ) , and also generalizing across domains ( Koehn and Knowles , 2017 ) .
+A number of methods have been proposed to ameliorate these problems , including methods that incorporate symbolic knowledge such as discrete translation lexicons ( Arthur et al. , 2016 ; He et al. , 2016 ; Chatterjee et al. , 2017 ) and phrase tables ( Zhang et al. , 2017 ; Tang et al. , 2016 ; Dahlmann et al. , 2017 ) , adjust model structures to be more conducive to generalization ( Nguyen and Chiang , 2017 ) , or incorporate additional information about domain ( Wang et al. , 2017a ) or topic in translation models .
+In particular , one paradigm of interest is recent work that augments NMT using retrieval - based models , retrieving sentence pairs from the training corpus that are most similar to the sentence that we want to translate , and then using these to bias the NMT model .
+1
+These methods - reminiscent of translation memory ( Utiyama et al. , 2011 ) or example - based translation ( Nagao , 1984 ; Grefenstette , 1999 ) - are effective because they augment the parametric NMT model with a non-parametric translation memory that allows for increased capacity to measure features of the target technical terms or domain-specific words .
+Currently there are two main approaches to doing so .
+and Farajian et al. ( 2017 ) use the retrieved sentence pairs to fine tune the parameters of the NMT model which is pre-trained on the whole training corpus .
+Gu et al. ( 2017 ) uses the retrieved sentence pairs as additional inputs to the NMT model to help NMT in translating the input sen - f?r schlags@@ Um@@ Input :
+Retrieved : Figure 1 : A word-aligned sentence pair retrieved for an input sentence .
+Red words are unedited words obtained by computing the edit distance between the input sentence and the retrieved source sentence .
+The blue part of the retrieved target sentence is collected as translation pieces for the input sentence .
+The target word " Umschlagsanlagen " is split into " Um@@ " , " schlags@@ " and " anlagen " by byte pair encoding .
+tence .
+While both of these paradigms have been proven effective , they both add significant complexity and computational / memory cost to the decoding process , and also to the training procedure .
+The first requires the running of several training iterations and rolling back of the model , which is costly at test time , and the second requires entirely changing the model structure which requires training the model separately , and also increases testtime computational cost by adding additional encoders .
+In this paper , we propose a simple and efficient model for using retrieved sentence pairs to guide an existing NMT model at test time .
+Specifically , the model collects n-grams occurring in the retrieved target sentences that also match words that overlap between the input and retrieved source sentences , which we will refer to as " translation pieces " ( e.g. , in Figure 1 , the blue part of the retrieved target sentence is collected as translation pieces for the input sentence ) .
+The method then calculates a pseudo-probability score for each of the retrieved example sentence pairs and weights the translation pieces according to this value .
+Finally , we up-weight NMT outputs that contain the collected translation pieces .
+Unlike the previous methods , this requires no change of the underlying NMT model and no updating of the NMT parameters , making it both simple and efficient to apply at test time .
+We show our method improved NMT translation results up to 6 BLEU points on three translation tasks and caused little increase in the translation time .
+Further , we find that accuracies are comparable with the model of Gu et al . ( 2017 ) , despite being significantly simpler to implement and faster at test time .
+Attentional NMT
+Our baseline NMT model is similar to the attentional model of Bahdanau et al . ( 2014 ) , which includes an encoder , a decoder and an attention ( alignment ) model .
+Given a source sentence X = {x 1 , ... , x L } , the encoder learns an annotation h i = h i ; ?
+h i for x i using a bi-directional recurrent neural network .
+The decoder generates the target translation from left to right .
+The probability of generating next word y t is , 2 P N M T y t |y t?1 1 , X = sof tmax ( g ( y t?1 , z t , c t ) ) ( 1 ) where z t is a decoding state for time step t , computed by , z t = f ( z t?1 , y t?1 , c t ) ( 2 ) c t is a source representation for time t , calculated as , c t = L i=1 ? t , i ? h i ( 3 ) where ?
+t , i scores how well the inputs around position i and the output at position t match , computed as , ? t , i = exp ( a ( z t?1 , h i ) ) L j=1 exp ( a ( z t?1 , h j ) ) ( 4 )
+The standard decoding algorithm for NMT is beam search .
+That is , at each time step t , we keep n-best hypotheses .
+The probability of a complete hypothesis is computed as , log P N M T ( Y | X ) = | Y | t=1 log P N M T y t |y t?1 1 , X ( 5 ) Finally , the translation score is normalized by sentence length to avoid too short outputs .
+log S N M T ( Y |X ) = log P N M T ( Y | X ) | Y | ( 6 ) 3 Guiding NMT with Translation Pieces
+This section describes our approach , which mainly consists of two parts : 1 . retrieving candidate translation pieces from a parallel corpus for the new source sentence that we want to translate , and then 2 . using the collected translation pieces to guide an existing NMT model while translating this new sentence .
+At training time , we first prepare the parallel corpus that will form our database used in the retrieval of the translation pieces .
+Conceivably , it could be possible to use a different corpus for translation piece retrieval and NMT training , for example when using a separate corpus for domain adaptation , but for simplicity in this work we use the same corpus that was used in NMT training .
+As pre-processing , we use an off-the-shelf word aligner to learn word alignments for the parallel training corpus .
+Retrieving Translation Pieces
+At test time we are given an input sentence X. For this X , we first use the off- the-shelf search engine Lucene to search the word-aligned parallel training corpus and retrieve M source sentences { X m : 1 ? m ?
+M } that are similar to X .
+Y m indicates the target sentence that corresponds to source sentence X m and A m is word alignments between X m and Y m .
+For each retrieved source sentence X m , we compute its edit distance with X as d ( X , X m ) using dynamic programming .
+We record the unedited words in X m as W m , and also note the words in the target sentence Y m that correspond to source words in W m , which we can presume are words that will be more likely to appear in the translated sentence for X.
+According to Algorithm 1 , we collect n-grams ( up to 4 - grams ) from n-grams G m X Vorschriften f?r die Eignung Yes die Eignung von Yes von Um@@ schlags@@ anlagen No Um@@ schlags@@ anlagen No Table 1 : Examples of the collected translation pieces .
+the retrieved target sentence Y m as possible translation pieces G m X for X , using word - level alignments to select n-grams that are related to X and discard n-grams that are not related to X .
+The final translation pieces G X collected for X are computed as , 3 G X = M m=1 G m X ( 7 ) Table 1 shows a few n-gram examples contained in the retrieved target sentence in Figure 1 and whether they are included in G m X or not .
+Because the retrieved source sentence in Figure 1 is highly similar with the input sentence , the translation pieces collected from its target side are highly likely to be correct translation pieces of the input sentence .
+However , when a retrieved source sentence is not very similar with the input sentence ( e.g. only one or two words match ) , the translation pieces collected from its target side will be less likely to be correct translation pieces for the input sentence .
+We compute a score for each u ?
+G X to measure how likely it is a correct translation piece for X based on sentence similarity between the retrieved source sentences and the input sentence as following , S u , X , M m=1 { ( X m , G m X ) } = max 1 ?m?M
+?u?G m X simi ( X , X m ) ( 8 ) where simi ( X , X m ) is the sentence similarity computed as following ( Gu et al. , 2017 ) , simi ( X , X m ) = 1 ? d ( X , X m ) max ( | X | , | X m | ) ( 9 ) Algorithm 1 Collecting Translation Pieces Require : X = x L 1 , X m = k L 1 , Y m = v L 1 , A m , W m Ensure : G m X G m X = ? for i = 1 to L do for j = i to L do if j ?
+i = 4 then break if ?p : ( p , j ) ? A m ? p / ?
+W m then break add v j i into G m X ? 1 , . . . , ? ?1 ? ? ? 1 ? 2 ? 3 ...
+Output layer of NMT Matched translation pieces ? ?1 , ? 3 ? ?2 , ? ?1 , ? 3 ? 2 ? 3
+Reward Predict the next word
+Target vocabulary
+Guiding NMT with Retrieved Translation Pieces
+In the next phase , we use our NMT system to translate the input sentence .
+Inspired by Stahlberg et al. ( 2017 ) which rewards n-grams from syntactic translation lattices during NMT decoding , we add an additional reward for n-grams that occur in the collected translation pieces .
+That is , as shown in Figure 2 , at each time step t , we update the probabilities over the output vocabulary and increase the probabilities of those that result in matched n-grams according to log S N M T updated y t |y t?1 1 , X = log P N M T y t |y t?1 1 , X + ? 4 n=1 ? y t t?n+ 1 , X , M m=1 { ( X m , G m X ) } , ( 10 ) where ? can be tuned on the development set and ? ( ? ) is computed as Equation 8 if y t t?n+ 1 ? G X , otherwise ? ( ? ) = 0 .
+To implement our method , we use a dictionary Algorithm 2 Guiding NMT by Translation Pieces Require : Output layer log P N M T y t |y t?1 1 , X , L X , D X Ensure : Updated output layer for u in L X do log P N M T u|y t?1 1 , X + = ?D X ( u ) for i = 1 to 3 do if t ?
+i < 1 then break if y t?1 t? i , u / ? D X then break log P N M T u|y t?1 1 , X +=?D
+X y t?1 t?i , u D X to store translation pieces G X and their scores for each input sentence X .
+At each time step t , we update the output layer probabilities by checking D X .
+However , it is inefficient to traverse all target words in the vocabulary and check whether they belong to G X or not , because the vocabulary size is large .
+Instead , we only traverse target words that belong to G X and update the corresponding output probabilities as shown in Algorithm 2 .
+Here , L X is a list that stores 1 - grams contained in G X . 4 As we can see , our method only up-weights NMT outputs that match the retrieved translation pieces in the NMT output layer .
+In contrast , and Farajian et al . ( 2017 ) use the retrieved sentence pairs to run additional training iterations and fine tune the NMT parameters for each input sentence ;
+Gu et al . ( 2017 ) runs the NMT model for each retrieved sentence pair to obtain the NMT encoding and decoding information of the retrieved sentences as key -value memory to guide NMT for translating the new input sentence .
+Compared to their methods , our method adds little computational / memory cost and is simple to implement .
+Experiment
+Settings Following Gu et al. ( 2017 ) , we use version 3.0 of the JRC - Acquis corpus for our translation experiments .
+The JRC - Acquis corpus contains the total body of European Union ( EU ) law applicable in the EU Member States .
+It can be used as a narrow domain to test the effectiveness of our proposed method .
+We did translation experiments on three directions : English-to- German ( en-de ) , Englishto - French ( en-fr ) and English- to - Spanish ( en-es ) .
+We cleaned the data by removing repeated sentences and used the train-truecaser .
+perl script from Moses ( Koehn et al. , 2007 ) to truecase the corpus .
+Then we selected 2000 sentence pairs as development and test sets , respectively .
+The rest was used as the training set .
+We removed sentences longer than 80 and 100 from the training and development / test sets respectively .
+The final numbers of sentence pairs contained in the training , development and test sets are shown in Table 3 .
+5 We applied byte pair encoding ( Sennrich et al. , 2016 b ) and set the vocabulary size to be 20K .
+For translation piece collection , we use GIZA ++ ( Och and Ney , 2003 ) and the grow-diag-final - and heuristic ( Koehn et al. , 2003 ) to obtain symmetric word alignments for the training set .
+We trained an attentional NMT model as our baseline system .
+The settings for NMT are shown in Table 4 .
+We also compared our method with the search engine guided NMT model ( SGNMT , Gu et al . ( 2017 ) ) in Section 4.5 .
+For each input sentence , we retrieved 100 sentence pairs from the training set using Lucene as our preliminary setting .
+We analyze the influence of the retrieval size in Section 4.4 .
+The weights of translation pieces used in Equation 10 are tuned on the development set for different language pairs , resulting in weights of 1.5 for en-de and en-fr , and a weight of 1 for en-es .
+Results
+Table 2 shows the main experimental results .
+We can see that our method outperformed the baseline NMT system up to 6 BLEU points .
+As large BLEU gains in neural MT can also often be attributed to changes in output length , we examined the length ( Table 5 ) and found that it did not influence the translation length significantly .
+In addition , it is of interest whether how well the retrieved sentences match the input influences the search results .
+We measure the similarity between a test sentence X and the training corpus D train by computing the sentence similarities between X and the retrieved source sentences as Our analysis demonstrated that , expectedly , the performance of our method is highly influenced by the similarity between the test set and the training set .
+We divided sentences in the test set into two whole half - H half - L en-de 0.56 0.80 0.32 en-fr 0.57 0.81 0.33 en-es 0.57 0.81 0.32 parts : half has higher similarities with the training corpus ( half - H ) and half has lower similarities with the training corpus ( half - L ) .
+Table 6 shows the similarity between the training corpus and the whole / divided test sets .
+Table 7 shows translation results for the whole / divided test sets .
+As we can see , NMT generally achieved better BLEU scores for half - H and our method improved BLEU scores for half - H much more significantly than for half - L , which shows our method can be quite useful for narrow domains where similar sentences can be found .
+simi ( X , D train ) = max 1 ?m? M simi ( X , X m ) . ( We also tried our method on WMT 2017 English - to - German News translation task .
+However , we did not achieve significant improvements over the baseline attentional NMT model , likely because the test set and the training set for the WMT task have a relatively low similarity as shown in Table 8 and hence few useful translation pieces can be retrieved for our method .
+In contrast , the JRC - Acquis corpus provides test sentences that have much higher similarities with the training set , i.e. , much more and longer translation pieces exist .
+To demonstrate how the retrieved translation pieces help NMT to generate appropriate outputs , Figure 3 shows an input sentence with reference , the retrieved sentence pair with the highest sentence similarity and outputs by different systems for this input sentence with detailed scores : log NMT probabilities for each target word in T 1 and T 2 ; scores for matched translation pieces contained in T 1 and T 2 .
+As we can see signs higher probabilities to the incorrect translation T 1 , even though the retrieved sentence pair whose source side is very similar with the input sentence was used for NMT training .
+However , T 2 contains more and longer translation pieces with higher scores .
+The five translation pieces contained only in T 2 are collected from the retrieved sentence pair shown in Figure 3 , which has high sentence similarity with the input sentence .
+The three translation pieces contained only in T 1 are also translation pieces collected for the input sentence , but have lower scores , because they are collected from sentence pairs with lower similarities with the input sentence .
+This shows that computing scores for translation pieces based on sentence similarities is important for the performance of our method .
+If we assign score 1 to all translation pieces contained in G X , i.e. , use 1/0 reward for translation pieces and non-translation pieces , then the performance of our method decreased significantly as shown in Table 9 , but still outperformed the NMT baseline significantly .
+Vorschriften die betriebliche Eignung Massen@@ von gut@@ schiffen f?r Vorschriften die f?r Eignung von Um@@ schlags@@ anlagen Vorschriften - 2.71 die - 0.10 betriebliche - 0.91 Eignung - 0.13 Massen@@ - 0.33 von - 0.12 gut@@ - 0.12 schiffen - 0.69 f?r - 0.72 Anforderungen - 0.81 die - 0.02 betriebliche - 0.69 Eignung - 0.13 Massen@@ - 0.33 von - 0.12 gut@@ - 0.13 schiffen - 0.71 an -0.34
+Infrequent n-grams
+The basic idea of our method is rewarding ngrams that occur in the training set during NMT decoding .
+We found our method is especially useful to help the translation for infrequent n-grams .
+First , we count how many times a target n-gram u occurs in the training set D train as , Occur ( u ) = |{ Y : X , Y ? Dtrain ? u ? uniq ( Y ) }| ( 13 ) where uniq ( Y ) is the set of uniq n-grams ( up to 4 - grams ) contained in Y . Given system outputs Z k : 1 ? k ?
+K for the test set X k : 1 ? k ?
+K with reference Y k : 1 ? k ?
+K , we count the number of cor-rectly translated n-grams that occur ? times in the training set as , Count ? = K k=1 ? ? , Z k , Y k ( 14 ) where in the training set , which is reasonable because we only reward n-grams that occur in the training set .
+However , our method helped significantly for the translation of n-grams that do occur in the training set but are infrequent ( occur less than 5 times ) .
+? ? , Z k , Y k = u : u ? uniq Z k ? uniq Y k ? Occur ( u ) = ? ( 15 )
+As the frequency of n-grams increases , the improvement caused by our method decreased .
+We analyze that the reason why our method is especially helpful for infrequent n-grams is that NMT is trained on the whole training corpus for maximum likelihood and tends to generate more frequent n-grams while our method computes scores for the collected translation pieces based on sentence similarities and does not prefer more frequent n-grams .
+Computational Considerations
+Our method only collects translation pieces to help NMT for translating a new sentence and does not influence the training process of NMT .
+Therefore , our method does not increase the NMT training time .
+Table 11 shows the average time needed for translating one input sentence in the development set in our experiments .
+The search engine retrieval and translation piece ( TP ) collection time is computed on a 3.47 GHz Intel Xeon X5690 machine using one CPU .
+The NMT decoding time is computed using one GPU GeForce GTX 1080 .
+As we can see , the search engine retrieval time is negligible and the increase of NMT decoding time caused by our method is also small .
+However , collecting translation pieces needed considerable time , although our implementation was in Python and could potentially be significantly faster in a more efficient programming language .
+The translation piece collection step mainly consists of two parts : computing the edit distances between the input sentence and the retrieved source sentences using dynamic programming with time complexity O n 2 ; collecting translation pieces using Algorithm 1 with time complexity O ( 4n ) .
+We changed the size of sentence pairs retrieved by the search engine and analyze its influence on translation performance and time .
+Figure 4 , 5 and 6 show the translation piece collection time , the NMT decoding time and translation BLEU scores with different search engine retrieval sizes for the en-fr task .
+As we can see , as the number of retrieved sentences decreased , the time needed by translation piece collection decreased significantly , the translation performance decreased much less significantly and the NMT decoding time is further reduced .
+In our experiments , 10 is a good setting for the retrieval size , which gave significant BLEU score improvements and caused little increase in the total translation time compared to the NMT baseline .
+Comparison with SGNMT
+We compared our method with the search engine guided NMT ( SGNMT ) model ( Gu et al. , 2017 ) .
+We got their preprocessed datasets and tested our method on their datasets , in order to fairly compare our method with their reported BLEU scores .
+6 Table 12 shows the results of their method and our method with the same settings for the baseline NMT system .
+As we can see , our method generally outperformed their method on the three translation tasks .
+Considering the computational complexity , their method also performs search engine retrieval for each input sentence and computes the edit distance between the input sentence and the retrieved source sentences as our method .
+In addition , their method runs the NMT model for each retrieved sentence pair to obtain the NMT encoding and decoding information of the retrieved sentences as key -value memory to guide the NMT model for translating the real input sentence , which changes the NMT model structure and increases both the training - time and test -time computational cost .
+Specifically , at test time , running the NMT model for one retrieved sentence pair costs the same time as translating the retrieved source sentence with beam size 1 .
+Therefore , as the number of the retrieved sentence pairs increases to the beam size of the baseline NMT model , their method doubles the translation time .
+Conclusion
+This paper presents a simple and effective method that retrieves translation pieces to guide NMT for narrow domains .
+We first exploit a search engine to retrieve sentence pairs whose source sides are similar with the input sentence , from which we collect and weight translation pieces for the input sentence based on word-level alignments and sentence similarities .
+Then we use an existing NMT model to translate this input sentence and give an additional bonus to outputs that contain the collected translation pieces .
+We show our method improved NMT translation results up to 6 BLEU points on three narrow domain translation tasks , caused little increase in the translation time , and compared favorably to another alternative retrieval - based method with respect to accuracy , speed , and simplicity of implementation .
+Figure 2 : 2 Figure 2 : A simple demonstration of adding rewards for matched translation pieces into the NMT output layer .

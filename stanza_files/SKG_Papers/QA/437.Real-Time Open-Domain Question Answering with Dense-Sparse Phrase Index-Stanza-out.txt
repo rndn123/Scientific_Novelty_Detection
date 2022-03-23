@@ -1,0 +1,259 @@
+title
+Real-Time Open-Domain Question Answering with Dense-Sparse Phrase Index
+abstract
+Existing open-domain question answering ( QA ) models are not suitable for real - time usage because they need to process several long documents on -demand for every input query , which is computationally prohibitive .
+In this paper , we introduce query -agnostic indexable representations of document phrases that can drastically speed up open-domain QA .
+In particular , our dense-sparse phrase encoding effectively captures syntactic , semantic , and lexical information of the phrases and eliminates the pipeline filtering of context documents .
+Leveraging strategies for optimizing training and inference time , our model can be trained and deployed even in a single 4 - GPU server .
+Moreover , by representing phrases as pointers to their start and end tokens , our model indexes phrases in the entire English Wikipedia ( up to 60 billion phrases ) using under 2TB .
+Our experiments on SQuAD - Open show that our model is on par with or more accurate than previous models with 6000x reduced computational cost , which translates into at least 68x faster end-to - end inference benchmark on CPUs .
+Code and demo are available at nlp .
+cs.washington.edu/denspi
+Introduction Extractive open-domain question answering ( QA ) is usually referred to the task of answering an arbitrary factoid question ( such as " Where was Barack Obama born ? " ) from a general web text ( such as Wikipedia ) .
+This is an extension of the reading comprehension task ( Rajpurkar et al. , 2016 ) of selecting an answer phrase to a question given an evidence document .
+To make a scalable opendomain QA system , One can leverage a search engine to filter the web-scale evidence to a few documents , in which the answer span can be extracted using a reading comprehension model ( Chen et al . , * Equal contribution . 2017 ) .
+However , the accuracy of the final QA system is bounded by the performance of the search engine due to the pipeline nature of the search process .
+What is more , running a neural reading comprehension model on a few documents is still computationally costly , since it needs to process the evidence document for every new question at inference time .
+This often requires multi-GPU - seconds or tens to hundreds of CPU - seconds - BERT ( Devlin et al. , 2019 ) can process only a few thousand words per second on an Nvidia V100 GPU .
+In this paper , we introduce Dense -Sparse Phrase Index ( DENSPI ) , an indexable query -agnostic phrase representation model for real-time opendomain QA .
+The phrase representations are indexed offline using efficient training and memoryefficient strategies for storage .
+During inference time , the input question is mapped to the same representation space , and the phrase with maximum inner product search is retrieved .
+Our phrase encoding model combines both dense and sparse vectors , eliminating the pipeline filtering of the context documents .
+Dense vectors are effective for encoding local syntactic and semantic cues leveraging recent advances in contextualized text encoding ( Devlin et al. , 2019 ) , while sparse vectors are superior at encoding precise lexical information such as term frequencies ( Cheng et al. , 2016 ) .
+Independent encoding of the document phrases and the question enables real-time inference ; there is no need to re-encode documents for every question .
+Encoding phrases as a function of their start and end tokens facilitates indexable representations with under 2TB for up to 60 billion phrases in Wikipedia .
+Further , approximate nearest neighbor search on indexable representations allows fast and direct retrieval in a web-scale environment .
+Experiments on SQuAD - Open ( Chen et At the web scale , every detail of the training , indexing , and inference needs to be carefully designed .
+For reproducibility under an academic setting , we discuss optimization strategies for reducing time and memory usage during each stage in Section 5 .
+This enables us to start from scratch and fully deploy the model with a 4 - GPU , 128GB memory , 2 TB PCIe 1 SSD server in a week .
+Related Work Open-domain question answering Creating a system that can answer an open-domain factoid question has been a significant interest to both academic and industrial communities .
+The problem is largely approached from two subfields : knowledge base ( KB ) and text ( document ) retrieval .
+Earlier work in large-scale question answering ( Berant et al. , 2013 ) has focused on answering questions from a structured KB such as Freebase ( Bollacker et al. , 2008 ) .
+These approaches usually achieve a high precision , but their scope is limited to the ontology of the knowledge graph .
+While KB QA is undoubtedly an important part of opendomain QA , we mainly discuss literature in textbased QA , which is most relevant to our work .
+Sentence - level QA has been studied since early 2000s , some of the most notable datasets being TrecQA ( Voorhees and Tice , 2000 ) and Wik-iQA ( Yang et al. , 2015 ) . See Prager et al . ( 2007 ) 1 Disk random read access is a major bottleneck that PCIe over SATA is preferred .
+for a comprehensive overview of early work .
+With the advancement of deep neural networks and the availability of massive QA datasets such as SQuAD ( Rajpurkar et al. , 2016 ) , open-domain phrase - level question answering has gained a great popularity ( Shen et al. , 2017 ; Raiman and Miller , 2017 ; Min et al. , 2018 ; Das et al. , 2019 ) , where a few ( 5 - 10 ) documents relevant to the question are retrieved and then a deep neural model finds the answer in the document .
+Most previous work on open-domain QA has focused on mitigating error propagation of retriever models in a pipelined setting ( Chu - Carroll et al. , 2012 ) .
+For instance , retrieved documents could be re-ranked using reinforcement learning ( Wang et al. , 2018a ) , distant supervision ( Lin et al. , 2018 ) , or multi-task learning ( Nishida et al. , 2018 ) .
+Several studies have also shown that answer aggregation modules could improve performance of the pipelined models ( Wang et al. , 2018 b ; . Our work is motivated by Seo et al . ( 2018 ) and adopts the concept and the advantage of using phrase index for large-scale question answering , though they only experiment in a close-domain ( vanilla SQuAD ) setup .
+Approximate similarity search Sublinear- time search for the nearest neighbor from a large collection of vectors is a significant interest to the information retrieval community ( Deerwester et al. , 1990 ; Blei et al. , 2003 ) .
+In metric space ( L1 or L2 ) , one of the most classic search algorithms is Locality - Sensitive Hashing ( LSH ) ( Gionis et al. , 1999 ) , which uses a data-independent hashing function to map nearby vectors to the same cell .
+Stronger empirical performance has been observed with a datadependent hashing function ( Andoni and Razen-shteyn , 2015 ) or k-means clustering for defining the cells .
+More recently , graph - based search algorithms ( Malkov and Yashunin , 2018 ) have gained popularity as well .
+In non-metric space such as inner product , asymmetric Locality Sensitive Hashing ( aLSH ) ( Shrivastava and Li , 2014 ) is considered , where maximizing inner product search can be transformed into minimizing L2 distance by appending a single dimension to the vectors .
+While these methods are widely used for dense vectors , for extremely sparse data ( such as document tf - idf with stop words ) , it is often more efficient to construct an inverted index and only look up items that have common hot dimensions with the query .
+Generative question answering Mapping the phrases in a document to a common vector space to that of the questions can be viewed as an exhaustive enumeration of all possible questions that can be asked on the document in the vector space , but without a surface - form decoder .
+It is worth noting that generative question answering ( Lewis and Fan , 2019 ) has the opposite property ; while it has a surface - form decoder by definition , it cannot easily enumerate a compact list of all possible semantically - unique questions .
+Memory networks
+One can view the phrase index as a fixed external memory ( Miller et al. , 2016 ) where the key is the phrase vector and the value is the corresponding answer phrase span .
+Overview
+In this section , we formally define " open-domain question answering " and provide an overview of our proposed model .
+Problem Definition
+In this paper , we are interested in the task of answering factoid questions from a large collection of web documents in real-time .
+This is often referred to as open-domain question answering ( QA ) .
+We formally formulate the task as follows .
+We are given a fixed set of ( Wikipedia ) documents x 1 , . . . , x K ( where K is the number of documents , often on the order of millions ) , and each document x k has N k words , x k 1 , . . . , x k N k .
+The task is to find the answer a to the question q = q 1 , . . . , q S .
+Then an open-domain QA model is a scoring function F for each candidate phrase span x k i:j such that a = argmax k, i , j F ( x k i : j , q ) .
+Scalability challenge
+While the formulation is straightforward , argmax-ing over the entire corpus is computationally prohibitive , especially if F is a complex neural model .
+To avoid the computational bottleneck , previous open-domain QA models adopt pipeline - based methods ; that is , as illustrated in Figure 1 left , a fast retrieval - based model is used ( e.g. tf -idf ) to obtain a few relevant documents to the question , and then a neural QA model is used to extract the exact answer from the documents .
+However , the method is not efficient enough for real - time usage because the neural QA needs to re-encode all the documents for every new question , which is computationally expensive even with modern GPUs , and not suitable for low-latency applications .
+Encoding and Indexing Phrases Motivated by Seo et al . ( 2018 ) , our model encodes query -agnostic representations of text spans in Wikipedia offline and obtains the answer in realtime by performing nearest neighbor search at inference time .
+We represent each phrase span in the corpus ( Wikipedia ) with a dense vector and a sparse vector .
+The dense vector is effective for encoding syntactic and semantic cues , while the sparse vector is good at encoding precise lexical information .
+That is , the embedding of each span ( i , j ) in the document x k is represented with x k i: j = [ d k i: j , s k i : j ] ?
+R d d +d s ( 1 ) where d k i: j ?
+R d d is the dense vector and s k i:j ?
+R d s is the sparse vector for span ( i , j ) in the kth document .
+Note that d d d s .
+This is also illustrated in Figure 1 right .
+Text span embeddings ( x k i : j ) for all possible i , j , k pairs with j ?
+i < J , where J is maximum span length ( i.e. all possible spans from all documents in Wikipedia ) , are precomputed and stored as a phrase index .
+Then at inference time , we embed each question into the same vector space , q = [ d , s ] ?
+R d d +d s .
+Finally , the answer to the question is obtained by finding the maximum inner product between q and x k i: j , k * , i * , j * = argmax k, i , j q ? x k i : j . ( 2 ) Needlessly to say , designing a good phrase representation model is crucial , which will be discussed in Section 4 .
+Also , while inner product search is much more efficient than re-encoding documents , the search space is still quite large , such that exact search on the entire corpus is still undesirable .
+We discuss how we perform inner product search efficiently in Section 5 .
+Phrase and Question Embedding
+In this section , we first explain the embedding model for the dense vector in Section 4.1 .
+Then we describe the embedding model for the sparse vector in Section 4.2 .
+Lastly , we describe the corresponding question embedding model to be queried on the phrase index in Section 4.3 .
+For the brevity of the notations , we omit the superscript k in this section since we do not learn cross-document relationships .
+Dense Model
+The dense vector is responsible for encoding syntactic or semantic information of the phrase with respect to its context .
+We decompose the dense vector d k i:j ( Equation 1 ) into three components : a vector that corresponds to the start position of the phrase , a vector that corresponds to the end position , and a scalar value that measures the coherency between the start and the end vectors .
+Representing phrases as a function of start and end vectors allows us to efficiently compute and store the vectors instead of enumerating all possible phrases ( discussed in Section 5.2 ) .
+2
+The coherency scalar allows us to avoid nonconstituent phrases during inference .
+For instance , consider a sentence such as " Barack Obama was the 44th President of the US .
+He was also a lawyer . " and when a question " What was Barack Obama 's job ? " is asked .
+Since both answers " 44th President of the US " and " lawyer " are technically correct , we might end up with the answer that spans from " 44th " to " lawyer " if we model start and end vectors independently .
+The coherency scalar helps us avoid this by modeling it as a function of the start position and the end position .
+Formally , after phrase vector decomposition into dense and sparse , we can expand the dense vector into d i : j = [ a i , b j , c i , j ] ?
+R 2d b + 1 ( 3 ) where a i , b j ?
+R d b are the start and end vectors for the i-th and j-th words of the document , respectively ; and c i , j ?
+R is the phrasal coherency scalar between i-th and j-th positions ( hence d d = 2d b + 1 ) .
+To obtain these components of the dense vector , we leverage available contextualized word representations , in particular BERT - large ( Devlin et al. , 2019 ) , which is pretrained on a large corpus ( Wikipedia and BookCorpus ) and has proved to be very powerful in numerous natural language tasks .
+BERT maps a sequence of the document tokens x = x 1 , . . . , x N to a sequence of corresponding vectors ( i.e. a matrix ) H = [ h 1 ; . . . ; h N ] ?
+R N ?d , where N is the length of the input sequence , d is the hidden state size , and [ ; ] is vertical concatenation .
+We obtain the three components of the dense vector from these contextualized word representations .
+We fine- tune BERT to learn a d-dimensional vector h i for encoding each token x i .
+Every token encoding is split into four vectors h i = [ h 1 i , h 2 i , h 3 i , h 4 i ] ?
+R d , where [ , ] is a column-wise concatenation .
+Then we obtain the dense start vector a i from h 1 i and dense end vector b j from h 2 j .
+Lastly , we obtain the coherency scalar c k i , j from the inner product of h 3 i and h 4 j .
+The inner product allows more coherent phrases to have more similar start and end encodings .
+That is , d i : j = [ h 1 i , h 2 j , h 3 i ? h 4 j ] ?
+R 2d b + 1 ( 4 ) where ?
+indicates inner product operation and h 1 i , h 2 j ?
+R d b and h 3 i , h 4 j ?
+R d c ( hence 2d b + 2d c = d ) .
+Sparse Model
+We use term-frequency - based encoding to obtain the sparse embedding s k i:j for each phrase .
+Specifically , we largely follow DrQA to construct 2 - gram - based tf -idf , resulting in a highly sparse representation ( d d ?16 M ) for each document .
+The sparse vectors are normalized so that the inner product effectively becomes cosine similarity .
+We also compute a paragraph - level sparse vector in a similar way and add it to each document sparse vector for a higher sensitivity to local information .
+Note that , however , unlike DrQA where the sparse vector is merely used to retrieve a few ( 5 - 10 ) documents , we concatenate the sparse vector to the dense vector to form a standalone single phrase vector as in Equation 1 .
+Question Embedding Model
+At inference , the question is encoded as q = [ d , s ] = [ a , b , c , s ] with the same number of components as the phrase index .
+To obtain the dense query vector d = [ a , b , c ] , we use a special token ( [ CLS ] for BERT ) which is appended to the front of the question words ( i.e. input question words are q = [ CLS ] , q 1 , . . . , q S ) .
+This allows us to model the dense query embedding differently from the dense embedding in the phrase index while sharing all parameters of the BERT encoder .
+That is , given the contextualized word representations of the question , we obtain the the dense query vector by p = [ h 1 1 , h 2 1 , h 3 1 ? h 4 1 ] , ( 5 ) where h 1 1 is the encoding corresponding to the ( first ) special token and we obtain the others in a similar way .
+To obtain the sparse query vector s , we use the same tf - idf embedding model ( Section 4.2 ) on the entire query .
+Training , Indexing & Search Open-domain QA is a web-scale experiment , dealing with billions of words in Wikipedia while aiming for real-time inference .
+Hence ( 1 ) training the models , ( 2 ) indexing the embeddings , and ( 3 ) performing inner product search at inference time are non-trivial for both ( a ) computational time and ( b ) memory efficiency .
+In particular , we carry out this section assuming that we have a constrained hardware environment of 4 P40 GPUs , 128 GB RAM , 16 cores and 2 TB of PCIe SSD storage , to promote reproducibility of our experiments under academic setting .
+3
+Training
+As discussed in Section 4.2 , the sparse embedding model is trained in an unsupervised manner .
+For training the dense embedding model , instead of directly optimizing for Equation 2 on entire Wikipedia , which is computationally prohibitive , we provide the golden paragraph to each question during training ( i.e. SQuAD v1.1 setting ) .
+Given the dense phrase and question embeddings , we first expand Equation 2 by substituting Equation 4 and Equation 5 ( omitting document terms ) : i * , j * = argmax i , j d ? d i:j = argmax i , j h 1 1 ? h 1 i + h 2 1 ? h 2 j + h 3 1 ? h 4 1 + h 3 i ? h 4 j From now on we let l 1 i = h 1 1 ? h 1 i ( phrase start logits ) , l 2 j = h 2 1 ? h 2 j ( phrase end logits ) , and l i , j = l 1 i + l 2 j + h 3 1 ? h 4 1 + h 3 i ? h 4 j i.e . the value that is being maximized in the above equation .
+One straightforward way to define the loss is to define it as the negative log probability of the correct answer where Pr(i , j ) ? exp ( l i , j ) .
+In other words , L = ?l i * , j * + log i , j exp ( l i , j ) ( 6 ) where L is the loss to minimize .
+Note that explicitly enumerating all possible phrases ( enumerating all ( i , j ) pairs ) during training time would be memory -intensive .
+Instead , we can efficiently obtain the loss by : l 1 = [ l 1 1 , . . . , l 1 T ] = q 1 H 1 l 2 = h 2 1 H 2 L = H 3 H 4 + l 1 + l 2 where H m = [ h m 1 , . . . , h m T ] for m = 1 , 2 , 3 , 4 , + is with broadcasting and ( i , j ) - th element of L is l i , j .
+Note that L can be entirely computed from L .
+While the loss function is clearly unbiased with respect to Pr(i , j ) ? exp( l i , j ) , the summation in Equation 6 is computed over T 2 terms which is quite large and causes small gradient .
+To aid training , we define an auxilary loss L 1 corresponding to the start logits , L 1 = ?l 1 i * + log i exp ( 1 T j l i , j ) ( 7 ) and L 2 for the end logits in a similar way .
+By early summation ( taking the mean ) , we reduce the number of exponential terms and allow larger gradients .
+We average between the true and aux loss for the final loss : L 2 + L 1 +L 2 4 . No
+Indexing Wikipedia consists of approximately 3 billion tokens , so enumerating all phrases with length ? 20 will result in about 60 billion phrases .
+With 961D of float32 per phrase , one needs 240 TB of storage ( 60 billion times 961 dimensions times 4 bytes per dimension ) .
+While not impossible in industry scale , the size is clearly out of reach for independent or academic researchers and critically unfriendly for open research .
+We discuss three techniques we employee to reduce the size of the index to 1.2 TB without sacrificing much accuracy , which becomes much more manageable for everyone .
+In practice , additional 300 - 500GB will be needed to store auxiliary information for efficient indexing , which still sums up to less than 2TB .
+1 . Pointer Since each phrase vector is the concatenation of a i and b j ( and a scalar c i , j but it takes very little space ) , many phrases share the same start or end vectors .
+Hence we store a single list of the start and the end vectors independently and just store pointers to those vectors for the phrase representation .
+This effectively reduces the memory footprint from 240 TB to 12 TB .
+Filtering
+We train a simple single - layer binary classifier on top of each of the start and end vectors , supervised with the actual answer ( without observing the question ) .
+This allows us to not store vectors that are unlikely to be a potential start or end position of the answer phrase , further reducing the memory footprint from 12 TB to 5 TB .
+Quantization
+We reduce the size of each vector by quantization .
+That is , we convert each float32 value to int8 with appropriate offset and scaling .
+This allows us to reduce the size by one-fourth .
+Hence the final memory consumption is 1.2 TB .
+In future , more advanced methods such as Product Quantization ( Jegou et al. , 2011 ) can be considered .
+Search
+While it would be ideal to ( and possible to ) directly approximate argmax in Equation 2 by using sparse maximum inner product search algorithm ( some discussed in Section 2 ) , we could not find a good open-source implementation that can scale up to billions of vectors and handle the dense and the sparse part of the phrase vector at the same time .
+We instead approximate the argmax by doing search on the dense vectors first and then reranking by accessing the corresponding sparse vectors .
+4
+For this , we use Faiss ( Johnson et al. , 2017 ) , open-sourced and large-scale- friendly similarity search package for dense vectors .
+Also , instead of directly searching on the dense vector d i:j ( concatenation of start , end , and coherency ) , we first search on the start vector a i and obtain the best end position for each retrieved start position by computing the rest .
+We found that this allows us to save memory and time without sacrificing much accuracy , since the start vectors alone seem to contain sufficiently rich syntactic and semantic information already that makes the search possible even in a large scale .
+Experiments Experiment section is divided into two parts .
+First , we report results on SQuAD ( Rajpurkar et al. , 2016 ) .
+This can be considered as a small-scale prerequisite to the open-domain experiment .
+It also allows a convenient comparison to stateof - the - art models in SQuAD , especially on the speed of the model .
+Under a fully controlled environment and batch - query scenario , our model processes words nearly 6000 times faster than DrQA .
+Second , we report results on Open-domain SQuAD ( called SQuAD - Open ) , following the same setup as in DrQA .
+We show that our model achieves 3.6 % better accuracy and nearly 68 times faster end-to - end inference time than previous work while exploring 100 times more unique documents .
+All experiments are CPU - only benchmark .
+SQuAD v1.1 Experiments
+In the SQuAD v1.1 setup , our model effectively uses only the dense vector since every sparse ( document tf - idf ) vector will be identical in the same paragraph .
+While this is a much easier problem than open-domain , it can serve as a reliable and fast indicator of how well the model would do in the open-domain setup .
+Model details
+We use BERT - large ( d = 1024 ) for the text encoders , which is pretrained on a large text corpus ( Wikipedia dump and Book Corpus ) .
+We refer readers to the original paper by Devlin et al . ( 2019 ) for details ; we mostly use the default settings described there .
+We use d b = 480 , resulting in phrase size of 2d b + 1 = 961 , and d c = 32 .
+We train with a batch size of 12 ( on four P40 GPUs ) for 3 epochs .
+Baselines
+We compare the performance of our system DENSPI with a few baselines in terms of accuracy and efficiency .
+The first group are among the models that are submitted to SQuAD v1.1 Leaderboard , specifically DrQA and BERT ( Devlin et al. , 2019 ) ( current state of the art ) .
+These models encode the evidence document given the question , but they suffer from the disadvantage that the evidence document needs to be re-encoded for every new question at the inference time , and they are strictly linear time in that they cannot utilize approximate search algorithms .
+The second group of baselines are introduced by Seo et al . ( 2018 ) , specifically LSTM +SA and LSTM +SA +ELMo that also encode phrases independent of the question using LSTM , Self-Attention , and ELMo ( Peters et al. , 2018 ) encodings .
+Results
+Table 1 compares the performance of our system with different baselines in terms of efficiency and accuracy .
+We note the following observations from the result table . ( 1 ) DEN - SPI outperforms the query -agnostic baseline ( Seo et al. , 2018 ) by a large margin , 20.1 % EM and 18.5 % F1 .
+This is largely credited towards the usage of BERT encoder with an effective phrase embedding mechanism on the top . ( 2 ) DEN - SPI outperforms DrQA by 3.3 % EM .
+This signifies that phrase-indexed models can now outperform early ( unconstrained ) state - of- the - art models in SQuAD . ( 3 ) DENSPI is 9.2 % below the current state of the art .
+The difference , which we call decomposability gap 5 , is now within 10 % and future work will involve further closing the gap .
+( 4 ) Query - agnostic models can process ( read ) words much faster than query - dependent representation models .
+In a controlled environment where all information is in memory and the documents are pre-indexed , DENSPI can process 28.7 million words per second , which is 6,000 times faster than DrQA and 563,000 times faster than BERT without any approximation .
+Ablations Ablations are also shown at the bottom of Table 1 .
+The first ablation adds a linear layer on top of the BERT encoder for the phrase embeddings , which is more analogous to how BERT handles other language tasks .
+We see a huge drop in performance .
+We also try independent BERT encoders ( i.e. unshared parameters ) between phrase and question embedding models , and we also see a large drop as well .
+These seem to indicate that a careful design consideration for even small details are crucial when finetuning BERT .
+Our ablation that excludes coherency scalar decreases DENSPI 's EM score by 2 % and F1 by 0.2 % .
+This agrees with our intuition that the coherency scalar is useful for precisely defining valid phrase constituents .
+Open-domain Experiments
+In this subsection , we evaluate our model 's performance ( accuracy and speed ) on Open-domain SQuAD ( SQuAD - Open ) , which is an extension of SQuAD ( Rajpurkar et al. , 2016 ) ( 2017 ) .
+In this setup , the evidence is the entire English Wikipedia , and the golden paragraphs are not provided for questions .
+Model details
+For the dense vector , we adopt the same setup from Section 6.1 except that we train with no-answer questions ( Section 5.1 ) and an increased batch size of 18 .
+For the sparse vector of each phrase , we use the identical 2 - gram tf - idf vector used by , whose vocabulary size is approximately 17 million , of the document that contains the phrase .
+Since the sparse vector and the dense vector are independently obtained , we tuned the linear scale between the sparse and the dense vectors and found that 0.1 ( multiplied on sparse vector ) gives the best performance .
+As discussed in Section 5.3 , we perform dense search first ; we retrieve top 1000 phrases from the index and rescore the dense vectors with the corresponding sparse ( document ) vectors .
+Baselines
+We compare our system with previous state - of - the - art models for open-domain question answering .
+The baselines include DrQA , MINIMAL ( Min et al. , 2018 ) , multi-step-reasoner ( Das et al. , 2019 ) , Paragraph Ranker , and R 3 ( Wang et al. , 2018a ) .
+We additionally compare with results of a recent paper ( Yang et al. , 2019 ) that uses BERT encodings for open-domain QA , and is recently made available on arXiv .
+We do not experiment with Seo et al . ( 2018 ) due to its large gap with DENSPI as demonstrated in Table 1 .
+Results
+Table 2 shows the results of our system and previous models on SQuAD - Open .
+We note following observations : ( 1 ) DENSPI outperforms DrQA by 3.6 % EM while achieving 68 times faster inference speed .
+We previously reported 6 K times faster speed in Section 6.1 ; there is a significant difference largely because DENSPI is covering a larger number of documents than DrQA and we need to account for the overhead during similarity search and disk access ( since now most information is on disk ) .
+( 2 ) DENSPI is 0.2 % F1 behind MINIMAL and 3.8 % F1 behind BERTserini , which is BERT ton top of a carefully - engineered paragraph retrieval system .
+As mentioned in Section 6.1 , the difference between ours and BERTserini can be considered as the decomposability gap arising from the constraint of query -agnostic phrase representations .
+We note , however , that the gap is smaller now in open-domain , and the speedup is 230x .
+6 ( 3 ) We also report the number of documents that our model computes exact search on and compare it to that of DrQA , as indicated by '# D / Q ' in the table .
+Top - 1000 dense search in DENSPI results in 840 unique documents on average , which is much more diverse than the 5 documents that DrQA considers .
+The benefit of this diversity is better illustrated in the upcoming qualitative analysis ( Table 3 ) .
+Ablations Table 2 ( bottom ) shows the effect of the sparse vector and a pipeline search in our method .
+Sparse vector :
+We first try entirely removing the sparse vector , i.e. x i:j = d i:j in Equation 1 .
+While this would n't have any effect in SQuAD v.1.1 , we see a significant drop ( - 21.8 % F1 ) , indicating the importance of the sparse vector in open-domain for distinguishing semantically close but lexically distinct entities .
+Pipeline search :
+The other ablation is using a pipeline search on the sparse ( document ) vectors first to reduce the search space instead of using dense search ( as discussed in Section 5.3 ) , which can be more directly compared to DrQA and other baselines .
+We see that DENSPI with sparse search first still shows a strong performance with faster inference time ( since number of sparse inner product computations decreased to 5 ) , but its accuracy is lower than the original DENSPI and it can explore only few documents .
+DrQA and DENSPI .
+In the top example , we note that DrQA fails to retrieve the right document , whereas DENSPI finds the correct answer .
+This happens exactly because the document retrieval model would not precisely know what kind of content is in the document , while dense search allows it to consider the content directly through phraselevel retrieval .
+In the second example , while both obtain the correct top - 1 , DENSPI also obtains the same answer from three different documents .
+The last example ( not from SQuAD ) does not have a noun entity , in which a term-frequency - based search engine often performs poorly .
+We indeed see that DrQA fails because wrong documents are retrieved .
+On the other hand , DENSPI is able to obtain good answers from several different documents .
+These results also reinforce the importance of exploring diverse documents ( ' # D / Q ' in Table 2 ) . model seems to fail to distinguish ' 1940s ' from ' 1930s ' .
+In the second example , the model seems to focus more on the word ' largest ' than the word ' fifth -' in the question .
+Qualitative Analysis
+Error Analysis
+Conclusion
+We introduce a model for real-time open-domain question answering by learning indexable phrase representations independent of the query .
+Our phrase representations leverage sparse and dense vectors to capture lexical , semantic , and syntactic information .
+On SQuAD - Open , our experiments show that our model can read words 6 k times faster under a controlled environment and 68 times faster in a real setup than DrQA while achieving 3.8 % higher EM .
+We believe that even further speedup and larger coverage of documents can be done with a similarity search package for dense + sparse vectors .
+Future work includes better phrase representation learning to close its accuracy gap with QA models with query - dependent document encoding .
+Utilizing the phrase index as an external memory for an interaction with text - based knowledge is also an interesting direction .
+al. ,
+An illustrative comparison between a pipelined QA system , e.g. DrQA ( Chen et al. , 2017 ) ( left ) and our proposed Dense -Sparse Phrase Index ( right ) for open-domain QA , best viewed in color .
+Dark blue vectors indicate the retrieved items from the index by the query .
+Query Document Index Dense-Sparse Phrase Index vector for document ?
+Dense start ?
+When was Barack Obama born ?
+Reader Model
+When was Barack Obama born ?
+Dense end Coherency Sparse 1961 1961 Figure 1 : 2017 ) show that DENSPI is on par with or better than most state - of - the - art open- domain QA sys - tems on Wikipedia with 6000x reduced computa- tional cost on RAM .
+In our end-to - end benchmark , this translates into at least 68x faster query infer- ence including disk access time .

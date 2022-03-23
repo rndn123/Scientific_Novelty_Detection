@@ -1,0 +1,209 @@
+title
+Compressing Neural Machine Translation Models with 4 - bit Precision
+abstract
+Quantization is one way to compress Neural Machine Translation ( NMT ) models , especially for edge devices .
+This paper pushes quantization from 8 bits , seen in current work on machine translation , to 4 bits .
+Instead of fixed - point quantization , we use logarithmic quantization since parameters are skewed towards zero .
+We then observe that quantizing the bias terms in this way damages quality , so we leave them uncompressed .
+Bias terms are a tiny fraction of the model so the impact on compression rate is minimal .
+Retraining is necessary to preserve quality , for which we propose to use an error-feedback mechanism that treats compression errors like noisy gradients .
+We empirically show that NMT models based on the Transformer or RNN architectures can be compressed up to 4 - bit precision without any noticeable quality degradation .
+Models can be compressed up to binary precision , albeit with lower quality .
+The RNN architecture appears more robust towards compression , compared to the Transformer .
+Introduction Neural Machine Translation ( NMT ) is resourcedemanding .
+Current state - of- the - art architectures , such as the Transformer ( Vaswani et al. , 2017 ) or deep RNN ( Barone et al. , 2017 ) are typically hundreds of megabytes in size .
+In a client- based translation system , these large models must be deployed locally , thus consuming network bandwidth for distributing the model , and disk space for storing the model .
+Model quantisation has been widely studied as a way to compress model size and increase the inference speed .
+However , most of this work has focused on convolution neural networks for computer vision tasks ( Miyashita et al. , 2016 ; Lin et al. , 2016 ; Hubara et al. , 2016 Hubara et al. , , 2017 Jacob et al. , 2018 ) .
+As such , research on model quantisation for NMT tasks remains limited .
+We find that the model can be compressed at up to 4 - bit precision without sacrificing quality .
+We first explore the use of logarithmic - based quantisation over fixed - point quantisation ( Miyashita et al. , 2016 ) based on the empirical findings that parameter distribution is not uniform , but instead concentrated near zero ( Lin et al. , 2016 ; See et al. , 2016 ) .
+The magnitude of a parameter also varies across layers ; therefore , we propose an improved method of scaling the quantization centres .
+We also notice that biases do not quantise very well .
+However , since biases do not consume a noticeable amount of memory , they can be left unquantised .
+Lastly , we explore the significance of re-training in the model compression scenario .
+We adopt an error feedback mechanism ( Seide et al. , 2014 ) to preserve the quantisation error rather than discarding it at every update during re-training .
+Related Work
+A considerable amount of research on model quantisation has been performed in the area of computer vision with convolutional neural networks ; however , research on model quantisation in the field of neural machine translation is far more limited .
+Therefore , we will also refer to work on neural models for image processing in this section , where appropriate .
+Hubara et al. ( 2016 ) quantised the model and activation to binary on a CNN network for various image classification tasks .
+The binary network achieved near state - of - the - art quality on several easier tasks such as MNIST and CIFAR - 10 but achieved sub-par performance on the more challenging ImageNet dataset ( losing over 20 % accuracy with quantised GoogleNet ) .
+Hubara et al. ( 2017 ) later reported that with 6 - bit fixed - point quantisation , GoogleNet " only " lost 5 % accuracy .
+( Lin et al. , 2016 ) used different bit precisions on various CNN layers , achieving over 20 % compression on the CIFAR - 10 task .
+Since the model 's parameters are highly concentrated near zero , Miyashita et al . ( 2016 ) opted for logarithmic quantisation .
+They report an improvement in preserving model accuracy over linear quantisation while achieving the same model compression rate .
+They also reported negligible accuracy degradation when compressing VGG16 with 3 - bit logarithmic quantisation , whereas 3 - bit fixed - point quantisation suffered a 6 % accuracy drop .
+Hubara et al. ( 2017 ) compress an LSTM - based architecture for language modelling to 4 - bits without any quality degradation but had to scale the hidden layer size by 3 .
+See et al. ( 2016 ) pruned an NMT model by removing any weight values lower than a certain threshold .
+They achieve 80 % model sparsity without any quality degradation .
+A relevant work with respect to our purposes is the submission of Junczys - Dowmunt et al . ( 2018 ) to the Shared Task on Efficient Neural Machine Translation in 2018 .
+This submission applied an 8 - bit linear quantisation for NMT models without any noticeable deterioration in translation quality .
+Similarly , Quinn and Ballesteros ( 2018 ) proposed the use of 8 - bit matrix multiplication to increase the CPU inference speed of an NMT system .
+Low-precision Neural Machine Translation
+Log-based Compression
+Parameters in deep learning models are normally distributed ( Lin et al. , 2016 ; See et al. , 2016 ) .
+Therefore , a uniformly distributed fixed - point quantisation may not fit the parameter distribution .
+To improve resolution for small values , we adopt logarithmic quantisation following Miyashita et al . ( 2016 ) where parameter density is the highest .
+Figure 1 illustrates the weight distribution and our log-based quantisation .
+We use the same quantisation centres for positive and negative values .
+When compressing to B bits , a single bit represents the sign while the remaining B ?1 bits represent the log magnitude .
+The centres are tuned based on the absolute value of the data .
+For efficient implementation and because the impact on quality was minimal after re-training , we use log base 2 .
+Log base 2 means that ex-0.3 0.2 0.1 0.0 0.1 0.2 0.3 ponentiation amounts to a bit-shift while taking a rounded log ( which will be used to quantise a value ) amounts to addition followed by finding the leftmost 1 in binary .
+We find that tensors might not have the same parameter magnitude .
+Therefore we also scale the quantisation centres to approximate each tensor better .
+This approach is different from that of Miyashita et al . ( 2016 ) , where quantisation centres are not scaled , thus letting every tensor to have the same set of centres .
+Formally , each quantisation centre takes the form ?S2 q where S is a scaling factor , and q is an integer in the range ( ?2 B?1 , 0 ] .
+The scaling factor S is selected separately for each tensor in the model .
+To minimise the mean squared encoding error , values should be quantised to the nearest centre .
+Miyashita et al. ( 2016 ) find the nearest centre in logarithmic space by taking the log and then rounding to the nearest integer , which is not the same as finding the nearest centre in normal space .
+For example , their approach will quantise 5.8 to 2 3 instead of 2 2 because log 2 ( 5.8 ) ? 2.536 , which rounds to 3 .
+In normal space , 5.8 is closer to 2 2 instead of 2 3 .
+We can implement rounding to the nearest centre in normal space efficiently by multiplying by 2 3 , taking the log and rounding up to the next integer .
+Let x ? [ 2 q , 2 q+1 ] .
+Thus : x rounds up to 2 q+1 ? x > 2 q + 2 q+1 2 ? x > 2 q ( 1 + 2 ) 2 ? 2 3 x > 2 q ? log 2 2 3 x > q ( 1 ) Therefore , given a positive x , we can find the quantised magnitude of q with respect to rounding scheme in normal space by : q = log 2 ( 2 3 t ) ( 2 ) Ultimately , given a value v that will be quantised a B-bit logarithmic quantisation .
+We encode v as ( sign , q ) , where sign represents the sign ( 1 - bit ) , and q represents the magnitude ( B ? 1 bits ) .
+Our quantisation functions as follows : sign = sign ( v ) t = clip ( | v| / S , [ 1 , 2 1?2 B?1 ] ) q = log 2 ( 2 3 t ) ( 3 ) where t is a temporary variable .
+We first scale the value to the desired range based on scaling factor S. We will discuss more on computing S later .
+Then , we clip the value into the given range since we have limited quantisation centres .
+This then decodes to v ?
+v as v = signS2 q .
+In practice , the sign is stored with q.
+Selecting the Scaling Factor
+There are a few heuristics to choose a scaling factor of S. Junczys - Dowmunt et al. ( 2018 ) and Jacob et al . ( 2018 ) scale the model based on its maximum value , which can be very unstable - especially during re-training .
+Alternatively , Lin et al. ( 2016 ) and Hubara et al . ( 2016 ) use a pre-defined step size for fixed - point quantization .
+Our objective is to select a scaling factor S such that the quantised parameters are as close to the original as possible .
+Therefore , we optimise S such that it minimises the squared error between the original and the compressed parameters .
+We propose a method to fit S by minimising the SME .
+We start with an initial scale S based on the parameters ' maximum value .
+For a given S , we apply our quantisation routine described in Equation 3 to a tensor v , resulting in an approximation of v .
+For a given assignment v , we fit a new scale S such that : S = arg min S i ( v i ? v i ) 2 ( 4 ) Substituting v i within Eq. 4 , we have : S = arg min S i ( sign ( v i ) S2 q i ? v i ) 2 ( 5 ) To simplify the equation , let a temporary variable a i to substitute sign ( v i ) 2 q i .
+Hence we have : S = arg min S i ( a i S ? v i ) 2 ( 6 ) To optimise the given objective , we take the first derivative of Equation 6 such that : d dS i ( a i S ? v i ) 2 = 0 2 i ( a i ( a i S ? v i ) ) = 0 i ( a 2 i S ) ?
+i ( a i v i ) = 0 S i a 2 i = i ( a i v i ) S = i ( a i v i ) i a i 2 S = i ( sign ( v i ) 2 q i v i ) i ( sign ( v i )2 q i ) 2 S = i ( 2 q i |v i |) i 4 q i ( 7 ) We optimise S for each tensor independently .
+Re-training
+We observe later in Section 4.2 that quantisation damages the model .
+Therefore , we re-train the model after initial quantisation to allow it to recover some of the quality loss .
+In the re-training phase , we compute the gradients normally with full precision .
+We then re-quantise the model after every update to the parameters , including fitting scaling factors .
+Re-quantising the model after every update introduces quantisation errors .
+The re-quantisation error is preserved in a residual variable and added to the next step 's parameter ( Seide et al. , 2014 ) before quantisation .
+We find that re-training fails to work without this mechanism ( Section 4.2 ) .
+Handling Biases
+We do not quantise bias values in the model .
+We find that biases are not as highly concentrated near zero when compared to other parameters .
+Empirically , in our pre-trained Transformer architecture , bias has a higher standard deviation of 0.17 ( compared to 0.07 for other parameters ) .
+Attempting to log-quantise them used only a fraction of the available quantisation points .
+In any case , bias values do not consume a lot of memory relative to other parameters .
+In our Transformer architecture , they account for only ?0.2 % of the parameter values .
+Low-precision Dot Products
+To improve the CPU inference speed , we explore training and computing dot products in low precision .
+Activations coming into a matrix multiplication are quantised on the fly , while intermediate activations ( such as tanh ) are not quantised .
+We use the same log-based quantisation procedure described in Section 3.1 when training the model .
+However , we only attempt a fixed predetermined scale .
+Running the slower EM approach to optimise the scale before every dot product would not be fast enough for inference applications .
+Training with Quantised Dot Products
+Our log-quantised activation is a step function , as illustrated in in Figure 2 .
+Therefore , the deriva-tive of this function is 0 almost everywhere , or undefined in the quantization centres .
+Thus , we cannot back - propagate through this function normally .
+Inspired by ( Hubara et al. , 2017 ) , we utilise a straight - through estimator ( Bengio et al. , 2013 ) to set the derivative of the the function to 1 , thus enabling training .
+Computing Dot Products in Log-space
+A dot product operation consists of two suboperations : element -wise multiplication and sum .
+In our case , we now have two vectors a and b , both in the form of : a = S a * [ ( sign j1 * 2 j 1 ) , . . . , ( sign jn * 2 jn ) ]
+b = S b * [ ( sign k1 * 2 k 1 ) , . . . , ( sign kn * 2 kn ) ]
+Multiplication is performed by adding the powers .
+We then add the resulting multiplications together normally , as follows : a ? b = S a * S b i ( sign ji * sign ki * 2 j i + k i ) ( 8 ) Computing power is obtained by using a bit-shift , while computing sign ji * sign ki can be performed using bitwise xor , therefore avoiding expensive multiplication instructions ( Miyashita et al. , 2016 ) .
+Experiments
+Experiment Setup
+We use systems for the WMT 2017 English - to - German news translation task for our experiment , which differs from the WNGT shared task setting previously reported .
+We use back - translated monolingual corpora ( Sennrich et al. , 2016a ) and byte pair encoding ( Sennrich et al. , 2016 b ) to preprocess the corpus .
+Quality is measured based on BLEU ( Papineni et al. , 2002 ) score using sacre - BLEU script ( Post , 2018 ) .
+We first pre-train baseline models with both Transformer and RNN architectures .
+Our Transformer model consists of six encoder and six decoder layers with tied embedding .
+Our deep RNN model consists of eight layers of bidirectional LSTM .
+Models were trained synchronously with a dynamic batch size of 40 GB per batch using the Marian toolkit ( Junczys - Dowmunt et al. , 2018 ) .
+The models are trained until we observe no improvement in 10 consecutive validations .
+Models are optimised with the Adam optimiser ( Kingma and Ba , 2014 ) .
+The rest of the hyperparameter settings on both models follow the suggested configurations ( Vaswani et al. , 2017 ; .
+We use wmt2016 as the test set .
+4 - bit Transformer Model
+In this experiment subsection , we explore different ways to scale the quantisation centres , the significance of quantising biases and the significance of re-training .
+We use a pre-trained Transformer model as our baseline and apply our quantisation algorithm on top of that .
+This experiment focuses solely on the compression ratio .
+Therefore , models are decompressed back into a 32 - bit floating - point value for inference .
+Table 1 summarises the results .
+Using a simple ( albeit unstable ) max - based scaling has shown to perform better than not using the scale factor .
+However , fitting the scaling factor to minimise the quantisation squared error produces the best quality .
+The BLEU score differences between methods of choosing the scaling factor are diminished after re-training .
+We can also see improvements by not quantising biases , especially without re-training .
+Without any re-training involved , we reached the highest BLEU score of 35.47 by using an optimised scale in addition to uncompressed biases .
+Without bias quantisation , we obtained a ?7.9x compression ratio ( instead of 8x ) with a 4 - bit quantisation .
+Based on this trade- off , we argue that it is more beneficial to keep the biases in full precision .
+Re-training has shown to generally improve quality .
+After re-training , the quality differences between various scaling and biases quantisation configurations are minimal .
+These results suggest that re-training helps the model to fine - tune under a new quantised parameter space .
+Training Routine
+We prepare our 4 - bit quantisation model by retraining from a full precision model .
+We also store the quantisation errors to be considered for the next update .
+In this subsection , we answer the question of whether it is necessary to perform these steps .
+We explore the preparation of the 4 - bit model if trained from scratch .
+Similarly , we explore 4 - bit model preparation without an error feedback mechanism .
+For this experiment , we use optimised scaling and 32 - bit bias when applying 4 - bit log quantisation .
+Based on the previous result , we left biases unquantised .
+The results in
+Size Comparison
+To demonstrate the improvement of our method , we compare several compression approaches to our 4 - bit logarithmic quantisation method with retraining and without bias quantisation .
+One of the arguably naive methods used to reduce model size is the use of smaller unit size .
+For Transformer , we set the feed-forward dimension to 512 ( from 2048 ) and the embedding size to 128 ( from 512 ) .
+For RNN , we set the dimension to 320 ( from 1024 ) and the embedding size to 160 ( from 512 ) .
+Using this method , the model size is ?8x smaller and similar to 4 - bit quantisation in terms of the model compression rate .
+We also introduce the 4 - bit fixed - point quantisation approach as a comparison , which is based on Junczys - Dowmunt et al . ( 2018 ) .
+However , we made a few modifications to the original approach .
+Firstly , we apply re-training , which is absent in their implementation .
+Moreover , we skip bias quantisation .
+Finally , we optimise the scaling factor instead of the suggested max -based scale .
+Table 3 summarises the results , which indicate that reducing the model size by simply reducing the dimension resulted in the worst performance .
+Our result is in line with ( Huang et al. , 2019 ) , who show that reducing the model size by using fewer layers degrades quality .
+Logarithmic - based quantisation has been shown to perform better when compared to fixed - point quantisation using both architectures .
+The RNN model seems to be more robust towards the compression .
+RNN models exhibit reduced quality degradation in all compression scenarios .
+We hypothesise that the gradients computed with a highly compressed model are very noisy , thus resulting in noisy parameter updates .
+Our finding is in line with prior research Aji and Heafield , 2019 )
+Quantised Dot-Product
+Quality Benchmark
+We now apply logarithmic quantisation for all matrix multiplication inputs .
+We use the same quantisation procedure as the parameter .
+However , we do not fit the scaling factor since it is very inefficient .
+Hence , we do not scale the quantization centres for the activation .
+For the parameter quantisation , we use an optimised scale with uncompressed biases based on the previous experiment .
+Table 4 presents the quality results of the experiment .
+Generally , we observe quality degradation compared to a full-precision dot product .
+Speed Benchmark Unfortunately , current hardware does not support a 4 - bit instruction , thus our dot-product must be emulated using instructions with wider bit widths .
+1 Since there is no 4 - bit or 8 - bit shift instruction , we emulate 2 q in 16 - bit instead .
+Alternatively , we can choose a lower base , for example 256 1 14 instead of 2 so that the resulting power fits in 8 - bit precision .
+In this case , we can use the 8 - bit lookup table instruction vpshufb instead .
+We benchmark our result with an 8 - bit integer dot product based on the vpdpbusds instruction ( which was introduced in the Cascade Lake to optimise 8 - bit matrix multiplication ) and a basic 32 - bit float dot product using fused multiplication and addition .
+Table 5 of interest for local deployment on mobile devices .
+Should future hardware also support 4 - bit instructions natively , 4 - bit models could also improve decoding efficiency .
+Beyond 4 - bit precision With 4 - bit quantisation and uncompressed biases , we obtain a 7.9x compression rate .
+Bit width can be set below 4 bit to achieve an even better compression rate , albeit introducing more compression error .
+To explore this , we sweep several bit widths .
+Moreover , we skip bias quantisation and optimise the scaling factor .
+Training an NMT system below 4 - bit precision remains a challenge .
+As shown in Table 6 , model performance degrades with fewer bits being used .
+While this result might be acceptable , we argue that the result can be improved .
+One worthwhile idea would be to increase the unit size in an extremely low-precision setting .
+We have shown that 4 - bit precision performs better compared to the fullprecision model with ( near ) 8x compression rate .
+Moreover , Han et al. ( 2015 ) demonstrated that 2 - bit precision image classification can be achieved by scaling the parameter size .
+An alternative approach is to have different bit widths for each layer ( Hwang and Sung , 2014 ; Anwar et al. , 2015 ) .
+We also observe the robustness of RNN over Transformer in this experiment since RNN models degrade less compared to the Transformer counterpart .
+The RNN model outperforms
+Transformer when compressing at binary precision .
+Conclusion
+We compress the model size in neural machine translation to approximately 7.9x smaller than 32 bit floats by using a 4 - bit logarithmic quantisation .
+Bias terms can be left uncompressed without significantly affecting the compression rate .
+We also find that re-training after quantisation is necessary to restore the model 's performance .
+Matrix multiplication can further be quantised , although quality is sacrificed .
+Unfortunately , 4 bit dot products found in matrix multiplication are slow because current hardware does not natively support the necessary 4 - bit instructions .
+Figure 1 : Histograms of the first layer 's attention key weights .
+Parameters follow a normal distribution .
+Vertical lines illustrate the log-based quantisation centres .

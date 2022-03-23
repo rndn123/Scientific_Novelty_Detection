@@ -1,0 +1,138 @@
+title
+Designing a Minimal Retrieve-and -Read System for Open-Domain Question Answering
+abstract
+In open-domain question answering ( QA ) , retrieve - and - read mechanism has the inherent benefit of interpretability and the easiness of adding , removing , or editing knowledge compared to the parametric approaches of closedbook QA models .
+However , it is also known to suffer from its large storage footprint due to its document corpus and index .
+Here , we discuss several orthogonal strategies to drastically reduce the footprint of a retrieve -andread open-domain QA system by up to 160x .
+Our results indicate that retrieve- and - read can be a viable option even in a highly constrained serving environment such as edge devices , as we show that it can achieve better accuracy than a purely parametric model with comparable docker - level system size .
+1
+Introduction Open-domain question answering ( QA ) is the task of finding answers to generic factoid questions .
+In recent literature , the task is largely approached in two ways , namely retrieve & read and parametric .
+The former solves the problem by first retrieving documents relevant to the question from a large knowledge source and then reading the retrieved documents to find out the answer ( Lee et al. , 2019 ; Guu et al. , 2019 ; Karpukhin et al. , 2020 ; Lewis et al. , 2020 ; Izacard and Grave , 2021 ) .
+The latter , also known as closed - book QA , generates the answer in a purely parametric end-to - end manner ( Brown et al. , 2020 ; Roberts et al. , 2020 ) .
+While a parametric model enjoys the benefit in terms of system size that they do not require additional knowledge source like a retrieve & read system does , its fundamental limitations are that their predictions are not so interpretable and they are not suitable for dynamic knowledge source as ?
+Most of the work was done while the author was working at NAVER Corp .
+1 Our code and model weights are available in https://github.com/clovaai/minimal-rnr-qa.
+it is difficult to add , remove , or edit knowledge in the parametric model .
+These limitations are welladdressed by the retrieve & read mechanism , which makes it often more suitable for real-world products .
+However , it is known to suffer from its large storage footprint due to its document corpus and index , especially compared to the parametric model that only needs to store the parameters ( Izacard et al. , 2020 ; Fajcik et al. , 2021 ; Lewis et al. , 2021 ) .
+Building an interpretable and flexible opendomain QA system and reducing its system size are both important in real-world scenarios ; the system must be able to quickly adapt to the changes of the world and be deployed in a highly constrained serving environment such as edge devices .
+Hence , to get the best of both worlds , it is worthwhile to explore the trade - off between the storage budget and the accuracy of a retrieve & read system .
+Well - known approaches for reducing the size of a neural network include pruning ( Han et al. , 2016 ) , quantization ( Zafrir et al. , 2019 , and knowledge distillation ( Hinton et al. , 2014 ) .
+In this paper , we utilize some of these generic approaches and combine them with problem-specific techniques to size down a conventional retrieve & read system .
+We first train a passage filter and use it to reduce the corpus size ( Section 2.1 ) .
+We further apply parameter sharing strategies and knowledge distillation to make a single-encoder lightweight model that can perform both retrieval and reading ( Section 2.2 ) .
+In addition , we adopt multiple engineering tricks to make the whole system even smaller ( Section 2.3 ) .
+We verify the effectiveness of our methods on the dev set and test set of EfficientQA 2 ( Min et al. , 2021 ) .
+By applying our strategies to a recent extractive retrieve & read system , DPR ( Karpukhin et al. , 2020 ) , we reduce its size by 160x with little loss of accuracy , which is still higher than the performance of a purely parametric T5 ( Roberts et al. , 2020 ) baseline with a comparable docker-level storage footprint .
+In Appendix A.5 , we also report the performance on two more open-domain QA datasets , Natural Questions ( Kwiatkowski et al. , 2019 ) and TriviaQA ( Joshi et al. , 2017 ) , to test the generalizability of our methods and suggest a future research direction .
+Method
+In this section , we discuss three techniques for reducing the storage footprint of a generic retrieve & read system , namely passage filtering ( Section 2.1 ) , unifying retriever and reader into a single model through parameter sharing ( Section 2.2 ) , and posttraining compression ( Section 2.3 ) .
+We assume that the initial system takes the conventional composition of a trainable ( neural ) retriever with a question encoder and a passage encoder that create dense vectors used for search , a neural extractive reader ( possibly with passage ranking ) , and a text corpus and the corresponding index that serve as the knowledge source .
+Figure 1 shows how we start from one such retrieve & read system and apply each of the methods , in the order they are introduced in this section , to successively reduce its system footprint without sacrificing much accuracy .
+Passage Filtering Index and corpus files can take up a significant portion of the storage footprint of a retrieve & read system if a large text corpus is utilized as the knowledge source .
+Therefore , to drastically reduce the system size , we train a binary classifier and use it to exclude passages that are relatively unlikely to be useful for question answering .
+Let the set of indices of all passages in the corpus be J total .
+To create the training data , we split J total into two disjoint sets , J train and J train , such that the former contains the indices of the passages we would like to include in the minimal retrieve & read system .
+3 Denoting Ep?q as a trainable dense encoder which maps a passage to a d-dimensional embedding , such that v j "
+Epp j q P R d , the score s j " v J j w , where w P R d as a learnable vector , represents how likely a passage p j would hold the answer to an input question .
+The classifier is trained with binary cross entropy on the minibatches of half -positive and half - negative passages , J `1 train and J ?1 train drawn from J train and J train , respectively .
+During training , we sample several checkpoints and evaluate them using the hit ratio on a validation set : hit val " | J r1 : | J val |s val X J val | { | J val | , where J val is a set of indices of the ground truth passages that hold the answer for the questions in the validation set and J r1 : | J val |s val is the set of indices j of the passages whose inferred score s j is in the top -| J val | scores sorted in descending order , among all s j such that j P J val Y J val .
+J val is a disjoint set randomly sampled from J train .
+We select the checkpoint with the highest hit val and calculate s j for all p j , where j P J total , using the selected checkpoint .
+Then , we retrieve J subset " J r1:ns total , the set of indices of the n topscoring passages , to indicate the passages to include in our minimal retrieve & read system .
+Retriever -Reader with Single Encoder
+In this subsection , we introduce how to obtain a unified retriever - reader with a single encoder ( which results in a smaller system footprint ) that can perform both retrieval and reading without much drop in accuracy .
+The unified retriever - reader is trained by successively applying ( 1 ) retriever encoder sharing , ( 2 ) distilling a reader into the retriever - reader network , and ( 3 ) iterative finetuning .
+Lightweight Encoder and Embedding Dimension Reduction
+To make the system small , we utilize a lightweight pretrained encoder .
+Specifi-cally , MobileBERT
+( Sun et al. , 2020 ) ( 4.3 x smaller than BERT - base ( Devlin et al. , 2019 ) is employed as the encoder of our retriever - reader model .
+We use the dense embedding vectors of the passages in the knowledge source as the index .
+Therefore , reducing the embedding dimension results in a linear decrease in the index size .
+We use only the first 128 dimensions ( out of 512 ) to encode the questions and passages .
+Retriever Encoder Sharing Let E ? p?q and E ? p?q be the the question encoder and passage encoder of a retriever , where each of the encoders produces a vector for question q and passage p .
+We share the parameters of the encoders , so that ? " ? " ? , and differentiate the question inputs from passages inputs using an additional input signal : different token type ids of 0 for questions and 1 for passages .
+The retrieval score for a pair of question q and passage p is calculated as sim ? pq , pq " E ? pq , 0q ?E? pp , 1q .
+We minimize the negative log-likelihood of selecting the passage which holds the answer , namely the positive passage , while training on mini-batches that consist of questions that are each paired with one positive passage and several negative passages .
+This procedure creates a retriever with a single encoder of parameters ? that can encode both questions and passages .
+4
+Unified Retriever -Reader Through Knowledge Distillation
+The previous subsection describes how to make a retriever that holds only one encoder .
+Here , we further train the parameters of the retriever ? so that it can also acquire the ability of a reader ; we make a unified retriever - reader model that shares all the encoder parameters and eliminate the need for a separate reader .
+Specifically , using a fully trained reader of parameters ? as the teacher , we adopt knowledge distillation to transfer its reading ability to the unified retriever - reader network .
+The training starts after initializing the parameters of the retriever - reader as ? , which is obtained from the retriever encoder sharing procedure described in the previous subsection .
+Let J read ?
+J subset be the set of indices of the passages whose retrieval score sim ?
+pq , p j q , calculated for question q using a retriever with parameters ?
+5 , is among the top-k 1 scores for all j P J subset .
+J read serves as the candidate pool of the indices of the training set passages .
+During training , for question q , a set of passages P q " tp i | 1 ? i ? mu where m ?
+2 is sampled from tp j |j P J read u to construct a part of the training batch , such that only p 1 contains the answer to question q among p i P P q .
+Then , we train the unified retriever - reader network with parameters ?
+using a multitask loss L read ` Lret , such that the former is used to train the reader part of the network , and the latter is used to keep training the retriever part .
+The resulting retriever - reader model has the ability to perform both retrieval and reading .
+L read is designed to distill the knowledge of a reader teacher into the reader part of the retrieverreader student ; the KL divergence between the sharpened and softmaxed answer span scores of the teacher and the student , D KL pP span ? , q || P span ? , q q.
+If the teacher reader additionally contains a passage ranker , distillation is also jointly done on the passage ranking scores ( m-dim vector outputs ) .
+Retrieval loss L ret is jointly optimized in a multitask - learning manner to prevent the retriever part of the unified network from forgetting the retrieval ability while training the reader part .
+The loss can either be the negative log-likelihood described in the previous subsection or another knowledge distillation objective function with a fully trained retriever teacher .
+If the reader teacher used for L read has a passage ranker , the passage ranking score of the teacher can serve as the distillation target ( Yang and Seo , 2020 ) .
+Iterative Finetuning of Unified Retriever -Reader
+We have observed that finetuning the unified retriever - reader for a few more epochs leads to better retrieval and reading performance .
+While the most simple method is to jointly train the model on the standard reader loss and retriever loss 6 , we additionally try iterative finetuning of each of the retriever and reader part as described in Algorithm 1 .
+The motivation here is to apply a loose reconstruction constraint L recon to keep the retrieval score as it is before and after the model is optimized for reading , with an assumption that this would be helpful to alleviate the train- inference discrepancy in the input distribution of the reader , created because the unified retriever - reader is not trained using a pipelined manner ( training the reader on top of the retrieval result of a fixed retriever ) .
+Algorithm 1
+A single iterative finetuning step on the unified retriever - reader with parameters ? at time t Input ? ptq ( parameters of the model at time t ) , knowledge distillation temperature ? , and training batch of question q and passages Pq " tpi|1 ? i ? mu drawn from Jread such that m ?
+2 , Y pq , p1q " 1 , and Y pq , piq " 0 , @2 ? i ? m. ( batch size of 1 is assumed here for a simple presentation ) Output Updated parameters ?
+pt`1q 1 : ptq ? rE ptq ? pp1 , 1q , ? , E ptq ? ppm , 1qs J E ptq ? pq , 0q 2 : ?ptq ? GradientUpdatepLreadpq , p1 , ? , pmq ; ? ptq q 3 : ? ptq ? rE ptq ? pp1 , 1q , ? , E ptq ? ppm , 1qs J E ptq ? pq , 0q 4 : Lrecon ? DKL ?softmaxp ptq {? q||softmaxp ? ptq {? q 5 : Lnll ? CrossEntropypsoftmaxp ? ptq q , Y q 6 : ? pt`1q ? GradientUpdatepLrecon ` Lnll ; ?ptq q
+Post-Training Compression Techniques
+In addition to the training methods to decrease the corpus , index , and model size , several post-training engineering tricks are applied to compress the system footprint further : ( 1 ) INT8 quantization of index items , ( 2 ) saving model weights as FP16 , ( 3 ) resource compression , and ( 4 ) utilizing token IDs as the corpus instead of raw texts .
+INT8 Quantization of Index Items
+The dense embeddings that serve as the items in the search index are of type FP32 in the default state .
+INT8 quantization can be applied to reduce the index size by four times with a little bit of drop in the accuracy .
+We make use of the quantization algorithm implemented in FAISS ( Johnson et al. , 2019 ) In-dexScalarQuantizer 7 . During inference , the embeddings are de-quantized , and the search is performed on the restored FP32 vectors .
+Saving Model Weights as FP16
+Half precision can be used to size down the model weights of originally FP32 tensors with almost no drop in accuracy .
+In PyTorch , this can be done by calling .half ( ) on each FP32 tensor in the model checkpoint .
+In TensorFlow , model graphs saved as the data type of FP16 may result in unacceptably slow inference according to the used hardware .
+We have found out that keeping the tensor types of the graph as FP32 but making the actual assigned values as FP16 enables a higher compression ratio when the model weights are compressed as described below .
+Resource Compression Data compressors with a high compression ratio are effective at reducing the initial system footprint .
+Our observation is that bzip2 is better for binary files such as model weights or index of embedding vectors , whereas lzma is better for human-readable text files .
+System resources can also be compressed if necessary .
+We use - 9 option for both compressors .
+Utilizing Token IDs as the Corpus A corpus file must be included in the system to get the actual text of the item retrieved by search ( an embedding vector in our case ) .
+We have found out that using the file of the encoded token ids of the tokenized texts as the corpus , instead of the raw texts , is beneficial not only because it reduces the inference latency by preprocessing the texts , but also the compressed output size is often slightly smaller .
+Experiments Experimental Setup
+We apply our storage reduction methods to a recent extractive retrieve & read system , DPR ( Karpukhin et al. , 2020 ) , which consists of three different BERT - base encoders : question encoder of the retriever , passage encoder of the retriever , and encoder of the reader with a ranker .
+All experiments are done on Naver Smart Machine Learning ( NSML ) Platform ( Sung et al. , 2017 ; Kim et al. , 2018 ) .
+The training and evaluation details are in Appendix A.1 , A.2 , and A.3 .
+Experimental Results
+Figure 1 shows how each of the discussed strategies changes DPR 's system size and Exact Match ( EM ) score on the Efficien - tQA dev set ( see Table 3 and Table 4 in Appendix for details ) .
+Our starting point is a standalone opendomain QA system with DPR whose estimated size is 77.5 GB : 1.4 ( system ) + 0.8 ( retriever ) + 0.4 ( reader ) + 61 ( index ) + 13 ( text ) GB .
+The red plot shows from left to right one path to successively apply each strategy to reduce the system footprint to 484.69 MB , which is 160 times smaller .
+Although the methods are described as sequential for easier presentation , the methods with filled markers and dotted lines are orthogonal to each other and thus can be applied in any other order .
+The methods with unfilled markers and solid lines are built on top of the previous method for each .
+Sizing down the corpus from 21,015,325 to 1,224,000 ( 5.8 % ) passages ( ?2.1 ) decreases the sys-tem footprint by a large margin of about 70.5 GB with only 2.72 % of drop in EM .
+Using a smaller passage embedding dimension of 128D ( ?2.2.1 ) , changing the encoder to MobileBERT ( ?2.2.1 ) , and sharing the encoders of the retriever ( ?2.2.2 ) save further 4.1 GB of storage with little drop in accuracy of 1.28 % .
+The process of unifying the retriever and reader into a single model ( ?2.2.3 ) drops EM by 1.11 , but the accuracy increases by 2.77 % ( to 34.44 % ) with iterative finetuning ( ?2.2.4 ) .
+In ablation studies on the three -step training procedure , omitting the knowledge distillation step drops EM by 1.5 % , and omitting L recon drops EM by 0.38 % .
+Applying post-training compression techniques further reduces the system footprint by a large margin while sacrificing little accuracy .
+EM changes to 34.39 % with INT8 quantization , and the rest of the tricks do not affect the accuracy .
+Converting the PyTorch checkpoint to a binary for TensorFlow Serving to reduce system library dependency and applying bzip2 compression on some of the system resources creates the final system of 484.69 MB with an accuracy of 34.33 % .
+Figure 1 shows that this accuracy is higher than the performance the parametric T5 ( Roberts et al. , 2020 ) baseline with a comparable docker-level system footprint .
+8 In Table 1 , we show the test set accuracy of our final system and other baselines .
+In summary , the performance of our system is higher than all of the parametric baselines , and the accuracy drop from DPR is only 2.45 % on the EfficientQA dev set and about 4 % on the test set while reducing the system footprint to about 0.6 % of the original size .
+Our final system achieves the first place in the human ( manual ) evaluation and the second place in the automatic evaluation on " Systems Under 500 MB Track " of the EfficientQA competition .
+While the accuracy of our system is 32.06 % on the EfficientQA test set in the automatic evaluation , which is 1.38 % behind the top-performing system ( Lewis et al. , 2021 ) , its accuracy is 42.23 % in the human evaluation which is 2.83 % higher than the other system .
+Interestingly , when possibly correct answers are also counted as correct , the accuracy rises to 54.95 % ( 7.58 % higher than the other system ) .
+Please refer to Table 2 of Min et al . ( 2021 ) for more details .
+In addition to the EfficientQA dataset , we also 8
+The accuracy of the T5 baselines are calculated using the SSM models finetuned on Natural Questions : https://github.com/google-research/google-research/tree/ master/t5_closed_book_qa#released-model-checkpoints . 2021 ) explore the trade- off between storage budget and accuracy , and their retrieve & read systems take up only about 6GB with state - of - the - art performance .
+Lewis et al. ( 2021 ) propose a QA - pair retrieval system for open-domain QA , which enjoys the benefits of high flexibility and low latency .
+Their retriever answers 1100 questions per second with 41.2 % accuracy on NQ , which rises to 47.7 % when equipped with a reranker .
+The variants optimized for small system footprint are the winning systems of two storage - constrained tracks at EfficientQA .
+Min et al. ( 2021 ) review the EfficientQA competition with detailed analysis and summarize all of the top-performing systems .
+Conclusion
+We discuss several orthogonal approaches to reduce the system footprint of a retrieve - and - read - based open-domain QA system .
+The methods together reduce the size of a reference system ( DPR ) by 160 times with an accuracy drop of 2.45 % and 4 % on EfficientQA dev and test , respectively .
+We hope that the presented strategies and results can be helpful for designing future retrieve - and - read systems under a storage - constrained serving environment .

@@ -1,0 +1,240 @@
+title
+Bridging Textual and Tabular Data for Cross-Domain Text-to-SQL Semantic Parsing
+abstract
+We present BRIDGE , a powerful sequential architecture for modeling dependencies between natural language questions and relational databases in cross - DB semantic parsing .
+BRIDGE represents the question and DB schema in a tagged sequence where a subset of the fields are augmented with cell values mentioned in the question .
+The hybrid sequence is encoded by BERT with minimal subsequent layers and the text - DB contextualization is realized via the fine-tuned deep attention in BERT .
+Combined with a pointergenerator decoder with schema-consistency driven search space pruning , BRIDGE attained state - of - the - art performance on the well - studied Spider benchmark ( 65.5 % dev , 59.2 % test ) , despite being much simpler than most recently proposed models for this task .
+Our analysis shows that BRIDGE effectively captures the desired cross-modal dependencies and has the potential to generalize to more text - DB related tasks .
+Our implementation is available at https://github.com/ salesforce / TabularSemanticParsing .
+Introduction Text-to-SQL semantic parsing addresses the problem of mapping natural language utterances to executable relational DB queries .
+Early work in this area focus on training and testing the semantic parser on a single DB ( Hemphill et al. , 1990 ; Dahl et al. , 1994 ; Zelle and Mooney , 1996 ; Zettlemoyer and Collins , 2005 ; Dong and Lapata , 2016 ) .
+However , DBs are widely used in many domains and developing a semantic parser for each individual DB is unlikely to scale in practice .
+More recently , large-scale datasets consisting of hundreds of DBs and the corresponding question - SQL pairs have been released Figure 1 : Two questions from the Spider dataset with similar intent resulted in completely different SQL logical forms on two DBs .
+In cross - DB text - to - SQL semantic parsing , the interpretation of a natural language question is strictly grounded in the underlying relational DB schema .
+well across different DBs ( Guo et al. , 2019 ; Bogin et al. , 2019 b ; Wang et al. , 2019 ; Suhr et al. , 2020 ; Choi et al. , 2020 ) .
+The setup is challenging as it requires the model to interpret a question conditioned on a relational DB unseen during training and accurately express the question intent via SQL logic .
+Consider the two examples shown in Figure 1 , both questions have the intent to count , but the corresponding SQL queries are drastically different due to differences in the target DB schema .
+As a result , cross - DB text - to - SQL semantic parsers cannot trivially memorize seen SQL patterns , but instead has to accurately model the natural language question , the target DB structure , and the contextualization of both .
+State - of- the- art cross - DB text - to - SQL semantic parsers adopt the following design principles to address the aforementioned challenges .
+First , the question and schema representation should be contextualized with each other ( Hwang et al. , 2019 ; Guo et al. , 2019 ; Wang et al. , 2019 ; Yin et al. , 2020 ) .
+Second , large-scale pre-trained language models ( LMs ) such as BERT ( Devlin et al. , 2019 ) and RoBERTa ( Liu et al. , 2019 c ) can significantly boost parsing accuracy by providing better representations of text and capturing long-term dependencies .
+Third , under data privacy constraints , leveraging available DB content can resolve ambiguities in the DB schema ( Bogin et al. , 2019 b ; Wang et al. , 2019 ; Yin et al. , 2020 ) .
+Consider the second example in Figure 1 , knowing " PLVDB " is a value of the field Journal .
+Name helps the model to generate the WHERE condition .
+We present BRIDGE , a powerful sequential text - DB encoding framework assembling the three design principles mentioned above .
+BRIDGE represents the relational DB schema as a tagged sequence concatenated to the question .
+Different from previous work which proposed specialpurpose layers for modeling the DB schema ( Bogin et al. , 2019a , b ; Choi et al. , 2020 ) and cross text - DB linking ( Guo et al. , 2019 ; Wang et al. , 2019 ) , BRIDGE encodes the tagged hybrid sequence with BERT and lightweight subsequent layers - two single - layer bi-directional LSTMs ( Hochreiter and Schmidhuber , 1997 ) .
+Each schema component ( table or field ) is simply represented using the hidden state of its special token in the hybrid sequence .
+To better align the schema components with the question , BRIDGE augments the hybrid sequence with anchor texts , which are automatically extracted DB cell values mentioned in the question .
+Anchor texts are appended to their corresponding fields in the hybrid sequence ( Figure 2 ) .
+The text - DB alignment is then implicitly achieved via fine - tuned BERT attention between overlapped lexical tokens .
+Combined with a pointer- generator decoder ( See et al. , 2017 ) and schema-consistency driven search space pruning , BRIDGE performs competitively on the well studied Spider benchmark ( Structure Acc : 65.6 % dev , 59.2 % test , top - 4 rank ; Execution Acc : 59.9 % test , top - 1 rank ) , outperforming most of recently proposed models with more sophisticated neural architectures .
+Our analysis shows that when applied to Spider , the BERT - encoded hybrid representation can effectively capture useful cross-modal dependencies and the anchor text augmentation resulted in significant performance improvement .
+Model
+In this section , we present the BRIDGE model that combines a BERT - based encoder with a sequential pointer - generator to perform end-to - end cross - DB text - to - SQL semantic parsing .
+Problem Definition
+We formally defined the cross - DB text - to - SQL task as the following .
+Given a natural language question Q and the schema S = T , C for a relational database , the parser needs to generate the corresponding SQL query Y .
+The schema consists of tables T = {t 1 , . . . , t N } and fields C = {c 11 , . . . , c 1 |T 1 | , . . . , c n1 , . . . , c N|T N | }. Each table t i and each field c i j has a textual name .
+Some fields are primary keys , used for uniquely indexing eachEar data record , and some are foreign keys , used to reference a primary key in a different table .
+In addition , each field has a data type , ? ? { number , text , time , boolean , etc .}.
+Most existing solutions for this task do not consider DB content ( Zhong et al. , 2017 ; . Recent approaches show accessing DB content significantly improves system performance ( Liang et al. , 2018 ; Wang et al. , 2019 ; Yin et al. , 2020 ) .
+We consider the setting adopted by Wang et al . ( 2019 ) where the model has access to the value set of each field instead of full DB content .
+For example , the field Property _Type_Code in Figure 2 can take one of the following values : { " Apartment " , " Field " , " House " , " Shop " , " Other " } .
+We call such value sets picklists .
+This setting protects individual data record and sensitive fields such as user IDs or credit numbers can be hidden .
+Question - Schema Serialization and Encoding
+As shown in Figure 2 , we represent each table with its table name followed by its fields .
+Each table name is preceded by the special token [ T ] and each field name is preceded by [ C ] .
+The representations of multiple tables are concatenated to form a serialization of the schema , which is surrounded by two [ SEP ] tokens and concatenated to the question .
+Finally , following the input format of BERT , the question is preceded by [ CLS ] to form the hybrid question - schema serialization X = [ CLS ] , Q , [ SEP ] , [ T ] , t 1 , [ C ] , c 11 . . . , c 1 |T 1 | , [ T ] , t 2 , [ C ] , c 21 , . . . , [ C ] , c N|T N | , [ SEP ] .
+X is encoded with BERT , followed by a bidirectional LSTM to form the base encoding h X ? R | X |?n .
+The question segment of h X is passed through another bi-LSTM to obtain the question encoding h Q ? R | Q|?n .
+Each table / field is represented using the slice of h X corresponding to its special token [ T ] / [ C ] .
+Meta-data Features
+We train dense look - up features to represent meta-data of the schema .
+This includes whether a field is a primary key ( f pri ? R 2?n ) , whether the field appears in a foreign key pair ( f for ? R 2?n ) and the data type of the field ( f type ? R |?|?n ) .
+These meta-data features are fused with the base encoding of the schema component via a projection layer g to obtain the following encoding output : h t i S = g( [ h p X ; 0 ; 0 ; 0 ] ) , ( 1 ) h c i j S = g( [ h q X ; f u pri ; f v for ; f w type ] ) ( 2 ) = ReLU ( W g [ h m X ; f u pri ; f v for ; f w type ] + b g ) h S = [ h t 1 , . . . , h t | T | , h c 11 , . . . , h c N|T N | ] ? R | S|?n , ( 3 ) where p is the index of [ T ] associated with table t i in X and q is the index of [ C ] associated with field c i j in X. u , v and w are feature indices indicating the properties of c i j . [ h m X ; f u pri ; f v for ; f w type ] ?
+R 4n is the concatenation of the four vectors .
+The meta-data features are specific to fields and the table representations are fused with place-holder 0 vectors .
+Bridging Modeling only the table / field names and their relations is not always enough to capture the semantics of the schema and its dependencies with the question .
+Consider the example in Figure 2 , Property_-Type_Code is a general expression not explicitly mentioned in the question and without access to the set of possible field values , it is difficult to associate " houses " and " apartments " with it .
+To resolve this problem , we make use of anchor text to link value mentions in the question with the corresponding DB fields .
+We perform fuzzy string match between Q and the picklist of each field in the DB .
+The matched field values ( anchor texts ) are inserted into the question - schema representation X , succeeding the corresponding field names and separated by the special token [ V ] .
+If multiple values were matched for one field , we concatenate all of them in matching order ( Figure 2 ) .
+If a question mention is matched with values in multiple fields .
+We add all matches and let the model learn to resolve ambiguity 1 .
+The anchor texts provide additional lexical clues for BERT to identify the corresponding mention in Q .
+And we name this mechanism " bridging " .
+Decoder
+We use an LSTM - based pointer - generator ( See et al. , 2017 ) with multi-head attention ( Vaswani et al. , 2017 ) as the decoder .
+The decoder starts from the final state of the question encoder .
+At each step , the decoder performs one of the following actions : generating a token from the vocabulary V , copying a token from the question Q or copying a schema component from S. Mathematically , at each step t , given the decoder state s t and the encoder representation [ h Q ; h S ] ? R ( |Q | + |S | ) ? n , we compute the multi-head attention as defined in Vaswani et al . ( 2017 ) : e ( h ) t j = s t W ( h ) U ( h j W ( h ) V ) ? n/H ; ? ( h ) t j = softmax j e ( h ) t j ( 4 ) z ( h ) t = | Q| + |S| j=1 ? ( h ) t j ( h j W ( h ) V ) ; z t = z ( 1 ) t ; ? ? ? ; z ( H ) t , ( 5 ) where h ? [ 1 , . . . , H ] is the head number and H is the total number of heads .
+The scalar probability of generating from V and the output distribution are p t gen = sigmoid (s t W s gen + z t W z gen + b gen ) ( 6 ) p t out = p t gen P V ( y t ) + ( 1 ? p t gen ) j: X j =y t ?
+( H ) t j , ( 7 ) where P V ( y t ) is the softmax LSTM output distribution and X is the length -( | Q| + | S | ) sequence that consists of only the question words and special tokens [ T ] and [ C ] from X .
+We use the attention weights of the last head to compute the pointing distribution 2 .
+We extend the input state to the LSTM decoder using selective read proposed by Gu et al . ( 2016 ) .
+Show names of properties that are either houses or apartments
+Property id
+Property type code Property name
+Date on market Date sold ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ?
+Property type code Property type description ? ? ? ? ? ? ? ? Reference Property Types
+The technical details of this extension can be found in ?A.2 .
+Schema-Consistency Guided Decoding
+We propose a simple pruning strategy for sequence decoders , based on the fact that the DB fields appeared in each SQL clause must only come from the tables in the FROM clause .
+Generating SQL Clauses in Execution Order
+To this end we rearrange the clauses of each SQL query in the training set into the standard DB execution order ( Rob and Coronel , 1995 ) shown in table 1 . For example , the SQL SELECT COUNT ( * ) FROM Properties is converted to FROM Properties SELECT COUNT ( * ) 3 .
+We can show that all SQL queries with clauses in execution order satisfy the following lemma Lemma 1 Let Y exec be a SQL query with clauses arranged in execution order , then any table field in Y exec must appear after the table .
+As a result , we adopt a binary attention mask ?
+?( H ) t = ?
+( H ) t ? ? ( 8 ) which initially has entries corresponding to all fields set to 0 .
+Once a table t i is decoded , we set all entries in ? corresponding to { c i1 , . . . , c i|T i | } to 1 .
+This allows the decoder to only search in the space specified by the condition in Lemma 1 with little overhead in decoding speed .
+3 More complex examples can be found in Table A1 . Written : SELECT FROM WHERE GROUPBY HAVING ORDERBY LIMIT Exec : FROM WHERE GROUPBY HAVING SELECT ORDERBY LIMIT
+Related Work Text-to-SQL Semantic Parsing Recently the field has witnessed a re-surge of interest for textto - SQL semantic parsing ( Androutsopoulos et al. , 1995 ) , by virtue of the newly released large-scale datasets ( Zhong et al. , 2017 ; and matured neural network modeling tools ( Vaswani et al. , 2017 ; Shaw et al. , 2018 ; Devlin et al. , 2019 ) .
+While existing models have surpassed human performance on benchmarks consisting of single-table and simple SQL queries ( Hwang et al. , 2019 ; He et al. , 2019a ) , ample space of improvement still remains for the Spider benchmark which consists of relational DBs and complex SQL queries 4 . Recent architectures proposed for this problem show increasing complexity in both the encoder and the decoder ( Guo et al. , 2019 ; Wang et al. , 2019 ; Choi et al. , 2020 ) . Bogin et al. ( 2019 a , b) proposed to encode relational DB schema as a graph and also use the graph structure to guide decoding .
+Guo et al. ( 2019 ) proposes schema-linking and SemQL , an intermediate SQL representation customized for questions in the Spider dataset which was synthesized via a tree-based decoder .
+Wang et al. ( 2019 ) proposes RAT - SQL , a unified graph encoding mechanism which effectively covers relations in the schema graph and its linking with the question .
+The overall architecture of RAT - SQL is deep , consisting of 8 relational self-attention layers on top of BERT - large .
+In comparison , BRIDGE uses BERT combined with minimal subsequent layers .
+It uses a simple sequence decoder with search space - pruning heuristics and applies little abstraction to the SQL surface form .
+Its encoding architecture took inspiration from the table - aware BERT encoder proposed by Hwang et al . ( 2019 ) , which is very effective for WikiSQL but has not been successful adapted to Spider .
+Yavuz et al. ( 2018 ) uses question - value matches to achieve high - precision condition predictions on WikiSQL .
+Shaw et al. ( 2019 ) also shows that value information is critical to the cross - DB semantic parsing tasks , yet the paper reported negative results augmenting an GNN encoder with BERT and the overall model performance is much below state - of - the- art .
+While previous work such as ( Guo et al. , 2019 ; Wang et al. , 2019 ; Yin et al. , 2020 ) use feature embeddings or relational attention layers to explicitly model schema linking , BRIDGE models the linking implicitly with BERT and lexical anchors .
+An earlier version of this model is implemented within the Photon NLIDB model ( Zeng et al. , 2020 ) , with up to one anchor text per field and an inferior anchor text matching algorithm .
+4 Experiment Setup
+Joint Text -
+Dataset
+We evaluate BRIDGE using Spider , a large-scale , human annotated , crossdatabase text - to - SQL benchmark 5 .
+Table 2 shows the statistics of its train / dev/ test splits .
+The test set is hidden .
+We run hyperparameter search and analysis on the dev set and report the test set performance only using our best approach .
+Evaluation Metrics
+We report the official evaluation metrics proposed by the Spider team .
+Exact Set Match ( E- SM )
+This metrics evaluates the structural correctness of the predicted SQL by checking the orderless set match of each SQL clause in the predicted query w.r.t. the ground truth .
+It ignores errors in the predicted values .
+Execution Accuracy ( EA )
+This metrics checks if the predicted SQL is executable on the target DB and if the execution results of match those of the ground truth .
+It is a performance upper bound as two SQL queries with different semantics can execute to the same results on a DB .
+Implementation Details Anchor Text Selection Given a DB , we compute the pickist of each field using the official DB files .
+We designed a fuzzy matching algorithm to match a question to possible value mentions in the DB ( described in detail in ?A.3 ) .
+We include up to k matches per field , and break ties by taking the longer match .
+We exclude all number matches as Data Repair
+The original Spider dataset contains errors in both the example files and database files .
+We manually corrected some errors in the train and dev examples .
+For comparison with others in ?5.1 , we report metrics using the official dev/test sets .
+For our own ablation study and analysis , we report metrics using the corrected dev files .
+We also use a high- precision heuristics to identify missing foreign key pairs in the databases and combine them with the released ones during training and inference : if two fields of different tables have identical name and one of them is a primary key , we count them as a foreign key pair 6 . Training
+We train our model using cross-entropy loss .
+We use Adam-SGD ( Kingma and Ba , 2015 ) with default parameters and a mini-batch size of 32 .
+We use the uncased BERT - base model from the Huggingface 's transformer library ( Wolf et al. , 2019 ) .
+We set all LSTMs to 1 - layer and set the hidden state dimension n = 512 .
+We train a maximum of 50,000 steps and set the learning rate to 5e ?
+4 in the first 5,000 iterations and linearly shrink it to 0 .
+We fine- tune BERT with a fine-tuning rate linearly increasing from 3e ? 5 to 8e ? 5 in the first 5,000 iterations and linearly decaying to 0 .
+We randomly permute the 57.6 53.4 GNN + Bertrand - DR ( Kelkar et al. , 2020 ) 57.9 54.6 IRNet + BERT ( Guo et al. , 2019 ) 61.9 54.7 RAT -SQL v2 ? ( Wang et al. , 2019 ) 62.7 57.2 RYANSQL + BERT L ( Choi et al. , 2020 ) 66 Decoding
+The decoder uses a generation vocabulary consisting of 70 SQL keywords and reserved tokens , plus the 10 digits to generate numbers not explicitly mentioned in the question ( e.g. " first " , " second " , " youngest " etc. ) .
+We use a beam size of 256 for leaderboard evaluation .
+All other experiments uses a beam size of 16 .
+We use schemaconsistency guided decoding during inference only .
+It cannot guarantee schema consistency 7 and we run a static SQL correctness check on the beam search output to eliminate predictions that are either syntactically incorrect or violates schema consistency 8
+If no predictions in the beam satisfy the two criteria , we output a default SQL query which count the number of entries in the first table .
+Results
+End-to-end Performance Evaluation
+Table 3 shows the E-SM accuracy of BRIDGE compared to other approaches ranking at the top of the Spider leaderboard .
+BRIDGE per-7 Consider the example SQL query shown in Table A2 which satisfies the condition of Lemma 1 , the table VOTING_-RECORD only appears in the first sub-query , and the field VOTING_RECORD .PRESIDENT
+_Vote in the second sub-query is out of scope .
+8 Prior work such as performs the more aggressive execution - guided decoding .
+However , it is difficult to apply this approach to complex SQL queries ( Zhong et al. , 2017 ) .
+We build a static SQL analyzer on top of the Mozilla SQL Parser ( https://github.com/mozilla/ moz-sql-parser ) .
+Our static checking approach handles complex SQL queries and avoids DB execution overhead .
+forms very competitively , significantly outperforming most of recently proposed architectures with more complicated , task-specific layers ( Global - GNN , EditSQL + BERT , IRNet+ BERT , RAT -SQL v2 , RYANSQL + BERT L ) .
+We find changing k from 1 to 2 yield marginal performance improvement since only 77 SQL queries in the dev set contains more than one textual values ( Figure 3 ) .
+In addition , BRIDGE generates executable SQL queries by copying values from the input question while most existing models do not .
+As of June 1st , 2020 , BRIDGE ranks top - 1 on the Spider leaderboard by execution accuracy .
+The two approaches significantly better than BRIDGE by E-SM are RYANSQL v2+BERT L and RAT -SQL v3 + BERT L .
+We further look at the performance comparison with RAT -SQL v3 +BERT L across different difficulty level in Table 4 . Both model achieves > 80 % E-SM accuracy in the easy category , but BRIDGE shows more significant overfitting .
+BRIDGE also underperforms RAT - SQL v3 +BERT
+L in the other three categories , with considerable gaps in medium and hard .
+As descirbed in ?3 , RAT - SQL v3 uses very different encoder and decoder architectures compared to BRIDGE and it is difficult to conduct a direct comparison without a model ablation 9 .
+We hypothesize that the most critical difference that leads to the performance gap is in their encoding schemes .
+RAT - SQL v3 explicitly models the question- schemavalue matching via a graph and the matching condition ( full - word match , partial match , etc. ) are used to label the graph edge .
+BRIDGE represents the same information in a tagged sequence and uses fine - tuned BERT to implicitly obtain such mapping .
+While the anchor text selection algorithm ( ?4.3 ) has taken into account string variations , BERT may not be able to capture the linking when string variations exist - it has not seen tabular input during pre-training .
+The tokenization scheme adopted by BERT and other pre-trained LMs ( e.g. GPT - 2 ) cannot effectively capture partial string matches in a novel input ( e.g. " cats " and " cat " are two different words in the vocabularies of BERT and GPT - 2 ) .
+We think recent works on text - table joint pretraining have the potential to overcome this problem ( Yin et al. , 2020 ; Herzig et al. , 2020 ) . RAT -SQL v3 uses BERT LARGE which has a significantly larger number of parameters than 9 RAT - SQL v3 entered the leaderboard within a month of EMNLP deadline and has n't released its source code .
+Model Easy BRIDGE .
+While we hypothetically attribute some of the performance gap to the difference in model sizes , preliminary experiments of BRIDGE + BERT LARGE offers only a small amount of improvement ( 66.9 ? 67.9 on the cleaned dev set ) .
+Ablation Study
+We perform a thorough ablation study to show the contribution of each BRIDGE sub-component ( Table 5 ) .
+Overall , all sub-components significantly contributed to the model performance .
+The decoding search space pruning strategies we introduced ( including generation in execution order , schema- consistency guided decoding and static SQL correctness check ) are effective , with absolute E-SM improvements ranging from 0.6 % to 2.6 % .
+However , encoding techniques for bridging textual and tabular input contribute more .
+Especially , adding anchor texts results in an absolute E-SM improvement of 3 % .
+A further comparison between BRIDGE with and without anchor texts ( Table A3 ) shows that anchor text augmentation improves the model performance at all hardness levels , especially in the hard and extra-hard categories .
+Shuffling and randomly dropping non-ground - truth tables during training also significantly helps our ap- proach , as it increases the diversity of DB schema seen by the model and reduces overfitting to a particular table arrangement .
+Moreover , BERT is critical to the performance of BRIDGE , magnifying performance of the base model by more than three folds .
+This is considerably larger than the improvement prior approaches have obtained from adding BERT .
+Consider the performances of RAT -SQL v2 and RAT -SQL v2+BERT L in Table 3 , the improvement with BERT L is 7 % .
+This shows that simply adding BERT to existing approaches results in significant redundancy in the model architecture .
+We perform a qualitative attention analysis in ?A.6 to show that after fine-tuning , the BERT layers effectively capture the linking between question mentions and the anchor texts , as well as the relational DB structures .
+Error Analysis
+We randomly sampled 50 dev set examples for which the best BRIDGE model failed to produce a prediction that matches the ground truth and manually categorized the errors .
+Each example is assigned to only the category it fits most .
+Error Types Figure 4 shows the number of examples in each category .
+24 % of the examined predictions are false negatives .
+Among them , 7 are semantically equivalent to the ground truths ; 4 contain GROUP BY keys different but equivalent to those of the ground truth ( e.g. GROUY BY car_models.name vs. GROUP BY car_models .id ) ; 1 has the wrong ground truth annotation .
+Among the true negatives , 11 have SQL structures completely deviated from the ground truth .
+22 have errors that can be pinpointed to specific clauses : FROM ( 8 ) , WHERE ( 7 ) , SELECT ( 5 ) , GROUP BY ( 1 ) , ORDER BY ( 1 ) .
+4 have errors in the operators : 3 in the aggregation operator and 1 in the comparison operator .
+1 example has non-grammatical natural language question .
+Error Causes
+A prominent cause of errors for BRIDGE is irregular design and naming in the DB schema .
+Table 6 shows 3 examples where BRIDGE made a wrong prediction from the medium hardness level in the dev set .
+In the second example , the DB contains a field named " hand " which stores information that indicates whether a tennis player is right - handed or left-handed .
+While " hand " is already a rarely seen field name ( comparing to " name " , " address " etc. ) , the problem is worsened by the fact that the field values are acronyms which bypassed the anchor text match .
+Similarly , in the third example , BRIDGE fails to detect that " highschooler " , normally written as " high schooler " is a synonym of student .
+Occasionally , however , BRIDGE still makes mistakes w.r.t. schema components explicitly mentioned in the question , as shown by the first example .
+Addressing such error cases could further improve its performance .
+6 shows examples of errors made by BRIDGE on the Spider dev set , all selected from the medium hardness level .
+The first example represents a type of errors that have a surprisingly high occurrence in the dev set .
+In this case the input question is unambiguous but the model simply missed seemingly obvious information .
+In the shown example while " released years " were explicitly mentioned in the question , the model still predicts the " Age " field instead , which is related to the tail of the question .
+The second example illustrates a DB with a rare relation " left-handed " represented with an obscure table name " hand " .
+Interpreting this column requires background knowledge about the table .
+The example is made even harder given that the corresponding value " left " is denoted with only the first letter " L " in the table .
+The third example shows a complex case where the graph structure of the DB is critical for understanding the question .
+Here instead of predicting the table storing all student records , BRIDGE predicted the table storing the " friendship " relationship among students .
+Sample Error Cases Table
+Performance by Database
+We further compute the E-SM accuracy of BRIDGE over different DBs in the Spider dev set .
+Figure 5 shows drastic performance differences across DBs .
+While BRIDGE achieves near perfect score on some , the performance is only 30 % - 40 % on the others .
+The performance does not always negatively correlates with the schema size .
+We hypothesize that the model scores better on DB schema similar to those seen during training and better characterization of the " similarity " here could help transfer learning .
+Discussion Anchor Selection BRIDGE adopts simple string matching for anchor text selection .
+In our experiments , improving anchor text selection accuracy significantly improves the end-to - end accuracy .
+Extending anchor text matching to cases beyond simple string match ( e.g. " LA " ? " Los Angeles " ) is a future direction .
+Furthermore , this step can be learned either independently or jointly with the textto - SQL objective .
+Currently BRIDGE ignores number mentions .
+We may introduce features which indicate a specific number in the question falls within the value range of a specific column .
+Input Size
+As BRIDGE serializes all inputs into a sequence with special tags , a fair concern is that the input would be too long for large relational DBs .
+We believe this can be addressed with recent architecture advancements in transformers ( Beltagy et al. , 2020 ) , which have scaled up the attention mechanism to model very long sequences .
+Relation Encoding BRIDGE fuses DB schema meta data features to each individual table field representations .
+This mechanism is not as strong as directly modeling the original graph structure .
+It works well in Spider , where the foreign key pairs often have exactly the same names .
+We consider regularizing specific attention heads to capture DB connections ( Strubell et al. , 2018 ) a promising way to model the graph structure of relational DBs within the BRIDGE framework without introducing ( a lot of ) additional parameters .
+Conclusion
+We present BRIDGE , a powerful sequential architecture for modeling dependencies between natural language question and relational DBs in cross - DB semantic parsing .
+BRIDGE serializes the question and DB schema into a tagged sequence and maximally utilizes pre-trained LMs such as BERT to capture the linking between text mentions and the DB schema components .
+It uses anchor texts to further improve the alignment between the two crossmodal inputs .
+Combined with a simple sequential pointer - generator decoder with schema-consistency driven search space pruning , BRIDGE attained state - of - the - art performance on Spider .
+In the future , we plan to study the application of BRIDGE and its extensions to other text - table related tasks such as fact checking and weakly supervised semantic parsing .
+SELECTFigure 2 : 2 Figure2 : The BRIDGE encoder .
+The two phrases " houses " and " apartments " in the input question both matched to two DB fields .
+The matched values are appended to the corresponding field names in the hybrid sequence .

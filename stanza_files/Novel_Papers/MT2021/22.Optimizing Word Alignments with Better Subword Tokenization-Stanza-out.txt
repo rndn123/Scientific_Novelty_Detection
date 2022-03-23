@@ -1,0 +1,188 @@
+title
+Optimizing Word Alignments with Better Subword Tokenization
+abstract
+Word alignment identify translational correspondences between words in a parallel sentence pair and are used , for example , to train statistical machine translation , learn bilingual dictionaries or to perform quality estimation .
+Subword tokenization has become a standard preprocessing step for a large number of applications , notably for state - of - the - art open vocabulary machine translation systems .
+In this paper , we thoroughly study how this preprocessing step interacts with the word alignment task and propose several tokenization strategies to obtain well - segmented parallel corpora .
+Using these new techniques , we were able to improve baseline word - based alignment models for six language pairs .
+Introduction
+Word alignment is a basic task in multilingual Natural Language Processing ( NLP ) and is used , for instance , to learn bilingual dictionaries , to train statistical machine translation ( SMT ) systems ( Koehn , 2010 ) , to filter out noise from translation memories ( Pham et al. , 2018 ) or in quality estimation applications ( Specia et al. , 2018 ) .
+Word alignment can also serve to explain MT decisions ( Stahlberg et al. , 2018 ) .
+Given pairs associating a sentence in a source language and a translation in a target language , word alignment aims to identify translational equivalences at the level of individual word tokens and has been initially approached with generative probabilistic models learning alignment in an unsupervised manner ( Och and Ney , 2003 ; Tiedemann , 2011 ) .
+With rapid advances in neural based NLP , word alignment has recently regained some traction ( Legrand et al. , 2016 ) and improvements of the state of the art for multiple language pairs have been reported thanks to neuralized generative models ( Alkhouli and Ney , 2017 ; Alkhouli et al. , 2018 ; Ngo- Ho and Yvon , 2019 ) , pre-trained multilingual embeddings ( Jalili Sabet et al. , 2020 ; Nagata et al. , 2020 ; Dou and Neubig , 2021 ) or more powerful architectures based on the Transformer translation model of Vaswani et al . ( 2017 ) , as reported for instance by Garg et al . ( 2019 ) ; Chen et al. ( 2020 ) and Chen et al . ( 2021 ) .
+In addition to using neural architectures , these new models differ from past approaches in that they compute alignments based on a decomposition into subword units ( Sennrich et al. , 2016 ; Kudo , 2018 ) , which makes it possible to easily accommodate open-ended vocabularies and mitigate issues related to the alignment of unknown words , which has always been a challenge for discrete models .
+Another interesting property of subword units in the context of word alignment is that ( a ) they ease the generation of many - to - one / one - to - many links , which are difficult to handle in standard asymmetric models such as IBM - 1 and IBM - 4 ( Liu et al. , 2015 ; Tomeh et al. , 2014 ; Wang and Lepage , 2016 ) ; ( b ) they also enable to actively manipulate the lengths of the source and target sentences so as to make them more even , arguably a facilitating factor for alignment and translation models ( Deguchi et al. , 2020 ) .
+In this work , we take a closer look at the interaction between alignment and subword tokenization and try to address the following research questions : how much of the reported improvements in alignment performance can be linked to subword splitting ?
+which issue ( s ) of basic alignment models do they mitigate ?
+is it possible to design more active segmentation strategies that would target the alignment problem for specific language pairs ?
+Our conclusions rests on the analysis of a systematic study of word alignment for 6 language pairs from multiple language families .
+We notably show that subword tokenization also help discrete alignment models .
+We also study techniques aimed at optimizing tokenization , which enable us to further improve the alignment accuracy and mitigate the problems cause by rare / unaligned words .
+This paper is organized as follows : in ?
+2 we review the pitfalls of generative word alignment models , and analyse in ?
+3 how their performance vary with changing subword tokenizations .
+These analyses help to understand why such preprocessing actually improves word based models .
+Our main proposals are sketched in ?
+4 , where we show how to optimize subword tokenization for better alignments .
+In ?
+5 , we then briefly review related work , before concluding in ? 6 .
+Pitfalls and limitations of word alignments models
+In this section , we experiment with well -known word alignment packages ( Fastalign ( Dyer et al. , 2013 ) , Giza ++ ( Och and Ney , 2003 ) , Eflomal ( ?stling and Tiedemann , 2016 ) as well as Simalign ( Jalili Sabet et al. , 2020 ) 1 ) , outlining difficult issues for word alignment models such as the prediction of null links , of many - to - one links , as well as the alignment of rare words .
+Detailed analyses are in ( Ngo Ho , 2021 ) .
+Asymmetric alignment models associate each source word with exactly one target word ; such alignments are denoted as English ?
+Foreign , when English is the source language .
+As a preamble , we start with our data condition .
+Datasets
+Our experiments consider multiple language pairs all having English on one side .
+Our training sets for French and German are made of sentences from Europarl ( Koehn , 2005 ) .
+For Romanian , we use both the NAACL 2003 corpus ( Mihalcea and Pedersen , 2003 ) and the SETIMES corpus used in WMT '16 MT evaluation .
+For Czech , the parallel data from News Commentary V11 ( Tiedemann , 2012 ) is considered , while we use the preprocessed parallel data for Vietnamese in IWSLT '15 ( Luong and Manning , 2015 ) and the Japanese data from the KFTT ( Neubig , 2011 ) .
+Our evaluations use standard test sets whenever applicable : for French and Romanian , we use data from the 2003 word alignment challenge ( Mihalcea and Pedersen , 2003 ) ; the German test data is Europarl ; 2 for Czech we use the corpus designed by Mare?ek ( 2016 ) ; the Japanese test data is from the KFTT and the test corpus for Vietnamese is generated from the EVBCorpus .
+3
+As is custom when evaluating unsupervised alignments , we append the test set to the training corpus at training time , meaning that there is no unknown word in the reference alignments .
+Basic statistics for these corpora are in Table 1 . 4 English - French and English - German training data ( ? 1.5M ) are much larger than the rest ( from 122 K to under 400K ) and we take them as representative of a " large data " condition .
+Unsurprisingly , the vocabulary sizes of the German , Romanian and Czech corpora are substantially greater than the corresponding English , 1 A method of generating alignment links based on the matrix of embedding similarities without parallel data .
+The options are to use mBert ( Devlin et al. , 2019 )
+Evaluation protocol
+We use the alignment error rate ( AER ) ( Och , 2003 ) , F-score ( F1 ) , precision and recall as measures of performance .
+AER is based on a comparison of predicted alignment links ( A ) with a human reference including sure ( S ) and possible ( P ) links , and is defined as an average of the recall and precision taking into account the sets P and S. AER is defined as : AER = 1 ? | A ? S| + | A ? P | | A| + | S| ( 1 ) where A is the set of predicted alignments .
+Note that the English-Romanian , English - Japanese and English - Vietnamese reference data only contain " sure " links , meaning that for these languages pairs , AER and F-measure are deterministically related .
+Main observations Detailed analyses of automatic word alignments , fully documented in ( Ngo Ho , 2021 ) , show that : ?
+Unaligned words are poorly predicted : we collect correctly / incorrectly unaligned words on the source side for the asymmetrical models .
+For English ?
+Czech , there are too few English words aligning with Czech words for IBM - 1 whereas IBM - 4 produces too many unaligned English words ( Figure 1 ) . ?
+Many-to-one / one-to-many links are also poorly predicted , even with symmetrization .
+5
+This can be seen in Figure 2 . ?
+Larger length differences between parallel sentences yield more errors , as shown in Figure 3 .
+This again hints at the tendency of discrete word models to generate one - to - one alignments .
+3 Studying the interaction between alignment and segmentation
+Implementation
+In this section , we restrict our analysis to Fastalign and Eflomal and study how their performance vary when the subword vocabulary changes .
+We perform the alignment between subword units generated by Byte-Pair-Encoding ( Sennrich et al. , 2016 ) and the unigram method of ( Kudo , 2018 ) , both implemented with the SentencePiece package ( Kudo and Richardson , 2018 ) .
+All parameters of these models are set to their default values .
+We independently segment sentences in each language with varying vocabulary sizes V ? { 2 K , 4K , 8K , 16K , 32 K , 48 K} .
+For Japanese , we do not use the vocabulary size of 2 K because it is smaller than the characterbased vocabulary size .
+For English - Vietnamese , experiments for English vocabulary size of 48 K and Vietnamese vocabulary size larger than 32 K were not performed .
+This is because they would imply larger vocabularies than their word - based counterparts .
+When using the sampling strategy of SentencePiece , we use ? = 0.1 .
+Our results and analyses are however based on word-level alignments .
+Subword - level alignments are thus converted into word-level alignments as follows : a link between a source and a target word exists if there is at least one alignment link between their any of their subwords .
+( 32K - 32 K ) ( 8K -8K ) ( 4K-32 K ) ( 16 K , 16 K ) ( 16K - 8K ) ( 16K - 2 K ) ( 16K -32 K ) ( 32K - 16 K ) ( 8K -8K ) ( 8K -16 K ) ( 4K - 4 K ) ( 4K - ( 45K - 16 K ) ( 48K - 32 K ) ( 4K-48 K ) ( 16K - 16 K ) ( 39K - 16 K ) ( 32K - 4 K ) ( 16K -32 K ) ( 48K - 16 K ) ( 8K - 8K ) ( 8K-32 K ) ( 16K - 2 K ) ( 4K-8K ) ( 16K -32 K ) ( 32K - 16 K ) ( 4K-32 K ) ( 32K - 16 K ) ( 16K -48K ) ( 8K-48 K ) ( 8K-32 K ) ( 48K - 16 K ) ( 8K-32 K ) ( 8K-32 K ) ( 2K-8K ) ( 2K - ( 45K - 48 K ) ( 32K -32 K ) ( 32K -32 K ) ( 48K - 32 K ) ( 32K -48 K ) ( 48K - 16 K ) ( 32K -32 K ) ( 48K - 16 K ) ( 16K - 8K ) ( 30K - 16 K ) ( 16K - 8K ) ( 2K - 16 K )
+Table 2 : AER scores of subword - based models and word - based models .
+We only report the best result obtained by subword - based models , and the corresponding vocabulary sizes .
+Main results
+In order to observe how the alignment accuracy varies with the size of the subword vocabulary , we plot precision and recall as a function of the target vocabulary size for each source vocabulary size .
+As can be seen in Figure 4 , having short units ( top- left zones ) on both sides yields a better recall but a much worse precision .
+The opposite trend is found in bottom- right zones where we approach word - based models .
+Note that however with a proper choice of unit size , BPE - based models are able to outperform their word - based counterparts , with a gain of about 2 AER points .
+This improvement is not clear for unigram- based models ( see Table 2 ) .
+English ?
+Romanian English ?
+Vietnamese Precision Recall Precision Recall 2 K 4 K 8 K 16 K 32 K 48 K Target 48 K 32 K 16 K 8 K 4 K 2 K Source 2 K 4 K 8 K 16 K 32 K 48 K Target 48 K 32 K 16 K 8 K 4 K 2 K Source 2 K 4 K 8 K 16 K Target 32 K 16 K 8 K 4 K 2 K Source 2 K 4 K 8 K 16 K Target 32 K 16 K 8 K 4 K 2 K Source
+Complementary analyses
+Unaligned words and alignment types Figure 5 displays unaligned word patterns generated by several BPE - based models for English - German .
+Choosing small inventories on the target side yields more fragmented sequences and a reduced number of non-aligned words in the source , as is expected for asymmetrical models .
+Significantly increasing both recall and precision proves difficult , and we only observe small improvements with respect to the word - based baselines : for instance , with Fastalign , the best BPE -model ( 4K - 32K ) removes 40 incorrectly unaligned words and finds 10 correctly unaligned words .
+Compared with HMM or IBM - 4 , we also notice that BPE - based models are less prone to over- generate null links .
+Similar trends were observed for the other language pairs / directions .
+We now study how the number of links for each alignment type changes with the vocabulary size ( Figure 6 ) .
+The most noticeable observation is that shorter BPE units ( e.g. , 2K - 2K ) generate less one- to - one links and accordingly more of the other alignment types , especially one - to -many and many - to - many links .
+In other words , tokens that decompose into a sequence of shorter units in the source side have more chance to align with several target tokens .
+However , this does not result in an increased number of correct one - to- many / many - to - many links .
+Similar trends were observed for the other language pairs / directions .
+Aligning rare words Using subwords affects the overall distribution of units and helps mitigate issues with rare tokens .
+To measure this effect , we collect rare source words ( a word is rare if it occurs once in our training data ) and plot their F-scores as a function of target and source vocabulary sizes ( see Figure 7 ) .
+Recall that German has a very large word - based vocabulary size ( Table 1 ) .
+Accordingly , for the German-English direction , we can see a large gain ( about + 8 points ) in F-score when using a reduced German vocabulary size of 32K .
+Improving alignment by voting As a final experiment , we combine multiple BPE - based alignments using a simple voting procedure .
+This method is parameterized by the required level of agreement ( the percentage of models agreeing on an alignment link ) .
+Figure 8 shows that considering the BPE models described above and using an agreement level of 70 % improves the F-score by almost 2 points for German ?
+English and Japanese ?
+English .
+Similar results are obtained for the other language pairs , showing that considering multiple segmentations in alignment can be helpful .
+Optimizing subword tokenization
+In this section , we build on the intuition that pairs of sentences which differ in length are difficult to align ( Deguchi et al. , 2020 ) , suggesting that subword splitting should be used to make the .
+The red curve plots the F-score for each level of agreement for German ?
+English and Japanese ?
+English .
+For both directions , voting improves the AER of about 2 pts with a 70 % level of agreement .
+length of parallel sentences more even .
+We study global and local ways to achieve this goal .
+Global methods for controlling length differences
+We first consider two ways to find the vocabulary pair minimizing the average length difference : ? the first one ( denoted VP - M ) simply picks the vocabulary pair that minimizes this value in the matrix of all vocabulary pairs ; ? this solution can be improved using the following greedy search procedure ( VP - GS ) : we compute the average sequence length difference for a vocabulary pair based on a pre-defined search space radius .
+If we find a new vocabulary pair producing a smaller average than the current pair , we continue to explore the neighbors of this new pair .
+We reduce the search space radius ? in the case that no new pair is found .
+6 Details are in algorithm 1 . 7
+We collect the average F-score , length difference and English vocabulary size for all language pairs and directions ( see Table 3 ) .
+For BPE - based models , minimizing length difference between the source and target sentence outperforms word - based models with a gain of at least 1 point in F-score .
+This performance is close to the best results found from the matrix of vocabulary pair .
+Unigram - based models fail to match such performance , but we still observe an Table 3 : Average F-score ( over language pairs and directions ) for global methods of controlling sequence length difference for Fastalign and Eflomal .
+We also report the best vocabulary pair found in the vocabulary pair matrix ( BVP - M ) .
+improvement for the greedy search , which outperforms the word- based models for Eflomal for English - French , English - German , English - Japanese and English - Vietnamese .
+The methods presented above consider ways to optimize the length difference at the corpus level , using one subword vocabulary that is used across the board .
+We study here four local methods that aim to reduce the length differences separately for each sentence pair before training the alignment procedure .
+With the exception of the first method , they all rely on the unigram algorithm , and use a fixed , predefined , vocabulary size for both languages : ? the first ( SP - M ) simply picks , among all the considered segmentations of each sentence , the one that minimizes the length difference .
+When there is more than one minimal segmentation , we select the one for which total source and target lengths is smallest ; ? the second 8 ( SM1 - 1VP ) relies on the idea of Deguchi et al . ( 2020 ) : ( a ) we collect the 10 most likely segmentations for each language using the unigram algorithm ; ( b ) we select the highest probability candidate on both sides , and consider the longer of the two as the anchor segmentation ; ( c ) we pair this segmentation with the one , in the other language , that is closest in length and maximally likely .
+We also consider the case SM5 - 1VP where we include the top five highest probability in the last step for the training data .
+? SSM5 - 1 VP extends the previous idea with more candidates : we sample 10 segmentations using the unigram algorithm for each language , then select the 5 pairs of segmentations that have the smallest length difference , and use it as the training data for the word alignment ; ? a last idea ( SSM5 - GS ) uses the same strategy as SSM5 - 1 VP , using the " optimal " pair of vocabulary sizes computed by the greedy search algorithm ( Algorithm 1 ) .
+We always consider one single pair of segmentations for the test data : we chose the highest probability pair for SM5 - 1VP and one pair producing the smallest length difference for SSM5 -*.
+For BPE - based models ( Figure 9 ) , SP - M only outperforms the word- based model for English - French and English - Vietnamese , and fails to achieve better F-scores than the two global methods .
+The performance of unigram-baseds method ( assuming vocabularies of sizes 16K - 16 K ) is displayed in Figure 10 .
+They all outperform the baseline ( a fixed 16K - 16 K model ) and also the word- based models for French , Japanese and Vietnamese .
+It also seems that including several segmentation samples for each sentence pair in the training data ( as in SSM5 - 1 VP ) also helps to improve the performance , resulting in a simple scheme based only on length differences , that consistently outperforms all other unigram-based methods .
+These results open perspectives for further improving these models , especially for German , Czech and Romanian , for which the 16K - 16 K setting might be suboptimal .
+The last method ( SSM5 - GS ) does not succeed in improving SSM5 - 1VP .
+Similar observations hold for Eflomal , albeit with better baselines .
+Related work Subword segmentation is introduced in the context of neural translation in ( Sennrich et al. , 2016 ) , using a reimplementation 9 of the Byte Pair Encoding algorithm of Gage ( 1994 ) .
+BPE is a greedy , bottom up algorithm that recursively aggregates frequent bigrams into new symbols , and is thoroughly analyzed in ( Gall ? , 2019 ) .
+The main alternative is SentencePiece introduced in ( Kudo , 2018 ; Kudo and Richardson , 2018 ) , which implements a form of variable - length probabilistic unigram model , which can be traced back to ( Deligne and Bimbot , 1995 ) .
+With BPE / unigram subtokenization becoming a standard for many applications , several studies have started to investigate more closely the impact on these preprocessing decisions on the final performance .
+The implementation of SentencePiece 10 reports a large number of MT experiments aimed to compare BPE and unigram in multiple conditions , concluding that both yield comparable BLEU scores across the board when used with a fixed tokenization in words .
+The shortcomings of BPE / unigram segmentations have been the subject of several studies , reporting comparisons with ( a ) linguistic segmentations ( Huck et al. , 2017 ; Ataman et al. , 2017 ; Banerjee and Bhattacharyya , 2018 ; Weller - Di Marco and Fraser , 2020 ) and ( b ) alternative preprocessing schemes such as character - based models ( eg. in Sennrich ( 2017 ) ; Sajjad et al . ( 2017 ) ; Cherry et al. ( 2018 ) ) .
+Ding et al. ( 2019 ) conduct a systematic exploration considering a large numbers of vocabulary sizes to better understand its impact on NMT performance , comparing several NMT architectures such as shallow / deep-transformer , tiny / shallow / deep-LSTM .
+Bostrom and Durrett ( 2020 ) evaluate the impact of tokenization on language model pre-training .
+They conclude that tokenization encodes a surprising amount of inductive bias and that LM - based tokenization produces subword units that qualitatively align with morphology much better than those produced by BPE , suggesting that the latter is better than the former for pretrained models .
+The work of Deguchi et al . ( 2020 ) is our main inspiration , and explore ways to optimize the subword segmentation , using , as we do , sampling techniques and length - based heuristics to chose the most appropriate target for each source , and observing gains in translation performance .
+Figure 1 : 1 Figure 1 : Number of correctly / incorrectly unaligned English and Czech words for English ?
+Czech ( left ) and Czech ?
+English ( right ) .
+Figure 3 : 3 Figure3 : F-score ( red ) and number of correct one - to - one alignments ( blue ) as a function of a length difference for the direction English - French , computed by Fastalign .
+The numbers in black are the corresponding number of sentences .
+Figure 4 : 4 Figure 4 : Precision and recall of BPE - based alignments for English ?
+Romanian and English ?
+Vietnamese , computed by Fastalign .
+The darker the cell , the greater the score .
+Figure 5 : 5 Figure5 : Number of correctly / incorrectly unaligned English ( left ) and German ( right ) words generated by Fastalign for respectively the directions English - German and German- English .
+VP - M denotes the vocabulary pair for which the average length difference between source and target sentences is smallest ; BVP - M denotes the vocabulary pair yielding the best AER .
+Figure 6 : 6 Figure 6 : Alignment errors for BPE - based , word - based asymmetrical ( Word asym . ) and symmetrical alignments ( Word sym . ) computed by Fastalign for English ?
+German .
+Figure 7 7 Figure 7 : F-scores obtained with Fastalign as a function of source and target vocabulary sizes for rare source words in German , French , Czech and Vietnamese , when translating into English .
+The word - based vocabulary size is denoted W .
+Figure 8 : 8 Figure 8 : F-score for word - based model ( blue line ) and for the best BPE - based model ( green line ) .
+The red curve plots the F-score for each level of agreement for German ?
+English and Japanese ?
+English .
+For both directions , voting improves the AER of about 2 pts with a 70 % level of agreement .
+Algorithm 1 1 Finding the vocabulary pair minimizing the average length differences Require : ? : Source side vocabulary size ; ? :
+Target side vocabulary size ? : search space radius ( default = 2000 ) ; ? : step size ( default = 100 ) ;
+Ensure : 1000 ? ? , ? ? 50000 while ? ? 100 do for ? ? {? ? ? , ? , ? + ?} , ? ? {? ? ? , ? , ? + ?} do if f ( ? , ? ) < f ( ? , ? ) then ? = ? ; ? = ? ; = 2000 end if end for if ? and ? remain the same then ? = ? ? ? end if end while 4.2 Local methods for controlling the length difference
+Table 1 : 1 or the multilingual version of Fasttext are used to generate multilingual embeddings from monolingual data .
+In our experiments , we use the setting : mBert + Argmax .
+Basic statistics for the training data and test data 2 http://www-i6.informatik.rwth-aachen.de/goldAlignment/ 3 https://code.google.com/archive/p/evbcorpus/
+4
+We only use training sentences of length lower than 50 .
+, which provides us with an oracle value .
+Alignments are computed by Fastalign .
+40 45 50 55 60 65 70 75 80 Wordbased VPM VPGS BSPM SPM EnFr FrEn EnDe DeEn EnCz CzEn Language EnRo RoEn EnJa JaEn EnVi ViEn Figure 9 : F-scores for BPE - based segmentations .
+We compare global methods ( VP - M and VP - GS ) with SP - M and also display scores obtained with best segmentation for each sentence pair ( BSP -M) EnFr 40 45 50 55 60 65 70 75 80 FrEn Wordbased EnDe DeEn 16K16 K EnCz CzEn Language EnRo SM11VP RoEn SM51VP EnJa JaEn SSM51VP EnVi ViEn Figure 10 : F-scores for unigram- based local strategies ; alignments computed by Fastalign .
+We heuristically merge two alignments with opposite directions to produce a symmetric alignment , by using the grow-diag-final ( GDF ) heuristic proposed in Koehn ( 2005 ) .
+The step size ? remains the same for the whole procedure .
+7 f ( ? , ? ) returns the average sequence length difference obtained with vocabularies of size ? and ?.
+This method and next only apply to unigram , which , contrarily to BPE , is based on a sound probabilistic model .
+Conclusion and outlookIn this work , we have studied the interaction between word alignment and word segmentation based on two algorithms ( BPE and unigram ) and multiple word aligners .
+Using smaller units notably mitigate issues with rare / unknown words ; shorter units also help to retrieve more correct links for non-canonical ( one - to-many , many - to- one ) alignment links .
+Based on these observations , we have thoroughly analyzed the variation of alignment scores with respect to vocabulary sizes , showing that the word - based segmentation was less than optimal .
+We have finally explored various ways to actively optimize the subword tokenization ; promising results in this direction have been obtained with the unigram algorithm , owing to its ability to generate multiple high - probability segmentations .
+We have notably found that adjusting length differences in source and target was a reasonable heuristic to progress towards better joint tokenizations , even though ( a ) the relationship between length difference and alignment quality was not as clear as one may have wished ; ( b ) inconsistencies have been observed between unigram and BPE .
+In the future , we will continue to explore inexpensive ways to identify promising joint segmentations and improve the alignment between subword units .

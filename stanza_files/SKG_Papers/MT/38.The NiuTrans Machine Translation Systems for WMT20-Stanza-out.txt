@@ -1,0 +1,176 @@
+title
+The NiuTrans Machine Translation Systems for WMT20
+abstract
+This paper describes NiuTrans neural machine translation systems of the WMT20 news translation tasks .
+We participated in Japanese ?
+English , English ?
+Chinese , Inuktitut ?
+English and Tamil ?
+English total five tasks and rank first in Japanese ?
+English both sides .
+We mainly utilized iterative backtranslation , different depth and widen model architectures , iterative knowledge distillation and iterative fine-tuning .
+And we find that adequately widened and deepened the model simultaneously , the performance will significantly improve .
+Also , iterative fine-tuning strategy we implemented is effective during adapting domain .
+For Inuktitut ?
+English and Tamil ?
+English tasks , we built multilingual models separately and employed pretraining word embedding to obtain better performance .
+Introduction
+This paper describes the NiuTrans submissions to the WMT20 news tasks , including English ?
+Chinese ( EN?ZH ) , Tamil ?
+English ( TA?EN ) , Inuktitut ?
+English ( IU?EN ) and Japanese ?
+English ( JA?EN ) five directions and all of our systems were built with constrained data sets .
+Some useful methods in the WMT18 ( Wang et al. , 2018 ) and WMT19 submissions are also reused this time , such as model ensemble , knowledge distillation ( KD ) et al. , and we explore some novel approaches this year .
+For this participation , we experimented with some deeper and wider Transformer ( Vaswani et al. , 2017 ) architectures to get reliable baselines , nucleus sampling ( Holtzman et al. , 2020 ) in backtranslation to generate more suitable pseudo bilingual sentences , more effectively fine-tuning strategy to adapt domain .
+Particularly in the lowresources tasks , { TA , IU}?
+EN , we built multilingual neural machine translation by using some similar language to get better performance and further replaced decoder 's word embedding by an English pretraining Transformer language model 's which trained by two monolingual in-domain data corpora .
+Furthermore , we presented a new fine-tuning pattern which could significantly improve the BLEU score on the test set , and it worked well on all five tasks whether it is a low or rich resource .
+We carefully rethought this strategy and found the main gain came from domain adaptation and improved inferior translations .
+Our systems and this paper followed six main steps :1 ) data preprocessing and filter , 2 ) iterative back - translation to generate pseudo bilingual data , 3 ) using different model architectures to enhance the diversity of translation , 4 ) iterative knowledge distillation by in- domain monolingual data , 5 ) iterative fine- tuning with in - domain using small training batch , 6 ) translation post-process .
+System Overview
+Data Preprocessing and Filtering For EN ?ZH and JA ?EN tasks , we first normalized the punctuation in Chinese and Japanese monolingual data by using Moses ( Koehn et al. , 2007 ) normalize -punctuation .
+perl script .
+English and Inuktitut sentences were segmented by Moses , while Chinese , Japanese and Tamil used Ni-uTrans ( Xiao et al. , 2012 ) , MeCab 1 and IndicNLP 2 separately for word segmentation .
+After converting numbers and punctuation into English pattern , and then we normalized English words in Japanese sentences to Japanese by using Sudachi ( Takaoka et al. , 2018 ) .
+As previous work ( Wang et al. , 2018 ) indicated that it 's important to clean data strictly , so this year we used a stricter data filter scheme than and the rules were following : ?
+Filter sentences length ratio lower than 0.4 or upper than 3 and punctuation ratio more than 0.3 . ?
+Remove sentences that have the long word which consist of more 40 characters or words more than 200 .
+?
+Remove repeated n-gram translation and repeated sentences except for IU .
+?
+Filter out the sentences whose alignment scores obtained by fast-align are lower than - 6 . ?
+Detecting language and delete other languages or have a special HTML label .
+?
+Filter sentences in which parentheses on both sides do not correspond .
+?
+Use Unicode to filter sentences that other characters more than 10 .
+And when we cleaned monolingual data still employed those rules and particularly there were some lines which include two or more sentences , we write a script to cut them into several sentences .
+Iterative Back Translation Back-translation is an effective way to boost translation quality by using mono data to produce pseudo training parallel data .
+Also , it can alleviate domain adapted problems by carefully choosing the in-domain target data .
+As ; Bogoychev and Sennrich ( 2019 ) stated , due to the test target side only consisted of manual translations , back translation did n't bring evident BLEU increase on the test set .
+Despite our experiments proved that the deeper architectures still showed apparent improvements as the number of data increases .
+As stated , it 's crucial to select indomain mono data for back - translation .
+After picking out English mono data , we first used 50 million news data to train a language model ( LM ) built with Transformer structures , then ranked cleaned mono data which scored by trained language model before .
+However , it 's hard to find massive in-domain data for other languages to train a neural LM , so the better choice was using a statistical method , in here we selected XenC toolkit 3 ( Rousseau , 2013 ) .
+The 3 https://github.com/antho-rousseau/XenC
+in-domain data consisted of the valid set source side and News Commentary high-quality mono data .
+For avoiding the short sentence ranked too high , each score was multiplied by a length penalty when using both approaches to score these data .
+We chose a sample base model as our backtranslation model rather ensemble model which may gain a little improvement , but needed spending huge decoding time .
+For multilingual model backtranslation , we followed Johnson et al . ( 2017 ) 's work adding a target language label in the source side , so translations could be adapt to the target language .
+This year we also followed previous work and we added a new pseudo data produce methods - Nucleus Sampling , according to Holtzman et al . ( 2020 ) 's work .
+For all tasks we participated in , we first employed the beam search approach to generate the best translations as pseudo data and the scale of the pseudo was about 1:1 to real data .
+Then merge those data to retrain model and do back - translations again .
+Repeated those steps until the valid set BLEU have few increases then stop iterative back -translation processing .
+Notably , during the second back - translation , for EN ?
+ZH task we used topk sampling and the k is 10 following last year , while for JA ?EN tasks , nucleus sampling method which the p was set 0.9 preferred better comparing topk , whereas for other tasks , { TA , IU} ?
+EN , simply sampling was better .
+Multilingual Model For TA?EN and IU?EN , building a multilingual model is a simple and effective way to boost performance because of knowledge transfer .
+For TA ?EN task , we added six other similar languages and only one language Russian ( RU ) for IU ?EN task , because there were no other languages witch a relationship with IU .
+For TA , We up-sampled the TA data then shuffled all the train data so that each training batch could have TA data with highprobability .
+As for IU , we only added 0.3 million RU high quality data , then we directly merged two languages as training data .
+To enhance the effect of transfer learning , we utilized only one model which all the language shared the same parameters including word embeddings and vocab .
+Bilingual data were reused to fine- tune the model for adapting parameters to the target language after model convergence .
+Model Tag Depth DLCL
+Network :
+For a deeper network , we employed DLCL to get more diverse models .
+Filter size :
+This hyper-parameter represents the dimension size of feed -forward network ( FFN ) and simply increasing this could bring some improvements ( Wang et al. , 2018 ; Sun et al. , 2019 ; Bawden et al. , 2019 ) .
+Notably , when using the deep Transformer architecture , the training time and model parameters will increase sharply with the augment of the FFN size .
+RPR and relative length :
+The relative position representation ( RPR ) ( Shaw et al. , 2018 ) improves self-attention by adding relative position information .
+The relative length which we set 8 is the key parameter of this method .
+For choosing models to ensemble , we utilized the ensemble search method which used a script to traverse all possible combinations then recorded the best one .
+For JA?EN , we chose 6 of 10 while other tasks were 4 of 10 .
+Sun et al. ( 2019 ) showed the self- learning strat-egy is a very effective approach to improve performance when the test set only composed of manual translations and we mainly reused iterative KD strategy to implement selflearning .
+Specifically , we designed a new iterative fine-tuning process which consists of three steps : 1 ) using ensemble models to decode valid and test source side sentences then fine- tune models with those pseudo data , 2 ) fine - tune with the valid set by a small training batch and learning rate , 3 ) selflearning with in - domain data which chose by only test source side .
+Repeat these steps two or three times according to the increase of the valid score in the third step .
+Figure 1 shows these steps .
+Notably , for being consistent with the composition of the test set , we picked out the data that the source side is real while the target side is manual from the previous valid set .
+In this way , we found that iterative fine -tuning can promote news title translation quality .
+Iterative KD and Fine-tuning
+Reranking For JA ?EN tasks , we followed the , using a neural language model , and a reverse translation model .
+Different from the last year , we used several length penalties to generate more candidates .
+Post Editing For tasks to the English side , we only confirmed the numbers whether to generate correctly by designing a rule- based script which generated two lists for source and target sentences separately .
+For EN ?
+ZH , the strategy was the same as the last year and particularly dealt with the name 's translation by using rules to delete the English name copy in Chinese sentences .
+For EN ?JA task , we transferred English punctuation to Japanese pattern .
+Experiment Settings
+For all tasks , we implemented the Transformer - Base as our baseline and all of our architectures were pre-normalize for stable training except Transformer - Big .
+We implemented models based on Fairseq and trained on eight 2080 Ti GPUs .
+We used Adam optimizer ( Kingma and Ba , 2014 ) during training , ? 1 = 0.9 , ? 2 = 0.997 for pre-normalize architectures and training batch was 2048 token while we accumulated gradient 4 times for achieving bigger batch size .
+We shuffled the training data before generate training batch and the training batch each epoch , so we did n't consider the document information .
+The max learning rate and warmup-steps we set were 0.002 and 8000 separately for deep models but 0.0016 and 16000 for deep and wide models .
+During training , we used fp16 to accelerate training with few performance damage .
+Training 15 epoch was enough for most Tasks , while 20 epoch was better for EN ?
+ZH task and we implemented Li et al . ( 2020 ) 's methods to accelerate training .
+To get more robust models , the last 5 checkpoints were saved every 5000 steps for EN ?ZH and JA ?EN tasks but every epoch for TA?EN , IU?EN tasks were average ensemble .
+During back - translation , we followed Hu et al . ( 2020 ) 's approaches to accelerate decoding when generating pseudo data .
+JA?EN Results For JA?EN tasks , we chose ParaCrawl v5.1 , New Commentary v15 , WikiMatrix , Japanese-English Subtitle Corpus ,
+The Kyoto Free Translation Task Corpus , TED
+Talks total six parallel data corpus about 14.35 million and News crawl , News Com-mentary , Common Crawl , TED Talks 4 Japanese monolingual data corpus about 1.7 billion .
+After the data filter , 12 million parallel data was left and 11 million selected by the neural language model was used as training data .
+Cleaning several billion low-quality monolingual data will cost too much time , so here we shuffled all the data then split it into dozens of parts , one of which was 20 million .
+Finally we used total eight of them , each piece was carefully cleaned .
+Before we also used BPE ( Sennrich et al. , 2016 ) models with 32,000 merge operations for both sides to reduce UNK size in vocabulary .
+We implemented back -translation two times , the first was beam search while the second was Nucleus Sampling to generate translations .
+Each time we selected 12 million mono data sampled from all the remaining data .
+Tough the second time did n't increase significantly compared with the first time , the performance was further improved with the increase of the model parameters .
+Considering the training time , we finally chose 35 million training data on both sides .
+Notably , as the official stated that the test target side only consists of manual translations , so the back - translation did n't bring too many improvements , only + 0.55 and + 2.1 BLEU separately in two tasks .
+In order to get more diverse models for ensemble and achieve better results , we trained total 10 models including that eight with different architectures which have been shown in Table 1 and other two with different training data which consisted of 11 million bilingual data and 12 million pseudo data produced by the first back - translation .
+Then we searched from all the models to find the best combination of 6 out of 10 models .
+And Table 2 to boost translation quality .
+We implemented iterative KD process twice and each time chose 0.3 million monolingual data using ensemble model to decode then trained 3 to 5 epoch according to the dev PPL .
+Then we iteratively finetuned the models three and two times for JA?EN and EN ?
+JA separately .
+And interestingly in some real case , the translation of the news titles was significantly improved after iteratively fine-tuning .
+As Table 2 shows , iterative KD and fine-tuning strategies could significantly increase the BLEU on the test set .
+We used the reranking model like , though it could boost 0.3 BLEU on dev set , it did n't get benefits on the test set .
+During post edit , we mainly checked the number according to the source side , it also could on EN ?
+JA task .
+EN ?ZH Results In EN ?ZH task , we employed News Commentary v15 , UN Parallel Corpus V1.0 , Back- translated news , CCMT Corpus total four corpora , and after data filter , 10 million data were sampled to train out baseline model .
+We set wmt18 and wmt19 test as the valid set and mainly referred wmt19 set .
+In the back- translation , 10 million mono data were sampled from News crawl , News Commentary and Common Crawl three corpora then used the baseline model decode by beam search strategy during the first time .
+During the second time , we still utilized the same amount of pseudo data while topk sampling which the k is 10 were used to translation mono sentences .
+From for iterative KD strategy to ensure the diversity of models .
+Then we implemented three times iterative KD and each time sampled 10 million in- domain source data .
+Table 3 showed that it 's a very effective method to get 0.8 improvements .
+Furthermore , we fine-tuned models iteratively three times to domain adaptation and improved + 0.5 BLEU .
+Due to implementing two ensemble combinations to decode sentences , at last model ensemble was still effective to gain 0.8 improvement .
+According to the WMT19 test , we adjusted the name 's translations pattern during the post edit step then resulting in a 0.6 BLEU performance increase .
+IU?EN Results
+In IU ?EN task , we only used Nunavut Hansard Inuktitut -English Parallel Corpus 3.0 total 1.3 million sentences .
+After the data filter , 1.1 million data was left to build the baseline model .
+Though romanization Inuktitut data directly was not effective , it performed better than baseline when build a multilingual system by adding 0.3 million Russia data which has the most similar semantic with Inuktitut .
+After that , we implemented data augmentation
+Then we first fine - tuned the multilingual model to the target language by using 1.1 million bilingual data several epochs .
+According to the valid source set , ensemble models were used to decode monolingual in- domain 0.1 million data which was chosen by XenC and gained 1.85 BLEU improvement .
+Then fine-tuned models only once , because different from the bilingual model , the multilingual model did n't perform very well during the fine-tuning stage .
+Finally we selected four models to ensemble and gained 0.18 increase , because different models were too similar after fine-tuning .
+And we fixed the punctuation and the score improved 0.52 BLEU .
+During the post process , we fixed the number and punctuation translation .
+TA?EN Results
+The Ta?EN task is similar to IU ?EN but more complicated , because more data corpus and language can be used to build the multilingual system .
+Specifically , we total used { Hindi ( HI ) , Kannada ( KN ) , Malayalam ( ML ) , Punjabi ( PA ) , Telugu ( TE ) , Urdu ( UR ) }?EN total six other languages , 17 million sentences according to Kudugunta et al . ( 2019 ) 's work showed similar languages with TA .
+From Table 5 , it can be seen that using similar languages to build a multilingual system can indeed improve the performance .
+Also , using iterative back - translation is still an effective way but could n't add too much pseudo language data because this will make the real target language data account for the whole data was too small , which leaded to performance damage .
+During the backtranslation process , due to too many languages in one model , we followed Johnson et al . ( 2017 ) 's approach to build a reverse model to ensure translation quality .
+For the model architectures we used , the wide and deep model was still very effective and improved 2.33 BLEU comparing with the base model .
+Also it performed better than simple deepen model layers .
+After finishing KD and fine-tuning , finally gain 1.92 improvements .
+Conclusions
+This paper introduced our submissions on WMT20 five tasks and our main exploration is using more diversified architectures , improving a iterative finetuning strategy and utilizing several similar languages to build a multilingual model on lowresource tasks .
+And we experimented with iterative back -translation by different decoding strategies , using pre-trained embeddings in multilingual models .
+On the whole , all of our systems performed competitively and ranked 1st on JA ?EN both sides .
+Figure 1 : Iterative fine-tuning process
+Table 1 : 1 Transformer Architectures .
+Hidden Size Filter Size RPR Attention Base 6 512 2048 Big 6 1024 4096 Deep25 25 512 2048 Deep25-filter 25 512 4096 Deep30-RPR 30 512 2048 DLCL35-RPR 35 512 2048 DLCL40-RPR 40 512 2048 Deep15 -filter-768-RPR 15 768 4096 2.4 Model Architectures and Ensemble Inspired by deep network Wang et al . ( 2019 ) , we tried to use simple deep , or deep and wide network architectures based on the Transformer to explore the relationship of performance and model param - eters .
+We mainly carried out experiments on the structures of the model in Table 1 .
+And we kept six decoder layers unchanged because it only could gain a few improvements tough many model pa- rameters increased .
+Deep Network :
+This model structure simply changes encoder layers , hidden size and other hyper-parameters based on vanilla Transformer .
+Table 2 : 2 BLEU scores on JA?EN tasks showed
+Table 3 : 3 Table3 , we could find that back - translations did n't perform well .
+Finally 30 million data in total were used to train 10 models , different from other tasks , here we searched the best two combinations of 4 out of 10 models BLEU ( % ) scores on EN?ZH task System news2019 news2020 Baseline 35.4 40.8 + 10M Beam 36.3 41.6 + 10M TopK 36.1 41.5 Dlcl25-RPR 38.7 44.2 + Iterative KD 39.4 45.4 + Iterative fine-tuning 39.8 45.9 + Ensemble 40.1 46.7 + Post Edit 40.3 47.3
+Table 5 : 5 BLEU ( % ) scores on TA?EN task System Valid Test Baseline 12.8 13.2 Multilingual baseline 14.2 15.1 + 0.5 M Beam 19.2 15.7 + 1M Beam 20.9 16.6 Deep15 - filter-768-RPR 22.8 19.0 + Knowledge Distillation 23.4 20.6 + Iterative fine-tuning 23.6 20.7 + Ensemble 23.8 21.0
+https://github.com/taku910/mecab 2 https://github.com/anoopkunchukuttan/indic nlp library

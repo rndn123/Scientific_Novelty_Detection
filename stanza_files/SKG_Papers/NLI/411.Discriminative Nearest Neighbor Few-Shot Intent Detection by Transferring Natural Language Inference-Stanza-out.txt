@@ -1,0 +1,224 @@
+title
+Discriminative Nearest Neighbor Few - Shot Intent Detection by Transferring Natural Language Inference
+abstract
+Intent detection is one of the core components of goal-oriented dialog systems , and detecting out - of-scope ( OOS ) intents is also a practically important skill .
+Few - shot learning is attracting much attention to mitigate data scarcity , but OOS detection becomes even more challenging .
+In this paper , we present a simple yet effective approach , discriminative nearest neighbor classification with deep self-attention .
+Unlike softmax classifiers , we leverage BERTstyle pairwise encoding to train a binary classifier that estimates the best matched training example for a user input .
+We propose to boost the discriminative ability by transferring a natural language inference ( NLI ) model .
+Our extensive experiments on a large-scale multi-domain intent detection task show that our method achieves more stable and accurate in- domain and OOS detection accuracy than RoBERTa - based classifiers and embeddingbased nearest neighbor approaches .
+More notably , the NLI transfer enables our 10 - shot model to perform competitively with 50 - shot or even full - shot classifiers , while we can keep the inference time constant by leveraging a faster embedding retrieval model .
+Introduction Intent detection is one of the core components when building goal-oriented dialog systems .
+The goal is to achieve high intent classification accuracy , and another important skill is to accurately detect unconstrained user intents that are out-ofscope ( OOS ) in a system ( Larson et al. , 2019 ) .
+A practical challenge is data scarcity because different systems define different sets of intents , and thus few-shot learning is attracting much attention .
+However , previous work has mainly focused on the few-shot intent classification without OOS ( Luo et al. , 2018 ; Casanueva et al. , 2020 ) . OOS detection can be considered as out-ofdistribution detection ( Hendrycks and Gimpel , 2017 ; DeVries and Taylor , 2018 ) .
+Recent work has shown that large-scale pre-trained models like BERT ( Devlin et al. , 2019 ) and RoBERTa still struggle with out -of- distribution detection , despite their strong in - domain performance ( Hendrycks et al. , 2020 ) . Figure 1 ( a ) shows how unseen input text is mapped into a feature space , by a RoBERTa - based model for 15 - way 5 - shot intent classification .
+The separation between OOS and some in- domain intents is not clear , which presumably hinders the model 's OOS detection ability .
+This observation calls for investigation into more sample -efficient approaches to handling the in-domain and OOS examples accurately .
+In this paper , we tackle the task from a different angle , and propose a discriminative nearest neighbor classification ( DNNC ) model .
+Instead of expecting the text encoders to be generalized enough to discriminate both the in-domain and OOS examples , we make full use of the limited training examples both in training and inference time as a nearest neighbor classification schema .
+We leverage the BERT - style paired text encoding with deep self-attention to directly model relations between pairs of user utterances .
+We then train a matching model as a pairwise binary classifier to estimate whether an input utterance belongs to the same class of a paired example .
+We expect this to free the model from having the OOS separation issue in Figure 1 ( a ) by avoiding explicit modeling of the intent classes .
+Unlike an embedding - based matching function as in relation networks ( Sung et al. , 2018 ) ( Figure 1
+We verify our hypothesis by conducting extensive experiments on a large-scale multi-domain intent detection task with OOS ( Larson et al. , 2019 ) in various few-shot learning settings .
+Our experimental results show that , compared with RoBERTa classifiers and embedding nearest neighbor approaches , our DNNC attains more stable and accurate performance both in in- domain and OOS accuracy .
+Moreover , our 10 - shot model can perform competitively with a 50 - shot or even full - shot classifier , with the performance boost by the NLI transfer .
+We also show how to speedup our DNNC 's inference time without sacrificing accuracy .
+Background 2.1 Task : Few - Shot Intent Detection Given a user utterance u at every turn in a goaloriented dialog system , an intent detection model I ( u ) aims at predicting the speaker 's intent : I ( u ) = c , ( 1 ) where c is one of pre-defined N intent classes C = { C 1 , C 2 , . . . , C N } ,
+Multi-Class Classification
+The goal is to achieve high accuracy both for the intent classification and OOS detection .
+One common approach to this task is using a multi-class classification model .
+Specifically , to get a strong baseline for the few-shot learning use case , one can leverage a pre-trained model as transfer learning , which has been shown to achieve state - of - the - art results on numerous natural language processing tasks .
+We use BERT ( Devlin et al. , 2019 ; as a text encoder : h = BERT ( u ) ?
+R d , ( 2 ) where h is a d-dimensional output vector corresponding to the special token [ CLS ] as in the follwing input format : [ [ CLS ] , u , [ SEP ] ] .
+1
+To handle the intent classification and the OOS detection , we apply the threshold - based strategy in Larson et al . ( 2019 ) , to the softmax output of the N - class classification model ( Hendrycks and Gimpel , 2017 ) : p( c|u ) = softmax ( W h + b ) ? R N , ( 3 )
+Nearest Neighbor Classification
+As the fundamental building block of our proposed method , we also review nearest neighbor classification ( i.e. , k-nearest neighbors ( kNN ) classification 1
+The format of these special tokens is different in RoBERTa , but we use the original BERT 's notations .
+Input utterance Utterance to be compared Label ( a ) i need you to send 500 dollars from help me move my money please pos .
+my high tier account to my regular checking ( b ) i would like to know when the bill is due i need to know the amounts due for my utilities and . with k = 1 ) , a simple and well - established concept for classification ( Simard et al. , 1993 ; Cunningham and Delany , 2007 ) .
+The basic idea is to classify an input into the same class of the most relevant training example based on a certain metric .
+In our task , we formulate a nearest neighbor classification model as the following : I ( u ) = class arg max e j, i ?E S( u , e j , i ) , ( 4 ) where class ( e j, i ) is a function returning the intent label ( class ) of the training example e j, i , and S is a function that estimates some relevance score between u and e j, i .
+To detect OOS , we can also use the uncertainty - based strategy in Section 2.2 ; that is , we take the output label from Equation ( 4 ) if the corresponding relevance score is greater than a threshold , and otherwise we output I ( u ) = OOS .
+Proposed Method
+This section first describes how to directly model inter-utterance relations in our nearest neighbor classification scenario .
+We then introduce a binary classification strategy by synthesizing pairwise examples , and propose a seamless transfer of NLI .
+Finally , we describe how to speedup our method 's inference process .
+Deep Pairwise Matching Function
+The objective of S( u , e j, i ) in Equation ( 4 ) is to find the best matched utterance from the training set E , given the input utterance u .
+The typical methodology is to embed each data example into a vector space and ( 1 ) use an off-the-shelf distance metric to perform a similarity search ( Cunningham and Delany , 2007 ) or ( 2 ) learn a distant metric between the embeddings ( Sung et al. , 2018 ) .
+However , as shown in Figure 1 , the text embedding methods do not discriminate the OOS examples well enough .
+To model fine- grained relations of utterance pairs to distinguish in- domain and OOS intents , we propose to formulate S( u , e j, i ) as follows : h = BERT ( u , e j, i ) ? R d , ( 5 ) S( u , e j, i ) = ?( W ? h + b) ? R , ( 6 ) where BERT is the same model in Equation ( 2 We can interpret our method as wrapping both the embedding and matching functions into the paired encoding with the deep self-attention in BERT ( Equation ( 5 ) ) along with the discriminative model ( Equation ( 6 ) ) .
+It has been shown that the paired text encoding is crucial in capturing complex relations between queries and documents in document retrieval ( Watanabe et al. , 2017 ; Nie et al. , 2019 ; Asai et al. , 2020 ) .
+Discriminative Training
+We train the matching model S( u , e j, i ) as a binary classifier , such that S( u , e ( b ) shows a negative example , where the input utterance comes from the intent , " bill due " , and the paired sentence from another intent , " bill balance " .
+Seamless
+Transfer from NLI
+A key characteristic of our method is that we seek to model the relations between the utterance pairs , instead of explicitly modeling the intent classes .
+To mitigate the data scarcity setting in few-shot learning , we consider transferring another intersentence -relation task .
+This work focuses on NLI ; the task is to identify whether a hypothesis sentence can be entailed by a premise sentence ( Bowman and Zhu , 2019 ) .
+We treat the NLI task as a binary classification task : entailment ( positive ) or non-entailment ( negative ) .
+2
+We first pre-train our model with the NLI task , where the premise sentence corresponds to the u-position , and the hypothesis sentence corresponds to the e j, i - position in Equation ( 5 ) .
+Note that it is not necessary to modify the model architecture since the task format is consistent , and we can train the NLI model solely based on existing NLI datasets .
+Once the NLI model pre-training is completed , we fine - tune the NLI model with the intent classification training examples described in Section 3.2 .
+This allows us to transfer the NLI model to any intent detection datasets seamlessly .
+Why NLI ?
+The NLI task has been actively studied , especially since the emergence of large scale datasets ( Bowman et al. , 2015 ; , and we can directly leverage the progress .
+Moreover , recent work is investigating cross-lingual NLI ( Eriguchi et al. , 2018 ; Conneau et al. , 2018 ) , and this is encouraging to consider multilinguality in future work .
+On the other hand , while we can find examples relevant to the intent detection task , as shown in Table 1 ( ( c ) , ( d ) , and ( e ) ) , we still need the few-shot fine-tuning .
+This is because a domain mismatch still exists in general , and perhaps more importantly , our intent detection approach is not exactly modeling NLI .
+Why not other tasks ?
+There are other tasks modeling relationships between sentences .
+Paraphrase ( Wieting and Gimpel , 2018 ) and semantic relatedness ( Marelli et al. , 2014 ) tasks are such examples .
+It is possible to automatically create large-scale paraphrase datasets by machine translation ( Ganitkevitch et al. , 2013 ) .
+However , our task is not a paraphrasing task , and creating negative examples is crucial and non-trivial ( Cham-bers and Jurafsky , 2010 ) .
+In contrast , as described above , the NLI setting comes with negative examples by nature .
+The semantic relatedness ( or textual similarity ) task is considered as a coarse-grained task compared to NLI , as discussed in the previous work ( Hashimoto et al. , 2017 ) , in that the task measures semantic or topical relatedness .
+This is not ideal for the intent detection task , because we need to discriminate between topically similar utterances of different intents .
+In summary , the NLI task well matches our objective , with access to the large datasets .
+A Joint Approach with Fast Retrieval
+The number of model parameters of the multi-class classification model in Section 2.2 and our model in Section 3 is almost the same when we use the same pre-trained models .
+However , our examplebased method has an inference -time bottleneck in Equation ( 5 ) , where we need to compute the BERT encoding for all N ? K ( u , e j , i ) pairs .
+We follow common practice in document retrieval to reduce the inference -time bottleneck ( Nie et al. , 2019 ; Asai et al. , 2020 ) , by introducing a fast text retrieval model to select a set of top -k examples E k from the training set E , based on its retrieval scores .
+We then replace E in Equation ( 4 ) with the shrunk set E k .
+The cost of the paired BERT encoding is now constant , regardless the size of E. Either TF -IDF ( Chen et al. , 2017 ) or embedding - based retrieval ( Johnson et al. , 2017 ; Seo et al. , 2019 ; can be used for the first step .
+We use the following fast kNN .
+Faster kNN
+As a baseline and a way to instantiate our joint approach , we use Sentence - BERT ( SBERT ) ( Reimers and Gurevych , 2019 ) to separately encode u and e j, i ( x ? {u , e j , i } ) as follows : v( x ) = SBERT ( x ) ? R d , ( 7 ) where the input text format is identical to that of BERT in Equation ( 2 ) .
+SBERT is a BERT - based text embedding model , fine - tuned by siamese networks with NLI datasets .
+Thus both our method and SBERT transfer the NLI task in different ways .
+Cosine similarity between v( u ) and v(e j, i ) then replaces S( u , e j , i ) in Equation ( 6 ) .
+To get a fair comparison , instead of using the encoding vectors produced by the original SBERT , we fine- tune SBERT with our intent training examples described in Section 3.2 .
+The cosine similarity is symmetric , so we have half the training examples .
+We use the pairwise cosine - based loss function in Reimers and Gurevych ( 2019 ) .
+After the model training , we pre-compute v(e j, i ) for fast retrieval .
+4 Experimental Settings
+Dataset : Multi-Domain Intent Detection
+We use a recently - released dataset , CLINC150 , 3 for multi-domain intent detection ( Larson et al. , 2019 ) .
+The CLINC150 dataset defines 150 types of intents in total ( i.e. , N = 150 ) , where there are 10 different domains and 15 intents for each of them .
+Table 2 shows the dataset statistics .
+OOS evaluation examples
+The dataset also provides OOS examples whose intents do not belong to any of the 150 intents .
+From the viewpoint of out-of- distribution detection ( Hendrycks and Gimpel , 2017 ; Hendrycks et al. , 2020 ) , we do not use the OOS examples during the training stage ; we only use the evaluation splits as in Table 2 .
+Single-domain experiments
+The task in the CLINC150 dataset is like handling many different services in a single system ; that is , topically different intents are mixed ( e.g. , " alarm " in the " Utility " domain , and " pay bill " in the " Banking " domain ) .
+In contrast , it is also a reasonable setting to handle each domain ( or service ) separately as in Rastogi et al . ( 2019 ) .
+In addition to the all-domain experiment , we conduct single-domain experiments , where we only focus on a specific domain with its 15 intents ( i.e. , N = 15 ) .
+More specifically , we use four domains , " Banking , " " Credit cards , " " Work , " and " Travel , " among the ten domains .
+Note that the same OOS evaluation sets are used .
+Evaluation Metrics
+We follow Larson et al. ( 2019 ) to report in- domain accuracy , Acc in , and OOS recall , R oos .
+These two metrics are defined as follows :
+Acc in = C in / N in , R oos = C oos / N oos , ( 8 ) where C in is the number of correctly predicted indomain intent examples , and N in is the total num - 3 https://github.com/clinc/oos-eval.
+ber of the examples evaluated .
+This is analogous to the calculation of the OOS recall .
+Threshold selection
+We use the uncertaintybased OOS detection , and therefore we need a way to set the threshold T .
+For each T in [ 0.0 , 0.1 , . . . , 0.9 , 1.0 ] , we calculate a joint score J in oos defined as follows : J in oos = Acc in + R oos , ( 9 ) and select a threshold value to maximize the score on the development set .
+There is a trade- off to be noted ; the larger the value of T is , the higher R oos ( and the lower Acc in ) we expect , because the models predict OOS more frequently .
+Notes on J in oos
+Our joint score J in oos in Equation ( 9 ) gives the same weight to the two metrics , Acc in and R oos , compared to other combined metrics .
+For example , Larson et al. ( 2019 ) and Wu et al . ( 2020 ) used a joint accuracy score : C in + C oos N in + N oos = Acc in + rR oos 1 + r , ( 10 ) where r = N oos / N in depends on the balance between N in and N oos , and thus this combined metric can put much more weight on the in-domain accuracy when N in N oos .
+Table 2 shows r = 100/3000 ( = 0.0333 ) in the development set of the " all domains " setting , which underestimates the importance of R oos .
+Actually , the OOS recall scores in Larson et al . ( 2019 ) and Wu et al . ( 2020 ) are much lower than those with our RoBERTa classifier , and the trade - off with respect to the tuning process was not discussed .
+4
+We also report OOS precision and OOS F1 for more comprehensive evaluation : P oos = C oos / N oos , F 1 = H( P oos , R oos ) , ( 11 ) where N oos is the number of examples predicted as OOS , and H ( ? , ? ) is the harmonic mean .
+Model Training and Configurations
+We use RoBERTa ( the base configuration with d = 768 ) as a BERT encoder for all the BERT / SBERT - based models in our experiments , 5 because RoBERTa performed significantly better and more stably than the original BERT in our fewshot experiments .
+We combine three NLI datasets , SNLI ( Bowman et al. , 2015 ) , MNLI WNLI ( Levesque et al. , 2011 ) from the GLUE benchmark to pre-train our proposed model .
+We apply label smoothing ( Szegedy et al. , 2016 ) to all the cross-entropy loss functions , which has been shown to improve the reliability of the model confidence ( M?ller et al. , 2019 ) .
+Experiments were conducted on single NVIDIA Tesla V100 GPU with 16GB memory .
+Sampling training examples
+We conduct our experiments with K = 5 , 10 following the task definition in Section 2.1 .
+We randomly sample K examples from the entire training sets in Table 2 , for each in - domain intent class 10 times unless otherwise stated .
+We train a model with a consistent hyper-parameter setting across the 10 different runs and follow the threshold selection process based on a mean score for each threshold .
+We also report a standard deviation for each result .
+Using the development set
+We would not always have access to a large enough development set in the few-shot learning scenario .
+However , we still use the development set provided by the dataset to investigate the models ' behaviors when changing hyper-parameters like the threshold .
+Models compared
+We list the models used in our experiments : ?
+Classifier baselines : " Classifier " is the RoBERTa - based classification model described in Section 2.2 .
+We further seek solid baselines by data augmentation .
+" Classifier - EDA " is the classifier trained with data augmentation techniques in Wei and Zou ( 2019 ) .
+" Classifier - BT " is the classifier trained with back - translation data augmentation ( Yu et al. , 2018 ; Shleifer , 2019 ) by using a transformer - based English ?
+German translation system ( Vaswani et al. , 2017 ) . ?
+Non-BERT classifier :
+We also test a stateof - the - art fast embedding - based classifier , " USE + ConveRT " ( Henderson et al. , 2019 ; Casanueva et al. , 2020 ) , in the " all domains " setting .
+Casanueva et al. ( 2020 ) showed that the " USE + ConveRT " outperformed a BERT classifier on the CLINC150 dataset , while it was not evaluated along with the OOS detection task .
+We modified their original code 6 to apply the uncertainty - based OOS detection .
+?
+kNN baselines : 7 " Emb - kNN " is the kNN method with S ( Ro ) BERT ( a ) described in Section 3.4 , and " Emb-kNN - vanilla " is without using our intent training examples for finetuning .
+" TF - IDF - kNN " is another kNN baseline using TF - IDF vectors , which tells us how well string matching performs on our task .
+We also implement a relation network ( Sung et al. , 2018 ) , " RN - kNN , " to learn a similarity metric between the SRoBERTa embeddings , instead of using the cosine similarity .
+?
+Proposed method : 8 " DNNC " is our proposed method , and " DNNC - scratch " is without the NLI pre-training in Section 3.3 .
+" DNNC - joint " is our joint approach on top of top-k retrieval by Emb-kNN ( Section 3.4 ) .
+More details about the model training and the data augmentation configurations are described in Appendix A and Appendix B , respectively .
+Experimental Results
+This section shows our experimental results .
+Appendix C shows some additional figures .
+Model Performance CLINC150 Dataset Single domains
+We first show test set results of 5 - shot and 10 - shot in- domain classification and OOS detection accuracy in Table 3 for the four selected domains .
+In the 5 - shot setting , the proposed DNNC method consistently attains the best results across all the four domains .
+The comparison between DNNC - scratch and DNNC shows that our NLI task transfer is effective .
+In the 10 - shot setting , all the approaches generally experience an accuracy improvement due to the additional training data , and the dominant performance of DNNC weakens , although it remains highly competitive .
+We can see that our DNNC is comparable with or even surpasses some of the 50 - shot classifier 's scores , and the data augmentation techniques are not always helpful when we use the strong pre-trained model .
+Entire CLINC150 dataset Next , Table 4 shows results to compare our method with the classifier and USE + ConveRT baselines , on the entire CLINC150 dataset with the 150 intents .
+USE + ConveRT performs worse than the RoBERTabased classifier on the OOD detection task .
+The advantage of DNNC for in- domain intent detection is clear , with its 10 - shot in - domain accuracy close to the upper-bound accuracy for the classifier baseline .
+One observation is that our DNNC method tends to be more confident about its prediction , with the increasing number of the training examples ; as a result , the OOS recall becomes lower in the 10 - shot setting , while the OOS precision is much higher than the other baselines .
+Better controlling the confidence output of the model is an interesting direction for future work .
+When the USE + ConveRT baseline is evaluated along with the OOS detection task , its overall accuracy is not as good as the other RoBERTabased models , despite its potential in the purely in -domain classification .
+This indicates that the fine-tuned ( Ro ) BERT ( a ) models are more robust to out -of- distribution examples than shallower models like USE + ConveRT , also suggested in Hendrycks et al . ( 2020 ) .
+Robustness of DNNC
+As described in Section 4.2 , we select the threshold to determine OOS by making a trade- off between in -domain classification and OOS detection accuracy .
+It is therefore desirable to have a model with candidate thresholds that provide high in - domain accuracy as well as OOS precision and recall .
+We observe in Figure 3 that in the 5 - shot setting , DNNC is the most robust to the threshold selection .
+The contrast between the classification model and DNNC - scratch suggests that nearest neighbor approaches ( in this case DNNC ) make for stronger discriminators ; the advantage of DNNC over DNNC - scratch further demonstrates the power of the NLI transfer and , perhaps more importantly , the effectiveness of the pairwise discriminative pretraining .
+This result is consistent with the intuition we gained from Figure 1 , and the overall observation is also consistent across different settings .
+Table 5 : Comparison among the nearest neighbor methods on the test sets for the banking domain and all the domains .
+The latency is measured on a single NVIDIA Tesla V100 GPU , where the batch size is 1 to simulate an online use case .
+DNNC - joint is based on top - 20 Emb-kNN retrieval .
+To further understand the differences in behaviors between the classification model and DNNC method , we examine the output from the final softmax / sigmoid function ( model confidence score ) in Figure 2 .
+At 5 - shot , the classifier method still struggles to fully distinguish the in-domain examples from the OOS examples in its confidence scoring , while DNNC already attains a clear distinction between the two .
+Again , we can clearly see the effectiveness of the NLI transfer .
+With the model architectures for BERT - based classifier and DNNC being the same ( RoBERTa is used for both methods ) except for the final layer ( multi-class -softmax vs. binary sigmoid ) , this result suggests that the pairwise NLI - like training is more sample - efficient , making it an excellent candidate for the few-shot use case .
+DNNC - joint for Faster Inference Despite its effectiveness in few-shot intent and OOS settings , the proposed DNNC method might not scale in high- traffic use cases , especially when the number of classes , N , is large , due to the inference - time bottleneck ( Section 3.4 ) .
+With this in mind , we proposed the DNNC - joint approach , wherein a faster model is used to filter candidates for the fine- tuned DNNC model .
+We compare the accuracy and inference latency metrics for various methods in Table 5 . Note that Emb-kNN and RN - kNN exhibit excellent latency performance , but they fall considerably short in both the in-domain intent and OOS detection accuracy , compared to DNNC and the DNNC - joint methods .
+On the other hand , the DNNC - joint model shows competitiveness in both inference latency and accuracy .
+These results indicate that the current text embedding approaches like SBERT are not enough to fully capture fine - grained semantics .
+Intuitively , there is a trade- off between latency and inference accuracy : with aggressive filtering , the DNNC inference step needs to handle a smaller number of training examples , but might miss informative examples ; with less aggressive filtering , the NLI model sees more training examples during inference , but will take longer to process single user input .
+This is illustrated in Figure 4 , where the in-domain intent and OOS accuracy metrics ( on the development set of the banking domain in the 5 shot setting ) improve with the increase of k , while the latency increases at the same time .
+Empirically , k = 20 appears to strike the balance between latency and accuracy , with the accuracy metrics similar to those of the DNNC method , while being much faster than DNNC ( dashed lines are the corresponding DNNC references ) .
+Discussions and Related Work Interpretability Interpretability is an important line of research recently ( Jiang et al. , 2019 ; Sydorova et al. , 2019 ; Asai et al. , 2020 ) .
+The nearest neighbor approach ( Simard et al. , 1993 ) is appealing in that we can explicitly know which training example triggers each prediction .
+Table 11 in Appendix C shows some examples .
+Call for better embeddings Emb-kNN and RN - kNN are not as competitive as DNNC .
+This encourages future work on the task - oriented evaluation of text embeddings in kNN .
+Training time Our DNNC method needs longer training time than that of the classifier ( e.g. , 90 vs. 40 seconds to train a single- domain model ) , because we synthesize the pairwise examples .
+As a first step , we used all the training examples to investigate the effectiveness , but it is an interesting direction to seek more efficient pairwise training .
+Distilled model
+Another way to speedup our model is to use distilled pre-trained models ( Sanh et al. , 2019 ) .
+We replaced the RoBERTa model with a distilled RoBERTa model , and observed large variances with significantly lower OOS accuracy .
+Hendrycks et al. ( 2020 ) also suggested that the distilled models would not be robust to out -of- distribution examples .
+Few - shot text classification Few -shot classification ( Fei - Fei et al. , 2006 ; Vinyals et al. , 2016 b ) has been applied to text classification tasks ( Deng et al. , 2019 ; Geng et al. , 2019 ; Xu et al. , 2019 ) , and few-shot intent detection is also studied but without OOS ( Luo et al. , 2018 ; Casanueva et al. , 2020 ) .
+There are two common scenarios : 1 ) learning with plenty of examples and then generalizing to unseen classes with a few examples , and 2 ) learning with a few examples for all seen classes .
+Meta-learning ( Finn et al. , 2017 ; Geng et al. , 2019 ) is widely studied in the first scenario .
+In our paper , we have focused on the second scenario , assuming that there are only a limited number of training examples for each class .
+Our work is related to metric-based approaches such as matching networks ( Vinyals et al. , 2016a ) , prototypical networks ( Snell et al. , 2017 ) and relation networks ( Sung et al. , 2018 ) , as they model nearest neighbours in an example -embedding or a classembedding space .
+We showed that a relation network with the RoBERTa embeddings does not perform comparably to our method .
+We also considered several ideas from prototypical networks , but those did not outperform our Emb-kNN baseline .
+These results indicate that deep self-attention is the key to the nearest neighbor approach with OOS detection .
+Conclusion
+In this paper , we have presented a simple yet efficient nearest-neighbor classification model to detect user intents and OOS intents .
+It includes paired encoding and discriminative training to model relations between the input and example utterances .
+Moreover , a seamless transfer from NLI and a joint approach with fast retrieval are designed to improve the performance in terms of the accuracy and inference speed .
+Experimental results show superior performance of our method on a large-scale multi-domain intent detection dataset with OOS .
+Future work includes its cross-lingual transfer and cross-dataset ( or cross-task ) generalization .
+parameters including the RoBERTa parameters are updated during all the fine-tuning processes , where we use the AdamW ( Loshchilov and Hutter , 2017 ) optimizer with a weight decay coefficient of 0.01 for all the non-bias parameters .
+We use a gradient clipping technique ( Pascanu et al. , 2013 ) with a clipping value of 1.0 , and also use a linear warmup learning - rate scheduling with a proportion of 0.1 with respect to the maximum number of training epochs .

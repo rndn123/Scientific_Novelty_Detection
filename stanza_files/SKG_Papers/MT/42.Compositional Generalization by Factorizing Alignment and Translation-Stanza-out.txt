@@ -1,0 +1,123 @@
+title
+Compositional generalization by factorizing alignment and translation
+abstract
+Standard methods in deep learning for natural language processing fail to capture the compositional structure of human language that allows for systematic generalization outside of the training distribution .
+However , human learners readily generalize in this way , e.g. by applying known grammatical rules to novel words .
+Inspired by work in cognitive science suggesting a functional distinction between systems for syntactic and semantic processing , we implement a modification to an existing approach in neural machine translation , imposing an analogous separation between alignment and translation .
+The resulting architecture substantially outperforms standard recurrent networks on the SCAN dataset , a compositional generalization task , without any additional supervision .
+Our work suggests that learning to align and to translate in separate modules may be a useful heuristic for capturing compositional structure .
+Introduction
+A crucial property underlying the expressive power of human language is its systematicity ( Lake et al. , 2017 ; Fodor and Pylyshyn , 1988 ) : syntactic or grammatical rules allow arbitrary elements to be combined in novel ways , making the number of sentences possible in a language to be exponential in the number of its basic elements .
+Recent work has shown that standard deep learning methods in natural language processing fail to capture this important property : when tested on unseen combinations of known elements , standard models fail to generalize ( Lake and Loula et al. , 2018 ; Bastings et al. , 2018 ) .
+It has been suggested that this failure represents a major deficiency of current deep learning models , especially when they are compared to human learners ( Marcus , 2018 ; Lake et al. , 2017 .
+From a statistical - learning perspective , this failure is quite natural .
+The neural networks trained on compositional generalization tasks fail to generalize because they have memorized biases that do indeed exist in the training set .
+These tasks require networks to make an out-of- domain ( o.o.d. ) extrapolation ( Marcus , 2018 ) , rather than merely interpolate according to the assumption that training and testing data are independent and identically distributed ( i.i.d. ) .
+To the extent that humans can perform well on certain kinds of o.o.d. tests , they must be utilizing inductive biases that are lacking in current deep learning models ( Battaglia et al. , 2018 ) .
+It has long been suggested that the human capacity for systematic generalization is linked to mechanisms for processing syntax , and their functional separation from the meanings of individual words ( Chomsky , 1957 ; Fodor and Pylyshyn , 1988 ) .
+In this work , we take inspiration from this idea and explore operationalizing it as an inductive bias in an existing neural network architecture .
+First , we notice a connection between syntactic structure and the correct alignment of words in the source sequence to meanings in the target .
+In our model , alignment is accomplished with an attention mechanism ( Bahdanau et al. , 2015 ) that determines the relevance of each word in the source to the translation of the next word in the target .
+This process must take into account the syntactic structure of both sequences ( e.g. if a verb was just translated , it would be important to know whether there is in the source sequence an adverb that modifies it ) .
+We reasoned that if alignment was separated from direct translation ( analogous to a separation of syntax and the meanings of individual words ) ,
+We implemented this intuition by modifying an existing attention mechanism ( Bahdanau et al. , 2015 ) , and call the resultant architecture Syntactic Attention to reflect the intuition that the attention mechanism used for alignment should operate primarily on syntactic information , which should be separated from the information relevant to translating individual words .
+We show that this modification achieves substantially improved compositional generalization performance over the original architecture on the SCAN dataset .
+Syntactic Attention
+The Syntactic Attention model improves the compositional generalization capability of an existing attention mechanism ( Bahdanau et al. , 2015 ) by separating two streams of information processing for alignment and translation ( see Figure 2 ) .
+We describe the mechanisms of this separation and the other details of the model below .
+Factorizing alignment and translation
+In the seq2seq problem , models must learn a mapping from arbitrary - length sequences of inputs x = {x 1 , x 2 , ... , x
+Tx } to arbitrary - length sequences of outputs y = {y 1 , y 2 , ... , y Ty } : p( y|x ) .
+The underlying assumption made by the Syntactic Attention architecture is that the dependence of target words on the input sequence can be separated into two independent factors .
+One factor , p(y i |x j ) , models the conditional distribution from individual words in the input to individual words in the target .
+Note that , unlike in the model of Bahdanau et al . ( 2015 ) , these x j do not contain any information about the other words in the input sequence because they are not processed with an RNN .
+The other factor , p( j ? i|x , y 1:i?1 ) , models the conditional probability that word j in the input is relevant to word i in the target sequence , given the entire input sequence .
+This alignment is accomplished from encodings of the inputs produced by an RNN .
+The crucial architectural assumption , then , is that any temporal dependency between individual words in the input that can be captured by an RNN should only be relevant to their alignment to words in the target sequence , and not to the translation of individual words .
+This assumption will be made clearer in the model description below .
+Encoder
+The encoder produces two separate vector representations for each word in the input sequence .
+Unlike the previous attention model ( Bahdanau et al. , 2015 ) ) , we separately extract the information that will be used for direct translation with a linear transformation : m j = W m x j , where W m is a learned weight matrix that multiplies the one- hot encodings {x 1 , ... , x Tx }.
+Note that these representations do not contain any information about the other words in the sentence .
+As in the previous attention mechanism ( Bahdanau et al. , 2015 ) , we use a bidirectional RNN ( biRNN ) to extract the information that will be used for alignment .
+The biRNN produces a vector for each word on the forward pass , ( ? ? h 1 , ... , ? ? ? h Tx ) , and a vector for each word on the backward pass , ( ? ? h 1 , ... , ? ? ? h Tx ) .
+The representation of each word x j is determined by the two vectors ? h j?1 , ? h j+1 corresponding to the words surrounding it : h j = [ ? h j?1 ; ? h j +1 ] .
+In all experiments , we used a bidirectional LSTM for this purpose .
+Note that h j is encoding the context of the surrounding words in the sen-tence .
+Our motivation for doing this was to force the RNN in the encoder to rely on the " role " the word is playing in the sentence .
+Note also that because there is no sequence information in the m j , all of the information required to align the input sequence correctly ( e.g. phrase structure , modifying relationships , etc. ) must be encoded by the biRNN .
+Decoder
+The decoder models the conditional probability of each target word given the input and the previous targets : p(y i |y 1 , y 2 , ... , y i?1 , x ) , where y i is a target and x is the whole input sequence .
+As in the previous model , we use an RNN to determine an attention distribution over the inputs at each time step ( i.e. to align words in the input to the current target ) .
+However , our decoder diverges from this model in that the mapping from inputs to outputs is performed from a weighted average of the m j : p(y i |y 1:i?1 , x ) = f ( d i ) d i = Tx j=1 ? ij m j ( 1 ) where f is parameterized by a linear function with a softmax , and the ? ij are the weights determined by the attention model .
+The attention weights are computed by a function measuring how well the input representations h j align with the current hidden state of the decoder RNN , s i : ? ij = exp( e ij ) Tx k=1 exp( e ik ) e ij = a(s i , h j ) ( 2 ) where e ij can be thought of as measuring the importance of a given input word x j to the current target word y i , and s i is the current hidden state of the decoder RNN .
+Bahdanau et al. ( 2015 ) model the function a with a feedforward network , but we choose to use a simple dot product : a( s i , h j ) = s i ?
+h j .
+Finally , the hidden state of the RNN is updated with the same weighted combination of the h j : s i = g( s i?1 , c i ) c i = Tx j=1 ? ij h j ( 3 ) where g is the decoder RNN , s i is the current hidden state , and c i can be thought of as the information in the attended words that can be used to determine what to attend to on the next time step .
+Again , in all experiments an LSTM was used .
+3 Experiments
+SCAN dataset
+The SCAN 1 dataset was specifically designed to test compositional generalization ( details can be found in the appendix , or in Lake and .
+It is composed of 20,910 sequences of commands that must be mapped to sequences of actions , and is generated from a simple finite phrasestructure grammar that includes things like adverbs and conjunctions .
+The splits of the dataset include : 1 ) Simple split , where training and testing data are split randomly , 2 ) Length split , where training includes only shorter sequences , and 3 ) Add primitive split , where a primitive command ( e.g. " turn left " or " jump " ) is held out of the training set , except in its most basic form ( e.g. " jump " ? JUMP )
+Here we focus on the most difficult problem in the SCAN dataset , the add- jump split , where " jump " is held out of the training set .
+Implementation details Experimental procedure is described in detail in the appendix .
+Training and testing sets were kept as they were in the original dataset , but following ( Bastings et al. , 2018 ) , we used early stopping by validating on a 20 % held out sample of the training set .
+All reported results are from runs of 200,000 iterations with a batch size of 1 .
+Unless stated otherwise , each architecture was trained 5 times with different random seeds for initialization , to measure variability in results .
+All experiments were implemented in PyTorch .
+Details of the hyperparameter search are given in the appendix .
+Our best model used LSTMs , with 2 layers and 200 hidden units in the encoder , and 1 layer and 400 hidden units in the decoder , and 120 - dimensional vectors for the m j .
+The model included a dropout rate of 0.5 , and was optimized using an Adam optimizer ( Kingma and Ba , 2015 ) with a learning rate of 0.001 .
+Compositional generalization results
+The Syntactic Attention model achieves high compositional generalization performance on the standard seq2seq SCAN dataset ( see table 1 ) .
+The table shows results ( mean test accuracy ( % ) ? standard deviation ) on the test splits of the dataset .
+Syntactic Attention is compared to the previous models , which were a CNN ( Dess ? and Baroni , 2019 ) , GRUs augmented with an attention mechanism ( " + attn " ) , which either included or did not include a dependency ( " - dep " ) in the decoder on the previous action ( Bastings et al. , 2018 ) , and the recent model of Li et al . ( 2019 ) . Lake ( 2019 ) showed that a meta-learning architecture using an external memory achieves 99.95 % accuracy on a meta-seq2seq version of the SCAN task .
+In this version , models are trained to learn how to generalize compositionally across a number of variants of a compositional seq2seq problem .
+Here , we focus on the standard seq2seq version , which limits the model to one training episode .
+The best model from the hyperparameter search showed strong compositional generalization performance , attaining a mean accuracy of 91.1 % ( median = 98.5 % ) on the test set of the add- jump split .
+However , as in Dess ? and Baroni ( 2019 ) , we found that our model showed variance across initialization seeds ( see appendix for details ) .
+For this reason , we ran the best model 25 times on the addjump split to get a more accurate assessment of performance .
+These results were highly skewed , with a mean accuracy of 78.4 % but a median of 91.0 % ( see appendix for detailed results ) .
+Overall , this represents an improvement in the compositional generalization performance compared to the original attention mechanism ( Bahdanau et al. , 2015 ; Bastings et al. , 2018 ) , and rivals the recent results from Li et al . ( 2019 ) .
+Additional SCAN experiments
+We hypothesized that a key feature of our architecture was that an RNN was used to encode the information in the input sequence relevant to alignment , while one was not used to encode the information relevant to translation .
+To test this hypothesis , we conducted two more experiments : 1 . RNN for translation - encoding .
+An additional biLSTM was used to process the input sequence : m j = [ ? ? m j ; ? ? m j ] , where ? ? m j and ? ? m j are the vectors produced for the source word x j by a biLSTM on the forward and backward passes , respectively .
+These m j replace those generated by the simple linear layer in the Syntactic Attention model .
+2 . c i used for translation .
+Sequential information from the encoder RNN ( i.e. the c i ) was allowed to directly influence the output at each time step in the decoder : p(y i |y 1 , y 2 , ... , y i?1 , x ) = f ( [ d i ; c i ] ) , where again f is parameterized with a linear function and a softmax output nonlinearity .
+The results of the additional experiments ( mean test accuracy ( % ) ? standard deviations ) are shown in table 2 .
+These results partially confirmed our hypothesis : performance on the jump-split test set was worse when encodings from an RNN were directly used for translation .
+However , when sequential information from the biLSTM encoder was used an additional input in the final production of actions , the model maintained good compositional generalization performance .
+We hypothesize that this was because in this setup , it was easier for the model to learn to use the m j to directly translate actions , so it largely ignored the sequential information .
+This experiment suggests that the factorization between alignment and translation does not have to be perfectly strict , as long as nonsequential representations are available for direct translation .
+Additional results , including on other SCAN splits and analyses of the attention distributions , can be found in the appendix .
+Machine translation experiments
+Although the purpose of this work was to study the inductive biases that might encourage compositional generalization , we also validated our architecture on a small machine translation dataset to obtain a basic measure of its efficacy in a more naturalistic setting .
+The dataset ( Lake and Bastings et al. , 2018 ) is composed of 10,000 English / French sentence pairs in the training set and 1,190 pairs in the test set .
+We trained and tested our existing model without making any changes , except for adjusting the learning rate .
+We also ran the same experiment with the architecture described above that used c i for translation , as this architecture also showed strong compositional generalization performance on SCAN .
+BLEU scores on the test set for the best learning rate ( 0.00015 for both models ) are shown in the table below , with comparison to previously reported results using basic recurrent architectures .
+Our model performs comparably in neural MT , validating it in a more naturalistic setting .
+Related work
+The principle of compositionality has recently regained the attention of deep learning researchers ( Bahdanau et al. , 2019 b , a ; Lake et al. , 2017 ; Lake
+Model Simple Length
+Add turn left Add jump GRU + attn ( Bastings et al. , 2018 ) 100.0 ? 0.0 18.1 ? 1.1 59.1 ? 16.8 12.5 ? 6.6 GRU + attn - dep ( Bastings et al. , 2018 ) 100.0 ? 0.0 17.8 ? 1.7 90.8 ? 3.6 0.7 ? 0.4 CNN ( Dess ? and Baroni , 2019 ) 100.0 ? 0.0 --69.2 ? 8.2 Li et al. ( 2019 ) 99.9 ? 0.0 20.3 ? 1.1 99.7 ? 0.4 98.8 ? 1.4 Syntactic Attention ( ours ) 100.0 ? 0.0 15.2 ? 0.7 99.9 ? 0.16 91.0 * ? 27.4 Table 1 : Compositional generalization results .
+The Syntactic Attention model achieves an improvement on the compositional generalization tasks of the SCAN dataset in the standard seq2seq setting , compared to the standard recurrent models ( Bastings et al. , 2018 ; Dess? and Baroni , 2019 ) and Battaglia et al. , 2018 ; Johnson et al. , 2017 ; Keysers et al. , 2020 ) .
+In particular , the issue has been explored in the visual-question answering ( VQA ) setting ( Andreas et al. , 2016 ; Hudson and Manning , 2018 ; Johnson et al. , 2017 ; Perez et al. , 2018 ; Hu et al. , 2017 ) .
+Many of the successful models in this setting learn hand -coded operations ( Andreas et al. , 2016 ; Hu et al. , 2017 ) , use highly specialized components ( Hudson and Manning , 2018 ) , or use additional supervision ( Hu et al. , 2017 ) .
+In contrast , our model uses standard recurrent networks and simply imposes the additional constraint that mechanisms for alignment and translation are separated .
+In the Compositional Attention Network , built for VQA , the representations used to encode images and questions are restricted to interact only through attention distributions ( Hudson and Manning , 2018 ) .
+Our model utilizes a similar restriction , reinforcing the idea that compositionality is enhanced when information from different modules are only allowed to interact through discrete probability distributions .
+Li et al. ( 2019 ) recently showed good performance on the SCAN tasks using a very similar ap-proach .
+Our results lend additional support to the idea that separating alignment and translation can facilitate compositional generalization .
+The results from the meta-seq2seq version of the SCAN task ( Lake , 2019 ) suggest that meta-learning may also be a viable approach to inducing compositionality in neural networks .
+We were inspired by work in cognitive science emphasizing the relationship between systematicity and syntax ( Chomsky , 1957 ; Fodor and Pylyshyn , 1988 ) .
+Others have explored similar ideas in different natural language tasks ( Bastings et al. , 2017 ( Bastings et al. , , 2019
+Chen et al. , 2018 ; Havrylov et al. , 2019 ; Strubell et al. , 2018 ) .
+This work supports the suggestion that intuitions from cognitive science can aid architecture design in deep learning .
+Conclusion
+In this work we attempt to operationalize an intuition from cognitive science , implementing it as inductive bias in the form of a factorization between alignment and translation in the seq2seq setting .
+We showed that this can improve compositional generalization performance on the SCAN task , and that it does n't degrade performance on a small MT task .
+We believe this factorization prevents the model from memorizing spurious correlations in the data , and note that similar ideas may be useful in other natural language tasks .

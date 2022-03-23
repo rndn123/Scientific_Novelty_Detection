@@ -1,0 +1,262 @@
+title
+Contextual Parameter Generation for Universal Neural Machine Translation
+abstract
+We propose a simple modification to existing neural machine translation ( NMT ) models that enables using a single universal model to translate between multiple languages while allowing for language specific parameterization , and that can also be used for domain adaptation .
+Our approach requires no changes to the model architecture of a standard NMT system , but instead introduces a new component , the contextual parameter generator ( CPG ) , that generates the parameters of the system ( e.g. , weights in a neural network ) .
+This parameter generator accepts source and target language embeddings as input , and generates the parameters for the encoder and the decoder , respectively .
+The rest of the model remains unchanged and is shared across all languages .
+We show how this simple modification enables the system to use monolingual data for training and also perform zero-shot translation .
+We further show it is able to surpass state - of - theart performance for both the IWSLT - 15 and IWSLT - 17 datasets and that the learned language embeddings are able to uncover interesting relationships between languages .
+Introduction Neural Machine Translation ( NMT ) directly models the mapping of a source language to a target language without any need for training or tuning any component of the system separately .
+This has led to a rapid progress in NMT and its successful adoption in many large-scale settings ( Wu et al. , 2016 ; Crego et al. , 2016 ) .
+The encoder-decoder abstraction makes it conceptually feasible to build a system that maps any source sentence in any language to a vector representation , and then decodes this representation into any target language .
+Thus , various approaches have been proposed to extend this abstraction for multilingual MT ( Luong et al. , 2016 ; Dong et al. , 2015 ; Johnson et al. , 2017 ; Ha et al. , 2016 ; Firat et al. , 2016a ) .
+Prior work in multilingual NMT can be broadly categorized into two paradigms .
+The first , univer-sal NMT ( Johnson et al. , 2017 ; Ha et al. , 2016 ) , uses a single model for all languages .
+Universal NMT lacks any language-specific parameterization , which is an oversimplification and detrimental when we have very different languages and limited training data .
+As verified by our experiments , the method of Johnson et al . ( 2017 ) suffers from high sample complexity and thus underperforms in limited data settings .
+The universal model proposed by Ha et al . ( 2016 ) requires a new coding scheme for the input sentences , which results in large vocabulary sizes that are difficult to scale .
+The second paradigm , per-language encoder-decoder ( Luong et al. , 2016 ; Firat et al. , 2016a ) , uses separate encoders and decoders for each language .
+This does not allow for sharing of information across languages , which can result in overparameterization and can be detrimental when the languages are similar .
+In this paper , we strike a balance between these two approaches , proposing a model that has the ability to learn parameters separately for each language , but also share information between similar languages .
+We propose using a new contextual parameter generator ( CPG ) which ( a ) generalizes all of these methods , and ( b ) mitigates the aforementioned issues of universal and per-language encoder-decoder systems .
+It learns language embeddings as a context for translation and uses them to generate the parameters of a shared translation model for all language pairs .
+Thus , it provides these models the ability to learn parameters separately for each language , but also share information between similar languages .
+The parameter generator is general and allows any existing NMT model to be enhanced in this way .
+1
+In addition , it has the following desirable features : 1 . Simple : Similar to Johnson et al. ( 2017 ) and Ha et al . ( 2016 ) , and in contrast with Luong et al . ( 2016 ) and Firat et al . ( 2016 a ) , it can be applied to most existing NMT systems with some minor modification , and it is able to accommodate attention layers seamlessly .
+2 . Multilingual : Enables multilingual translation using the same single model as before .
+3 . Semi-supervised :
+Can use monolingual data .
+4 . Scalable : Reduces the number of parameters by employing extensive , yet controllable , sharing across languages , thus mitigating the need for large amounts of data , as in Johnson et al . ( 2017 ) .
+It also allows for the decoupling of languages , avoiding the need for a large shared vocabulary , as in Ha et al . ( 2016 ) .
+5 . Adaptable : Can adapt to support new languages , without requiring complete retraining .
+6 . State-of- the- art : Achieves better performance than pairwise NMT models and Johnson et al . ( 2017 ) .
+In fact , our approach can surpass stateof - the - art performance .
+We first introduce a modular framework that can be used to define and describe most existing NMT systems .
+Then , in Section 3 , we introduce our main contribution , the contextual parameter generator ( CPG ) , in terms of that framework .
+We also argue that the proposed approach takes us a step closer to a common universal interlingua .
+Background
+We first define the multi-lingual NMT setting and then introduce a modular framework that can be used to define and describe most existing NMT systems .
+This will help us distill previous contributions and introduce ours .
+Setting .
+We assume that we have a set of source languages S and a set of target languages T .
+The total number of languages is L = | S ? T |.
+We also assume we have a set of C ? | S| ? | T | pairwise parallel corpora , { P 1 , . . . , P C } , each of which contains a set of sentence pairs for a single source -target language combination .
+The goal of multilingual NMT is to build a model that , when trained using the provided parallel corpora , can learn to translate well between any pair of languages in S?T .
+The majority of related work only considers pairwise NMT , where | S| = | T | = 1 .
+NMT Modules Most NMT systems can be decomposed to the following modules ( also visualized in Figure 1 ) .
+Preprocessing Pipeline .
+The data preprocessing pipeline handles tokenization , cleaning , normalizing the text data and building a vocabulary , i.e. a two -way mapping from preprocessed sentences to sequences of word indices that will be used for the translation .
+A commonly used proposal for defining the vocabulary is the byte-pair encoding ( BPE ) algorithm which generates subword unit vocabularies ( Sennrich et al. , 2016 b ) .
+This eliminates the notion of out - of- vocabulary words , often resulting in increased translation quality .
+Encoder / Decoder .
+The encoder takes in indexed source language sentences , and produces an intermediate representation that can later be used by a decoder to generate sentences in a target language .
+Generally , we can think of the encoder as a function , f ( enc ) , parameterized by ? ( enc ) .
+Similarly , we can think of the decoder as another function , f ( dec ) , parameterized by ? ( dec ) .
+The goal of learning to translate can then be defined as finding the values for ? ( enc ) and ? ( dec ) that result in the best translations .
+A large amount of previous work proposes novel designs for the encoder / decoder module .
+For example , using attention over the input sequence while decoding ( Bahdanau et al. , 2015 ; Luong et al. , 2015 ) provides significant gains in translation performance .
+2 Parameter Generator .
+All modules defined so far have previously been used when describing NMT systems and are thus easy to conceptualize .
+However , in previous work , most models are trained for a given language pair , and it is not trivial to extend them to work for multiple pairs of languages .
+We introduce here the concept of the parameter generator , which makes it easy to define and describe multilingual NMT systems .
+This module is responsible for generating ? ( enc ) and ? ( dec ) for any given source and target language .
+Different parameter generators result in different numbers of learnable parameters and can thus be used to share information across different languages .
+Next , we describe related work , in terms of the parameter generator for NMT : ?
+Pairwise :
+In the simple and commonly used pairwise NMT setting ( Wu et al. , 2016 ; Crego et al. , 2016 ) , the parameter generator would generate separate parameters , ? ( enc ) and ? ( dec ) , for each pair of source -target languages .
+This re -
+Parameter Generator Figure 1 : Overview of an NMT system , under our modular framework .
+Our main contribution lies in the parameter generator module ( i.e. , coupled or decoupled - each of the boxes with blue titles is a separate option ) .
+Note that g denotes a parameter generator network .
+In our experiments , we consider linear forms for this network .
+However , our contribution does not depend on the choices made regarding the rest of the modules ; we could still use our parameter generator with different architectures for the encoder and the decoder , as well as using different kinds of vocabularies .
+sults in no parameter sharing across languages , and thus O( ST ) parameters .
+?
+Per-Language :
+In the case of Dong et al . ( 2015 ) , Luong et al. ( 2016 ) and Firat et al . ( 2016 a ) , the parameter generator would generate separate encoder parameters , ? ( enc ) , for each source language , and separate decoder parameters , ? ( dec ) , for each target language .
+This leads to a reduction in the number of learnable parameters for multilingual NMT , from O( ST ) to O( S + T ) .
+On one hand , Dong et al . ( 2015 ) train multiple models as a one-to-many multilingual NMT system that translates from one source language to multiple target languages .
+On the other hand , Luong et al . ( 2016 ) and Firat et al . ( 2016a ) perform many - to -many translation .
+Luong et al. ( 2016 ) , however , only report results for a single language pair and do not attempt multilingual translation .
+Firat et al. ( 2016a ) propose an attention mechanism that is shared across all language pairs .
+We generalize the idea of multiway multilingual NMT with the parameter generator network , described later .
+?
+Universal :
+In the case of Ha et al . ( 2016 ) and Johnson et al . ( 2017 ) , the authors propose using a single common set of encoder-decoder parameters for all language pairs .
+While Ha et al. ( 2016 ) embed words in a common semantic space across languages , Johnson et al . ( 2017 ) learn language embeddings that are in the same space as the word embeddings .
+Here , the parameter generator would provide the same parameters ? ( enc ) and ? ( dec ) for all language pairs .
+It would also create and keep track of learnable variables representing language embeddings that are prepended to the encoder input sequence .
+As we observed in our experiments , this system fails to perform well when the training data is limited .
+Finally , we believe that embedding languages in the same space as words is not intuitive ; in our approach , languages are embedded in a separate space .
+In contrast to all these related systems , we provide a simple , efficient , yet effective alternativea parameter generator for multilingual NMT , that enables semi-supervised and zero-shot learning .
+We also learn language embeddings , similar to Johnson et al . ( 2017 ) , but in our case they are separate from the word embeddings and are treated as a context for the translation , in a sense that will become clear in the next section .
+This notion of context is used to define parameter sharing across various encoders and decoders , and , as we discuss in our conclusion , is even applicable beyond NMT .
+Proposed Method
+We propose a new way to share information across different languages and to control the amount of sharing , through the parameter generator module .
+More specifically , we propose contextual parameter generators .
+Contextual Parameter Generator .
+Let us denote the source language for a given sentence pair by s and the target language by t .
+Then , when using the contextual parameter generator , the parameters of the encoder are defined as ? ( enc ) g ( enc ) ( l s ) , for some function g ( enc ) , where l s denotes a language embedding for the source language s .
+Similarly , the parameters of the decoder are defined as ? ( dec ) g ( dec ) ( l t ) for some function g ( dec ) , where l t denotes a language embedding for the target language t .
+Our generic formulation does not impose any constraints on the functional form of g ( enc ) and g ( dec ) .
+In this case , we can think of the source language , s , as a context for the encoder .
+The parameters of the encoder depend on its context , but its architecture is common across all contexts .
+We can make a similar argument for the decoder , and that is where the name of this parameter generator comes from .
+We can even go a step further and have a parameter generator that defines ? ( enc ) g ( enc ) ( l s , l t ) and ? ( dec ) g ( dec ) ( l s , l t ) , thus coupling the encoding and decoding stages for a given language pair .
+In our experiments we stick to the previous , decoupled , form , because unlike Johnson et al . ( 2017 ) , it has the potential to lead to an interlingua .
+Concretely , because the encoding and decoding stages are decoupled , the encoder is not aware of the target language while generating it .
+Thus , we can take an encoded intermediate representation of a sentence and translate it to any target language .
+This is because , in this case , the intermediate representation is independent of any target language .
+This makes for a stronger argument that the intermediate representation produced by our encoder could be approaching a universal interlingua , more so than methods that are aware of the target language when they perform encoding .
+Parameter Generator Network
+We refer to the functions g ( enc ) and g ( dec ) as parameter generator networks .
+Even though our proposed NMT framework does not rely on a specific choice for g ( enc ) and g ( dec ) , here we describe the functional form we used for our experiments .
+Our goal is to provide a simple form that works , and for which we can reason about .
+For this reason , we decided to define the parameter generator networks as simple linear transforms , similar to the factored adaptation model of Michel and Neubig ( 2018 ) , which was only applied to the bias terms of the output softmax : g ( enc ) ( l s ) W ( enc ) l s , ( 1 ) g ( dec ) ( l t ) W ( dec ) l t , ( 2 ) where l s , l t ? R M , W ( enc ) ? R P ( enc ) ?M , W ( dec ) ? R P ( dec ) ?M , M is the language embedding size , P ( enc ) is the number of parameters of the encoder , and P ( dec ) is the number of parameters of the decoder .
+Another way to interpret this model is that it imposes a low-rank constraint on the parameters .
+As opposed to our approach , in the base case of using multiple pairwise models to perform multilingual translation , each model has P = P ( enc ) + P ( dec ) learnable parameters for its encoder and decoder .
+Given that the models are pairwise , for L languages , we have a total of L( L ? 1 ) learnable parameter vectors of size P .
+On the other hand , using our contextual parameter generator we have a total of L vectors of size M ( one for each language ) , and a single matrix of size P ? M .
+Then , the parameters of the encoder and the decoder , for a single language pair , are defined as a linear combination of the M columns of that matrix .
+Controlled Parameter Sharing .
+We can further control parameter sharing by observing that the encoder / decoder parameters often have some " natural grouping " .
+For example , in the case of recurrent neural networks we may have multiple weight matrices , one for each layer , as well as attentionrelated parameters .
+Based on this observations , we now propose a way to control how much information is shared across languages .
+The language embeddings need to represent all of the languagespecific information and thus may need to be large in size .
+However , when computing the parameters of each group , only a small part of that information is relevant .
+Let ? ( enc ) = {? ( enc ) j } G j=1 and ? ( enc ) j ? R P ( enc ) j , where G denotes the number of groups .
+Then , we define : ? ( enc ) j W ( enc ) j P ( enc ) j l s , ( 3 ) where W ( enc ) j ? R P ( enc ) j ?M and P ( enc ) j ?
+R M ?M , with M < M ( and similarly for the decoder parameters ) .
+We can see now that P ( enc ) j is used to extract the relevant information ( size M ) for parameter group j , from the larger language embedding ( size M ) .
+This allows us to control the parameter sharing across languages in the following way : if we want to increase the number of per-language parameters ( i.e. , the language embedding size ) we can increase M while keeping M small enough so that the total number of parameters does not explode .
+This would not have been possible without the proposed low-rank ap- proximation for W ( enc ) , that uses the parameter grouping information .
+Alternative Options .
+Given that our proposed approach does not depend on the specific choice of the parameter generator network , it might be interesting to design models that use side-information about the languages that are being used ( such as linguistic information about language families and hierarchies ) .
+This is outside the scope of this paper , but may be an interesting future direction .
+Semi-Supervised and Zero-Shot Learning
+The proposed parameter generator also enables semi-supervised learning via back - translation .
+Concretely , monolingual data can be used to train the shared encoder / decoder networks to translate a sentence from some language to itself ( similar to the idea of auto-encoders by Vincent et al . ( 2008 ) ) .
+This is possible and can help learning because of the fact that many of the learnable parameters are shared across languages .
+Furthermore , zero-shot translation , where the model translates between language pairs for which it has seen no explicit training data , is also possible .
+This is because the same per-language parameters are used to translate to and from a given language , irrespective of the language at the other end .
+Therefore , as long as we train our model using some language pairs that involve a given language , it is possible to learn to translate in any direction involving that language .
+Potential for Adaptation
+Let us assume that we have trained a model using data for some set of languages , 1 , 2 , . . . , m .
+If we obtain data for some new language n , we do not have to retrain the whole model from scratch .
+In fact , we can fix the parameters that are shared across all languages and only learn the embedding for the new language ( along with the relevant word embeddings if not using a shared vocabulary ) .
+Assuming that we had a sufficient number of languages in the beginning , this may allow us to obtain reasonable translation performance for the new language , with a minimal amount of training .
+3
+Number of Parameters
+For the base case of using multiple pairwise models to perform multilingual translation , each model has P + 2W V parameters , where P = P ( enc ) + P ( dec ) , W is the word embedding size , and V is the vocabulary size per language ( assumed to be the same across languages , without loss of generality ) .
+Given that the models are pairwise , for L languages , we have a total of L( L ? 1 ) ( P + 2W V ) = O( L 2 P + 2L 2 W V ) learnable parameters .
+For our approach , using the linear parameter generator network presented in Section 3.1 , we have a total of O( P M + LW V ) learnable parameters .
+Note that the number of encoder / decoder parameters has no dependence on L now , meaning that our model can easily scale to a large number of languages .
+Experiments
+In this section , we describe our experimental setup along with our results and key observations .
+Setup .
+For all our experiments we use as the base NMT model an encoder-decoder network which uses a bidirectional LSTM for the encoder , and a two -layer LSTM with the attention model of Bahdanau et al . ( 2015 ) for the decoder .
+The word embedding size is set to 512 .
+This is a common baseline model that achieves reasonable performance and we decided to use it as - is , without tuning any of its parameters , as extensive hyperparameter search is outside the scope of this paper .
+During training , we use a label smoothing factor of 0.1 ( Wu et al. , 2016 ) and the AMSGrad optimizer ( Reddi et al. , 2018 ) with its default parameters in TensorFlow , and a batch size of 128 ( due to GPU memory constraints ) .
+Optimization was stopped when the validation set BLEU score was maximized .
+The order in which language pairs are used while training was as follows : we always first sample a language pair ( uniformly at random ) , and then sample a batch for that pair ( uniformly at random ) .
+4 During inference , we employ beam search with a beam size of 10 and the length normalization scheme of ( Wu et al. , 2016 ) .
+We want to emphasize that we did not run experiments with other architectures or configurations , and thus this architecture was not chosen because it was favorable to our method , but rather because it was a frequently mentioned baseline in existing literature .
+All experiments were run on a machine with a single Nvidia V100 GPU , and 24 GBs of system memory .
+Our most expensive experiment took about 10 hours to complete , which would cost about $ 25 on a cloud computing service such as Google Cloud or Amazon Web Services , thus making our results reproducible , even by independent researchers .
+Experimental Settings .
+The goal of our experiments is to show how , by using a simple modification of this model , ( i ) we can achieve significant improvements in performance , while at the same time ( ii ) being more data and computation efficient , and ( iii ) enabling support for zero-shot translation .
+To that end , we perform three types of experiments :
+1 . Supervised :
+In this experiment , we use full parallel corpora to train our models .
+Plain pairwise NMT models ( PNMT ) are compared to the same models modified to use our proposed decoupled parameter generator .
+We use two variants : ( i ) one which does not use autoencoding of monolingual data while training ( CPG * ) , and ( ii ) one which does ( CPG ) .
+Please refer to Section 3.2 for more details .
+2 . Low-Resource : Similar to the supervised experiments except that we limit the size of the parallel corpora used in training .
+However , for GML and CPG the full monolingual corpus is used for auto-encoding training .
+3 . Zero- Shot :
+In this experiment , our goal is to evaluate how well a model can learn to translate between language pairs that it has not seen while training .
+For example , a model trained using parallel corpora between English and German , and English and French , will be evaluated in translating from German to French .
+PNMT can perform zero-shot translation in this setting using pivoting .
+This means that , in the previous example , we would first translate from German to English and then from English to French ( using two pairwise models for a single translation ) .
+However , pivoting is prone to error propagation incurred when chaining multiple imperfect translations .
+The proposed CPG
+For the experiments using the CPG model without controlled parameter sharing , we use language embeddings of size 8 .
+This is based merely on the fact that this is the largest model size we could fit on one GPU .
+Whenever possible , we compare against PNMT , GML by Johnson et al . ( 2017 ) , 5 and other state - of - the - art results .
+Datasets .
+We use the following datasets : ? IWSLT - 15 : Used for supervised and lowresource experiments only ( this dataset does not support zero-shot learning ) .
+We report results for Czech ( Ch ) , English ( En ) , French ( Fr ) , German ( De ) , Thai ( Th ) , and Vietnamese ( Vi ) .
+This dataset contains ~ 90,000-220,000 training sentence pairs ( depending on the language pair ) , ~ 500 - 900 validation pairs , and ~1,000 - 1,300 test pairs .
+? IWSLT - 17 : Used for supervised and zero-shot experiments .
+We report results for Dutch ( Nl ) , English ( En ) , German ( De ) , Italian ( It ) , and Romanian ( Ro ) .
+This dataset contains ~ 220,000 training sentence pairs ( for all language pairs except for the zero-shot ones ) , ~900 validation pairs , and ~ 1,100 test pairs .
+Data Preprocessing .
+We preprocess our data using a modified version of the Moses tokenizer ( Koehn et al. , 2007 ) that correctly handles escaped HTML characters .
+We also perform some Unicode character normalization and cleaning .
+While training , we only consider sentences up to length 50 .
+For both datasets , we generate a per-language vocabulary consisting of the most frequently occurring words , while ignoring words that appear less than 5 times in the whole corpus , and capping the vocabulary size to 20,000 words .
+Results .
+Our results for the IWSLT - 15 experiments are shown in Table 1 .
+It is clear that our approach consistently outperforms both the corresponding pairwise model and GML .
+Furthermore , its advantage grows larger in the low-resource setting ( up to 5.06 BLEU score difference , or a 2.4 ? increase ) , which is expected due to the extensive parameter sharing in our model .
+For this dataset , there exist some additional published state - of - the - art results not shown in Tables 1 and 2 . Huang et al . ( 2018 )
+The presented results provide evidence that our proposed approach is able to significantly improve performance , without requiring extensive tuning .
+Language Embeddings .
+An important aspect of our model is that it learns language embeddings .
+In Figure 2 we show pairwise cosine distances between the learned language embeddings for our fully supervised experiments .
+There are some interesting patterns that indicate that the learned language embeddings are reasonable .
+For example , we observe that German ( De ) and Dutch ( Nl ) are most similar for the IWSLT - 17 dataset , with Italian ( It ) and Romanian ( Ro ) coming second .
+Furthermore , Romanian and German are the furthest apart for that dataset .
+These relationships agree with linguistic knowledge about these languages and the families they belong to .
+We see similar patterns in the IWSLT - 15 results but we focus on IWSLT - 17 here , because it is a larger , better quality , dataset with more supervised language pairs .
+These results are encouraging for analyzing such embeddings to discover relationships between languages that were previously unknown .
+For example , perhaps surprisingly , French ( Fr ) and Vietnamese ( Vi ) appear to be significantly related for the IWSLT - 15 dataset results .
+This is likely due to French influence in Vietnamese because to the occupation of Vietnam by France during the 19 th and 20 th centuries ( Marr , 1981 ) .
+Implementation and Reproducibility Along with this paper we are releasing an implementation of our approach and experiments as part of a new Scala framework for machine translation .
+8
+It is built on top of TensorFlow Scala ( Platanios , 2018 ) and follows the modular NMT design ( described in Section 2.1 ) that supports various NMT models , including our baselines ( e.g. , Johnson et al . ( 2017 ) ) .
+It also contains data loading and preprocessing pipelines that support multiple datasets and languages , and is more efficient than other packages ( e.g. , tf- nmt 9 ) .
+Furthermore , the framework supports various vocabularies , among which we provide a new implementation for the byte-pair encoding ( BPE ) algorithm ( Sennrich et al. , 2016 b ) that is 2 to 3 orders of magnitude faster than the released one .
+10 All experiments presented in this paper were performed using version 0.1.0 of the framework .
+Related Work Interlingual translation ( Richens , 1958 ) has been the object of many research efforts .
+For a long time , before the move to NMT , most practical machine translation systems only focused on individual language pairs .
+Since the success of end-to- end NMT approaches such as the encoderdecoder framework ( Sutskever et al. , 2014 ; Bahdanau et al. , 2015 ; Cho et al. , 2014 ) , recent work has tried to extend the framework to multi-lingual translation .
+An early approach was Dong et al . ( 2015 ) who performed one - to -many translation with a separate attention mechanism for each decoder .
+Luong et al. ( 2016 ) extended this idea with a focus on multi-task learning and multiple encoders and decoders , operating in a single shared vector space .
+The same architecture is used in ( Caglayan et al. , 2016 ) for translation across multiple modalities .
+Zoph and Knight ( 2016 ) flipped this idea with a many - to - one translation model , however requiring the presence of a multi-way parallel corpus between all the languages , which is difficult to obtain .
+Lee et al. ( 2017 ) used a single character - level encoder across multiple languages by training a model on a many - to - one translation task .
+Closest to our work are more recent approaches , already described in Section 2 ( Firat et al. , 2016a ; Johnson et al. , 2017 ; Ha et al. , 2016 ) , that attempt to enforce different kinds of parameter sharing across languages .
+Parameter sharing in multilingual NMT naturally enables semi-supervised and zero-shot learning .
+Unsupervised learning has been previously explored with key ideas such as back - translation ( Sennrich et al. , 2016a ) , dual learning ( He et al. , 2016 ) , common latent space learning ( Lample et al. , 2018 ) , etc .
+In the vein of multilingual NMT , Artetxe et al . ( 2018 ) proposed a model that uses a shared encoder and multiple decoders with a focus on unsupervised translation .
+The entire system uses cross-lingual embeddings and is trained to reconstruct its input using only monolingual data .
+Zero-shot translation was first attempted in ( Firat et al. , 2016 b ) who performed zero-zhot translation using their pre-trained multi-way multilingual model , fine - tuning it with pseudo-parallel data generated by the model itself .
+This was recently extended using a teacher -student framework .
+Later , zero-shot translation without any additional steps was attempted in ( Johnson et al. , 2017 ) using their shared encoderdecoder network .
+An iterative training procedure that leverages the duality of translations directly generated by the system for zero-shot learning was proposed by Lakew et al . ( 2017 ) .
+For extremely low resource languages , Gu et al . ( 2018 ) proposed sharing lexical and sentence - level representations across multiple source languages with a single target language .
+Closely related is the work of Cheng et al . ( 2016 ) who proposed the joint training of source - to - pivot and pivot-to - target NMT models .
+Ha et al. ( 2018 ) are probably the first to introduce a similar idea to that of having one network ( called a hypernetwork ) generate the parameters of another .
+However , in that work , the input to the hypernetwork are structural features of the original network ( e.g. , layer size and index ) .
+Al - Shedivat et al. ( 2017 ) also propose a related method where a neural network generates the parameters of a linear model .
+Their focus is mostly on interpretabil-ity ( i.e. , knowing which features the network considers important ) .
+However , to our knowledge , there is no previous work which proposes having a network generate the parameters of another deep neural network ( e.g. , a recurrent neural network ) , using some well - defined context based on the input data .
+This context , in our case , is the language of the input sentences to the translation model , along with the target translation language .
+Conclusion and Future Directions
+We have presented here a novel contextual parameter generation approach to neural machine translation .
+Our resulting system , which outperforms other state - of - the - art systems , uses a standard pairwise encoder-decoder architecture .
+However , it differs from earlier approaches by incorporating a component that generates the parameters to be used by the encoder and the decoder for the current sentence , based on the source and target languages , respectively .
+We refer to this novel component as the contextual parameter generator .
+The benefit of this approach is that it dramatically improves the ratio of the number of parameters to be learned , to the number of training examples available , by leveraging shared structure across different languages .
+Thus , our approach does not require any extra machinery such as backtranslation , dual learning , pivoting , or multilingual word embeddings .
+It rather relies on the simple idea of treating language as a context within which to encode / decode .
+We also showed that the proposed approach is able to achieve state - of - theart performance without requiring any tuning .
+Finally , we performed a basic analysis of the learned language embeddings , which showed that cosine distances between the learned language embeddings reflect well known similarities among language pairs such as German and Dutch .
+In the future , we want to extend the concept of the contextual parameter generator to more general settings , such as translating between different modalities of data ( e.g. , image captioning ) .
+Furthermore , based on the discussion of Section 3.3 , we hope to develop an adaptable , never-ending learning ( Mitchell et al. , 2018 ) NMT system .
+Figure 2 : 2 Figure 2 : Pairwise cosine distance for all language pairs in the IWSLT - 15 and IWSLT - 17 datasets .
+Darker colors represent more similar languages .

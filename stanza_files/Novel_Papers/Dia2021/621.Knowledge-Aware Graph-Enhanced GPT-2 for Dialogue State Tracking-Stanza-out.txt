@@ -1,0 +1,207 @@
+title
+Knowledge-Aware Graph- Enhanced GPT - 2 for Dialogue State Tracking
+abstract
+Dialogue State
+Tracking is central to multidomain task - oriented dialogue systems , responsible for extracting information from user utterances .
+We present a novel hybrid architecture that augments GPT - 2 with representations derived from Graph Attention Networks in such a way to allow causal , sequential prediction of slot values .
+The model architecture captures inter-slot relationships and dependencies across domains that otherwise can be lost in sequential prediction .
+We report improvements in state tracking performance in Mul-tiWOZ 2.0 against a strong GPT - 2 baseline and investigate a simplified sparse training scenario in which DST models are trained only on session - level annotations but evaluated at the turn level .
+We further report detailed analyses to demonstrate the effectiveness of graph models in DST by showing that the proposed graph modules capture inter-slot dependencies and improve the predictions of values that are common to multiple domains .
+Introduction
+This paper investigates two aspects of dialogue state tracking ( DST ) for multi-domain taskoriented dialogue ( Budzianowski et al. , 2018 ) .
+We present a novel hybrid architecture that augments GPT - 2 ( Radford et al. , 2019 ) with dialogue act representations derived from Graph Attention Networks ( GATs ) ( Veli?kovi ?
+et al. , 2018 ) in such a way that allows causal , sequential prediction of slot values while explicitly modelling the relationships between slots and values across domains .
+Our approach uses GATs to improve predictions of values that are shared across domain-slots and that might otherwise be treated independently .
+As a related line of work , we investigate a form of sparsely supervised DST training and find that our hybrid architecture offers improved robustness with weak supervision .
+DST can be improved by modelling the relationship between slots and values across domains .
+This has been explored recently by Zhou and Small ( 2019 ) who suggest three types of relationships between domain-slots pairs that can be modelled explicitly : ( 1 ) pairs that share the same candidate set , such as < restaurant- bookday > and < hotel- bookday > ; ( 2 ) pairs whose candidate values are subsets , as could happen with < restaurant-name > and < taxi- destina tion > if the candidate set of the first belongs to that of the second ; and ( 3 ) correlated values between domain-slot pairs , such as when the ' star ' level of a booked hotel correlates with the price range of a reserved restaurant .
+Graph Neural Networks ( GNNs ) have been proposed to captures the interactions among slots and values and to improve DST performance ( Zhou and Small , 2019 ; .
+These relationships can be represented as edges in graph - based models , where domains , slots , and values are nodes in the graphs .
+However previous work has not explored quantitatively or in depth how graph models utilize the relationships they model .
+and provide example cases where the predictions of correlated values were potentially enhanced by their model , while Zhou and Small ( 2019 ) and present ablation studies showing marginal improvements brought by their graph modules .
+and further show joint accuracies over different dialogue turns , but there is more that can be said about how GATs can improve DST .
+One of the aims of this paper is to more deeply analyze how graph models can lead to improved DST on top of an already good GPT - 2 baseline system .
+Graph models may also compensate for some potential drawbacks associated with using generative models for DST .
+As a well - known generative model , GPT - 2 offers powerful , left-to - right generation incorporating a causal attention mechanism .
+We note that Hosseini - Asl et al . ( 2020 ) have demonstrated that GPT - 2 can identify slot values as a prediction task , with variable length token sequences produced sequentially with interspersed special tokens indicating slot boundaries .
+The ability to easily generate token sequences of arbitrary lengths is a valuable feature of the model , although it may come at the expense of modelling power relative to models with non-causal attention mechanisms , such as BERT ( Devlin et al. , 2019 ; Shan et al. , 2020 ) .
+In particular , GPT - 2's causality requires that the prediction of later slot values can depend explicitly on previously predicted slot values , but that the reverse is not possible .
+This can lead to decreased performance in predicting slot values that occur early on .
+We find that augmenting GPT - 2 prediction with representations derived from GATs allows some sharing of information between slots prior to prediction to improve this GPT - 2 limitation .
+Capturing the relationships of slot values across domains also offers the opportunity to make better use of limited training data , particularly in sparsely supervised and weakly supervised scenarios ( Liang et al. , 2021 ) .
+In a ' Last Turn ' annotation scenario , annotations are available only for the final turn of a task - oriented dialogue .
+This is unlike the fullyannotated MultiWOZ setting , which offers turnlevel annotations throughout the entire dialogue session .
+As an annotation option , generating summary annotations at the completion of a recorded session is an attractive alternative to creating a detailed , turn - by-turn annotation of the entire dialogue ( Liang et al. , 2021 ) .
+If it is possible to use only these session - level annotations to train a DST system that still achieves acceptable tracking performance , the chore of creating new annotated DST datasets could be made much easier .
+The challenges in using this summary data are significant , however .
+Using only the final-turn annotations in MultiWOZ 2.0 reduces the training set to 14.3 % of its original size ( in annotated turns ) .
+We summarize the contributions of our work as follows : ( 1 ) We propose a novel hybrid architecture that integrates GPT - 2 with Graph Attention Networks ( GATs ) for dialogue state tracking .
+The model is shown to be robust when training samples are significantly reduced under sparse supervision .
+( 2 ) We demonstrate that our architecture also mit-igates a limitation of DSTs based on GPT - 2 alone , associated with generating domain-slot values in a Left-to - Right manner .
+( 3 ) We investigate how knowledge - aware models capture relationships between domain-slots and show how using graphs can improve prediction of inter-dependent slot values .
+While we do show DST accuracy improvements over a strong GPT - 2 baseline , we emphasise that our aim is mainly to investigate and improve prediction of domain-slot values using relationships that otherwise are left unmodelled by the baseline .
+Related Work Statistical DST prioritises general and extensible systems based on machine - learning architectures Zhang et al. , 2019 ; . Systems must be able to predict slot values from domain-specific lists such as list of hotel names as well as from more open-ended categories such as days , prices , and times .
+Recent trends are to combine several strategies to deal differently with the two types of values ( Zhang et al. , 2019 ; Zhou and Small , 2019 ; Heck et al. , 2020 ) .
+For example , Zhang et al. ( 2019 ) combine a span predictor for non-enumerable slot values and a cosine similarity matching that exploits a BERT model to extract representations for enumerable slot values , with a dual-strategy model jointly handling both types of slot values ; Zhou and Small ( 2019 ) use both a span predictor and a candidate classifier and combine their predictions with gating functions .
+Our work is based on GPT - 2 and we note that generative models such as GPT - 2 are less widely used in DST tasks , possibly because they raise additional challenges for information aggregation subject to the causality , as discussed in Sec.
+1 .
+However these recent results show that these models can yield competitive DST accuracy ( Hosseini - Asl et al. , 2020 ; Yang et al. , 2021 ) .
+Previous work has addressed sharing information between slots either by explicitly copying values ( Ouyang et al. , 2020 ; Heck et al. , 2020 ) or by sharing embeddings Zhou and Small , 2019 ; . Beyond copying and sharing , as we note in Sec. 1 Zhou and Small ( 2019 ) developed a graph attention network , and Chen et al. , 2020 also developed a schema-guided multi-domain approach embedding slot relations in edges of graph neural networks .
+enhanced a strong base model SOM - DST with a schema graph to exploit relations among domain-slots .
+GCDST uses a state graph to transfer domain-slot features and hard - copy states directly from historical states .
+Graph Neural Networks
+In this section we review Graph Attention Networks ( GATs ) ( Veli?kovi ?
+et al. , 2018 ; as will be used in this paper .
+A weighted undirected graph at each dialogue turn t is defined as G = ( V , E ) with a node set V consisting of N nodes {v i } , and an edge set E containing all edges between nodes .
+We define an N ? N binary symmetric adjacency matrix S , where [ S ] ij = 0 if ( v i , v j ) / ?
+E and 1 otherwise .
+Associated with each node v i are feature vectors x i ?
+R F .
+These are gathered into matrices X of dimension N ? F , where F is the input feature size .
+Note that SX is mathematically equivalent to passing the features of each graph node to its neighbours .
+In this way S k X = S( S k?1 X ) is equivalent to k rounds of feature exchanges with neighbours .
+As illustrated in Fig. 1 , k = 0 is self-connection , while k > 0 aggregates features from k nodes away .
+A GAT layer transforms an input X ?
+R N ?F to an output G ( X ) ?
+R N ?G as follows .
+Each K-hop GAT layer consists of P attention heads A ( p ) which incorporate k = 0 , ... , K ? 1 rounds of feature aggregation ( as shown in Fig. 1 ) across the graph as A ( p ) ( X ; S ) = K?1 k=0 ( E S ) k XA ( p ) k G ( X ) = 1 P P p=1 ? A ( p ) ( X ; S ) , ( 1 ) where the { A ( p ) k } K?1 k=0 are R F ?G linear feature transforms and ?(. ) is a non-linear activation function .
+The values of the N ? N attention matrix E are computed over X as [ E ] ij = exp ( LeakyReLU ( e ij ) ) k?N
+i exp ( LeakyReLU ( e ik ) ) e ij = ( x i ) Q ( p ) x j , ( 2 ) where N i are the neighbouring nodes of node v i , and Q ( p ) are trainable F ?
+F matrices used in computing attention .
+In this way a GAT layer aggregates features selectively by assigning dynamic weights to graph edges based on the input node features .
+GATs are formed as a cascade of L GAT layers G , each with its own multi-headed graph attention mechanisms A p .
+At time t , the GAT transforms a set of input features X ( 0 ) t to a set of output features X ( L ) t as X ( ) t = G ( X ( ?1 ) t ) for = 1 , . . . , L ( 3 ) Note that in this paper , we set output dimension G = F for all GAT layers such that the GAT output features have the same dimensions as the input .
+Dialogue State Tracking with GPT - 2 and Graph Neural Networks
+We take a three -step approach to incorporating GNNs into GPT - 2 for dialogue state tracking ( see Fig 2 ) .
+At each turn we first present GPT - 2 with the dialogue history to generate features for all possible domain-slots and values in the ontology .
+These features are then fed into a GAT which captures relationships amongst domain-slots and values .
+The features produced at the output layer of the GAT are then incorporated into a second application of GPT - 2 which performs the actual prediction of the dialogue state values .
+Domain-Slot and Value Embeddings
+The first step is to extract features of both domainslots and values in the ontology .
+The dialogue history H t at turn t is a concatenation of user utterances and system responses , separated with special tokens : H t = 'u t < SYS > s t?1 < USR > u t?1 ... < SYS > s 1 < USR > u 1 '. From the ontology , we construct a string for all domain-slots as follows : F = ' hotel name < hotel-name > taxi departure < taxi- departure >...' .
+The string F contains all domain-slots in the ontology and does not change with samples .
+The domain-slots appear in a fixed order and each is preceded by a brief text description to provide context to GPT - 2 in producing features .
+To produce domain-slot features at dialogue turn t , the string ' H t < BOC >
+F ' is presented to GPT - 2 .
+Since the domain-slots are fixed and appear in a prescribed order in F , there is a straightforward link between the positions of domain-slots in the input and their embeddings in the GPT - 2 output layer .
+For example , the feature for < taxi- depature > can be found in the same position of the output embedding sequence as that domain-slot appears in the input , as shown by arrows in Fig.
+2 x : Preextraction .
+To produce embeddings for all possible values in the ontology at turn t the embedding layer of the GPT - 2 is used .
+Therefore , this representation is fixed from turn to turn until the embedding layer is updated in back propagation .
+Some values may consist of multiple tokens , e.g. ' Demo Hotel ' for the domain-slot < hotel-name >.
+A single vector for each multi-token value is found by averaging the features of each token .
+At dialogue turn t , the domain-slot features and the value features are gathered into matrices X s t ?
+R Ns?h and X v t ?
+R Nv?h , where there are N v values and N s domain-slots , and h is the size of the hidden layer of the GPT -2 Transformer .
+Inter-slot Information Exchange
+We will use two types of GATs : DSGraph and DSVGraph .
+In DSGraph , there are N s nodes , each representing a domain-slot pair .
+All nodes are connected to each other to allow nodes to exchange features as shown in Fig. 2 y ( a ) .
+In DSVGraph , there are N s domain-slot nodes and N v value nodes , each of the latter representing a possible value .
+If a value is in the candidate set of a domain-slot pair , then the corresponding value node and domain-slot node are connected , as shown in Fig. 2 y ( b ) .
+The domain-slot nodes are not otherwise connected .
+With features for domain-slots and values extracted in Sec. 4.1 , we use GATs to transform the features to capture the relationships between domain-slots and values .
+The inputs to the GATs are X ( 0 ) t = X s t ?
+R Ns?h in DSGraph , X s t || X v t ? R ( Ns +Nv ) ?h in DSVGraph .
+We use only the resulting domain-slot embeddings after graph operations , and thus we extract the first N s items of the output tensor X ( L ) t and gather them into a matrix G t ? R Ns?h .
+Dialog State Prediction Finally , we present the string ' H t < BOS >' to the GPT - 2 model to predict the dialogue state .
+The model is required to generate output Y t , a sequence of tokens of serialized domain-slot pairs and corresponding values : Y t = ' hotel name Demo Hotel < SEP > taxi departure 18 : 00 < SEP > ... < EOS >'.
+The model is trained to generate the name of each domain-slot , its predicted value , and finally a separation token < SEP > before proceeding to the prediction of the next domain-slot .
+Note that the value ' none ' is generated for empty / not mentioned domain-slot values and thus all slots will be generated regardless of whether they have values .
+After producing values for all domain-slots , the model generates an < EOS > to end the generation process .
+In practice , we find that the model never omits any of the N s domain-slot pairs during generation , further confirming GPT - 2's ability to produce structured output .
+An example of input / output is at the bottom of Fig. 2 z : Generation .
+Decoding :
+In generation the model incorporates the GAT features G t [ i ] ?
+R h as shown by the pink arrows in Fig. 2 z : Generation .
+When predicting the value of the i th domain-slot ( in this example the domain-slot is hotel- name ) , the GPT - 2 features used for token decoding are concatenated with the domain-slot features G t [ i ] from the output of the GATs .
+The prediction of the value for each domainslot will incorporate the domain-slot features produced by the GATs .
+When predicting tokens that are not related to value predictions ( black arrows in the figure ) , an all - zero tensor is concatenated to keep consistency .
+The input dimension of the linear layer in decoding is extended to accommodate the GAT features in concatenation .
+Fine-tuning : Fine-tuning of GPT - 2 for Multi-WOZ is done in the usual way .
+Experiments
+We report dialogue state tracking performance on MultiWOZ 2.0 ( Budzianowski et al. , 2018 ) with its multi-domain goal-oriented dialogue conversations and annotations .
+For direct comparison to the previous literature , we use the same preprocessing as and Zhou and Small ( 2019 ) .
+Two metrics are used for evaluating the model performance : Slot Accuracy measures the ratio of successful slot value predictions among all the slots of each dialogue turn in ground -truth .
+Joint Goal Accuracy compares the predicted belief state to the ground truth at every dialogue turn , and the output is considered correct only if all the predicted slot values exactly match the ground truth values .
+Baseline Performance
+We take the performance of several recently published systems as points for comparison : TRADE , DST - Picklist ( Zhang et al. , 2019 ) , and SUMBT + LaRL .
+These models employ transfer learning , classification with a mixed strategy , and reinforcement learning , respectively .
+As discussed in Sec. 2 , we also compare our model to Graph - based DSTs : SOM - DST +SG , GCDST , and SST .
+In addition , we consider two models as most relevant baselines , and we have attempted to reproduce their results for inclusion here 1 : DSTQA *
+( Zhou and Small , 2019 ) 2 : A bi-LSTM - based DST model utilizing a graph attention network to capture inter-slot relationships , which motivates the architecture introduced in this paper .
+SimpleTOD * ( Hosseini - Asl et al. , 2020 ) 3 : A GPT - 2 - based dialogue state tracker , which is similar to our base model , without graph enhancement .
+Training Regimes
+We investigate two training scenarios .
+The first approach is fully supervised at the level of individual turns , following the common practice ( e.g. Hosseini - Asl et al . ( 2020 ) ) .
+The second approach is Sparsely - Supervised Training , in which training is at the entire dialogue level , i.e. including only the dialogue state labels at the final turn without their intermediate states during the session , but with the previous dialogue turns included as history ( shown in Fig. 3 ) .
+The two components , GPT - 2 and GAT , are jointly trained .
+More details are in Appendix A.2 .
+Under sparse supervision , the training set is reduced from 54 , 971 turns to only last- turn samples 7 , 884 ( 14.3 % ) ; validation utilizes only last-turn samples , as well .
+Note that evaluation is performed with the standard , Multi-WOZ test set ( 7 , 372 samples ) for models trained under either regime .
+For comparison , we produced the results of DSTQA * and SimpleTOD * using the same last-turn samples .
+These are denoted with a " - LastTurn " suffix as in Table 1 b .
+We denote the configurations of GAT with " L{ _ } P{_}K{_}-[ Graph_Type ] " format , filling in number of layers L , number of heads per layer P , and number of hops K .
+DST Performance
+We first compare our model with baseline systems .
+As shown in Table 1a , L0P0K0 - NoGraph , which has no graph enhancement , achieves higher joint accuracy than most of the baseline models including the graph - based models such as GCDST and SOM - DST + SG , setting a strong baseline for further improvement to GPT - 2 - based generation .
+L4P4K2 -* models , with multiple GAT layers to encourage inter-slot information exchange , show significantly better performance .
+L4P4K2 -DSGraph achieves 54.86 % in joint accuracy , highest amongst these systems .
+In the sparsely - supervised scenario , the performance of the baseline GPT - 2 model drops to 48.07 % joint accuracy ( L0P0K0 - NoGraph , Table 1 b ) .
+Incorporating GAT in the system ( L4P4K2 - DSGraph - LastTurn ) achieves 50.43 % in joint accuracy , leading to a 3 % degradation relative to L0P0K0 - NoGraph fine -tuned with the full set of annotated dialogue turns .
+By contrast , DSTQA * - LastTurn , which utilizes bidirectional LSTM modules , exhibits a sharp performance decrease to 22.88 % joint accuracy ; we hypothesize this that the LSTM - based model can not annotate short dialogue samples well having been fine - tuned only with the last-turn samples which have relatively longer dialogue history and annotations .
+The sparsely supervised scenario further shows the value of augmenting GPT - 2 with representations derived from GATs ( Table 1 b ) .
+Relative to the base system ( Model 3 , Table 1 b ) , L1P1K2-DSVGraph -LastTurn ( Model 5 ) improves accuracy by incorporating GAT representations in which slot nodes depend on only value nodes .
+When the number of hops is increased , slot nodes influence each other via intermediate value nodes , yielding further improvement ( Models 6,8 ) .
+However , multiple GAT layers ( L = 4 , P = 4 , Models 7,8,9 , Table 1 b ) do not differ much in performance , showing that dependencies between slots nodes and values can be captured with sufficient layers ( thus effectively more hops of information exchange ) and attention heads .
+In particular , although the number of hops ( K ) is relatively small , feature passing between distant nodes can occur from layer to layer .
+We summarize our findings as below : ( 1 ) Through modelling values nodes , the DSVGraph is able to capture dependencies between slots that share values , resulting in a slight improvement over the DSGraph when the number of layers / hops are limited ( Table 1 b Model 5 , 6 v.s. Model 4 ) .
+( 2 ) With sufficient layers of GATs , DSGraph compensates for the lack of explicit value nodes and matches and sometimes outperforms the performance of DSVGraph , but this is at the cost of additional modelling complexity ( comparing Table 1 b Model 8 , 9 and Model 7 ) .
+Understanding these trade- offs will be helpful in applying these models in larger , more complex domains .
+In the following sections ( Sec. 6.1 , 6.2 , and 6.3 ) , we investigate how graph modules improve the performance of the base fine - tuned GPT - 2 model .
+GATs capture inter-slot dependencies
+The accuracy of each domain-slot of several models is shown in Fig.
+4 .
+The horizontal axis follows the serialization order of domain-slot pairs in the model output .
+As discussed in Sec. 1 , when predicting < restaurant - area > ( position 14 ) , the causal GPT - 2 model is able to condition on what has been predicted for < attraction - area > ( position 1 ) , but not the other direction , possibly incurring decreased performance for earlier slots .
+After introducing graph modules this effect of causality is mitigated .
+For example , as shown in Fig. 4 , the slot accuracy of " attraction " domain is always boosted by graph- enhanced models ( green and yellow ) .
+We further note that these graph-enhanced models perform generally better in those intuitively correlated slots ( e.g. < hotel-pricerange > and < restaurant - pricerange > ) .
+We conclude that graph- based inter-slot dependencies are beneficial to such GPT - 2 - based generation models .
+GATs improve the predictions at intermediate dialogue turns
+It is important to analyze what impact the last-turn training brings to the predictions at intermediate turns , and how graph modules improve them .
+A dialogue session might run for 3 - 4 turns to complete a single task , or up to 18 turns to complete a complex task ( e.g. booking a train , taxi , and hotel in the same session ) .
+Starting from 0 % ( the first turn ) to 100 % ( the last turn ) , we report the prediction accuracy of all slots as the dialogue progresses .
+As shown in Fig. 5 , the baseline model trained with all training samples ( L4P4K2 - DSGraph ) shows a downward trend in prediction accuracy as the dialogue progresses .
+This agrees with our observation that as dialogue progresses , the domain-slot prediction task becomes larger and more complex ( e.g. time - related slots such as taxi- arriveBy are known to be difficult and tend to appear late in a session ) .
+Comparing L4P4K2 -DSGraph ( blue ) and L0P0K0 - NoGraph - LastTurn ( yellow ) , the performance throughout the dialogue sessions lags by around 5 % in joint accuracy .
+When graph modules are introduced in models such as L4P4K2 - DSGraph -LastTurn and L4P4K2 -DSVGraph - LastTurn , the system performance in the latter half of the dialogue degrades much less .
+For instance , when towards the end of dialogues ( progress higher than 80 % ) , the difference in joint accuracy of L4P4K2 - DSGraph ( blue ) and L4P4K2 - DSGraph - LastTurn ( brown ) is less than 2 % .
+Graph-enhanced models significantly improve the performance in the latter halves of dialogues .
+A possible reason is that , as the dialogue proceeds , more values are specified and correlated domain-slots appear together more frequently , which enables graph modules to exploit the dependencies between slots .
+GATs improve the predictions of correlated slots
+We investigate these inter-slot dependencies and to what extent they affect our graph models .
+For every pair of value candidates under two distinct slots ( e.g. < hotel - people >:3 and < restaurant - people >:3 form a value pair ) , we measure the correlation of the two values using Jaccard similarity coefficient ( Zhang and Srihari , 2003 ) .
+Jaccard score of two sets C 1 and C 2 is defined as : For each value pair , we flag their occurrences in the turn - level test set samples where both of their corresponding slots have non-empty annotations .
+The Jaccard score is then computed from the cooccurrences of the two values .
+Further details are given in Appendix A.3 .
+Intuitively , the score indicates whether the two values in the pair tend to appear together or not , which is a suitable measurement for value-level dependencies , at the same time bridging the slots to which they belong .
+Note that these scores are objective values derived from the test set , without the engagement of any model .
+Fig. 6 shows value pairs with their Jaccard scores from the test set annotations .
+There is clear evidence of dependencies in slots across domains .
+For example , < restaurant - pricerange > and < hotel- pricerange > are bridged by their values ( cheap and expensive ) with high Jacard scores ( highlighted in green ) .
+The values of < restaurant - area > also aligns well with those of < hotel - area > ( in blue ) .
+J( C 1 , C 2 ) = | C 1 ?C 2 | |C 1 ?C 2 | .
+We run three models ( as shown in the legend of Fig. 7 ) and for each value pair obtain the average pair accuracy ( the success rate of correctly generating both values ) .
+We then plot the change in average pair accuracy ( relative to baseline values ) with the increasing Jaccard coefficient in Fig.
+7 . Compared to the baseline without GATs ( blue ) , the graph- enhanced models ( yellow and green ) perform better when predicting values that have high Jaccard scores .
+Specifically , L4P4K2-DSVGraph -LastTurn has a 0.15 % boost when Jaccard is around 0.2 , and it further improves the performance to 0.6 % at the Jaccard value of 0.88 .
+Therefore , we can conclude that the graph modules enable the models to exploit the inter-slot dependencies and learn better in those highly correlated values .
+Conclusion
+We presented a novel hybrid architecture that augments GPT - 2 with representations derived from Graph Attention Networks in such a way to allow causal , sequential prediction of slot values .
+Our analysis shows that these graph-enhanced models mitigate some of the issues that arise in prediction with left-to - right generative models .
+We also demonstrate that our model can exploit dependencies among domain-slot values , improving accuracy for systems trained with weak supervision .
+Figure 1 : 1 Figure 1 : Illustration of GATs .
+k = 0 is selfconnection , and k ?
+1 passes the features of other nodes to the node being evaluated .
+The values on the links are attention values , which weight the passing features .

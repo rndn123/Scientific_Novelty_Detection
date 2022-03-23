@@ -1,0 +1,120 @@
+title
+Neural Machine Translation with Recurrent Attention Modeling
+abstract
+Knowing which words have been attended to in previous time steps while generating a translation is a rich source of information for predicting what words will be attended to in the future .
+We improve upon the attention model of Bahdanau et al . ( 2014 ) by explicitly modeling the relationship between previous and subsequent attention levels for each word using one recurrent network per input word .
+This architecture easily captures informative features , such as fertility and regularities in relative distortion .
+In experiments , we show our parameterization of attention improves translation quality .
+Introduction
+In contrast to earlier approaches to neural machine translation ( NMT ) that used a fixed vector representation of the input ( Sutskever et al. , 2014 ; Kalchbrenner and Blunsom , 2013 ) , attention mechanisms provide an evolving view of the input sentence as the output is generated ( Bahdanau et al. , 2014 ) .
+Although attention is an intuitively appealing concept and has been proven in practice , existing models of attention use contentbased addressing and have made only limited use of the historical attention masks .
+However , lessons from better word alignment priors in latent variable translation model suggests value for modeling attention dependent of content .
+A challenge in modeling dependencies between previous and subsequent attention decisions is that source sentences are of different lengths , so we need models that can deal with variable numbers of predictions across variable lengths .
+While other work has sought to address this problem ( Cohn et al. , 2016 ; Tu et al. , 2016 ; Feng et al. , 2016 ) , these models either rely on explicitly engineered features ( Cohn et al. , 2016 ) , resort to indirect modeling of the previous attention decisions as by looking at the content - based RNN states that generated them ( Tu et al. , 2016 ) , or only model coverage rather than coverage together with ordering patterns ( Feng et al. , 2016 ) .
+In contrast , we propose to model the sequences of attention levels for each word with an RNN , looking at a fixed window of previous alignment decisions .
+This enables us both to learn long range information about coverage constraints , and to deal with the fact that input sentences can be of varying sizes .
+In this paper , we propose to explicitly model the dependence between attentions among target words .
+When generating a target word , we use a RNN to summarize the attention history of each source word .
+The resultant summary vector is concatenated with the context vectors to provide a representation which is able to capture the attention history .
+The attention of the current target word is determined based on the concatenated representation .
+Alternatively , in the viewpoint of the memory networks framework ( Sukhbaatar et al. , 2015 ) , our model can be seen as augmenting the static encoding memory with dynamic memory which depends on preceding source word attentions .
+Our method improves over plain attentive neural models , which is demonstrated on two MT data sets .
+Model
+Neural Machine Translation NMT directly models the condition probability p( y|x ) of target sequence y = {y 1 , ... , y T } given source sequence x = {x 1 , ... , x S } , where x i , y j are tokens in source sequence and target sequence respectively .
+Sutskever et al. ( 2014 ) and Bahdanau et al . ( 2014 ) are slightly different in choosing the encoder and decoder network .
+Here we choose the RNNSearch model from ( Bahdanau et al. , 2014 ) as our baseline model .
+We make several modifications to the RNNSearch model as we find empirically that these modification lead to better results .
+Encoder
+We use bidirectional LSTMs to encode the source sentences .
+Given a source sentence {x 1 , ... , x S } , we embed the words into vectors through an embedding matrix W S , the vector of i-th word is W S x i .
+We get the annotations of word i by summarizing the information of neighboring words using bidirectional LSTMs : ? ? h i = ? ? ? LSTM ( ? ? ? h i?1 , W S x i ) ( 1 ) ? ? h i = ? ? ? LSTM ( ? ? ? h i+1 , W S x i ) ( 2 ) The forward and backward annotation are concatenated to get the annotation of word i as h i = [ ? ? h i , ? ? h i ] .
+All the annotations of the source words form a context set , C = {h 1 , ... , h S } , conditioned on which we generate the target sentence .
+C can also be seen as memory vectors which encode all the information from the source sequences .
+Attention based decoder
+The decoder generates one target word per time step , hence , we can decompose the conditional probability as log p( y | x ) = j p(y j |y <j , x ) .
+( 3 ) For each step in the decoding process , the LSTM updates the hidden states as s j = LSTM ( s j?1 , W T y j?1 , c j?1 ) . ( 4 )
+The attention mechanism is used to select the most relevant source context vector , e ij =v T a tanh ( W a h i + U a s j ) , ( 5 ) ? ij = exp( e ij ) i exp( e ij ) , ( 6 ) c j = i ? ij h i . ( 7 ) This can also seen as memory addressing and reading process .
+Content based addressing is used to get weights ? ij .
+The decoder then reads the memory as weighted average of the vectors .
+c j is combined with s j to predict the j-th target word .
+? ? h i ? ? h i ? ? h i ? ?
+h i dij dij ? ? sj sj static memory dynamic memory + ? ? ?i, j?1 ?i,j?1 ?i?k , j?1 ?i?k, j?1 ?i+k, j?1 ?i+k , j?1 ? ? ?i , j?2 ?i , j?2 ?i+k , j?2 ?i+k, j?2 ?i?k, j?2 ?i?k , j?2 ? ? ?i,1 ?i,1 ?i?k,1 ?i?k,1 ?i+ k,1 ?i+ k,1 ? ? attention matrix yj?2 yj?2 y1 y1 yj?1 yj?1 xi xi xi+ k xi+k xi? k xi?k
+Figure 1 : Model diagram
+In our implementation we concatenate them and then use one layer MLP to predict the target word : sj = tanh ( W 1 [ s j , c j ] + b 1 ) ( 8 ) p j =softmax ( W 2 sj ) ( 9 )
+We feed c j to the next step , this explains the c j?1 term in Eq. 4 . The above attention mechanism follows that of Vinyals et al . ( 2015 ) .
+Similar approach has been used in ( Luong et al. , 2015 a ) .
+This is slightly different from the attention mechanism used in ( Bahdanau et al. , 2014 ) , we find empirically it works better .
+One major limitation is that attention at each time step is not directly dependent of each other .
+However , in machine translation , the next word to attend to highly depends on previous steps , neighboring words are more likely to be selected in next time step .
+This above attention mechanism fails to capture these important characteristics .
+In the following , we attach a dynamic memory vector to the original static memory h i , to keep track of how many times this word has been attended to and whether the neighboring words are selected at previous time steps , the information , together with h i , is used to predict the next word to select .
+Dynamic Memory
+For each source word i , we attach a dynamic memory vector d i to keep track of history attention maps .
+Let ?ij = [ ? i? k , j , ...? i+ k , j ] be a vector of length 2 k + 1 that centers at position i , this vector keeps track of the attention maps status around word i , the dynamic memory d ij is updated as follows : d ij = LSTM ( d i , j?1 , ?i , j?1 ) , ?i ( 10 )
+The model is shown in Fig. 1 .
+We call the vector d ij dynamic memory because at each decoding step , the memory is updated while h i is static .
+d ij is assumed to keep track of the history attention status around word i .
+We concatenate the d ij with h i in the addressing and the attention weight vector is calculated as : e ij =v T a tanh ( W a [ h i , d ij ] + U a s j ) , ( 11 ) ? ij = exp( e ij ) i exp( e ij ) , ( 12 ) c j = i ? ij h i . ( 13 )
+Note that we only use dynamic memory d ij in the addressing process , the actual memory c j that we read does not include d ij .
+We also tried to get the d ij through a fully connected layer or a convolutional layer .
+We find empirically LSTM works best .
+Experiments & Results
+Data sets
+We experiment with two data sets : WMT English - German and NIST Chinese-English .
+? English - German
+The German-English data set contains Europarl , Common Crawl and News Commentary corpus .
+We remove the sentence pairs that are not German or English in a similar way as in ( Jean et al. , 2015 ) .
+There are about 4.4 million sentence pairs after preprocessing .
+We use new-stest2013 set as validation and newstest 2014 , newstest2015 as test .
+?
+Chinese-English
+We use FIBS and LDC2004T08 Hong Kong News data set for Chinese -English translation .
+There are about 1.5 million sentences pairs .
+We use MT 02 , 03 as validation and MT 05 as test .
+For both data sets , we tokenize the text with tokenizer .
+perl .
+Translation quality is evaluated in terms of tokenized BLEU scores ( Papineni et al. , 2002 ) with multi-bleu.perl .
+Model
+Experiments configuration
+We exclude the sentences that are longer than 50 words in training .
+We set the vocabulary size to be 50 k and 30 k for English - German and Chinese -English .
+The words that do not appear in the vocabulary are replaced with UNK .
+For both RNNSearch model and our model , we set the word embedding size and LSTM dimension size to be 1000 , the dynamic memory vector d ij size is 500 .
+Following ( Sutskever et al. , 2014 ) , we initialize all parameters uniformly within range [ - 0.1 , 0.1 ] .
+We use plain SGD to train the model and set the batch size to be 128 .
+We rescale the gradient whenever its norm is greater than 3 .
+We use an initial learning rate of 0.7 .
+For English - German , we start to halve the learning rate every epoch after training for 8 epochs .
+We train the model for a total of 12 epochs .
+For Chinese - English , we start to halve the learning rate every two epochs after training for 10 epochs .
+We train the model for a total of 18 epochs .
+To investigate the effect of window size 2 k + 1 , we report results for k = 0 , 5 , i.e. , windows of size 1 , 11 .
+Results
+The results of English -German and Chinese-English are shown in Table 2 and 3
+The improvement is more obvious for Chinese -English .
+Even only considering coverage property improves by 0.6 .
+Using a window size of 11 improves by 1.5 .
+Further using UNK replacement trick improves the BLEU score by 0.5 , this improvement is not as significant as English - German data set , this is because English and German share lots of words while Chinese and English do n't .
+Conclusions & Future Work
+In this paper , we propose a new attention mechanism that explicitly takes the attention history into consideration when generating the attention map .
+Our work is motivated by the intuition that in attention based NMT , the next word to attend is highly dependent on the previous steps .
+We use a recurrent neural network to summarize the preceding attentions which could impact the attention of the current decoding attention .
+The experiments on two MT data sets show that our method outperforms previous independent attentive models .
+We also find that using a larger context attention window would result in a better performance .
+For future directions of our work , from the static-dynamic memory view , we would like to explore extending the model to a fully dynamic memory model where we directly update the representations for source words using the attention history when we generate each target word .
+Table 2 : 2 English - German results .
+test1 test2
+Table 3 : 3 respectively .
+src
+She was spotted three days later by a dog walker trapped in the quarry ref Drei Tage sp?ter wurde sie von einem Spazierg ?nger im Steinbruch in ihrer misslichen Lage entdeckt baseline Sie wurde drei Tage sp?ter von einem
+Hund entdeckt . our model Drei Tage sp?ter wurde sie von einem Hund im Steinbruch gefangen entdeckt . src
+At the Metropolitan Transportation Commission in the San Francisco Bay Area , officials say Congress could very simply deal with the bankrupt Highway Trust Fund by raising gas taxes . ref Bei der Metropolitan Transportation Commission f?r das Gebiet der San Francisco Bay erkl?rten Beamte , der Kongress k?nne das Problem des bankrotten Highway Trust Fund einfach durch Erh?hung der Kraftstoffsteuer lsen . baseline Bei der Metropolitan im San Francisco Bay Area sagen offizielle Vertreter des Kongresses ganz einfach den Konkurs Highway durch Steuererh ?hungen . our model Bei der Metropolitan Transportation Commission in San Francisco Bay Area sagen Beamte , dass der Kongress durch Steuererh ? hungen ganz einfach mit dem Konkurs Highway Trust Fund umgehen k?nnte . Chinese -English results .
+Table 1 : English -German translation examples Model MT 05 RNNSearch 27.3 RNNSearch + window 1 27.9 RNNSearch + window 11 28.8 RNNSearch + window 11 + UNK replace 29.3
+We compare our results with our own baseline and with results from related works if the experimental setting are the same .
+From Table 2 , we can see that adding dependency improves RNNSearch model by 0.5 and 0.7 on newstest2014 and newstest2015 , which we denote as test1 and test2 respectively .
+Using window size of 1 , in which coverage prop - erty is considered , does not improve much .
+Fol - lowing ( Jean et al. , 2015 ; Luong et al. , 2015 b ) , we replace the UNK token with the most proba- ble target words and get BLEU score of 22.1 and 25.0 on the two data sets respectively .
+We com- pare our results with related works , including ( Lu - ong et al. , 2015 a ) , which uses four layer LSTM and local attention mechanism , and ( Costa-juss ?
+and Fonollosa , 2016 ; Chung et al. , 2016 ) , which uses character based encoding , we can see that our model outperform the best of them by 0.8 and 1.6 BLEU score respectively .
+Table 1 shows some English - German translation examples .
+We can see the model with dependent attention can pick the right part to translate better and has better transla - tion quality .

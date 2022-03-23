@@ -1,0 +1,258 @@
+title
+Zero - Shot Information Extraction as a Unified Text-to- Triple Translation
+abstract
+We cast a suite of information extraction tasks into a text-to-triple translation framework .
+Instead of solving each task relying on taskspecific datasets and models , we formalize the task as a translation between task -specific input text and output triples .
+By taking the taskspecific input , we enable a task - agnostic translation by leveraging the latent knowledge that a pre-trained language model has about the task .
+We further demonstrate that a simple pretraining task of predicting which relational information corresponds to which input text is an effective way to produce task -specific outputs .
+This enables the zero-shot transfer of our framework to downstream tasks .
+We study the zero-shot performance of this framework on open information extraction ( OIE2016 , NYT , WEB , PENN ) , relation classification ( FewRel and TACRED ) , and factual probe ( Google - RE and T-REx ) .
+The model transfers non-trivially to most tasks and is often competitive with a fully supervised method without the need for any task -specific training .
+For instance , we significantly outperform the F1 score of the supervised open information extraction without needing to use its training set .
+1
+Introduction Information extraction refers to the task of automatically extracting structured information from unstructured resources , benefiting a wide range of applications such as information retrieval and knowledge base population .
+Information extraction covers a great variety of tasks in natural language processing ( NLP ) , such as open information extraction and relation classification .
+For example , given a sentence " Born in Glasgow , Fisher is a graduate of the London Opera Centre " , open information extraction seeks to extract ( Fisher ; Born in ; Glasgow ) , and " city_of_birth " is predicted as the relation between a given pair of entities " Fisher " and " Glasgow " for relation classification .
+Most current approaches design task -specific pipelines for different information extraction tasks .
+Yet , this presents two limitations for information extraction .
+First , since most of the approaches employ a task - specific model , it is difficult to leverage a single pipeline to solve many tasks or adapt a model trained on one task to another without changing any task -specific modules .
+Second , those supervised state - of - the - arts are trained on task -specific corpora to predict from a fixed set of task -specific categories , which restricts their usability since additional labeled data is needed to specify any other classes .
+Such task -specific labeled data is scarce in information extraction .
+For example , the largest training set for open information extraction contains only 3,200 sentences ( Stanovsky et al. , 2018 ) .
+Motivated by this , we aim to solve information extraction tasks within the same framework in a task - agnostic setting .
+In this paper , we propose a unified framework for information extraction .
+The basic idea is to treat every information extraction problem as a " text-totriple " problem , i.e. , translating input text to output triples .
+We successfully apply our framework to three information extraction tasks , greatly improving zero-shot performance on many datasets and sometimes even reaching competitiveness with the current state - of - the - art fully supervised approaches .
+Figure 1 shows how different information extraction tasks are handled within our framework .
+The framework encodes task priors in the input text and decodes the output triples to finally produce task predictions .
+We achieve this by leveraging the same translation process on all tasks , the only difference among tasks being the input encoding .
+This is in contrast with previous approaches using task -specific models and datasets .
+The design of the common translation module for all tasks is important : by leveraging the task priors encoded in the input text , we enable the zero-shot transfer of the general knowledge that a pre-trained LM has about the task .
+We demonstrate that a simple pretraining task of predicting which relational triple goes with which text on a task - agnostic corpus further enhances the zero-shot capabilities on all tasks .
+To the best of our knowledge , this is the first framework to handle a variety of information extraction tasks in a zero-shot setting .
+Our contributions are summarized below .
+1 . We introduce DEEPEX , a unified framework that solves information extraction tasks in a zero-shot setting .
+We cast information extractions as text - to- triple problems by incorporating the task priors in the input text and translating the input text to triples as output .
+2 . We apply our framework to ( i ) open information extraction , ( ii ) relation classification , and ( iii ) factual probe .
+In all tasks , we achieve competitive zero-shot performance to the current state - of - the - art including the fully supervised methods , and we achieve new state - ofthe - art performance on open information extraction ( OIE2016 , WEB , NYT , and PENN ) and factual probe ( T- REx ) .
+For instance , our zero-shot approach significantly outperforms the supervised open information extraction by averaging 37.5 points in F1 .
+3 . We also show that our framework delivers more interpretable results while achieving comparable performance on all tasks , thanks to the transparency of the text- to- triple translation .
+Method
+We cast a suite of information extraction tasks into a text-to-triple translation framework .
+As shown in Figure 1 , input and output are designed in a format that is appropriate for a given task .
+The translation process takes the input text and produces triples as output .
+The decoding step generates task predictions from the output .
+In this section , we describe the input and output format , the translation , and the decoding process .
+We use open information extraction ( OIE ) as a running example in this section .
+For OIE , we are given a sentence and asked to extract triples .
+Input and Output Format
+The input is a NP - chunked sentence , and the output is a set of triples .
+The NPs are encoded as task priors in the input .
+Below is an example .
+Input Born in Glasgow NP , Fisher NP is a graduate of the London Opera Centre NP . Output ( Fisher ; Born in ; Glasgow ) , ( Fisher ; is a graduate of ; London Opera Centre ) .
+NP denotes the noun phrase .
+Zero - Shot Translation
+We aim to translate the above input text to output triples .
+Information extraction tasks lack highquality training data , therefore training an end-toend supervised approach ( Paolini et al. , 2021 ) is not feasible .
+Pre-trained language models ( LM ) ( e.g. , BERT ( Devlin et al. , 2019 ) and GPT ( Brown et al. , 2020 ) ) have demonstrated their zero-shot capabilities in a wide range of NLP tasks , thanks to the general information that they know about the tasks .
+We therefore propose a zero-shot translation process consisting of two steps : generating and ranking , as shown in Figure 2 .
+The generating stage produces general information about the task via pre-trained LMs , and the ranking stage looks for specific information about the task via a ranking model pre-trained on a task - agnostic corpus .
+Generating
+The generating stage produces a set of candidate triples that contain general information about the task from pre-trained LMs .
+OIE is Figure 2 : Summary of our approach .
+The framework encodes task - relevant information in the input text and decodes the output triples to produce task predictions .
+The zero-shot translation first generates general information that a pre-trained language model has about the input , then ranks to find the output triples of interest to the task via a ranking model pre-trained on a task - agnostic relational corpus .
+formulated as extracting a set of sequences in the input that are generally relevant to an argument pair ( i.e. , NP pair ) .
+We particularly use the attention scores in pre-trained LMs to measure the relevance between the sequence and the argument pair .
+We frame the process as a search problem .
+Given an argument pair ( e.g. , " Fisher " and " London Opera Centre " ) , we aim to search for the sequences ( e.g. , " is a graduate of " ) with the largest attention scores connecting the pair .
+To compute a score for every possible sequence is computationally expensive , especially when the sequence length is large .
+Therefore the exhaustive search is intractable .
+We use beam search , which is an approximate strategy to explore the search space efficiently .
+Beam search maintains the k-best candidates .
+This means the time cost of beam search does not depend on the sequence length but the size of the beam and the average length of the candidates .
+The beam search starts with a task-specific start token [ S ] .
+At each step , beam search simply selects top-k next tokens with the largest attention scores , and just keeps k partial candidates with the highest scores , where k is the beam size .
+When a candidate produces a taskspecific end token [ E ] , the candidate is complete .
+For OIE , [ S ] and [ E ] refer to the argument pair , e.g , ( [ S ] is " Fisher " , and [ E ] refers to " London Opera Centre " ) .
+The above traditional beam search only allows searching sequences between [ S ] and [ E ] .
+To adapt beam search to produce more triples , we allow searching sequences : ( i ) left to both [ S ] and [ E ] , and ( ii ) right to both [ S ] and [ E ] .
+This helps to improve the recall of the candidates .
+For example , a candidate triple ( Fisher ; Born in ; Glasgow ) is generated by looking at " Born in " on the left in the above example .
+We also need to enable bidirectionality by running the search in both directions ( left to right and right to left ) following Wang et al . ( 2020 ) .
+For OIE , we implement this by allowing every argument as both [ S ] and [ E ] regardless of its position in the input .
+For example , " Fisher " is [ S ] in ( Fisher ; Born in ; Glasgow ) given " Glasgow " appears before " Fisher " in the input .
+Ranking
+The ranking stage finds triples that are of interest to the task via a ranking model pretrained on a task - agnostic relational corpus .
+For OIE , the generating stage produces k candidate triples for every argument pair .
+However , the sequences in the candidates are relevant to the argument pairs , not just in the relational aspect .
+The ranking stage aims to find the triples that specifically express the relational information between the argument pair , which is important for OIE .
+We propose a contrastive model to rank the triples as illustrated in Figure 2 . Given a batch of N ( sentence , triple ) pairs , the model is trained to predict which of the N 2 possible ( sentence , triple ) pairs across a batch actually appeared .
+The model learns a joint embedding space by training a base encoder BERT .
+The input sequence of the BERT encoder is in the format : [ CLS ] sentence [ SEP ] triple [ SEP ] , which follows the standard input format of BERT .
+The goal is to maximize the cosine similarity of the sentence and triple embeddings of the N true pairs in the batch while minimizing the cosine similarity of the embeddings of the remaining N 2 ?
+N incorrect pairs .
+We optimize a cross-entropy loss over these similarity scores .
+The loss function for a positive pair is defined by l in Eq. 1 . lsentence = ? log exp(sim ( ui , vi ) ) N k=1 exp( sim ( ui , v k ) ) l triple = ? log exp(sim ( ui , vi ) ) N k=1 exp( sim ( u k , vi ) ) l = lsentence + l triple 2 ( 1 ) where sim ( u , v) = u v u v .
+For the i-th positive ( sentence , triple ) pair , u i and v i denote the sentence and triple embedding respectively .
+We take advantage of the pre-trained BERT BASE as the base encoder .
+We further simplify the standard contrastive learning framework by removing the projection layer between the representation and the contrastive embedding space .
+Neither the linear ( Radford et al. , 2021 ) nor non-linear ( Chen et al. , 2020 b ) projection is used .
+This is because sentences and triples are unified in the same embedding space of BERT .
+We train the model on T-REx ( Elsahar et al. , 2019 ) , which is a dataset of large-scale alignments between Wikipedia abstracts and Wikidata triples .
+T-REx contains a large number of sentence -triple pairs ( 11 million triples are paired with 6.2 million sentences ) .
+T-REx also reports an accuracy of 97.8 % of the pairs .
+The ranking model is task - agnostic .
+The ranking model takes the input in the same format for all tasks .
+At test time , the input text and each candidate triple from the generating stage is paired as the input to the ranking model .
+The candidate triples are ranked by the contrastive loss .
+We adopt the topn candidate triples returned by the ranking model as the output .
+n varies across different tasks 2 . For the above OIE example , the output is the top - 2 triples .
+Decoding
+Once the output triples are produced , we decode the output triples to obtain task predictions .
+For OIE , the output triples serve as task predictions directly .
+No specific decoding strategy is needed .
+Information Extraction Tasks
+Open Information Extraction
+The details are provided in Sec. 2 .
+Relation Classification
+For this task , we are given an input sentence with gold head and tail entities aiming to classify the relation type in a pre-defined category .
+2 Please refer to Appendix A for details .
+Input and Output Format
+The input is a sentence encoded with gold head and tail entities , and linked relation phrases .
+The output is a triple .
+An example is below .
+Input Born in place_of_birth Glasgow GOLD , Fisher GOLD is a graduate of the London Opera Centre .
+Output ( Fisher ; place_of_birth ; Glasgow ) .
+GOLD denotes the gold entity .
+The linked relation phrases annotated with Wikidata predicates , e.g. , Born in place_of_birth , are constructed as follows .
+We use an offline dictionary that maps the pre-defined relations to the Wikidata predicates .
+Such dictionaries are often provided either by Wikidata or third - parties .
+In all tested datasets , we can refer to either gold Wikidata or other high-quality resources for the dictionaries .
+We consider a sequence of tokens linked to a certain relation if the tokens are matched with the label or alias of the particular predicate in Wikidata .
+In the above example , " Born in " matches an alias of the Wikidata predicate " place_of_birth " .
+In practice , some Wikidata predicates do not provide as many aliases as others .
+Inspired by Angeli et al . ( 2015 ) , we follow the below procedure to add new aliases to resolve the imbalance issue :
+We first create a large candidate set of Wikipedia relations aligned to Wikidata predicates via distant supervision , then ask human annotators to filter out the wrong alignments .
+The remaining aligned relation phrases are added as new aliases of the Wikidata predicates .
+Relation - Constrained Translation
+For the beam search in the generating stage of Sec. 2.2 , [ S ] and [ E ] are the gold head and tail entities respectively .
+As the task requires the relations to be from a pre-defined category , using the beam search directly is not efficient .
+Allowing generating any token at each step might lead to sequences that do not match any pre-defined relations .
+Similar to De Cao et al . ( 2021 ) , we use constrained beam search , which only decodes tokens belonging to a linked relation phrase .
+We take the top-n triples from the ranking model as the output .
+Decoding Relation
+We take the Wikidata predicates of the output triples , and map the predicates back to the relations in the pre-defined category , which serve as the task predictions .
+In the above input / output example , " place_of_birth " is the Wikidata predicate in the output triple .
+It is mapped to " city_of_birth " in the pre-defined relation category of one of the widely used relation classification datasets , TACRED .
+" city_of_birth " hence serves as the task prediction .
+Factual Probe Given an input sentence with gold head entity name and relation name , the task aims to fill in the tail entity .
+Input and Output Format
+The input is encoded as a NP - chunked sentence with gold head entity candidates and linked relation phrases .
+The output is a triple .
+An example is below .
+Input Born in place_of_birth Glasgow NP , Fisher GOLD / NP is a graduate of the London Opera Centre NP . Output ( Fisher ; place_of_birth ; Glasgow ) .
+GOLD / NP denotes the noun phrase that matches the gold head entity .
+Born in place_of_birth represents a linked relation phrase annotated with a Wikidata predicate which is constructed in the same way as in Sec. 3.2 . Entity -Constrained Translation
+For the beam search , [ S ] and [ E ] are the gold head entity candidate and linked relation phrase respectively .
+Similar to the relation classification , we also constrain the search to generate possible tail entity sequences .
+We assume that NPs other than the gold head entity provide the set of candidate tail entities .
+To enable this , the search only decodes tokens belonging to the candidate NPs .
+In practice , we take the top - 1 triple from the ranking model as the output .
+Decoding Tail Entity
+We take the tail entities of the output triples as task predictions .
+For example , in the above output triple , " Glasgow " is decoded as the task prediction .
+Experiments
+In this section , we show that DEEPEX framework solves the different information extraction tasks considered and outperforms the task -specific stateof - the - art results on multiple datasets .
+To keep the framework as simple as possible , most settings and hyperparameters are shared across all experiments .
+For example , we use BERT LARGE ( Devlin et al. , 2019 ) for the beam search of the generating stage ( Sec. 2.2 ) for all tasks .
+The details of the experimental setup , datasets , and comparison methods are described in Appendix A .
+Main Results
+The results are shown in Table 1 .
+We achieve state - of - the - art results on the following datasets in a zero-shot setting even outperforming fully supervised methods : ( i ) Open information extraction ( OIE ) : OIE2016 , WEB , NYT , PENN ; and ( ii ) Factual probe : T-REx .
+The improvements are significant for OIE .
+In particular , the zero-shot DEEPEX outperforms RnnOIE by on average 37.5 in F1 and 44.6 in AUC , which is a supervised OIE system introduced in ( Stanovsky et al. , 2018 ) .
+Given no specific OIE training data is used by DEEPEX , the results are encouraging , suggesting that the zero-shot transfer of the latent knowledge that a pre-trained LM has about the tasks is successful .
+State- of- theart OIE performance is obtained without referring to task -specific training data , and such zero-shot ability is generalizable across multiple datasets .
+The PR curves for all OIE test sets are depicted in Figure 3 . Similar to the findings in Table 1 , overall , DEEPEX outperforms the comparison systems across all datasets .
+For each dataset , it provides a superior precision - recall curve .
+DEEPEX slightly outperforms the comparison methods on T-REx ( factual probe ) .
+The main reason is that the taskspecific LAMA ( Petroni et al. , 2020 ) can use the wrong memory of LMs to answer without needing the mention of the tail entity .
+An example expressing the triple ( Nicholas Liverpool ; place_of_death ; Miami ) is shown in Table 6 in Appendix .
+Thanks to the explainability and transparency of our framework , we can avoid such errors .
+The results demonstrate that the zero-shot DEEPEX generalizes well to different information extraction tasks .
+For other datasets , we obtain comparable performance with the best comparison methods .
+We highlight that our approach uses a unified framework that tackles all the tasks in a zero-shot way .
+Our framework is task - agnostic without task -specific training or module modification , which is in contrast with task -specific models trained on specific corpora as shown in Table 1 .
+For relation classification , all the comparison methods are fully supervised and trained on the corresponding largescale corpora .
+Our top - 1 zero-shot result serves as a lower bound , while top - 10 results indicate an ideal situation when an improved ranking model is available .
+Interestingly , on FewRel , a benchmark for few-shot relation classification , our top - 10 zeroshot performance sometimes is the best .
+While TACRED is not specifically a few-shot dataset , there are many label types that rarely appear in the training set ( Paolini et al. , 2021 ) .
+This shows the importance of zero-shot information extraction in low-resource regimes .
+The ranking model is based on BERT BASE .
+It is interesting to check whether larger pre-trained LMs ( e.g. , BERT LARGE ) are more capable of ranking .
+We plan to investigate this in the future .
+On the other factual probing dataset , Google - RE , we perform slightly worse compared to LAMAs .
+This is mainly due to the missing mentions of relations in the sentences as shown in Table 2 .
+Error Analysis
+To better understand the limitations of DEEPEX , we perform a detailed analysis of errors in its recall as DEEPEX lacks more in recall compared to precision across all the datasets .
+We use open information extraction as an example .
+We only show F1 and AUC in Table 1 , and Figure 3 illustrates the precision - recall curves showing recall errors are the main limitation .
+We therefore randomly sample 50 recall errors made by DEEPEX on the WEB corpus and summarized the types of common errors as below .
+We find 46 % of the errors are due to the spaCy noun chunker identifying the wrong arguments .
+12 % of the recall errors are cases where the predicate is a noun or nominalized .
+10 % of the examined errors are involved in long sentences .
+Details are described in Table 5 in Appendix .
+While most of the error types are shared across the datasets , we find a type of error due to the explainability and transparency of DEEPEX , which we cannot avoid .
+The error is mainly due to the missing mention of relations in the sentences .
+This type of error mainly appears in factual probing and relation classification datasets .
+The reason is that the tasks do not require the existence of the actual relation span in the input .
+The tasks often provide the relation as an input or the relation is expressed in a vague way that can not be linked to a predicate .
+We take factual probe as an example in Table 2 .
+A sentence is given to express the " place_of_death " relation can only contain mentions of " residence " relation such as " occupied by " .
+While the gold data might consider this as a correct prediction , DEEPEX uses triples extracted from the sentences .
+We sacrifice performance for better explainability and transparency .
+We believe it is ideal to allow a trade - off between performance and explainability .
+We leave this as future work .
+Also , " birth date " can be expressed as " ( c. " .
+Again in such cases , we sacrifice performance for explainability .
+Ablation Studies We We first examine the effect brought by the beam search .
+As shown in Table 3 , we find removing beam search of the generating stage greatly hurts the performance .
+DEEPEX outperforms the best supervised OIE system by 6.3 in F1 and 7.5 in AUC .
+The result confirms our intuition that pretrained LMs enable the zero-shot transfer of the latent knowledge that they have about the task .
+The original RnnOIE performs similarly ; this is due to the training set of RnnOIE which provides good coverage of the triples on the dev set .
+We secondly study the importance of the triple-oriented beam search .
+We find limiting the search significantly hurts the performance .
+It is often that the triples are expressed in inverted sentences , such as ( Fisher ; Born in ; Glasgow ) from " Born in Glasgow , Fisher is a graduate of the London Opera Centre " .
+In fact , a considerable amount of gold triples containing valid relation sequences appear outside the argument pair .
+For example , 16.9 % of the relation sequences are not between the argument pairs on the OIE2016 test set .
+More results are shown in Appendix B .
+We then test the impact of the size of the pre-trained LM .
+We find that BERT BASE performs worse than BERT LARGE .
+This indicates that larger pre-trained LMs ( e.g. , BERT LARGE ) provide more general knowledge about the task that improves the results .
+Next , we study the impact of the ranking model .
+We find that removing the ranking model significantly hurts the performance .
+The results suggest that the ranking model can distinguish the relational triples from the rest among the candidates .
+Related Work Relation classification aims to identify the correct relation type from a pre-defined set of relations between two given entities .
+Language models ( LM ) ( Han et al. , 2021 ) pre-trained with self-supervised ( Liu et al. , 2021a ) objectives , e.g. , BERT ( Devlin et al. , 2019 ) , GPT ( Radford et al. , 2018 ( Radford et al. , , 2019 Brown et al. , 2020 ) , RoBERTa , transfer well to relation classification datasets in fine-tuning ( Joshi et al. , 2020 ; Gao et al. , 2019 ) or few-shot regime ( Soares et al. , 2019 ) with architecture modifications .
+Sequenceto-sequence models , such as T5 ( Raffel et al. , 2020 ) , BART and GLM ( Du et al. , 2021 ) , are adapted to the task based on data augmentation and fine-tuning ( Paolini et al. , 2021 ) .
+Besides relation classification , Paolini et al . ( 2021 ) generalize T5 to some more structured prediction tasks as well , e.g. , semantic role labeling and event extraction .
+However , DEEPEX enables zero-shot relation classification that does not require any taskspecific training .
+Many open information extraction ( OIE ) systems , e.g. , Stanford OpenIE ( Angeli et al. , 2015 ) , OLLIE ( Schmitz et al. , 2012 ) , Reverb ( Fader et al. , 2011 ) , and their descendant Open IE4 leverage carefully - designed linguistic patterns ( e.g. , based on dependencies and POS tags ) to extract triples from textual corpora without using additional training sets .
+Recently , supervised OIE systems ( Stanovsky et al. , 2018 ; Ro et al. , 2020 ; Kolluru et al. , 2020 ) formulate the OIE as a sequence generation problem using neural networks trained on additional training sets .
+Similar to our work , Wang et al . ( 2020 ) use the parameters of LMs to extract triples , with the main difference that DEEPEX not only improves the recall of the beam search , but also uses a pre-trained ranking model to enhance the zero-shot capability .
+LMs are used in factual probing tasks , by using the outputs alone ( Petroni et al. , 2019 ) to answer the relation -specific queries in cloze statements .
+Petroni et al. ( 2020 ) additionally feed sentences expressing the facts to the LMs and shows improved results .
+Other than template - based queries , learning trigger - based ( Shin et al. , 2020 ) and continuous prompts ( Liu et al. , 2021 b ; Li and Liang , 2021 ) are helpful in recalling the facts .
+The main difference is that DEEPEX explores the internal parameters of the LMs rather than the outputs , and the results are more interpretable .
+Overall , in contrast to the existing approaches , DEEPEX unifies the open information extraction , relation classification , and factual probe under the same framework in zero-shot settings .
+Conclusion
+We have demonstrated that our unified approach can handle multiple information extraction tasks within a simple framework and shows improvements in zero-shot settings .
+Unlike previous approaches designing complicated task-specific pipelines , DEEPEX enables conducting all considered information extraction tasks with only input and output design .
+Therefore , DEEPEX is flexible and can be adapted to a variety of tasks .
+Different from previous approaches that target pre-defined categories ( e.g. , fixed relation types for relation classification ) , DEEPEX generalizes better to unseen classes as the generating stage leverages the transfer of latent knowledge that a pre-trained language model has about the tasks .
+Besides , the ranking stage pre-trains on a large-scale task - agnostic dataset .
+DEEPEX exhibits strong zero-shot capabilities in low-resource tasks without the need of any task -specific training set .
+DEEPEX also exploits the in- depth information of the language models , i.e. , parameters , rather than the outputs alone , which en-hances the explainability through enhanced model transparency .
+Based on our findings , we believe that the unified approach advances the research in understanding natural language semantics ( e.g. , structure prediction tasks ) using deep learning models .
+We hope our results will foster further research in this direction .

@@ -1,0 +1,236 @@
+title
+Mining Knowledge for Natural Language Inference from Wikipedia Categories
+abstract
+Accurate lexical entailment ( LE ) and natural language inference ( NLI ) often require large quantities of costly annotations .
+To alleviate the need for labeled data , we introduce WIKINLI : a resource for improving model performance on NLI and LE tasks .
+It contains 428,899 pairs of phrases constructed from naturally annotated category hierarchies in Wikipedia .
+We show that we can improve strong baselines such as BERT ( Devlin et al. , 2019 ) and RoBERTa by pretraining them on WIKINLI and transferring the models on downstream tasks .
+We conduct systematic comparisons with phrases extracted from other knowledge bases such as WordNet and Wikidata to find that pretraining on WIKINLI gives the best performance .
+In addition , we construct WIKINLI in other languages , and show that pretraining on them improves performance on NLI tasks of corresponding languages .
+1 * Equal contribution .
+Listed in alphabetical order .
+1 Code and data are available at https://github.
+com / ZeweiChu/WikiNLI .
+Introduction Natural language inference ( NLI ) is the task of classifying the relationship , such as entailment or contradiction , between sentences .
+It has been found useful in downstream tasks , such as summarization ( Mehdad et al. , 2013 ) and long- form text generation ( Holtzman et al. , 2018 ) .
+NLI involves rich natural language understanding capabilities , many of which relate to world knowledge .
+To acquire such knowledge , researchers have found benefit from external knowledge bases like WordNet ( Fellbaum , 1998 ) , FrameNet ( Baker , 2014 ) , Wikidata ( Vrande ?i? and Kr?tzsch , 2014 ) , and large-scale human-annotated datasets ( Bowman et al. , 2015 ; Nie et al. , 2020 ) .
+Creating these resources generally requires expensive human annotation .
+In this work , we are interested in automatically generating a large-scale dataset from Wikipedia categories that can improve performance on both NLI and lexical entailment ( LE ) tasks .
+One key component of NLI tasks is recognizing lexical and phrasal hypernym relationships .
+For example , vehicle is a hypernym of car .
+In this paper , we take advantage of the naturally - annotated Wikipedia category graph , where we observe that most of the parent- child category pairs are entailment relationships , i.e. , a child category entails a parent category .
+Compared to WordNet and Wikidata , the Wikipedia category graph has more fine- grained connections , which could be helpful for training models .
+Inspired by this observation , we construct WIKINLI , a dataset for training NLI models constructed automatically from the Wikipedia category graph , by automatic filtering from the Wikipedia category graph .
+The dataset has 428,899 pairs of phrases and contains three categories that correspond to the entailment and neutral relationships in NLI datasets .
+To empirically demonstrate the usefulness of WIKINLI , we pretrain BERT and RoBERTa on WIKINLI , WordNet , and Wikidata , before finetuning on various LE and NLI tasks .
+Our experimental results show that WIKINLI gives the best performance averaging over 8 tasks for both BERT and RoBERTa .
+We perform an in- depth analysis of approaches to handling the Wikipedia category graph and the effects of pretraining with WIKINLI and other data sources under different configurations .
+We find that WIKINLI brings consistent improvements in a low resource NLI setting where there are limited amounts of training data , and the improvements plateau as the number of training instances increases ; more WIKINLI instances for pretraining are beneficial for downstream finetuning tasks with pretraining on a fourway variant of WIKINLI showing more significant gains for the task requiring higher - level conceptual knowledge ; WIKINLI also introduces additional knowledge related to lexical relations benefiting finer - grained LE and NLI tasks .
+We also construct WIKINLI in other languages and benchmark several resources on XNLI ( Conneau et al. , 2018 ) , showing that WIKINLI benefits performance on NLI tasks in the corresponding languages .
+Related Work
+We build on a rich body of literature on leveraging specialized resources ( such as knowledge bases ) to enhance model performance .
+These works either ( 1 ) pretrain the model on datasets extracted from such resources , or ( 2 ) use the resources directly by changing the model itself .
+The first approach aims to improve performance at test time by designing useful signals for pretraining , for instance using hyperlinks ( Logeswaran et al. , 2019 ; Chen et al. , 2019a ) or document structure in Wikipedia ( Chen et al. , 2019 b ) , knowledge bases ( Logan et al. , 2019 ) , and discourse markers ( Nie et al. , 2019 ) .
+Here , we focus on using category hierarchies in Wikipedia .
+There are some previous works that also use category relations derived from knowledge bases ( Shwartz et al. , 2016 ; Riedel et al. , 2013 ) , but they are used in a particular form of distant supervision in which they are matched with an additional corpus to create noisy labels .
+In contrast , we use the category relations directly without requiring such additional steps .
+Onoe and Durrett ( 2020 ) use the direct parent categories of hyperlinks for training entity linking systems .
+Within this first approach , there have been many efforts aimed at harvesting inference rules from raw text ( Lin and Pantel , 2001 ; Szpektor et al. , 2004 ; Bhagat et al. , 2007 ; Szpektor and Dagan , 2008 ; Yates and Etzioni , 2009 ; Bansal et al. , 2014 ; Berant et al. , 2015 ; Hosseini et al. , 2018 ) .
+Since WIKINLI uses category pairs in which one is a hyponym of the other , it is more closely related to work in extracting hyponym -hypernym pairs from text ( Hearst , 1992 ; Snow et al. , 2005
+Snow et al. , , 2006 Pasca and Durme , 2007 ; McNamee et al. , 2008 ; Le et al. , 2019 ) .
+Pavlick et al. ( 2015 ) automatically generate a large-scale phrase pair dataset with several relationships by training classifiers on a relatively small amount of human-annotated data .
+However , most of this prior work uses raw text or raw text combined with either annotated data or curated resources like WordNet .
+WIKINLI , on the other hand , seeks a middle road , striving to find largescale , naturally - annotated data that can improve performance on NLI tasks .
+The second approach aims to enable the model to leverage knowledge resources during prediction , for instance by computing attention weights over lexical relations in WordNet ( Chen et al. , 2018 ) or linking to reference entities in knowledge bases within the transformer block ( Peters et al. , 2019 ) .
+While effective , this approach requires nontrivial and domain-specific modifications of the model itself .
+In contrast , we develop a simple pretraining method to leverage knowledge bases that can likewise improve the performance of already strong baselines such as BERT without requiring such complex model modifications .
+There are some additional related works that focus on the category information of Wikipedia .
+Ponzetto and Strube ( 2007 ) and Nastase and Strube ( 2008 ) extract knowledge of entities from the Wikipedia category graphs using predefined rules .
+Nastase et al. ( 2010 ) build a dataset based on Wikipedia article or category titles as well as the relations between categories and pages ( " WikiNet " ) , but they do not empirically validate the usefulness of the dataset .
+In a similarly non-empirical vein , Zesch and Gurevych ( 2007 ) analyze the differences between the graphs from WordNet and the ones from Wikipedia categories .
+Instead , we address the empirical benefits of leveraging the category information in the modern setting of pretrained text representations .
+WIKINLI
+We now describe how the WIKINLI dataset is constructed from Wikipedia and its principal characteristics .
+Each Wikipedia article is associated with crowd-sourced categories that correspond to topics or concepts covered by that article .
+Wikipedia or- ganizes these categories into a directed graph that models their hierarchical relations .
+For instance , the category " Days " is a parent node of the category " Holidays " in this graph .
+The central observation underlying WIKINLI is that this category hierarchy resembles the concept hierarchies and ontologies found in knowledge bases , such as Wikidata and WordNet .
+While there are similarities between the three resources , the Wikipedia category hierarchy contains more diverse connections between parent and child concepts .
+Figure 1 shows an example category " New Year 's Eve " and its ancestors under these resources .
+All resources include a path that corresponds to the generalization of New Year 's Eve as a regular day , but Wikipedia additionally includes a path that corresponds to the generalization as a celebration or entertainment event .
+Thus the Wikipedia hierarchy provides more abstract and fine-grained generalization that can be useful for NLI tasks .
+In this example , the commonsense knowledge that New Year 's Eve implies entertainment is only directly captured by the Wikipedia hierarchy .
+WIKINLI is a dataset of category pairs extracted from this Wikipedia hierarchy to be used as an auxiliary task for pretraining NLI models .
+Specifically , WIKINLI contains three types of category pairs based on their relations in the Wikipedia hierarchy : child-parent ( " child " ) , parent-child ( " parent " ) , and other pairs ( " neutral " ) .
+The motivation is that childparent resembles entailment ; parent- child resembles reverse entailment ; and other pairs resemble a neutral relationship .
+We find that this simple definition of relations is effective in practice ; we also report an exploration with other types of relations such as siblings in experiments .
+Table 1 shows examples from WIKINLI that illustrate the diverse set of relations they address .
+They include conventional knowledge base entries such as " Bone fractures " being a type of " Injuries " and " Chemical accident " being a type of " Pollution " .
+They also include relations that are more fine- grained than those typically found in knowledge bases .
+For instance , " Pakistan " is a child of " South Asian countries " ; in contrast , it is a child of " Country " in Wikidata .
+WIKINLI also includes a large set of hyponym -hypernym relations in pairs that differ by only one or two words ( e.g. , " Cantonese music " and " Cantonese culture " ) ; their coverage is extensive and includes relations involving rare words such as " Early Turkish Anatolia " and " Medieval Anatolia " .
+More details of constructing WIKINLI are as follows .
+We use the tables " categorylinks " and " page " : these two pages provide category pairs in which one category is the parent of the other .
+We use all direct category relations .
+To eliminate trivial pairs , we remove pairs where either is a substring of the other .
+To construct neutral pairs , we randomly sample two categories where neither category is the ancestor of the other in the category graph .
+To make neutral pairs more " related " ( so that they are harder to discriminate from direct relations ) , we encode both categories into continuous vectors using ELMo ( Peters et al. , 2018 ) ( averaging its three layers over all positions ) and compute the cosine similarities between pairs .
+2
+We pick the topranked pairs as neutral pairs in WIKINLI .
+After the above processing , we remove categories longer than 50 characters and those containing certain keywords 3 ( see supplementary material for more results and examples on filtering criteria ) .
+We ensure the dataset is balanced , and the final dataset has 428,899 unique pairs .
+For the following experiments , unless otherwise specified , we only use 100,000 samples from WIKINLI as training data and 5,000 as the development set since we find larger training set does not lead to performance gains ( see Sec. 6.3 for more details ) .
+WIKINLI is available at https : //github.com /ZeweiChu/WikiNLI .
+Approach
+To demonstrate the effectiveness of WIKINLI , we pretrain BERT and RoBERTa on WIKINLI and other resources , and then finetune them on several NLI and LE tasks .
+We assume that if a pretraining resource is better aligned with downstream tasks , it will lead to better downstream performance of the models pretrained on it .
+Training Following and , we use the concatenation of two texts as the input to BERT and RoBERTa .
+Specifically , for a pair of input texts x 1 , x 2 , the input would be [ CLS ] x 1 [ SEP ] x 2 [ SEP ] .
+We use the encoded representations at the position of [ CLS ] as the input to a two -layer classifier , and finetune the entire model .
+We start with a pretrained BERT - large or RoBERTa - large model and further pretrain it on different pretraining resources .
+After that , we finetune the model on the training sets for the downstream tasks , as we will elaborate on below .
+Evaluation
+We use several NLI and LE datasets .
+Statistics for these datasets are shown in Table 2 and details are provided below .
+Natural Language Inference MNLI .
+The Multi-Genre Natural Language Inference ( MNLI ; dataset is a human-annotated multi-domain NLI dataset .
+MNLI has three categories : entailment , contradiction , and neutral .
+Since the training split for this dataset has a large number of instances , models trained on it are capable of picking up information needed regardless of the quality of the pretraining resources we compare , which makes the effects of pretraining resources negligible .
+To better compare pretraining resources , we simulate a low-resource scenario by randomly sampling 3,000 instances 4 from the original training split as our new training SciTail .
+SciTail is created from science questions and the corresponding answer candidates , and premises from relevant web sentences retrieved from a large corpus ( Khot et al. , 2018 ) . SciTail has two categories : entailment and neutral .
+Similar to MNLI , we randomly sample 3,000 instances from the training split as our training set .
+RTE .
+We evaluate models on the GLUE ( Wang et al. , 2019 ) version of the recognizing textual entailment ( RTE ) dataset Bar Haim et al. , 2006 ; Giampiccolo et al. , 2007 ; Bentivogli et al. , 2009 ) . RTE is a binary task , focusing on identifying if a pair of input sentences has the entailment relation .
+PPDB .
+We use the human-annotated phrase pair dataset from Pavlick et al . ( 2015 ) , which has 9 text pair relationship labels .
+The labels are : hyponym , hypernym , synonym , antonym , alternation , otherrelated , NA , independent , and none .
+We directly use phrases in PPDB to form input data pairs .
+We include this dataset for more fine- grained evaluation .
+Since there is no standard development or testing set for this dataset , we randomly sample 60 % / 20 % / 20 % as our train / dev/ test sets .
+Break .
+Glockner et al. ( 2018 ) constructed a challenging NLI dataset called " Break " using external knowledge bases such as WordNet .
+Since sentence pairs in the dataset only differ by one or two words , similar to a pair of adversarial examples , it has broken many NLI systems .
+Due to the fact that Break does not have a training split , we use the aforementioned subsampled MNLI training set as a training set for this dataset .
+We select the best performing model on the development set of MNLI and evaluate it on Break .
+Lexical Entailment
+We use the lexical splits for 3 datasets from Levy et al . ( 2015 ) , including K2010 ( Kotlerman et al. , 2009 ) , B2012 ( Baroni et al. , 2012 ) , and T2014 ( Turney and Mohammad , 2015 .
+These datasets all similarly formulate lexical entailment as a binary task , and they were constructed from diverse sources , including human annotations , WordNet , and Wikidata .
+We create training sets from both WordNet and Wikidata following the same procedures used to create WIKINLI .
+All three datasets are constructed from their corresponding parent-child relationship pairs .
+Neutral pairs are first randomly sampled from non-ancestor-descendant relationships and top ranked pairs according to cosine similarities of ELMo embeddings are kept .
+We also ensure these datasets are balanced among the three classes .
+Setup For all the experiments , we used the Hugging Face implementation ( Wolf et al. , 2019 ) .
+When finetuning or pretraining BERT - large models , we mostly follow the hyperparameters suggested by .
+Specifically , during pretraining , we use a batch size of 32 , a learning rate of 2e - 5 , a maximum sequence length of 40 , and 3 training epochs .
+During finetuning , we switch to use 8 as batch size due to memory constraints .
+When funetuning or pretraining RoBERTa - large , we did extra hyperparameter search by adopting some of the hyperparameters recommended from .
+We use 10 % training steps for learning rate warmup , 1e - 5 for learning rate , and a maximum sequence length of 40 , and train models for 3 epochs .
+5
+For both models , we use development sets for model selection during pretraining .
+During downstream evaluations , we use a maximum sequence length of 128 for datasets involving sentences .
+We perform early stopping based on task -specific development sets and report the test results for the best models .
+Due to the variance of performance of 24 - layer transformer architectures , we report medians of 5 runs with a fixed set of random seeds for all of our experiments .
+See the supplementary material for details on the runtime , hyperparameters , etc .
+Results
+The results are summarized in Table 3 .
+In general , pretraining on WIKINLI , Wikidata , or WordNet improves the performances on downstream tasks , and pretraining on WIKINLI achieves the best per- formance on average .
+Especially for Break and MNLI , WIKINLI can lead to much more substantial gains than the other two resources .
+Although BERT - large + WIKINLI is not better than the baseline BERT - large on RTE , RoBERTa + WIKINLI shows much better performance .
+Only on PPDB , Wikidata is consistently better than WIKINLI .
+We note that BERT - large + WIKINLI still shows a sizeable improvement over the BERT - large baseline .
+More importantly , the improvements to both BERT and RoBERTa brought by WIKINLI show that the benefit of the WIKINLI dataset can generalize to different models .
+We also note that pretraining on these resources has little benefit for SciTail .
+Analysis
+We perform several kinds of analysis , including using BERT to compare the effects of different settings .
+Due to the submission constraints of the GLUE leaderboard , we will report dev set results ( medians of 5 runs ) for the tables in this section , except for Break which is only a test set .
+Lexical Analysis
+To qualitatively investigate the differences between WIKINLI , Wikidata , and WordNet , we list the top 20 most frequent words in these three resources in Table 4 . Interestingly , WordNet contains mostly abstract words , such as " unit " , " family " , and " person " , while Wikidata contains many domain- specific words , such as " protein " and " gene " .
+In contrast , WIKINLI strikes a middle ground , covering topics broader than those in Wikidata but less generic than those in WordNet .
+Fourway vs .
+Threeway vs .
+Binary Pretraining
+We investigate the effects of the number of categories for WIKINLI by empirically comparing three settings : fourway , threeway , and binary classification .
+For fourway classification , we add an extra relation " sibling " in addition to child , parent , and neutral relationships .
+A sibling pair consists of two categories that share the same parent .
+We also ensure that neutral pairs are non-siblings , meaning that we separate a category that was considered as part of the neutral relations to provide a more fine - grained pretraining signal .
+We construct two versions of WIKINLI with binary class labels .
+One classifies the child against the rest , including parent , neutral , and sibling ( " child vs. rest " ) .
+The other classifies child or parent against neutral or sibling ( " child / parent vs. rest " ) .
+The purpose of these two datasets is to find if a more coarse training signal would reduce the gains from pretraining .
+These dataset variations are each balanced among their classes and contain 100,000 training instances and 5,000 development instances .
+Table 5 shows results of MNLI , RTE , and PPDB .
+Overall , fourway and threeway classifications are comparable , although they excel at different tasks .
+Interestingly , we find that pretraining with child / parent vs. rest is worse than pretraining with child vs. rest .
+We suspect this is because the child / parent vs. rest task resembles topic clas- sification .
+The model does not need to determine direction of entailment , but only whether the two phrases are topically related , as neutral pairs are generally either highly unrelated or only vaguely related .
+The child vs .
+rest task still requires reasoning about entailment as the models still need to differentiate between child and parent .
+In addition , we explore pruning levels in Wikipedia category graphs , and incorporating sentential context , finding that relatively higher levels of knowledge from WIKINLI have more potential of enhancing the performance of NLI systems and sentential context shows promising results on the Break dataset ( see supplementary material for more details ) .
+Larger Training Sets
+We train on larger numbers of WIKINLI instances , approximately 400,000 , for both threeway and fourway classification .
+We note that we only pretrain models on WIKINLI for one epoch as it leads to better performance on downstream tasks .
+The results are in Table 6 .
+We observe that except for PPDB , adding more data generally improves per- formance .
+For Break , we observe significant improvements when using fourway WIKINLI for pretraining , whereas threeway WIKINLI seems to hurt the performance .
+Combining Multiple Data Sources
+We combine multiple data sources for pretraining .
+In one setting we combine 50 k instances of WIKINLI with 50 k instances of WordNet , while in the other setting we combine 50 k instances of WIKINLI with 50 k instances of Wikidata .
+Table 7 compares these two settings for pretraining .
+WIKINLI works the best when pretrained alone .
+Effect of Pretraining Resources
+We show several examples of predictions from PPDB in Table 8 .
+In general , we observe that without pretraining , BERT tends to predict symmetric categories , such as synonym , or other -related , instead of predicting entailment -related categories .
+For example , the phrase pair " car " and " the trunk " , " return " and " return home " , and " boys are " and " the children are " .
+These are either " hypernym " or " hyponym " relationship , but BERT tends to conflate them with symmetric relationships , such as otherrelated .
+To quantify this hypothesis , we compute the numbers of correctly predicted antonym , alternation , hyponym and hypernym and show them in Table 10 .
+It can be seen that with pretraining those numbers increase dramatically , showing the benefit of pretraining on these resources .
+We also observe that the model performance can be affected by the coverage of pretraining resources .
+In particular , for phrase pair " foreign affairs " and " foreign minister " , WIKINLI has a closely related term " foreign affair ministries " and " foreign minister " under the category " international relations " , whereas WordNet does not have these two , and Wikidata only has " foreign minister " .
+As another example , consider the phrase pair " company " and " debt " .
+In WIKINLI , " company " is under the " business " category and debt is under the " finance " category .
+They are not directly related .
+In WordNet , due to the polysemy of " company " , " company " and " debt " are both hyponyms of " state " , and in Wikidata , they are both a subclass of " legal concept " .
+For the phrase pair " family " / " woman " , in WIKINLI , " family " is a parent category of " wives " , and in Wikidata , they are related in that " family " is a subclass of " group of humans " .
+In contrast , WordNet does not have such knowledge .
+Finetuning with Different Amounts of Data
+We now look into the relationship between the benefit of WIKINLI and the number of training instances from downstream tasks ( Table 9 ) .
+We compare BERT - large to BERT - large pretrained on WIKINLI when finetuning on 2 k , 3 k , 5 k , 10k , and 20 k MNLI or PPDB training instances accordingly .
+In general , the results show that WIKINLI has more significant improvement with less training data , and the gap between BERT - large and WIKINLI narrows as the training data size increases .
+We hypothesize that the performance gap does not reduce as expected between 3 k and 5 k or 10k and 20 k due in part to the imbalanced number of instances available for the categories .
+For example , even when using 20 k training instances , some of the PPDB categories are still quite rare .
+Evaluating on Adversarial NLI Adversarial NLI ( ANLI ; Nie et al. , 2020 )
+This may due to the fact that humans deem the NLI instances that require world knowledge as the hard ones , and therefore when the round number increases , the training set is likely to have more such instances , which makes pretraining on similar resources less helpful .
+We have similar observations that our phrasebased pretraining has complicated effect ( e.g. , only part of the implicature results shows improvements ) when evaluating these resources on IMPPRES ( Jeretic et al. , 2020 ) , which focuses on the information implied in the sentential context ( please refer to the supplementary materials for more details ) .
+Multilingual WIKINLI Wikipedia has different languages , which naturally motivates us to extend WIKINLI to other languages .
+We mostly follow the same procedures as English WIKINLI to construct a multilingual version of WIKINLI from Wikipedia in other languages , except that ( 1 ) we filter out instances that contain English words for Arabic , Urdu , and Chinese ; and ( 2 ) we translate the keywords into Chinese when filtering the Chinese WIKINLI .
+We will refer to this version of WIKINLI as " mWIKINLI " .
+As a baseline , we also consider " trWIKINLI " , where we translate the English WIKINLI into other languages using Google Translate .
+We benchmark these resources on XNLI in four languages : French ( fr ) , Arabic ( ar ) , Urdu ( ur ) , and Chinese ( zh ) .
+When reporting these results , we pretrain multilingual BERT ( mBERT ; on the corresponding resources , finetune it on 3000 instances of the training set , perform early stopping on the development set , and test it on the test set .
+We always use XNLI from the corresponding language .
+In addition , we pretrain mBERT on English WIKINLI , Wikidata , and WordNet , finetune and evaluate them on other languages using the same language -specific 3000 NLI pairs mentioned earlier .
+We note that when pretraining on mWIKINLI or trWIKINLI , we use the versions of these datasets with the same languages as the test sets .
+Table 12 summarizes the test results on XNLI .
+In general , pretraining on WIKINLI gives the best results .
+Phang et al. ( 2020 ) also observed that training on English intermediate tasks helps in crosslingual tasks but in a zero-shot setting .
+While mWIKINLI is not the best resource , it still gives better results on average than Wikidata , WordNet , and no pretraining at all .
+The exception is Arabic , where only trWIKINLI performs better than the mBERT baseline .
+In comparing among different versions of WIKINLI , we find that trWIKINLI performs almost as good as WIKINLI , but for Urdu , trWIKINLI is the worst resource among the three .
+The variance of trWIKINLI may arise from the variable quality of machine translation across languages .
+The accuracy differences between mWIKINLI and WIKINLI could be partly attributed to domain differences across languages .
+To measure the differences , we compile a list of the top 20 most frequent words in the Chinese mWIKINLI , shown in Table 13 .
+The most frequent words for mWIKINLI in Chinese are mostly related to political concepts , whereas WIKINLI offers a broader range of topics .
+Future research will be required to obtain a richer understanding of how training on WIKINLI benefits non-English languages more than training on the language -specific mWIKINLI resources .
+One possibility is the presence of emergent crosslingual structure in mBERT ( Wu et al. , 2019 ) .
+Nonetheless , we believe mWIKINLI and our training setup offer a useful framework for further research into multilingual learning with pretrained models .
+Conclusion
+We constructed WIKINLI , a large-scale naturallyannotated dataset for improving model performance on NLI and LE tasks .
+Empirically , we benchmarked WordNet , Wikidata , and WIKINLI using both BERT and RoBERTa by first pretraining these models on those resources , then finetuning on downstream tasks .
+The results showed that pretraining on WIKINLI gives the largest gains averaging over 8 different datasets .
+The improvements to both BERT and RoBERTa showed that the benefit of WIKINLI can generalize .
+We also performed an indepth analysis on ways of constructing WIKINLI , and a lexical analysis on the differences between the three benchmarked resources .
+Our experiments on mWIKINLI showed promising results and can benefit the research on multilinguality .
+Table 1 : 1 Examples from WIKINLI .
+C = child ; P = parent ; N = neutral .
+Category 1 Category 2 Rel. Injuries Bone fractures P Chemical accident Pollution C Armenian sportspeople Curac ? ao male actors N Argentine design Nigerian inventions N Cantonese music Cantonese culture C Medieval Anatolia Early Turkish Anatolia P Learned societies Academic organizations C South Asian countries Pakistan P

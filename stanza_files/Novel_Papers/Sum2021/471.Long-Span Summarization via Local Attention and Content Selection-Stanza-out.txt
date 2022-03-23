@@ -1,0 +1,207 @@
+title
+Long -Span Summarization via Local Attention and Content Selection
+abstract
+Transformer - based models have achieved state - of - the - art results in a wide range of natural language processing ( NLP ) tasks including document summarization .
+Typically these systems are trained by fine-tuning a large pretrained model to the target task .
+One issue with these transformer - based models is that they do not scale well in terms of memory and compute requirements as the input length grows .
+Thus , for long document summarization , it can be challenging to train or fine - tune these models .
+In this work , we exploit large pre-trained transformer - based models and address long-span dependencies in abstractive summarization using two methods : local self-attention ; and explicit content selection .
+These approaches are compared on a range of network configurations .
+Experiments are carried out on standard long-span summarization tasks , including Spotify Podcast , arXiv , and PubMed datasets .
+We demonstrate that by combining these methods , we can achieve state - of - the - art results on all three tasks in the ROUGE scores .
+Moreover , without a large-scale GPU card , our approach can achieve comparable or better results than existing approaches .
+1
+Introduction Transformer - based models ( Vaswani et al. , 2017 ) are ubiquitously state - of - art across many natural language processing ( NLP ) tasks , including summarization .
+To achieve the best results , the community has trained ever larger transformer models on larger amount of data , and / or more task -specific optimization objectives ( Devlin et al. , 2019 ; Raffel et al. , 2020 ; Lewis et al. , 2020 ; Brown et al. , 2020 ) .
+In long document summarization , the input 1 Our code is available at https://github.com/ potsawee / longsum0 .
+sequences could be more than an order of magnitude longer than the limits of these transformer models .
+Although the limits can be extended , training large transformer models on long sequences is expensive and may not be possible on a standard GPU card because of the self-attention mechanism that grows quadratically with sequence length .
+To tackle the quadratic characteristic , recent works have modified self-attention mechanism and proposed variants of the transformer such that the quadratic complexity is reduced ( Tay et al. , 2020 b ; Kitaev et al. , 2020 ; Beltagy et al. , 2020 ; Zaheer et al. , 2020 ) .
+However , pre-trained weights of the modified models are not readily available .
+In contrast , standard models such as BERT ( Devlin et al. , 2019 ) or BART ( Lewis et al. , 2020 ) have been trained on various target tasks , including text summarization ( Liu and Lapata , 2019 b ) .
+This allows practitioners to achieve good performance with less training time .
+Thus , we are interested in exploiting pretrained models for long-span summarization tasks .
+We study a range of design configurations empirically and theoretically in regards to memory and compute requirements as well as their performance .
+We propose that long-span dependencies can be handled by two complementary methods .
+Firstly , inspired by modified self-attention transformers , we exploit standard transformer models by constraining attention mechanism to be local , allowing longer input spans during training .
+Secondly , because abstractive summarization systems perform content selection implicitly ( Nallapati et al. , 2016 ; Lebanoff et al. , 2020 ) , to reduce memory and compute requirements an alternative method is to perform content selection explicitly before the abstractive stage .
+We study content selection during two phases : training time and test time .
+At training time , we investigate methods to select data for training fixed - span abstractive models .
+At test time , we extend existing model - based selection methods , and we propose a multitask content selection method that ranks sentences through extractive labelling based module ( Cheng and Lapata , 2016 ) and attention based module ( See et al. , 2017 ) .
+Ultimately , we explore the combined approach , consisting of local self-attention transformer and content selection for long-document summarization .
+We conduct our experiments using a number of design configurations on the Spotify opendomain Podcast summarization dataset .
+This dataset is challenging not only because of its long-span nature , but also because transcribed spoken utterances typically have lower information density Manakul et al. , 2020 ) .
+Furthermore , we carry out experiments on arXiv and PubMed datasets ( Cohan et al. , 2018 ) to further demonstrate and verify the effectiveness of our approach as well as making comparisons to existing approaches .
+We highlight the strengths and weaknesses of our approach in different resources and tasks .
+The main contributions of this paper are : ?
+On local self-attention , we show how to exploit a standard transformer model for longspan summarization , and we show good design considerations based on empirical results . ?
+On content selection , we demonstrate the best selection method at training time , and we propose a multitask content selection ( MCS ) method outperforming baselines at test time .
+?
+Our work has set new state - of- the - art results on Spotify Podcast , arXiv and PubMed datasets in the ROUGE scores .
+Furthermore , with a small- scale GPU card , our approach achieves comparable or superior performance to previous state - of - the - art systems .
+Related Work Efficient Transformers .
+Pre-trained transformer models have shown success and become the starting point for various NLP problems such as BERT ( Devlin et al. , 2019 ) in contextual representation , GPT2 in text generation , or BART in seq2seq tasks ( Lewis et al. , 2020 ) .
+However , the memory and time requirements for transformer models grow quadratically with the sequence length , and for long-span tasks this quickly leads to GPU running out of memory in training .
+To mitigate the quadratic nature , a wide range of modified architectures have recently been proposed ( Tay et al. , 2021 ) .
+They reduce the quadratic complexity of the full self-attention mechanism by using fixed attention patterns ( Parmar et al. , 2018 ; Dai et al. , 2019 ; Qiu et al. , 2020 ; Zaheer et al. , 2020 ; Beltagy et al. , 2020 ) , learnable patterns ( Kitaev et al. , 2020 ; Tay et al. , 2020a ) , low-rank matrix approximation , or kernel method ( Choromanski et al. , 2021 ) .
+Alternatively , it has been shown that some attention heads are redundant and can be pruned to reduce model size ( Voita et al. , 2019 ; Michel et al. , 2019 ) .
+Knowledge distillation reduces memory and compute by compressing a large model to a smaller one ( Hinton et al. , 2015 ; Sanh et al. , 2019 ) .
+In contrast , we focus on the dependencies of long input and target sequences in encoder-decoder architectures , and we exploit publicly available transformer models with summarization weights to long-span summarization tasks .
+Long-span Summarization .
+Efficient transformer architectures have been applied to summarize long documents such as BigBird ( Zaheer et al. , 2020 ) , and Longformer-Encoder -Decoder ( LED ) ( Beltagy et al. , 2020 ) , which has recently been revised parallel to this work .
+2 Hierarchical transformer architectures have been applied to multi-document summarization ( Liu and Lapata , 2019a ) , and extractive news and table- to- text summarization Narayan et al. , 2020 ) .
+Hierarchical attention RNN system has been applied to summarize long articles ( Cohan et al. , 2018 ) .
+Alternatively , earlier methods show that good content selection helps abstractive news summarization systems ( Chen and Bansal , 2018 ; Gehrmann et al. , 2018 ; Hsu et al. , 2018 ) .
+Hybrid systems that select sentences and generate an abstractive summary have been proposed such as extractive system + TLM for scientific articles ( Pilault et al. , 2020 ) , simple selection + BART for podcasts ( Manakul and Gales , 2020 ; Song et al. , 2020 ) , and guided summarization by BERT - based keyword / sentence extraction + BART for news and scientific articles ( He et al. , 2020 ; Dou et al. , 2021 ) .
+Other work includes dividing the source and target into multiple smaller pairs to train abstractive summarizers ( Gidiotis and Tsoumakas , 2020 ) .
+Extractive methods with and without redundancy reduction techniques for long-span summarization have been studied Carenini , 2019 , 2020 ) .
+3 Experimental Setup 3.1 Dataset Spotify Podcast .
+3
+The dataset consists of ASR transcripts with human descriptions as summaries .
+We follow the data processing at TREC2020 in removing bad transcript -summary pairs from a total of 105,360 + 1,027 episodes , resulting in train / valid / test splits of 60,415/2,189/1,027 episodes the same as Manakul and Gales ( 2020 ) .
+arXiv
+Models BART and LoBART .
+We use the publicly released BART model ( Lewis et al. , 2020 ) fine-tuned on CN - NDM ( Hermann et al. , 2015 ) .
+4 Following the local window attention in Sparse Transformer and Longformer ( Beltagy et al. , 2020 ) , we modify the self-attention mechanism in the encoder to local self-attention ( see Figure 2 ) , and we refer to this local self-attention BART as LoBART .
+It has the same architecture as BART , e.g. the number of parameters , except that we extend positional embedding beyond 1,024 by copying BART 's positional embedding with flipping to allow a smoother transition .
+Hierarchical RNN .
+The content selection model is based on a hierarchical encoder-decoder architecture that has been shown effective on meeting and long document summarization ( Cohan et al. , 2018 ; Zhao et al. , 2019 ; . The model consists of word-level and sentence - level GRUs ( Cho et al. , 2014 ) .
+We add a linear layer on top of the sentence - level GRU to perform extractive labelling .
+The sentence - level attention mechanism and extractive labelling modules form our multitask content selection ( MCS ) .
+More details in Section 5.2 .
+We provide the full details about our implementation , model parameters , hyperparameters , optimizer , and training configurations in Appendix B .
+Longer Span via Local Self-Attention
+It has been known that memory and compute complexity of transformers is quadratic with the sequence length .
+However , in encoder-decoder architectures , the exact dependencies on input length N , target length M , and batch size B are less understood .
+This is particularly important in long-span seq2seq tasks because large memory or compute requirement could make training impractical .
+Thus , this work studies these dependencies , and shows the trade- off between the size of input span and the size of attention span in local self-attention .
+Memory Analysis and LoBART Design Firstly , through a regression analysis for an encoder-decoder architecture such as BART , the memory required in training is : c b 1 + B ( c b 2 M + c b 3 N + c b 4 M N + c b 5 M 2 + c b 6 N 2 ) The term c b 1 depends on only the model size and optimizer , and it is constant ( theoretical calculation provided in Appendix A ) .
+The remaining terms are activation memory associated with the activation outputs cached for backpropagation , and they grow with N , M , and B .
+Table 2 shows systemindependent 5 regression results for the memory in training BART .
+It is apparent that as N grows the dominant term is c b 6 N 2 , which is associated with the encoder self-attention .
+Thus , this motivates us to modify self-attention only on the encoder side .
+Term c b 1 c b 2 M c b 3 N c b 4 M N c b 5 M 2 c b 6 N 2 GiB 6.05 0.23 0.84 0.21 0.02 1.53 Table 2 : BART 's Memory Profile ( N = 1024 , M = 144 ) .
+By introducing local self-attention of width W , the memory in training LoBART becomes : c l 1 + B ( c l 2 M + c l 3 N + c l 4 M N + c l 5 M 2 + c l 6 N W ) For large N , the memory is now dominated by c l 6 N W .
+The coefficient c l 6 ? 1.72 c b 6 , suggesting that W should be at most 0.58N to reduce memory .
+We provide more details about the exact theoretical calculation for model and optimizer memory as well as time complexity in Appendix A .
+The memory for training BART / LoBART in Figure 3 enables us to choose an operating point .
+Additionally , other complementary techniques for reducing memory in training include : ( i ) gradientcheckpoint where a subset of intermediate values in the computation graph are cached , and the rest are re-computed during backpropagation ( Chen et al. , 2016 ) , but this requires changes to optimization and leads to longer training time ; ( ii ) half / mixedprecision training ( Micikevicius et al. , 2018 ) that would almost halve y-axis in Figure 3 , but this requires changes to the model precision and may result in lower performance ; ( iii ) model parallelism with micro-batching ( Huang et al. , 2019 ) , but this method requires multiple accelerators .
+BART and LoBART
+We study the characteristics of the full selfattention in BART by defining the mean attention 5 system- independent across hardware and machines ; albeit implementation - dependent .
+This analysis is based on widely used PyTorch and Huggingface implementation .
+distance in a particular layer and head as follows : D = 1 N N i=1 ? ? N j=1 ? i , j ? | i ? j| ? ? ( 1 ) where ?
+i , j is the attention weight of position i attending to position j ( N j=1 ? i , j = 1 ) .
+This measure corresponds to the average distance of self-attention .
+If the attention weight is uniform , D U = N 2 ?1 3N . For N = 1024 , D U = 341 .
+In Figure 4 , our results show that most layers have a shorter mean distance than D U , supporting that the information is more localized .
+The mean distances of differently initialized BART models computed on the podcast data also show that the attention mechanism is learned during pre-training stage as there is little variation after the pre-training stage .
+As illustrated in Figure 4 , the average attention distance D of the BART model is around 250 - 350 tokens .
+This suggests the window size W should be designed to be above 700 , allowing half local attention window W/2 be greater than 250 - 350 to effectively match BART and to exploit transfer learning more efficiently .
+Subsequently , we train different configurations of BART / LoBART models up to our GPU memory limit of 32 GiB .
+The results in Table 3 show that : ( i ) expanding the model to accommodate longer input spans improve over the baseline BART ( 1 k ) as opposed to Manakul and Gales ( 2020 ) that trained longer -span models by freezing bottom layers and did not show any improvement over their baseline ; ( ii ) Although LoBART ( 8 k )
+Longer Span via Content Selection
+Some input sequences still exceed LoBART 's longer fixed - span limit .
+Further extending the input span would lead to a small local attention span , a diminishing improvement , or GPU running out of memory .
+Alternatively , it has been shown that a better content selection improves abstractive summarization in news ( Chen and Bansal , 2018 ; Gehrmann et al. , 2018 ; Hsu et al. , 2018 ) , multi documents ( Liu and Lapata , 2019a ; Liu et al. , 2018 ) , and scientific articles ( Pilault et al. , 2020 ) .
+Thus , we propose to tackle the excess length by content selection .
+Here , we distinguish between two phases of content selection : training time and test time .
+( Liu et al. , 2018 ) or the average of ROUGE - 1,2 , L recall ( Pilault et al. , 2020 ) .
+We discuss model- based methods in Section 5.2 , where we propose the MCS method .
+Let the subscript ( i , j ) denote the position of the j-th word in the i-th input sentence , the full input X = {x 1 , ... , x i , ... , x N 1 } = [ x 1,1 , x 1,2 , x 1 , J 1 sent 1 , ... , x i,1 , x i , J i sent i , ... , x N 1 ,1 , x N 1 , J N 1 sent N 1 ] .
+Content selection re-ranks , truncates , and sorts X to get X cs for training BART / LoBART as follows : X = {x r 1 , x r 2 , x r 3 , ... , x r R } ( 2 ) X cs = SortOrig ( TruncateN ( X ) ) ( 3 ) where r i is the index of the sentence of rank i , the TruncateN operation filters X such that the total of number of words is less than N , and SortOrig retains the original sentence order .
+The following ranking methods are considered : ? Truncation ( TRC ) : r k = k. ?
+Model- based : Given the score f of model ? , r k = { i ?
+N 1 : f ? ( i|X ) is ranked k-th } ? Oracle ( ORC ) :
+Given the ground - truth summary y and similarity measure d , r k = { i ?
+N 1 : d( x i , y ) is ranked k-th }
+In this work , we use ROUGE - 2 recall as the similarity measure d.
+For the ORC method , first , we retain only sentences with positive d , leading to R ? N 1 .
+We found that the number of sentences with positive d is low at 21.3 % of the total number of sentences in average on podcast data .
+This corresponds to 56 % of training instances being shorter than BART input span of 1024 .
+6
+This no-padding oracle method ( ORC no-pad ) is highly aggressive , potentially preventing the downstream summarizer from learning complex abstraction .
+Hence , we propose variants of oracle methods to extend the ORC no-pad - selected input to the max input span N : ? ORC pad-lead : Pad by leading unselected sentences and keep the original sentence order .
+? ORC pad-rand :
+Pad by random unselected sentences and keep the original sentence order .
+In Figure 5 , since any oracle method is considered cheating at test time , the best performance is obtained by MCS ( in blue ) , and the upper bound performance is obtained by optimal oracle method ( in green ) .
+The results show that although ORC no-pad yields the highest upper bound , the abstractive model in fact does not learn how to perform abstraction .
+For instance , with TRC or MCS at test time , ORC no-pad yields the lowest performance level .
+The best way to fine- tune the abstractive model shown in Figure 5 is using ORC pad-rand .
+Compared to ORC pad-lead , ORC pad-rand is better as it introduces more diversity to the abstractive model .
+Compared to the model- based method , ORC pad-rand is also computationally less expensive .
+In addition , Table 5 shows that when there is no content selection at test time ( i.e. TRC applied ) , LoBART ( 4 k ) and LoBART ( 8 k ) benefit from ORC pad-rand , whereas BART ( 1 k ) does not .
+This is because in the 1 k setting , content selection is more aggressive ; as a result , the large mismatch between training and test leads to a poor result .
+Thus , we suggest that the best content selection during training is ORC pad-rand given that content selection will be used at test time , or model 's input span is long .
+Multitask Content Selection ( MCS )
+To process long input sequences entirely , we consider RNN , whose memory requirement grows lin-early with the sequence length , and hierarchical architectures which have been shown effective for long seq2seq tasks ( Cohan et al. , 2018 ; .
+In this work , the hierarchical RNN model described in Section 3.2 has memory requirement given the target length of 144 during training of 0.83 + B( 3.96?10 ?5 +3.33?10 ?5 N 2 ) N 1 , 7 where N 1 is # sentences , and N 2 is the maximum number of words in a sentence , and B is batch size .
+By setting N 1 = 1000 and N 2 =50 , only 2 % of podcast data exceeds this limit , while taking GPU memory to only 2.53 GiB for B=1 .
+Thus , this shows that this model can cover long sequences .
+Previous model - based methods treat content selection as extractive labelling and create labels heuristically ( Pilault et al. , 2020 ) , or using encoderdecoder attention mechanism ( Manakul and Gales , 2020 ) .
+To utilize both of these in one framework , we propose a Multitask Content Selection ( MCS ) method where we train the hierarchical encoderdecoder with attention mechanism and a classification layer on top of the encoder ( described in Section 3.2 ) .
+First , the model is trained on seq2seq abstractive summarization objective : L seq2seq = ?
+M m=1 log P ( y m |y < m , X ) ( 4 ) Second , we create binary labels as follows : for sentence i , the label z i is 1 if d( x i , y ) > 0 ; else z i is 0 , and d is the ROUGE - 2 recall measure .
+The extractive labelling task objective is : L label = ? N1 i=1 ( z i log ? i + ( 1 ? z i ) log ( 1 ? ?i ) ) ( 5 ) ?i = sigmoid ( W T cls h i + b cls ) ( 6 ) where h i is the sentence - level encoder output associated with sentence i , and W cls , b cls are the parameters of the classification layer .
+Thus , the MCS training loss is defined as follows : L MCS = ?L label + ( 1 ? ?) L seq2seq ( 7 ) At inference stage , there are two modes : ( i ) standard abstractive summary generation , e.g. via beam search decoding ; ( ii ) ranking input sentences via labelling score and seq2seq attention score .
+The latter is how we use MCS during inference .
+8
+For sentence i , the scores are : score i , ( label ) = ? i , score i , ( seq2seq ) = M m=1 ? s m , i ( 8 ) where ?
+s m , i is the sentence - level attention weight at decoder step m over input sentence i.
+Since the scores are on different scales , rather than using the scores defined in Eq. 8 , we simply rank the scores , and then normalize the score ranks into the range 0.0 to 1.0 .
+Let nscore denote the normalized ranking score , the MCS inference score is : f ? ( i|X ) = nscore i , ( label ) + nscore i , ( seq2seq ) ( 9 ) In our preliminary experiments , we vary the amount of selected sentences from the limit of BART / LoBART to a few sentences , and we found that more aggressive selection at test time degrades the performance .
+Therefore , our MCS selects input sentences up to the limit of BART / LoBART .
+By setting ?=0.0 , our method is comparable to the attention - based method in Manakul and Gales ( 2020 ) .
+By setting ?=1.0 , our method is similar to the extractive models in Hsu et al .
+( 2018 ) ; Pilault et al . ( 2020 ) .
+In Table 4 , we show that when coupled with BART , MCS yields better summarization performance than both Attn-only and Ext-only baselines .
+MCS also achieves higher recall rate of sentences with d( x i , y ) > 0 than the two baselines .
+6 Combined Approach
+Spotify Podcast results
+In Table 5 , a performance gain is obtained in all settings by adding MCS .
+By comparing different configurations with MCS , it can be seen that the gain from MCS in LoBART ( 8 k ) system is the lowest .
+This is because the average length is 5,727 , meaning that many Podcasts inputs to LoBART ( 8 k ) do not benefit from content selection .
+CUED - filt , the best single-model system in Manakul and Gales ( 2020 ) , uses an attention - based content selection at both training and test time , and it is combined with fine- tuned vanilla BART .
+Our approach outperforms CUED - filt by improved content selection at both training time and test time as demonstrated by BART ( 1k ) - ORC + MCS .
+Additionally , local self-attention allows training on longer sequences , and our LoBART ( 4 k ) - ORC + MCS system has yielded the best results .
+Lastly , even though LoBART ( 8 k ) requires more resource to train , it does not perform as well as LoBART ( 4 k ) due to its smaller attention window , and it also has a lower improvement when adding MCS .
+ArXiv and PubMed results
+To verify the effectiveness of our systems , we re-train BART ( 1 k ) and LoBART ( 4 k ) on arXiv and PubMed datasets .
+Our training is different from Ext+TLM ( Pilault et al. , 2020 ) where their abstractive models are trained using inputs extracted from top two sentences in ROUGE recall for each target sentence without padding , similar to ORC no-pad .
+Although in 1 k setting , ORC no-pad yields % AgORC no-pad ( defined in Section 5.1 ) of only 2.8 % on arXiv ( 12 % on PubMed ) , in 4 k setting this is 39 % on arXiv ( 71 % on PubMed ) .
+Based on the best configurations on podcast data , we train BART ( 1 k ) and LoBART ( 4 k ) using TRC or ORC pad-rand content selection , and we train the hierarchical model on arXiv / PubMed for MCS .
+ArXiv.
+In Table 6 , both BART ( 1 k ) + MCS and LoBART ( 4 k ) + MCS outperform all existing systems .
+To better understand the advantages of our approach , the following systems are compared : Abs Discourse - Aware ( Cohan et al. , 2018 ) 35.80 11.05 31.80 38.93 15.37 35.21 Mix Ext+TLM ( Pilault et al. , 2020 ) 41.62 14.69 38.03 42.13 16.27 39.21 Ext ExtSum-LG +Rd( Xiao and Carenini , 2020 Abs Pegasus ( Zhang et al. , 2020 ) 44.21 16.95 38.83 45.97 20.15 41.34 Abs DANCER ( Gidiotis and Tsoumakas , 2020 ) 45.01 17.60 40.56 46.34 19.97 42.42 Abs BigBird ( 3 k ) ( Zaheer et al. , 2020 ) 46.63 19.02 41.77 46.32 20.65 42.33 Abs LED ( 4 k ) ( Beltagy et al. , 2020 ) 44.40 17.94 39.76 ---Abs LED ( 16 k ) ( Beltagy et al. , 2020 ) 46.63 19.62 41.83 ---Mix CTRLsum( BART + BERT ) ( He et al. , 2020 ) CTRLsum versus our BART ( 1 k ) baseline ; LED and BigBird versus our LoBART ( 4 k ) system .
+CTRLsum extends BART by conditioning it with extracted keywords v using a BERT - based model , e.g. p( y |X , v ) .
+Their BERT - based model uses sliding window allowing it to extract v in long sequences , but their BART is still limited to the first 1,024 tokens .
+As a result , it performs better than BART ( 1 k ) , but worse than BART ( 1 k ) + MCS . LoBART ( 4 k ) has a similar architecture to LED ( 4 k ) without the global attention pattern for special tokens .
+Instead , our LoBART ( 4 k ) benefits from knowledge transferred from CNNDM and the ORC pad-rand training - time content selection , which yields a larger gain when MCS is applied , i.e. the system trained with truncated data has a smaller gain when MCS is applied .
+Transfer learning comparison and additional results on the impact of ORC pad-rand are provided in Appendix C. Compared to BigBird , LoBART ( 4 k ) has a longer input span , e.g. 3,072 vs. 4,096 .
+However , BigBird benefits from utilizing more recent summarization specific pre-training Pegasus ( Zhang et al. , 2020 ) which is better than our transfer learning .
+BigBird incorporates a global attention pattern similar to LED , and it also has a random attention pattern .
+Hence , LoBART without MCS performs worse .
+Ultimately , we show that adding MCS to either BART ( 1 k ) or LoBART ( 4 k ) yields a significant improvement , resulting in state - of - the - art results in both settings .
+Moreover , although the gain from adding MCS is comparable to the gain observed in extending LED ( 4 k ) to LED ( 16 k ) , the content selection method adds less training cost .
+PubMed . Similarly , LoBART ( 4 k ) + MCS achieves state - of- the - art results shown in Table 6 .
+In contrast to the arXiv results , BART ( 1 k ) + MCS does not outperform LoBART ( 4 k ) nor BigBird , and the gain from MCS is not as high in both 1 k and 4 k settings .
+Local Attention v.s. MCS .
+Local attention yields better performance on PubMed , while MCS yields better performance on arXiv .
+To understand this discrepancy , a finegrained analysis is conducted .
+Figure 6 : ROUGE - 1 score relative to that of BART ( 1 k ) system evaluated on different partitions by length .
+In Figure 6 , we partition the test sets by input lengths , and we evaluate the performance improvement in each partition with respect to the BART ( 1 k ) baseline .
+9
+The results illustrate that as the input length N increases : ?
+The improvement of systems with MCS increases and subsequently plateaus out . ?
+The improvement of systems without MCS decreases once the input exceeds the length limit but then plateaus , suggesting that fixedspan systems without content selection perform worse once the maximum fixed - span is reached .
+For instance , below 4,000 input words , LoBART ( 4 k ) without MCS performs better than BART ( 1 k ) + MCS on both datasets .
+Therefore , our MCS method is more effective on arXiv compared to PubMed because the average length of PubMed documents is more than twice shorter than the average length of arXiv documents .
+Conclusion
+We study two methods for long-span summarization tasks .
+First , on local self-attention transformers , we present the design considerations for local self-attention BART , and we investigate the feasibility and performance of different network configurations .
+Second , on content selection , we distinguish between training time and test time methods , and we provide a good practice for both phases .
+At training time , we show that the oracle method with random sentences padded ( ORC pad-rand ) yields the best results .
+At test time , we propose multitask content selection ( MCS ) that shows an improvement over baselines .
+We demonstrate that content selection is essential , in particular for longer documents such as the articles in the arXiv dataset .
+Our BART ( 1 k ) + MCS outperforms the current best systems on Podcast and arXiv datasets , and this system does not require a large-scale accelerator in training .
+Ultimately , by combining local self-attention technique with MCS , our LoBART ( 4 k ) + MCS system has set new state - of - the - art results in terms of ROUGE scores in all three long-span summarization tasks .
+Future work will focus on training our LoBART + MCS system in an end-to - end fashion .

@@ -1,0 +1,118 @@
+title
+On Long-Tailed Phenomena in Neural Machine Translation
+abstract
+State- of- the-art Neural Machine Translation ( NMT ) models struggle with generating lowfrequency tokens , tackling which remains a major challenge .
+The analysis of long-tailed phenomena in the context of structured prediction tasks is further hindered by the added complexities of search during inference .
+In this work , we quantitatively characterize such longtailed phenomena at two levels of abstraction , namely , token classification and sequence generation .
+We propose a new loss function , the Anti-Focal loss , to better adapt model training to the structural dependencies of conditional text generation by incorporating the inductive biases of beam search in the training process .
+We show the efficacy of the proposed technique on a number of Machine Translation ( MT ) datasets , demonstrating that it leads to significant gains over cross-entropy across different language pairs , especially on the generation of low-frequency words .
+We have released the code to reproduce our results .
+1
+Introduction Autoregressive sequence to sequence ( seq2seq ) models such as Transformers ( Vaswani et al. , 2017 ) are trained to maximize the log-likelihood of the target sequence , conditioned on the input sequence .
+Furthermore , approximate inference ( search ) is typically done using the beam search algorithm ( Reddy , 1988 ) , which allows for a controlled exploration of the exponential search space .
+However , seq2seq models ( or structured prediction models in general ) suffer from a discrepancy between token level classification during learning and sequence level inference during search .
+This discrepancy also manifests itself in the form of the curse of sentence length i.e. the models ' proclivity to generate shorter sentences during inference , which The first author is now a researcher at Microsoft , USA .
+1 https://github.com/vyraun/long-tailed has received considerable attention in the literature ( Pouget - Abadie et al. , 2014 ; Murray and Chiang , 2018 ) .
+In this work , we focus on how to better model long-tailed phenomena , i.e. predicting the long-tail of low-frequency words / tokens ( Zhao and Marcus , 2012 ) , in seq2seq models , on the task of Neural Machine Translation ( NMT ) .
+Essentially , there are two mechanisms by which tokens with low frequency receive lower probabilities during prediction : firstly , the norms of the embeddings of low frequency tokens are smaller , which means that during the dot-product based softmax operation to generate a probability distribution over the vocabulary , they receive less probability .
+This has been well known in Image Classification ( Kang et al. , 2020 ) and Neural Language Models ( Demeter et al. , 2020 ) .
+Since NMT shares the same dot-product softmax operation , we observe that the same phenomenon holds true for NMT as well .
+For example , we observe a Spearman 's Rank Correlation of 0.43 between the norms of the token embeddings and their frequency , when a standard transformer model is trained on the IWSLT - 14 De - En dataset ( more details in section 2 ) .
+Secondly , for transformer based NMT , the embeddings for low frequency tokens lie in a different subregion of space than semantically similar high frequency tokens , due to the different rates of updates ( Gong et al. , 2018 ) , thereby , making rare words token embeddings ineffective .
+Since these token embeddings have to match to the context vector for getting next-token probabilities , the dot-product similarity score is lower for low frequency tokens , even when they are semantically similar to the high frequency tokens .
+Further , better modeling long-tailed phenomena has significant implications for several text generation tasks , as well as for compositional generalization ( Lake and Baroni , 2018 ) .
+To this end , we primarily ask and seek answers to the following two fundamental questions in the context of NMT : 1 . To what extent does better modeling longtailed token classification improve inference ?
+2 . How can we leverage intuitions from beam search to better model token classification ?
+By exploring these questions , we arrive at the conclusion that the widely used cross-entropy ( CE ) loss limits NMT models ' expressivity during inference and propose a new loss function to better incorporate the inductive biases of beam search .
+2 Characterizing the Long-Tail
+In this section , we quantitatively characterize the long-tailed phenomena under study at two levels of abstraction , namely at the level of token classification and at the level of sequence generation .
+To illustrate the phenomena empirically , we use a six-layer Transformer model with embedding size 512 , FFN layer dimension 1024 and 4 attention heads trained on the IWSLT 2014 De - En dataset ( Cettolo et al. , 2014 ) , with cross-entropy and label smoothing of 0.1 , which achieves a BLEU score of 35.14 on the validation set using a beam size of 5 .
+Token Level
+At the token level , Zipf 's law ( Powers , 1998 ) serves as the primary culprit for the long-tail in word distributions , and consequently , for sub-word ( such as BPE ( Sennrich et al. , 2016 ) ) distributions .
+Figure 1 shows the F-measure ( Neubig et al. , 2019 ) of the target tokens bucketed by their frequency in the training corpus , as evaluated on the validation set .
+Clearly , for tokens occurring only a few times , the F-measure is considerably lower for both words and subwords , demonstrating that the model is n't able to effectively generate low-frequency tokens in the output .
+Next , we study how this phenomenon is exhibited at the sequence ( sentence ) level .
+Sequence Level
+To quantify the long-tailed phenomena manifesting at the sentence level , we define a simple measure named the Frequency - Score , F S of a sentence , computed simply as the average frequency of the tokens in the sentence .
+Precisely , for a sequence x comprising of N tokens [ x 1 , . . . , x i , . . . , x N ] , we define the Frequency - Score F S as : F S ( x ) = N i=1 f ( x i ) N , where f ( x i ) is the frequency of the token x i in the training corpus .
+We compute F S for each source sequence in the IWSLT 2014 De - En validation set , and split it into three parts of 2400 sentences each , in terms of decreasing F S of the source sequences .
+The splits are constructed by dividing the validation set into three equal parts based on the Frequency - score , so that we can compare the performance between the three splits for a given model .
+Table 1 shows the model performance on the three splits .
+Scores for 3 widely used MT metrics ( Clark et al. , 2011 ) : BLEU , METEOR and TER as well as the Recall BERT - Score ( R- BERT ) ( Zhang et al. , 2020 ) are reported .
+The arrows represent the direction of better scores .
+The table shows that model performance across all metrics deteriorates as the mean F S value , FS of the split decreases .
+On aggregate , this demonstrates that the model is n't able to effectively handle sentences with low F S .
+Related Work
+At a high level , we categorize the solutions to better model long-tailed phenomena into three groups , namely , learning better representations , improving ( long-tailed ) classification and improvements in sequence inference algorithms .
+In this work , we will be mainly concerned with the interaction between ( long-tailed ) classification and sequence inference .
+Better Representations
+Many recent works ( Qi et al. , 2018 ; Gong et al. , 2018 ; Zhu et al. , 2020 ) propose to either learn better representations for lowfrequency tokens or to integrate pre-trained representations into NMT models .
+To better capture long range semantic structure , Chen et al . ( 2019 ) argue for sequence level supervision during learning .
+Long-Tailed Classification
+A number of works , ( Lin et al. , 2017 ; Kang et al. , 2020 ) , have focused on designing algorithms that improve classification of low-frequency classes .
+Below , we list two such algorithms , used as baselines in section 5 : Focal Loss Proposed in ( Lin et al. , 2017 ) , Focal loss ( FL ) increases the relative loss of lowconfidence predictions vis -?- vis high confidence predictions , when compared to cross-entropy .
+It is described in equation 1 , where ? > 0 and p refers to the probability / confidence of the prediction .
+wi = w i ||w i || ? ( 2 ) Here , ? is a hyperparameter .
+The intuition behind ?
+- Normalization is based on the simple observation that the norms of the penultimate layer dictate the feature span of the corresponding class during prediction .
+At the sequence level , a parallel line of work has explored penalizing overconfident predictions ( Meister et al. , 2020 ) , e.g. , Label smoothing has been shown to yield consistent gains in seq2seq tasks ( M?ller et al. , 2019 ) .
+Sequence Inference
+Modeling the Long Tail
+To improve the generation of the long-tail of low frequency tokens , it is important to study how lowfrequency tokens could appear in the candidate hypotheses during search .
+Subsequently , we could Beam Search Analysis
+To better establish the link between token level classification and beam search inference , we study the distribution of positional scores , i.e. the probabilities selected during each step of decoding , for the top hypothesis finally selected during beam search .
+The top plot in Figure 2 shows the histogram of the positional scores , aggregated on the validation set .
+A Gaussian Kernel density estimator is fitted to the histograms as well , and probability density functions ( PDFs ) for positional scores are plotted for different beam sizes in Figure 2 ( the bottom plot ) .
+An analysis of the positional scores ( Figure 2 , top ) reveals that approximately 40 % of the tokens selected in the top hypothesis have probabilities below 0.75 .
+Further , the bottom plot in Figure 2 shows that this distribution is consistent across different beam sizes .
+These observations show that the approximate inference procedure of beam-search relies significantly on low confidence predictions .
+However , if low-confidence predictions are excessively penalized , the conditional probability distribution will be pushed to lower and lower entropy , hurting effective search .
+Therefore , we argue that a better trade - off between token level classification and sequence level inference in NMT could be established by allowing low-confidence predictions to suffer less penalization vis -?- vis cross-entropy .
+Anti-Focal Loss
+Now , we try to establish a better trade - off for penalizing low-confidence predictions , which could help improve search , while being simple and automatic .
+Firstly , we generalize Focal loss by introducing a new term ? in equation 1 : Generalized - FL ( p ) = ?( 1 + ? ? p ) ? log ( p ) ( 3 ) Clearly , for ? = ?1 and ? > 0 , Generalized - FL ( equation 3 ) reduces to the Focal loss , while for ? = 0 , it reduces to the cross-entropy loss .
+Since we intend to increase the entropy of the conditional token classifier in NMT , we propose to use Generalized - FL with ? > 0 and ? > 0 , which we name as Anti-Focal loss ( AFL ) .
+To understand how AFL realizes the intuition derived through beam search analysis , consider Figure 3 .
+Figure 3 shows the plot for CE , FL with ? = 1 and AFL with ? = 1 and ? = 1 . In general , AFL allocates less relative loss to low-confidence predictions .
+For example , if we compare the relative loss term loss ( p = 0.6 ) loss ( p = 0.9 ) for the three different losses in Figure 3 , then CE has a score of 4.85 , FL has a score of 19.39 , while AFL has a score of 4.08 .
+Further , using ? and ? , we can manipulate the relative loss .
+Empirically , we find that ? = 1 and ? ? { 0.5 , 1.0 } works well for AFL in practice .
+Experiments and Results
+We evaluate our proposed Anti-Focal loss against different baselines ( CE , FL , ? - Norm ) on the task of NMT and analyze the results for further insights .
+Datasets and Baselines
+We evaluate the proposed algorithm on the widely studied IWSLT 14 , IWSLT 17 ( Cettolo et al. , 2017 ) and the Multilingual TED Talks datasets ( Qi et al. , 2018 ) ( details in Appendix A ) .
+For model training , we replicate the hyperparameter settings of Zhu et al . ( 2020 ) , except that we do not include label - smoothing for a fair comparison of the loss functions ( CE , FL , AFL ) .
+? = 1 is set for AFL .
+Further , ? - Normalization ( ?
+- Norm ) was applied post-training both for CE , AFL .
+Hyperparameters ? , ? , ? were manually tuned .
+Experimental Settings
+For experiments , we use fairseq ( Ott et al. , 2019 ) ( more details in Appendix B ) .
+For each language pair , BPE with a joint token vocabulary of 10 K was applied over tokenized text .
+A six-layer Transformer model with embedding size 512 , FFN layer dimension 1024 and 4 attention heads ( 42 M parameters ) , was trained for 50 K updates for IWSLT datasets and 40 K updates for TED Talks datasets .
+A batch size of 4 K tokens , dropout of 0.3 and tied encoder-decoder embeddings were used .
+BLEU evaluation ( tokenized ) for IWSLT 14 and TED talks datasets is done using multi-bleu.perl 2 , while for IWSLT 17 datasets SacreBLEU is used ( Post , 2018 ) .
+All models were trained on one Nvidia 2080 Ti GPU and a beam size of 5 was used for each evaluation .
+Results
+The trends in Table 2 show that AFL consistently leads to significant gains over crossentropy .
+Further , in Table 3 we compare CE and AFL ( ? = 1 ) for the three validation splits created in section 2.2 , for the IWSLT 14 De - En dataset .
+FL CE + ? - Norm AFL AFL + ? - Norm Dataset Pair CE ? = 1 ? = 2 ? = 0.2 ? = 0.4 ? = 0.5 ? = 1 ? = 1 , ? = 0 .
+Table 3 shows that AFL improves the model the most on the split with the least FS , while leading to consistent gains on all the three splits .
+Further , Figure 4 shows that AFL also leads to gains in word F-measure across different lowfrequency bins ( evaluated on the test set ) , implying better generation of low-frequency words .
+Here , the analysis was done on semantically meaningful word units , using the generated output after the BPE merge operations .
+Figure 5 in Appendix
+D shows that similar trend holds true for BPE tokens as well .
+Table 2 also shows that ?
+- Normalization helps improve BLEU for both CE and AFL , except on En- Fr , providing a simple way to improve NMT models .
+In general , ? - Norm + AFL leads to the best BLEU scores in Table 2 . Discussion .
+The results show that AFL ameliorates low-frequency word generation in NMT , leading to improvements for long-tailed phenomena both at the token and sentence level .
+Further , on the two very low-resource language pairs of Be- En and Gl- En , FL leads to improvements , suggesting that under severely poor conditional modeling i.e token classification , explicitly improving long-tailed token classification helps sequence generation in NMT .
+However , since FL is more aggressive than CE in pushing low-confidence predictions to higher confidence values , in high- resource pairs ( with better token classification ) , FL ends up hurting beam search .
+Conversely , AFL achieves significant gains in BLEU scores by incorporating the inductive bi- ases of beam search , e.g. in the comparatively higher - resource IWSLT - 17 En - Fr dataset ( 237 K training sentence pairs ) .
+Here , we also hypothesize that the long-tailed phenomena have considerably different characteristics for low-resource and highresource language pairs , but leave further analysis for future work .
+Conclusion and Future Work
+In this work , we characterized the long-tailed phenomena in NMT and demonstrated that NMT models are n't able to effectively generate low-frequency tokens in the output .
+We proposed a new loss function , the Anti-Focal loss , to incorporate the inductive biases of beam search into the NMT training process .
+We conducted comprehensive evaluations on 9 language pairs with different amounts of training data from the IWSLT and TED corpora .
+Our proposed technique leads to gains across a range of metrics , improving long-tailed NMT at both the token as well as at the sequence level .
+In future , we wish to explore its connections to entropy regularization and model calibration and whether we can fully encode the inductive biases of label smoothing in the loss function itself .

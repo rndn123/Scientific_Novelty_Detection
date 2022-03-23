@@ -1,0 +1,263 @@
+title
+AVA : an Automatic eValuation Approach for Question Answering Systems
+abstract
+We introduce AVA , an automatic evaluation approach for Question Answering , which given a set of questions associated with Gold Standard answers ( references ) , can estimate system Accuracy .
+AVA uses Transformer - based language models to encode question , answer , and reference texts .
+This allows for effectively assessing answer correctness using similarity between the reference and an automatic answer , biased towards the question semantics .
+To design , train , and test AVA , we built multiple large training , development , and test sets on public and industrial benchmarks .
+Our innovative solutions achieve up to 74.7 % F1 score in predicting human judgment for single answers .
+Additionally , AVA can be used to evaluate the overall system Accuracy with an error lower than 7 % at 95 % of confidence when measured on several QA systems .
+Introduction
+Accuracy evaluation is essential both to guide system development as well as to estimate its quality , which is important for researchers , developers , and users .
+This is often conducted using benchmark datasets containing a data sample , possibly representative of the target data distribution , provided with Gold Standard ( GS ) labels ( typically produced with a human annotation process ) .
+The evaluation is done by comparing the system output with the expected labels using some metrics .
+This approach falls short when the system output spans a large , possibly infinite set of correct items .
+For example , in retrieval - based Question Answering ( QA ) systems , a correct answer can be any string in the referent text database .
+For example , for the question , When did Marlins start ? , an answer could be : The Miami Marlins began play in the 1993 season as the Florida Marlins ;
+They started in 1993 ;
+They firstly played in 1993 ;
+In 1993 ; or any possible natural language text conveying the information that they started in 1993 .
+As annotating all possible system pieces of output is infeasible , the standard approach is to re-evaluate the new output of the system manually .
+This dramatically limits the experimentation velocity while significantly increases the development costs .
+A viable solution for specific NLP tasks such as Machine Translation ( MT ) , automatically estimates an evaluation score between the system and the reference answers , which correlates with human judgment , e.g. , the BLEU score is one popular measure ( Papineni et al. , 2002 ) .
+Such methods cannot be applied to a standard QA setting , since QA systems , e.g. , those developed for TREC - QA track ( Voorhees and Tice , 1999 ) , have the purpose to provide correct answers and are evaluated with Accuracy , i.e. , the percentage of correct answers .
+Segment overlapping metrics such as BLEU , ME- TEOR , or ROUGE do not provide a binary outcome , i.e. , correct or incorrect ( as this is not the aim of MT evaluation ) .
+Hypothetically speaking , we could apply a threshold to their score to obtain a binary outcome .
+However , it would not be sufficient as the correctness of an answer loosely depends on the match between the reference and candidate answers .
+Two answers can be correct or incorrect independently of their overlap with the reference .
+For example , for the question , What percentage of water in the body ? , associated with a reference ,
+The percentage of water in the body is 60 % , a correct answer is Most of the human body is water , with an average of roughly 60 % .
+In contrast , an incorrect answer , still very similar to the reference , could be :
+The percentage of water in the body is variable .
+The MT metrics above would find the similarity of the reference with the incorrect answer higher than the one of the references with the correct answer .
+Even a powerful model such as BERTScore ( Zhang et al. , 2020 ) would not provide a higher score to the correct answer since it is an unsupervised approach , not trained for this task .
+It should also be noted that simply training models for matching the answer candidate with the reference will again not work .
+The question semantics would radically influence the correctness of the answer .
+That is , match ( t , r|q 1 ) can be true while match ( t , r|q 2 ) can be false , where t and r are a pair of answer candidate and reference , and q 1 and q 2 are two different questions .
+In this paper , we study the design of models for measuring the Accuracy of QA systems , i.e. , percentage of correct answers over a test set ( to our knowledge this is the first successful and thorough study ) .
+In particular , we ( i ) build several baselines based on pre-trained Transformer models ( Devlin et al. , 2019 ; Liu et al. , 2019 ) to encode the triple , question q , candidate t , and reference r , in different ways ; and ( ii ) propose a new attention mechanism , peer attention , to model the interaction between t and r , given the semantic bias of q .
+To develop and test our models , we created ( i ) a dataset , Web- based Question Answering 1 ( WQA ) for training and testing AVA , the point-wise estimation of QA system output , i.e. , the evaluation if an answer is correct or not , given a GS answer ; and ( ii ) a System Dataset ( SD ) constituted by a set of outputs from several QA systems , for which AVA estimates their Accuracy .
+The results show a high F1 for point- wise models , up to 74.7 % .
+AVA can almost always rank systems in terms of Accuracy as manual annotation does .
+Finally , the Root Mean Square Error ( RMSE ) with respect to human evaluation depends on the datasets , ranging from 2 % to 9.5 % , with a Std. Dev. lower than 5 % .
+Related Work Automatic evaluation has been an interesting research area for decades ( Papineni et al. , 2002 ; Magnini et al. , 2002 ) .
+There are two typical strategies to design an automatic evaluator : supervised and unsupervised .
+In MT research , for example , BLEU ( Papineni et al. , 2002 ) has been a very popular unsupervised evaluation method for the task .
+Other supervised methods have been recently proposed , most notably ( Ma et al. , 2019 ) .
+Neuralbased automatic evaluators for dialog systems were studied in ( Ghazarian et al. , 2019 ; Lowe et al. , 2017 ; Tao et al. , 2017 ; Kannan and Vinyals , 2017 ) .
+Automatic evaluation for QA was addressed by Magnini et al . ( 2002 ) and also for multiple sub-domain QA systems ( Leidner and Callison - Burch , 2003 ; Lin and Demner-Fushman , 2006 ; Shah and Pomerantz , 2010 ; Gunawardena et al. , 2015 ) .
+However , little progress has been made in the past two decades towards obtaining a standard method .
+Automating QA evaluation is still an open problem , and there is no recent work supporting it .
+As mentioned in the introduction MT unsupervised metrics , e.g. , BLEU score or BERTScore , are not either a solution or a reasonable baseline for automatic QA evaluation .
+They could be used as features for our models , but we designed several supervised approaches based on pre-trained Transformer models , which subsume these MT features .
+A remotely related research effort for automatizing answer evaluation concerns student essays .
+Short answer grading ( SAG ) , or short answer scoring , involves the automatic grading of students ' answers , typically written in free text , for a given prompt or question ( Mohler et al. , 2011 ) .
+This task has been studied in ( Mitchell et al. , 2002 ; Pulman and Sukkarieh , 2005 ) for educational applications .
+Neural - based systems have also been recently proposed to improve the models ( Riordan et al. , 2017 ; Wang et al. , 2019 ) .
+Despite the conceptual similarity , i.e. , evaluating an answer , the problem setting for the task is fundamentally different .
+Specifically , SAG is prompt-centric ; thus , the learning objective is to score accurately other different answer variants for a particular question by building models trained on previously known variants ( Wang et al. , 2019 ) .
+Besides , the answers , while written in free text , are not typically complete sentences .
+Therefore , the SAG design aims to capture sufficient content covered in the reference responses for a question .
+On the contrary , AVA is designed to operate in an open-domain QA setting , where both the question and answer are arbitrary input and complete sentences .
+q: What is the population of California ?
+r: With slightly more than 39 million people ( according to 2016 estimates ) , California is the nation 's most populous state - its population is almost one and a half times that of second- place Texas ( 28 million ) .
+s : 39 million t : The resident population of California has been steadily increasing over the past few decades and has increased to 39.56 million people in 2018 .
+Table 1 : An example of input data
+Answer Sentence Selection ( AS2 )
+The task of reranking answer sentence candidates provided by a retrieval engine can be modeled with a classifier scoring the candidates .
+Let q be a question , T q = {t 1 , . . . , t n } be a set of answer sentence candidates for q , we define R as a ranking function , which orders the candidates in T q according to a score , p ( q , t i ) , indicating the probability of t i to be a correct answer for q.
+Popular methods modeling R include Compare - Aggregate ( Yoon et al. , 2019 ) , inter-weighted alignment networks ( Shen et al. , 2017 ) , and Transformers ( Garg et al. , 2020 ) .
+Automatic evaluation of QA
+The AVA performance can be measured in two ways : ( i ) evaluation of the single answers provided by the target system ( point- wise evaluation ) ; and ( ii ) the aggregated evaluation of a set of questions ( system- wise evaluation ) .
+We define the former as a function : A ( q , r , t i ) ? { 0 , 1 } , where r is a reference answer ( from GS ) and the output is simply a correct / incorrect label .
+Table 1 shows an example question associated with a reference , a system answer , and a short answer s 2 .
+A can be applied to compute the final Accuracy of a system using an aggregator function : we simply assume the point- wise AVA predictions as they were the GS .
+For example , in case of Accuracy , we simply average the AVA predictions , i.e. , 1 | Q| q?Q A( q , r , t [ , s ] ) , where s is a short GS answer ( e.g. , used in machine reading ) .
+It is an optional input , which we only use for building a linear model baseline , described in Section 5 .
+Dataset creation
+To learn and test our models , we needed to build AVA datasets .
+The interesting aspect is that we can automatically derive them from standard AS2 cor-pora if they contain questions with multiple correct answers .
+For this purpose , we created our dataset WQA for AS2 and transformed it into AVA - WQA .
+We describe our approach to transforming AS2 to AVA datasets in this section .
+Finally , we build another benchmarking dataset for AVA constituted by a set of QA systems and their output on target test sets .
+This is used to measure the end-to - end system performance ( system- wise evaluation ) .
+AS2 datasets
+These datasets consist of a set of questions Q , and for each q ?
+Q , there are T q = {t 1 , . . . , t n } candidates , comprised of both correct answers C q and incorrect answers C q , T q = C q ? C q . WQA : The Web-based Question Answering is a dataset built by Alexa AI as part of the effort to improve understanding and benchmarking in QA systems .
+The creation process includes the following steps : ( i ) given a set of questions we collected from the web , a search engine is used to retrieve up to 1,000 web pages from an index containing hundreds of millions of pages .
+( ii ) From the retrieved documents , all candidate sentences are extracted and ranked using AS2 models from ( Garg et al. , 2020 ) . Finally , ( iii ) top candidates for each question are manually assessed as correct or incorrect by human judges .
+This allowed us to obtain a richer variety of answers from multiple sources with a higher average number of answers , as shown in Table 2 .
+Point-wise datasets for AVA
+We use AS2 datasets as follows : firstly , we only keep questions with at least two correct answers , which is critical to build positive and negative examples .
+Secondly , given q , t i , t j , where t i , t j are two candidates , we build : AVA - Pos = q , ( t i , t j ) ?
+C q ?
+C q and t i = t j AVA - Neg = q ; ( t i , t j ) ?
+C q ? C q We create AVA - WQA from WQA .
+The statistics are shown in Table 2 .
+AVA System Dataset ( SD )
+To measure AVA with respect to the overall system Accuracy , we need to have a sample of systems and their output on different test sets .
+We created a dataset with candidate answers collected from eight systems answering a set of 1,340 questions .
+The questions were again sampled from the Web .
+We only considered information questions .
+5 Models for AVA
+The central intuition for the design of an automatic QA evaluator is ( i ) capturing the same information a standard QA system uses , while ( ii ) exploiting the semantic similarity between t and r , biased by q .
+We build three types of models : ( i ) a linear classifier , which is more interpretable and can help the model design , ( ii ) Transformer - based methods , based on powerful language models , and ( iii ) our Peer Attention approach to better model the interaction among q , t , and r.
+A linear classifier Given an input example , ( q , r , s , t ) , our classifier uses the following similarity features : x 1 =isincluded (s , t ) , x 2 =sim-text ( r , t ) , x 3 =sim-text ( r , q ) ; and x 4 =sim-text (q , t ) , where is - included applied to s and t is a binary feature testing if t includes s , sim-text is a sort of Jaccard similarity defined as : sim-text ( s i , s j ) = 2 | tok ( s i )?tok ( s j ) | | tok ( s i ) |+| tok ( s j ) | , and tok ( s ) is a function that splits s into tokens .
+Let x = f ( q , r , s , t ) = ( x 1 , x 2 , x 3 , x 4 ) be a similarity feature vector describing our evaluation tuple , and let l be a binary label indicating whether t answers q or not .
+We train w on a dataset D = {( x i , l i ) } , i = 1 , .. , | D| , using SVM .
+We compute the point- wise evaluation of t as the test x i ?w > ? , where ? is a threshold trading off Precision for Recall in standard classification approaches .
+Transformer - based models Transformer - based architectures have delivered powerful language models , which can capture complex similarity patterns .
+Thus , they are suitable methods to improve our basic approach described in the previous section .
+Following the linear classifier modeling , we propose three different ways to exploit the relations among the members of the tuple ( q , r , s , t ) .
+Let B be a pre-trained language model , e.g. , the recently proposed BERT ( Devlin et al. , 2019 ) , RoBERTa ( Liu et al. , 2019 ) , XLNet ( Yang et al. , 2019 ) , AlBERT ( Lan et al. , 2020 ) .
+We use B to compute the embedding representation of a tuple : B ( a , a ) ? x ?
+R d , where ( a , a ) is a short text pair , x is the output representation of the pair , and d is the dimension of the output representation .
+We use a standard feedforward network , i.e. , A ( x ) = W x + b , to implement the classification layer , deciding if an answer is correct , where W and b are parameters we learn by fine-tuning the model on AVA datasets .
+We describe the following different designs for A. A 0 : Text - pair embedding
+We build a language model representation for pairs of members of the tuple , x = ( q , r , t ) by simply inputting them to Transformer models B in the standard sentence pair fashion .
+We consider four different configurations of A 0 , one for each of the following pairs : ( q , r ) , ( q , t ) , ( r , t ) , and one for the triplet , ( q , r , t ) , modeled as the concatenation of the previous three representations .
+The representation for each pair is produced by a different and independent Transformer instance , i.e. , B p .
+More formally , we have the following three models A 0 ( B p ) , ?p ? P 0 , where P 0 = { ( q , r ) , ( q , t ) , ( r , t ) }.
+Additionally , we design a model over ( q , r , t ) with A 0 ( ? p?P 0 B p ) , where ? means concatenation of the representations .
+We do not use the short answer , s , as its contribution is minimal when using powerful Transformer - based models .
+A 1 : Improved text -triple embedding
+The methods above are limited to pair representations .
+We improve them by designing B models that can capture pattern dependencies across q , r and t.
+To achieve this , we concatenate pairs of the three pieces of text .
+We indicate this string concatenation with the ? operator .
+Specifically , we consider P 1 = {( q , r ? t ) , ( r , q ? t ) , ( t , q ? r ) } and propose the following A 1 .
+As before , we have the individual models , A 1 ( B p ) , ?p ?
+P 1 as well as the combined model , A 1 ( ? p?P 1 B p ) , where again , B p uses different instances that are fine-tuned together .
+We propose Peer Attention to improve feature connections between different B instances .
+The idea , similar to the encoder-decoder setting in Transformer - based models ( Vaswani et al. , 2017 ) , is to introduce an additional decoding step for each pair .
+That is , we use another Transformer instance to decode the output from the previous instance .
+Figure 1 depicts our proposed setting for learning the representation of two different pairs : a ( e.g. , equal to ( q , t ) ) and b ( e.g. , equal to ( q , r ) ) .
+The approaches from the previous section would learn two Transformer instances , B a and B b , with one pass .
+Our Peer Attention , instead , operates two steps , using four instances , B a 0 , B a 1 , B b 0 , and B b 1 as follows :
+First , in the encoding step , we learn the representations , B a0 and B b0 , as before .
+Second , in the decoding step , we use the H
+Experiments
+We study the performance of AVA in predicting : ( i ) the correctness of the individual answers output by a system ( point - wise estimation ) ; and ( ii ) the overall system performance derived on a test set .
+We consider QA Accuracy and passage reranking measures in comparison to human labeling .
+The first aspect evaluates the quality of our approaches , whereas the second provides evidence on the practical use of AVA to develop QA systems .
+Datasets and models
+We train and test models using our new AVA - WQA dataset .
+We also evaluate the point-wise performance on the WikiQA and TREC - QA datasets .
+Table 3 summarizes the configurations we consider for training and testing .
+As the linear classifier baseline , we used SVM by scikit-learn , setting the probability parameter to enable Platt scaling calibration on the classifier score .
+We developed our Transformer - based AVA on top of the HuggingFace 's Transformer library ( Wolf et al. , 2020 ) , which also offers a native encoder-decoder setting through the encoder_hidden_states feature .
+We use RoBERTa - Base as the initial pre-trained model for each B instance ( Liu et al. , 2019 ) , with the default hyper-parameter setting of GLUE trainings : ( i ) AdamW variant ( Loshchilov and Hutter , 2017 ) as optimizer , ( ii ) a learning rate of 1e - 06 set for all fine-tuning exercises , and ( iii ) a maximum sequence length set to 128 .
+Our number of iterations is two .
+We also use a development set to enable early stopping based on F1 measure after the first iteration .
+We fix the same batch size setting in the experiments to avoid possible performance discrepancies caused by different batch sizes .
+Model Setting Configurations Linear Classifier using 4 features x i A 0 one for each and one for all from P 0 A 1 all possible combinations from P 1 A 2 the best setting from A 1 Table 3 : The AVA configurations used in training
+Metrics
+We study the performance of AVA in evaluating passage reranker systems , which differ not only in methods but also in domains and application settings .
+We employ the following evaluation strategies to benchmark AVA .
+Point-wise evaluation
+We use Precision , Recall , and F1 , to measure the performance of AVA in predicting if an answer candidate is correct or not .
+System -wise evaluation
+We use AVA in a simple aggregator to estimate the overall system performance over a test set .
+The metrics we consider in our estimation are : Precision - at - 1 ( P@1 ) , Mean Average Precision ( MAP ) , and Mean Reciprocal Rank ( MRR ) , as TREC - QA and WikiQA contain answer ranks .
+In contrast , we only use P@1 on SD dataset , as this only includes the selected answers for each system .
+To measure the quality of AVA with respect to GS annotation we use ( i ) Root Mean Square Error : RMSE ( a , h ) = 1 n ? n i=1 ( a i ? h i ) 2 , where a and h are the measures given by AVA and the human annotation , respectively ; and ( ii ) Kendall 's Taub 3 to measure the correlation between the system ranks produced by AVA and GS one , i.e. , ? = c?d c+d , where c and d are the numbers of concordant and discordant pairs between the two rankings .
+Results on Point-wise Evaluation
+We evaluate the performance of AVA in predicting if an answer t is correct for a question q , given a reference r.
+Table 4 shows the result .
+The first column reports the names of the systems described in Section 5 .
+The second column shows the F1 measured on AVA - WQA .
+We note that : ?
+The SVM classifier performs much lower than any Transformer - based model ( fed with a complete input ) : clearly , Transformer models can exploit powerful language models , suggesting that generalization is important .
+3 We use scipy.stats.kendalltau Modeling configuration F1 Linear Classifier 0.3999 A 0 ( {( q , r ) } ) 0.0695 A 0 ( { ( r , t ) } ) 0.6247 A 0 ( {( q , t ) } ) 0.6713 A 0 ( P 0 ) 0.6807 ? A 0 ( {( q , r ) } ) as expected cannot predict if an answer is correct ( its F1 is lower than 7 % ) since it does not use the answer representation .
+A 1 ( {( q , r ? t ) } ) 0.7014 A 1 ( { ( r , q ? t ) }) 0.7383 A 1 ( { ( t , q ? r ) } ) 0.7236 A 1 ( {( q , r ? t ) , ( t , q ? r ) } ) 0.7421 A 1 ( {( r , q ? t ) , ( t , q ? r ) } ) 0.7447 A 1 ( {( r , q ? t ) , ( q , r ? t ) }) 0.7435 A 1 ( P 1 ) 0.7303 A 2 ( ( r , q ? t ) , ( t , q ? r ) ) 0.7472 ? A 0 ( {( q , t ) } ) is already a good model as it is as much powerful as a QA system . ? A 0 ( {( r , t ) } ) is already a reasonable model , intuitively based on paraphrasing between r and t , but its F1 is 9 % ( 62.47 vs 68.07 ) lower than A 0 ( P 0 ) , which uses all information , indicating that the semantic bias of q is essential to learn the right similarity between r and t. ?
+The results of the A 1 models using a single triplet of q , r and t ( i.e. , 70.14 , 73.87 , 72.36 ) indicate that a text concatenation as input to Transformer models captures more information than concatenating the three separate embedding pairs , e.g. , A 0 ( { ( r , t ) } ) only obtains 68.07 .
+Interestingly , q text must be concatenated with t or r , to generate more effective features ( 2 or 4 points more ) .
+?
+The triplet combination , e.g. , A 1 {r , q ? t ) , ( t , q ? r ) } , provides an even more accurate model , while the redundant information from A 1 ( P 1 ) does not produce benefits .
+?
+Finally , the Peer Attention model applied to the best representations , e.g. , A 1 {r , q ? t ) , ( t , q ? r ) } , boost them even more , reaching ?75 % .
+This is an important result , considering that the annotator agreement ( the refer - Metrics RMSE ? ? Kendall ? p TREC -QA- Dev P@1 0.000 ? 0.000 1.000 0.003 MAP 0.040 ? 0.019 1.000 0.003 MRR 0.015 ? 0.011 0.866 0.017 TREC -QA-Test P@1 0.034 ? 0.018 1.000 0.003 MAP 0.041 ? 0.029 0.867 0.017 MRR 0.020 ? 0.012 1.000 0.003 WikiQA - Dev P@1 0.000 ? 0.000 1.000 0.009 MAP 0.050 ? 0.039 0.733 0.056 MRR 0.063 ? 0.052 0.690 0.056 WikiQA-Test P@1 0.079 ? 0.030 0.889 0.017 MAP 0.081 ? 0.040 0.733 0.056 MRR 0.095 ? 0.035 0.867 0.017
+Table 5 : System-wise evaluation on TREC - QA and WikiQA using AVA model , A 2 ( ( r , q ? t ) , ( t , q ? r ) ) .
+ence is not available to them ) is lower than 25 % .
+Results on system-wise evaluation
+We evaluate the ability of AVA in predicting the Accuracy of QA systems as well as the performance of AS2 tasks .
+We conduct two evaluation studies with two public datasets , TREC - QA and WikiQA , and our SD dataset .
+Results on public datasets For TREC - QA and WikiQA , we evaluated a bag of different models on the development and test sets and compared the results to the performance measured by AVA using one of the best models according to the point- wise evaluation , i.e. , A 2 ( ( r , q ? t ) , ( t , q ? r ) ) .
+More specifically , we apply each model m to select the best answer t from the list of candidates for q in the dataset .
+We first compute the performance of model m based on the provided annotations .
+The metrics include Accuracy or Precision - at - 1 ( P@1 ) , MAP , and MRR .
+We then run AVA for ( q , t ) using the GS answers of q as references , r.
+When multiple references are available , the final score of ( q , t ) is the average of AVA scores applied to different r.
+Before computing the Accuracy on the test set , we tune the AVA threshold to minimize the RMSE between the Accuracy ( P@1 ) measured by AVA and GS , on the dev. set of each dataset .
+We use these thresholds to evaluate the results also on the test sets .
+We considered six different systems built with one Compare-Aggregate ( CNN ) trained model and five other Transformers - based models .
+Four of the latter are collected from public resources 4 ( Garg 4 github.com/alexa/wqa_tanda et al. , 2020 ) .
+These models differ in the architectures , BERT vs RoBERTa vs TANDA , and their training data ; thus , their output is rather different .
+We removed questions that have no correct or no incorrect answers .
+Table 5 reports the overall results averaged over the six models .
+We note that ( i ) if we set the threshold on the dev. set , the error on P@1 on the dev .
+set is 0 , which should not surprise the reader as we fit such set .
+( ii )
+This is not the case for MAP , which is a much harder value to predict as it requires to estimate an entire ranking .
+( iii )
+On the TREC - QA test set , AVA has an error ranging from 2 to 4.1 points on any measure .
+( iv ) On the WikiQA test set , the error is higher , reaching 9.5 % , probably due to the fact that WikiQA data is rather different ( more than TREC - QA data ) from the data used for training AVA .
+( v) the Std.
+Dev. is low , suggesting that AVA can be used to estimate system performance , with an error ranging from 4 % to 16.5 % at 95 % confidence , depending on measure and dataset .
+Additionally , we compute the Kendall's Tau -b correlation between the ranking of the six systems sorted in order of performance ( P@1 ) according to GS and AVA .
+We observe a perfect correlation on TREC - QA and a high correlation on WikiQA .
+This means that AVA can be used to determine if a model is better than another , which is desirable when developing and / or deploying new systems ; the low p-values indicate reliable results .
+Finally ,
+Table 7 compares the performance evaluated with GS and AVA for all six models .
+It is interesting to note the high variability of the performance of our tested QA systems , e.g. , P@1 ranges from 59.6 to 96.2 ( with several intermediate results ) on TREC - QA .
+Nevertheless , as shown in Table 5 , the predictions of AVA are close to those from humans .
+Results on SD
+We use the SD dataset in this evaluation to have a further system -wise evaluation .
+This differs from the one before as the systems ' configurations and the data reflect an industrial scenario .
+The task is more challenging as the output is not just from one neural model , it comes from a combination of modules , ranging from query understanding , retrieval engine setting , indexed data , document and sentence filters , and finally , the adopted AS2 model .
+Additionally , the questions set is rather different from the one used for training .
+GS and AVA , along with RMSE and Kendall statistics of the two different evaluations .
+The RMSE is rather low 3.5 % with a standard deviation of 1.9 % , which indicates a max prediction error less than ?7 % with a confidence of 95 % .
+The rank correlation is lower than what was observed on the academic benchmarks as the 8 evaluated systems have very close Accuracy .
+In any case , AVA can still be effectively used to select the top 3 - 4 systems .
+Qualitative Analysis
+Table 8 reports some example questions from TREC - QA test set , the top candidate selected by the TANDA system ( Garg et al. , 2020 ) , the classification score of the latter , and the AVA score , which will determine a correct answer when it is larger than 0.5 .
+For the first three questions , we note that , even thought the score of TANDA system is low , e.g. , 0.0001 , AVA can assign a rather high score , e.g. , 0.596 .
+In the first question , this is possible since AVA can match the winner of the literature prize , Sully Prudhomme , as well as the year of the event with the answer candidate .
+This match can not happen with the question .
+In the second question , Eileen Marie can be matched with the question but there is basically no direct match between branch of the service and to command a space shuttle mission as air force col .
+In contrast , the reference provides easy matching , such as air force colonel and command a space mission .
+A similar rationale applies to the third question .
+Conversely , a wrong answer could be classified as such by AVA , even if TANDA assigned it a very large score .
+For example , 1988 can be a reasonable date in an answer to the fourth question .
+This match prevents the selector to discard the answer .
+In contrast , the date above does not match with 1986 in the reference , and the importance of this mismatch is amplified by the presence of when in the question , which suggests AVA to pay attention to dates ( in line with peer-attention modeling ) .
+AVA vs.
+Overfitted reranker
+We investigated the performance of AVA in an open-domain setting , where the candidate answers are all sentences contained in the retrieved web documents .
+Given a question , we analyzed the top - 1 candidates reranked by two models : ( i ) a Transformerbased reranker fine-tuned on the same test questions ( overfitting them ) ; and ( ii ) the general AVA model using the answer the reranker was trained on , as reference .
+We used ASNQ ( Garg et al. , 2020 ) questions , which are typically associated with only one correct answer .
+For each question , we retrieved the top 200 relevant documents , ?10,000 sentences , from a large index built with the 100 MM documents from Common Crawl ( commoncrawl.org ) , and used them as input of our models .
+We manually evaluated the top - 1 answer candidate produced by the reranker and AVA for 100 randomly selected questions .
+The results show that At over 15 million ounces of gold , the deposit is one of the world 's largest , located in an area designated for mining .
+5 According to official records , Fort Knox holds 4,578 metric tons of gold bullion , or roughly 2.5 % of the entire world 's known gold supply .
+what muscle in the upper body covers the upper chest
+The pectoralis major is a thick , fan - shaped muscle , situated at the chest ( anterior ) of the human body .
+The upper portion of your back is referred to as the thoracic spine , and it includes the trapezius , rhomboids , teres muscles , infraspinatus , and lats .
+Chest presses focus on exactly that - the chest muscle , called the pectoralis major .
+Table 9 : Examples show AVA can identify correct answers sharing the semantics of the questions .
+AVA is much more accurate than the overfitted reranker , 66 % versus 25 % .
+Table 9 shows some questions q , with their references r , and the answers selected by the two models .
+We note that the overfitted reranker selects answers that either ( i ) highly overlap with the reference ( first example ) , or ( ii ) are typically wrong when such continuous word overlapping is missing ( second and third examples ) .
+In contrast , AVA selects answers that are rather different from the reference , even though they share the same semantics in answering the question .
+Conclusion
+We have presented AVA , the first automatic evaluator method for QA systems .
+We created seven different datasets , classified into three different types , which we used to develop AVA .
+We released those based on public data and plan to release the others .
+Then , we proposed different Transformer - based models and a new peer attention approach to capture answer and reference similarity induced by the question semantics .
+Our extensive experimentation has shown the AVA effectiveness for different types of evaluation : point-wise and system-wise over Accuracy , MAP and MRR .
+The results suggest that AVA can estimate the measures above , with a max error of 7 % at 95 % of confidence .
+AVA can also be applied to generate distant supervision data .
+An example of this future application is given by ( Krishnamurthy et al. , 2021 ) .
+A 2 : 2 Peer Attention for Transformer modelsOur previous designs instantiate different B for each pair ; thus , they learn the feature representations of the target pair and the relations between its members during the fine-tuning process .
+This individual optimization limits the modeling of patterns across the representations of different pairs as there is no attention mechanism between the B instances : the combination of features only happens in the last classification layer .

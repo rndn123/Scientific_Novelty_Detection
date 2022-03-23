@@ -1,0 +1,153 @@
+title
+The HIT -SCIR System for End-to - End Parsing of Universal Dependencies
+abstract
+This paper describes our system ( HIT - SCIR ) for the CoNLL 2017 shared task : Multilingual Parsing from Raw Text to Universal Dependencies .
+Our system includes three pipelined components : tokenization , Part-of- Speech ( POS ) tagging and dependency parsing .
+We use character - based bidirectional long shortterm memory ( LSTM ) networks for both tokenization and POS tagging .
+Afterwards , we employ a list- based transitionbased algorithm for general non-projective parsing and present an improved Stack - LSTM - based architecture for representing each transition state and making predictions .
+Furthermore , to parse low / zero-resource languages and cross-domain data , we use a model transfer approach to make effective use of existing resources .
+We demonstrate substantial gains against the UDPipe baseline , with an average improvement of 3.76 % in LAS of all languages .
+And finally , we rank the 4th place on the official test sets .
+Introduction
+Our system for the CoNLL 2017 shared task ( Zeman et al. , 2017 ) is a pipeline which includes three cascaded modules , tokenization , Part-of - Speech ( POS ) tagging and dependency parsing .
+?
+Tokenization .
+This module includes two components , the sentence segmenter and the word segmenter which recognize the sentence and word boundaries respectively ( Section 2.1 ) .
+?
+POS tagging .
+We focus mainly on universal POS tags , and do n't use language -specific POS as well as other morphological features ( Section 2.2 ) .
+?
+Dependency parsing .
+To handle the nonprojective dependencies in most of the languages ( or treebanks ) provided in the task , we employ the list- based transition parsing algorithm ( Choi and McCallum , 2013 ) , equipped with an improved Stack - LSTMbased model for representing the transition states , i.e. , configurations ( Section 2.3 ) .
+We mainly concentrate on parsing in this task , and make use of UDPipe ( v1.1 ) ( Straka et al. , 2016a ) for most of the pre-processing steps .
+However , our preliminary experiments showed that the UDPipe tokenizer and POS tagger perform rather poorly in some languages and specific domains .
+Therefore , we develop our own tokenizer and POS tagger for a subset of languages .
+To deal with the parallel test sets ( crossdomain ) and low / zero-resource languages , we adopt the neural transfer approaches proposed in our previous studies ( Guo et al. , 2015 ( Guo et al. , , 2016 to encourage knowledge transfer across different but related languages or treebanks .
+Experiments on 81 test sets demonstrate that our system ( HIT - SCIR : software4 ) obtains an average improvement of 3.76 % in LAS as compared with the UDPipe baseline , and ranks the 4th place in this task .
+2 System Architecture 2.1 Tokenization
+Sentence Segmentation
+We develop our own sentence segmentation models for the languages which have white spaces as token separators and on which UDPipe does n't perform well .
+We formalize the sentence segmentation process as a binary classification problem , that is to classify each token as either the end of a sentence or not .
+We notice that characterlevel information is critical for sentence segmentation , since texts are not tokenized yet in the current phase .
+Therefore , we develop a hierarchical LSTM - based model , as illustrated in Figure 1 , in which characters in each token are composed using a character - based bidirectional LSTM ( Bi - LSTM ) network and then concatenated with additional token - level features ( e.g. , token embedding , the first character of this token , etc. ) and passed through a token - level Bi-LSTM .
+The hidden states of the token - level Bi-LSTM are finally used for classification through a softmax layer .
+We follow the strategy of the UDPipe tokenizer ( Straka et al. , 2016a ) and employ a sliding window to incrementally segment a document into sentences .
+In addition , we notice that for certain treebanks ( e.g. , la ittb and cs cltt ) , some punctuation - related rules derived from the training data can be highly effective .
+To be more specific , some punctuations that appear as the end of a sentence with high probability will be used directly for determining sentence boundaries .
+Therefore , we develop additional rule- based systems for these data instead of using the neural models as describe above .
+Word Segmentation
+We develop our own word segmentation models particularly for languages which do not have ex -
+Our word segmentation model is also built on Bi-LSTM networks , and incorporates rich statistics - based features gathered from large-scale unlabeled data .
+Specifically , we utilize features like character -unigram embeddings , characterbigram embeddings and the pointwise mutual information ( Liang , 2005 ) ( PMI ) of adjacent characters .
+Formally , the input of our model at each time step t can be computed as : z t = [ U t ; B t?1 ; B t ; PMI ( c t?1 , c t ) ; PMI ( c t , c t + 1 ) ] ( 1 ) x t = max { 0 , W z t + b} ( 2 ) where U t and B t denote the unigram embedding and bigram embedding respectively at position t and PMI denotes the pointwise mutual information between two characters .
+The PMI values are computed through : PMI ( c 1 , c 2 ) = log p ( c 1 c 2 ) p ( c 1 ) p ( c 2 ) ( 3 ) where c 1 and c 2 are two characters , p( c 1 ) , p( c 2 ) and p(c 1 c 2 ) are counted on the raw data provided by the shared task . p( s ) denotes the probability string s appears in the raw data .
+We scale PMI with their Z-scores , the Z-score of a PMI value x is x ? ? , where ? and ? are the mean and standard deviation of the PMI distribution , respectively .
+Figure 2 shows the architecture of our word segmentation model .
+The character -unigram embeddings and character - bigram embeddings are obtained using word2vec ( Mikolov et al. , 2013 ) on the raw data .
+Part-of-Speech Tagging
+The UDPipe POS tagger is trained using averaged perceptron with feature engineering .
+In our system , we use a model similar to the one for sentence segmentation ( Section 2.1.1 ) , i.e. , a hierarchical Bi-LSTM model which outperforms UDPipe on most of datasets with much fewer features .
+Concretely , each word is modeled using a characterbased Bi-LSTM , so that word prefix and suffix features can be effectively incorporated , which is particularly important for morphologically rich languages .
+In addition , modeling from characters alleviates the problem of Out-of-Vocabulary ( OOV ) words .
+The character - based compositional embedding of each word is then concatenated with a pretrained word embedding and a Brown cluster embedding , resulting in the final word representation which is fed as input of a word- level Bi-LSTM for POS tagging .
+Formally , x = max{0 , W [ ? h ; ? h ; w ; c ] + q} ( 4 ) Figure 3 illustrates the structure of the character - based composition model .
+Dependency Parsing
+The transition - based dependency parsing algorithm with a list- based arc-eager transition system proposed by Choi and McCallum ( 2013 ) is used in our parser .
+We base our parser mainly on the Stack - LSTM model proposed by Dyer et al . ( 2015 ) , where three Stack - LSTMs are utilized to incrementally obtain the representations of the buffer ? , the stack ? and the transition action sequence A . In addition , a dependency - based Recursive Neural Network ( RecNN ) is used to compute the partially constructed tree representation .
+However , compared with the arc-standard algorithm ( Nivre , 2004 ) used by Dyer et al . ( 2015 ) , the list- based arc-eager transition system has an extra component in each configuration , i.e. , the deque ?.
+So we use an additional Stack - LSTM to learn the representation of ?.
+More importantly , we introduce two LSTM - based techniques , namely Bi-LSTM Subtraction and Incremental Tree-LSTM ( explained below ) for modeling the buffer and sub-tree representations in our model .
+The pre-trained word embedding ( 100 dimensional ) , Brown cluster embedding ( 100 dimensional ) , along with a 100 - dimensional randomly initialized word embedding updated while training , 2 and a 50 - dimensional embedding for UPOS are concatenated and passed through a non-linear layer to obtain the representation of each word .
+Representations of the four components in our transition system are concatenated and passed through a hidden layer to obtain the representation of the parsing state at time t : e t = max{0 , W [ s t ; b t ; p t ; a t ] + d} ( 5 ) where s t , b t , p t and a t are the representation of ? , ? , ? and A respectively .
+d is the bias .
+e t is finally used to compute the probability distribution of possible transition actions at time t through a softmax layer .
+Figure 4 shows the architecture .
+Bi-LSTM Subtraction
+We regard the buffer as a segment and use the subtraction between LSTM hidden vectors of the segment head and tail as its representation .
+To include the information of words out of the buffer , we apply subtraction on bidirectional LSTM representations over the whole sentence ( Wang et al. ,
+Incremental Tree-LSTM
+We use a Tree-LSTM ( Tai et al. , 2015 ; Zhu et al. , 2015 ) in our parser to model the sub-trees during parsing .
+The example in Figure 6 shows the differences between RecNN ( Dyer et al. , 2015 ) and Tree-LSTM .
+In RecNN , the representation of a sub-tree is computed by recursively combining head -modifier pairs .
+Whereas in Tree-LSTM , a head is combined with all of its modifiers simultaneously in each LSTM unit .
+However , our implementation of Tree-LSTM is different from the conventional one .
+Unlike traditional bottom- up Tree -LSTMs in which each head and all of its modifiers are combined simultaneously , the modifiers are found incrementally during our parsing procedure .
+Therefore , we propose Incremental Tree -LSTM , which obtains sub-tree representations incrementally .
+To be more specific , each time a dependency arc is generated , we collect representations of all the found modifiers of the head and combine them along with the embedding of the head as the representation of the sub-tree .
+The original embedding rather than the current representation of the head is utilized to avoid the reuse of modifier information , since the current representation of the head contains information of its modifiers found previously .
+Parser Ensembling
+For a majority of languages , we found that the parsing performance can be improved by simply integrating two separately trained models .
+More specifically , for each language two models with different random seeds are trained separately .
+While predicting , in each state , both models are used to calculate the scores for valid transitions under this configuration as described above .
+Then the score distributions computed by two models are summed to get the final scores for the valid transitions , among which the one with the highest score will be taken as the next transition .
+3 Transfer Parsing across Domains and Languages
+Cross-Domain Transfer
+For 15 out of 45 languages presented in the task , multiple treebanks from different domains are provided .
+To exploit the benefits from these crossdomain data , we use a simple inductive transfer approach which has two stages :
+1 . Multiple treebanks of each language are combined to train an unified parser .
+2 . The unified parser is then fine-tuned on the training treebank of each domain , to obtain target domain-specific parsers .
+In practice , for each language considered here , we treat the largest treebank as our source-domain data , and the rest as target-domain data .
+Only target- domain models are fine-tuned from the unified parser , while the source-domain parser is trained separately using the source treebank alone .
+For the new parallel test sets in test phase , we simply use the model trained on source-domain data , without any assumption on the target domain .
+Cross-Lingual Transfer
+We consider the languages which have less than 900 sentences in the training treebank as low - resource , and employ the cross-lingual model transfer approach described in Guo et al .
+( 2015 Guo et al. ( , 2016 to benefit from existing resource - rich languages .
+The low-resource languages here include Ukrainian ( uk ) , Irish ( ga ) , Uyghur ( ug ) and Kazakh ( kk ) .
+We determine their source language ( treebank ) according to the language families they belong to and their linguistic typological similarity .
+Specifically , the transfer setting is shown in Table 1 .
+The transfer approach is similar to crossdomain transfer as described above , with one important difference .
+Here , we use cross-lingual word embeddings and Brown clusters derived by the robust projection approach ( Guo et al. , 2015 ) when training the unified parser , to encourage knowledge transfer across languages at lexical level .
+Specifically , for each source and target language pair ? src , tgt ? , we derive an alignment matrix A tgt src from a collected bilingual parallel corpus , where each element A tgt src ( i , j ) is the normalized count of alignments between corresponding words in their vocabularies : A tgt src ( i , j ) = #( V ( i ) tgt ? V ( j ) src ) ? k #( V ( i ) tgt ? V ( k ) src ) ( 6 ) Given a pre-trained source language word embedding matrix E src , the resulting word embedding matrix for the target language can be simply computed as : E tgt = A tgt src ?
+E src ( 7 ) Therefore , the embedding of each word in the target language is the weighted average of the embeddings of its translation words in our bilingual parallel corpus .
+The cross-lingual Brown clusters are obtained using the PROJECTED clustering approach described in ( T?ckstr ? m et al. , 2012 ) , which assigns a target word to the cluster with which it is most often aligned :
+After that , target language -specific parsers are obtained through fine-tuning on their own treebanks .
+Figure 7 illustrates the flow of our transfer approach .
+c( w tgt i ) = arg max k j A tgt src ( i , j ) ?1 [ c ( w src j ) = k ] ( 8 ) For the surprise languages in the final test phase , we use the transfer settings in Table 2 .
+We use multi-source delexicalized transfer for surprise language parsing , considering that bilingual parallel data which is required for obtaining crosslingual word embeddings is not available for these languages .
+Experiments
+We first describe our experiment setups and strategies for processing different languages ( treebanks ) in each module .
+Then we present the results and analysis .
+Experimental Settings
+Model Selection Strategies
+For sentence segmentation , we apply our own models for a subset of languages on which UD - Pipe yields poor performance , and use UDPipe for the rest languages .
+3 Specifically , we use the rulebased model for la ittb and cs cltt , 4 and use the Bi-LSTM - based model ( Figure 1 ) for sk , en , en lines , fi ftb , got , nl lassysmall , grc proiel , la ittb , cu , la proiel , da and sl sst .
+For word segmentation , we use our Bi-LSTM - based model for zh , ja , ja pud and vi , which do n't have explicit word boundary markers , i.e. , white spaces .
+We use our own POS taggers for all of the languages , except for the surprise languages , which we rely on UDPipe for all pre-processing steps .
+Our strategies for parsing are shown in Table 3 .
+We determine the optimal parser ( single , ensemble or transfer ) for each treebank according to the performance on the development data .
+Data and Tools
+We use the provided 100 - dimensional multilingual word embeddings 5 in our tokenization , POS tagging and parsing models , and use the Wikipedia and CommonCrawl data for training Brown clusters .
+The number of clusters is set to 256 .
+For cross-lingual transfer parsing of lowresource languages , we use parallel data from OPUS to derive cross-lingual word embeddings .
+6
+The fast align toolkit ( Dyer et al. , 2013 ) is used for word alignment .
+7
+We use the Dynet toolkit for the implementation of all our neural models .
+8
+Effects of Different Parts in Dependency Parsing
+We conduct experiments on the development sets of 4 treebanks to investigate the contributions of the two architectures we proposed ( i.e. , the Incremental Tree-LSTM and the Bi-LSTM Subtraction ) and the Brown cluster .
+The LAS of different experiment settings are presented in Table 4 . Results show that Brown clusters and both architectures help to improve the parsing performance in most situations .
+And the ensemble method we eventually choosed which incorporated the two architectures as well as Brown clusters and utilized two models for predicting yield the best performance .
+Effect of Transfer Parsing
+To investigate the effect of transfer parsing on cross-domain and cross-lingual data , we compare our transferred system with the supervised system on a subset of treebanks .
+Evaluation is conducted
+Strategy ltcode
+Single cs cac , bg , ja , he cs , ru syntagrus , la ittb , fi ftb , grc proiel , es ancora , es , de , hi , ca , Ensemble ( 2 ) en , fi , sk , ro , hr , pl , ar , eu , fa , id , ko , da , sv , cu , ur , zh , tr , got , sv lines , lv , gl , et , el , vi , hu no bokmaal , no nynorsk , la , la proiel , grc , pt , pt br , sl , sl sst , nl , Cross-domain Transfer nl lassysmall , en lines , en partut , fr , fr sequoia , fr partut , it , it partut ? , gl treegal , cs cltt , ru Cross-lingual Transfer uk , ga , ug , kk Delexicalized Transfer bxr , kmr , sme , hsb B : Bi-LSTM Subtraction , T : Incremental Tree-LSTM , C : Brown cluster .
+Ensemble is produced with models we eventually submitted .
+on the development data or through 5 - fold crossvalidation when development data is not available .
+Results are shown in Table 5 and 6 respectively .
+We can see that both cross-domain and cross-lingual transfer parsing improve over the supervised systems significantly .
+Results
+The overall results of our end-to - end universal parsing system on 81 test treebanks are shown in Table 7 , with comparison to the UDPipe baseline models .
+We obtain substantial gains over UDPipe on 76 out of 81 treebanks , with 3.76 % improvements in average LAS .
+It spent about 9 hours to evaluate all of 81 test sets end-to -end and needed up to 4GB memory on the TIRA virtual machine .
+Post-Evaluation
+We realized a small problem in our implementation of the word segmentation models after official evaluation .
+After revision , we re-evaluated our models on the four test treebanks : zh , vi , ja and ja pud .
+The post-evaluation results are shown in Table 8 .
+On zh , vi and ja pud , we outperform the rank - 1 system significantly .
+We can see that the performance of word segmentation is crucial for the pipeline system .
+Conclusion and Future Work Our CoNLL -2017 system on end-to - end universal parsing includes three cascaded modules , tokenization , POS tagging and dependency parsing .
+We develop effective neural models for each task , with particular utilization of bidirectional LSTM networks .
+Furthermore , we use transfer parsing approaches for cross-domain and crosslingual adaption , that can effectively exploit resources from multiple treebanks .
+We obtain significant improvements against the UDPipe baseline systems on most of the test sets , and obtain the 4th place in the final evaluation .

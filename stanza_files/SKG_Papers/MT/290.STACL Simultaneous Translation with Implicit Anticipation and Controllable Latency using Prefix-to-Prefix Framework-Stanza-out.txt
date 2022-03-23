@@ -1,0 +1,251 @@
+title
+STACL : Simultaneous Translation with Implicit Anticipation and Controllable Latency using Prefix-to- Prefix Framework *
+abstract
+Simultaneous translation , which translates sentences before they are finished , is useful in many scenarios but is notoriously difficult due to word-order differences .
+While the conventional seq-to-seq framework is only suitable for full-sentence translation , we propose a novel prefix-to - prefix framework for simultaneous translation that implicitly learns to anticipate in a single translation model .
+Within this framework , we present a very simple yet surprisingly effective " wait - k " policy trained to generate the target sentence concurrently with the source sentence , but always k words behind .
+Experiments show our strategy achieves low latency and reasonable quality ( compared to full-sentence translation ) on 4 directions : zh?en and de?en. * M.M. and L.H. contributed equally ; L.H. conceived the main ideas ( prefix-to - prefix and wait -k ) and directed the project , while M.M. led the implementations on RNN and Transformer .
+See example videos , media reports , code , and data at https://simultrans-demo.github.io/.
+Introduction Simultaneous translation aims to automate simultaneous interpretation , which translates concurrently with the source - language speech , with a delay of only a few seconds .
+This additive latency is much more desirable than the multiplicative 2 ? slowdown in consecutive interpretation .
+With this appealing property , simultaneous interpretation has been widely used in many scenarios including multilateral organizations ( UN / EU ) , and international summits ( APEC / G- 20 ) .
+However , due to the concurrent comprehension and production in two languages , it is extremely challenging and exhausting for humans : the number of qualified simultaneous interpreters worldwide is very limited , and each can only last for about 15 - 30 minutes in one turn , whose error rates grow exponentially after just minutes of interpreting ( Moser - Mercer et al. , 1998 ) .
+Moreover , lim -
+Our wait -k model emits target word y t given source- side prefix x 1 ... x t+k? 1 , often before seeing the corresponding source word ( here k=2 , outputing y 3 =" met " before x 7 = " hu ?w ? " ) .
+Without anticipation , a 5 - word wait is needed ( dashed arrows ) .
+See also Fig. 2 . ited memory forces human interpreters to routinely omit source content ( He et al. , 2016 ) .
+Therefore , there is a critical need to develop simultaneous machine translation techniques to reduce the burden of human interpreters and make it more accessible and affordable .
+President Unfortunately , simultaneous translation is also notoriously difficult for machines , due in large part to the diverging word order between the source and target languages .
+For example , think about simultaneously translating an SOV language such as Japanese or German to an SVO language such as English or Chinese : 1 you have to wait until the source language verb .
+As a result , existing so-called " real-time " translation systems resort to conventional full-sentence translation , causing an undesirable latency of at least one sentence .
+Some researchers , on the other hand , have noticed the importance of verbs in SOV ?
+SVO translation Figure 2 : Another view of Fig. 1 , highlighting the prediction of English " met " corresponding to the sentencefinal Chinese verb hu ?w ?.
+( a) Our wait -k policy ( here k = 2 ) translates concurrently with the source sentence , but always k words behind .
+It correclty predicts the English verb given just the first 4 Chinese words ( in bold ) , lit .
+" Bush president in Moscow " , because it is trained in a prefix-to- prefix fashion ( Sec. 3 ) , and the training data contains many prefix-pairs in the form of ( X z?i Y ... , X met ...) . ( c )
+The test-time wait -k decoding ( Sec. 3.2 ) using the full-sentence model in ( b ) can not anticipate and produces nonsense translation . ( d ) A simultaneous translator without anticipation such as Gu et al . ( 2017 ) has to wait 5 words .
+( Grissom II et al. , 2016 ) , and have attempted to reduce latency by explicitly predicting the sentencefinal German ( Grissom II et al. , 2014 ) or English verbs ( Matsubarayx et al. , 2000 ) , which is limited to this particular case , or unseen syntactic constituents ( Oda et al. , 2015 ; He et al. , 2015 ) , which requires incremental parsing on the source sentence .
+Some researchers propose to translate on an optimized sentence segment level to get better translation accuracy ( Oda et al. , 2014 ; Fujita et al. , 2013 ; Bangalore et al. , 2012 ) .
+More recently , Gu et al . ( 2017 ) propose a two -stage model whose base model is a full-sentence model , On top of that , they use a READ / WRITE ( R/W ) model to decide , at every step , whether to wait for another source word ( READ ) or to emit a target word using the pretrained base model ( WRITE ) , and this R/W model is trained by reinforcement learning to prefer ( rather than enforce ) a specific latency , without updating the base model .
+All these efforts have the following major limitations : ( a ) none of them can achieve any arbitrary given latency such as " 3 - word delay " ; ( b ) their base translation model is still trained on full sentences ; and ( c ) their systems are complicated , involving many components ( such as pretrained model , prediction , and RL ) and are difficult to train .
+We instead present a very simple yet effective solution , designing a novel prefix-to - prefix framework that predicts target words using only prefixes of the source sentence .
+Within this framework , we study a special case , the " wait - k " policy , whose translation is always k words behind the input .
+Consider the Chinese-to- English example in Figs. 1 - 2 , where the translation of the sentencefinal Chinese verb hu ?w ? ( " meet " ) needs to be emitted earlier to avoid a long delay .
+Our wait - 2 model correctly anticipates the English verb given only the first 4 Chinese words ( which provide enough clue for this prediction given many similar prefixes in the training data ) .
+We make the following contributions : ?
+Our prefix-to- prefix framework is tailored to simultaneous translation and trained from scratch without using full-sentence models .
+?
+It seamlessly integrates implicit anticipation and translation in a single model that directly predicts target words without explictly hallucinating source ones . ?
+As a special case , we present a " wait - k " policy that can satisfy any latency requirements . ?
+This strategy can be applied to most sequence - to-sequence models with relatively minor changes .
+Due to space constraints , we only present its performance the Transformer ( Vaswani et al. , 2017 ) , though our initial experiments on RNNs ( Bahdanau et al. , 2014 ) showed equally strong results ( see our November 2018 arXiv version https : //arxiv.org /abs/1810.08398v3 ) .
+?
+Experiments show our strategy achieves low latency and reasonable BLEU scores ( compared to full-sentence translation baselines ) on 4 directions : zh?en and de?en .
+2 Preliminaries : Full-Sentence NMT
+We first briefly review standard ( full-sentence ) neural translation to set up the notations .
+Regardless of the particular design of different seq-to-seq models , the encoder always takes the input sequence x = ( x 1 , ... , x n ) where each x i ?
+R dx is a word embedding of d x dimensions , and produces a new sequence of hidden states h = f ( x ) = ( h 1 , ... , h n ) .
+The encoding function f can be implemented by RNN or Transformer .
+On the other hand , a ( greedy ) decoder predicts the next output word y t given the source sequence ( actually its representation h ) and previously generated words , denoted y <t = ( y 1 , ... , y t?1 ) .
+The decoder stops when it emits < eos > , and the final hypothesis y = ( y 1 , ... , < eos > ) has probability p(y | x ) = |y | t=1 p(y t | x , y < t ) ( 1 )
+At training time , we maximize the conditional probability of each ground - truth target sentence y given input x over the whole training data D , or equivalently minimizing the following loss : ( D ) = ? ( x, y ) ?
+D log p(y | x ) ( 2 ) 3 Prefix-to - Prefix and Wait-k Policy
+In full-sentence translation ( Sec. 2 ) , each y i is predicted using the entire source sentence x .
+But in simultaneous translation , we need to translate concurrently with the ( growing ) source sentence , so we design a new prefix-to - prefix architecture to ( be trained to ) predict using a source prefix .
+3.1 Prefix-to - Prefix Architecture Definition 1 . Let g ( t ) be a monotonic nondecreasing function of t that denotes the number of source words processed by the encoder when deciding the target word y t .
+For example , in Figs. 1 - 2 , g( 3 ) = 4 , i.e. , a 4 word Chinese prefix is used to predict y 3 =" met " .
+We use the source prefix ( x 1 , ... , x g ( t ) ) rather than the whole x to predict y t : p(y t | x ? g( t ) , y < t ) .
+Therefore the decoding probability is : p g ( y | x ) = | y | t=1 p(y t | x ? g( t ) , y <t ) ( 3 ) and given training D , the training objective is : g ( D ) = ? ( x , y ) ?
+D log p g ( y | x ) ( 4 ) Generally speaking , g ( t ) can be used to represent any arbitrary policy , and we give two special cases where g ( t ) is constant : ( a ) g ( t ) = | x | : baseline full-sentence translation ; ( b ) g ( t ) = 0 : an " oracle " that does not rely on any source information .
+Note that in any case , 0 ? g( t ) ? | x | for all t. Definition 2 .
+We define the " cut- off " step , ? g ( | x | ) , to be the decoding step when source sentence finishes : ? g ( | x | ) = min{t | g ( t ) = | x | } ( 5 ) For example , in Figs .
+1 - 2 , the cut-off step is 6 , i.e. , the Chinese sentence finishes right before y 6 =" in " .
+Training vs. Test - Time Prefix-to - Prefix .
+While most previous work in simultaneous translation , in particular Bangalore et al . ( 2012 ) and Gu et al . ( 2017 ) , might be seen as special cases in this framework , we note that only their decoders are prefix-to - prefix , while their training is still fullsentence - based .
+In other words , they use a fullsentence translation model to do simultaneous decoding , which is a mismatch between training and testing .
+The essence of our idea , however , is to train the model to predict using source prefixes .
+Most importantly , this new training implicitly learns anticipation as a by-product , overcoming word-order differences such as SOV ?
+SVO .
+Using the example in Figs. 1 - 2 , the anticipation of the English verb is possible because the training data contains many prefix-pairs in the form of ( X z?i Y ... , X met ... ) , thus although the prefix x ?4 = " B?sh ?
+z?ngt?ng z?i M?sik ? " ( lit .
+" Bush president in Moscow " ) does not contain the verb , it still provides enough clue to predict " met " .
+Wait -k Policy
+As a very simple example within the prefix-toprefix framework , we present a wait -k policy , which first wait k source words , and then translates concurrently with the rest of source sentence , i.e. , the output is always k words behind the input .
+This is inspired by human simultaneous interpreters who generally start translating a few seconds into the speakers ' speech , and finishes a few seconds after the speaker finishes .
+For example , if k = 2 , the first target word is predicted using the first 2 source words , and the second target word using the first 3 source words , etc ; see Fig.
+3 . More formally , its g ( t ) is defined as follows : g wait -k ( t ) = min{k + t ? 1 , | x | } ( 6 ) For this policy , the cut-off point ? g wait -k ( | x | ) is exactly | x| ? k + 1 ( see Fig. 14 ) .
+From this step on , g wait -k ( t ) is fixed to | x | , which means the remaining target words ( including this step ) are generated using the full source sentence , similar to conventional MT .
+We call this part of output , y ?|x |? k , the " tail " , and can perform beam search on it ( which we call " tail beam search " ) , but all earlier words are generated greedily one by one ( see Appendix ) .
+Test - Time Wait -k .
+As an example of testtime prefix-to - prefix in the above subsection , we present a very simple " test- time wait - k " method , i.e. , using a full-sentence model but decoding it with a wait -k policy ( see also Fig. 2 ( c ) ) .
+Our experiments show that this method , without the anticipation capability , performs much worse than our genuine wait -k when k is small , but gradually catches up , and eventually both methods approach the full-sentence baseline ( k = ? ) .
+4 New Latency Metric : Average Lagging Beside translation quality , latency is another crucial aspect for evaluating simultaneous translation .
+We first review existing latency metrics , highlighting their limitations , aand then propose our new latency metric that address these limitations .
+Existing Metrics : CW and AP Consecutive Wait ( CW ) ( Gu et al. , 2017 ) is the number of source words waited between two target words .
+Using our notation , for a policy g ( ? ) , the per-step CW at step t is CW g ( t ) = g ( t ) ? g( t?1 ) .
+The CW of a sentence - pair ( x , y ) is the average CW over all consecutive wait segments : CW g ( x , y ) = | y | t=1 CW g ( t ) | y | t=1 1 CW g ( t ) >0 = | x | |y | t=1 1 CW g ( t ) >0
+In other words , CW measures the average source segment length ( the best case is 1 for wordby - word translation or our wait - 1 and the worst case is | x | for full-sentence MT ) .
+The drawback of CW is that CW is local latency measurement which is insensitive to the actual lagging behind .
+Another latency measurement , Average Proportion ( AP ) ( Cho and Esipova , 2016 ) measures the proportion of the area above a policy path in Fig.
+1 : Source ?
+Target ?
+1 2 3 4 5 6 7 8 9 10 Source ?
+Target ? 1 2 3 4 5 6 7 8 9 10 11 12 13 AP g ( x , y ) = 1 | x| |y | |y | t=1 g ( t ) ( 7 ) AP has two major flaws : First , it is sensitive to input length .
+For example , consider our wait - 1 policy .
+When | x| = |y | = 1 , AP is 1 , and when | x| = |y | = 2 , AP is 0.75 , and eventually AP approaches 0.5 when | x | = |y | ? ?.
+However , in all these cases , there is a one word delay , so AP is not fair between long and short sentences .
+Second , being a percentage , it is not obvious to the user the actual delays in number of words .
+New Metric : Average Lagging Inspired by the idea of " lagging behind the ideal policy " , we propose a new metric called " average lagging " ( AL ) , shown in Fig.
+4 .
+The goal of AL is to quantify the degree the user is out of sync with the speaker , in terms of the number of source words .
+The left figure shows a special case when | x| = | y | for simplicity reasons .
+The thick black line indicates the " wait - 0 " policy where the decoder is alway one word ahead of the encoder and we define this policy to have an AL of 0 .
+The diagonal yellow policy is our " wait - 1 " which is always one word behind the wait - 0 policy .
+In this case , we define its AL to be 1 .
+The red policy is our wait - 4 , and it is always 4 words behind the wait - 0 policy , so its AL is 4 .
+Note that in both cases , we only count up to ( but including ) the cut-off point ( indicated by the horizontal yellow / red arrows , or 10 and 7 , resp . ) because the tail can be generated instantly without further delay .
+More formally , for the ideal case where |x = | y | , we can define : AL g ( x , y ) = 1 ? g ( | x | ) ?g( | x | ) t=1 g ( t ) ? ( t ? 1 ) ( 8 )
+We can infer that the AL for wait -k is exactly k.
+When we have more realistic cases like the right side of Fig. 4 when | x| < | y | , there are more and more delays accumulated when target sentence grows .
+For example , for the yellow wait - 1 policy has a delay of more than 3 words at decoding its cut-off step 10 , and the red wait - 4 policy has a delay of almost 6 words at its cut-off step 7 .
+This difference is mainly caused by the tgt / src ratio .
+For the right example , there are 1.3 target words per source word .
+More generally , we need to offset the " wait - 0 " policy and redefine : AL g ( x , y ) = 1 ? g ( | x | ) ?g( | x | ) t=1 g( t ) ? t ? 1 r ( 9 ) where ? g ( | x | ) denotes the cut-off step , and r = | y | / |x | is the target- to- source length ratio .
+We observe that wait -k with catchup has an AL k.
+Implementation Details
+While RNN - based implementation of our wait -k model is straightforward and our initial experiments showed equally strong results , due to space constraints we will only present Transformerbased results .
+Here we describe the implementation details for training a prefix-to- prefix Transformer , which is a bit more involved than RNN .
+Background : Full-Sentence Transformer
+We first briefly review the Transformer architecture step by step to highlight the difference between the conventional and simultaneous Transformer .
+The encoder of Transformer works in a self-attention fashion and takes an input sequence x , and produces a new sequence of hidden states z = ( z 1 , ... , z n ) where z i ?
+R dz is as follows : z i = n j=1 ? ij P W V ( x j ) ( 10 ) Here P W V ( ? ) is a projection function from the input space to the value space , and ? ij denotes the attention weights : ? ij = exp e ij n l=1 exp e il , e ij = P W Q ( x i ) P W V ( x j ) T ? d x ( 11 ) where e ij measures similarity between inputs .
+Here P W Q ( x i ) and P W K ( x j ) project x i and x j to query and key spaces , resp .
+We use 6 layers of self-attention and use h to denote the top layer output sequence ( i.e. , the source context ) .
+On the decoder side , during training time , the gold output sequence y * = ( y * 1 , ... , y * m ) goes through the same self-attention to generate hidden self-attended state sequence c = ( c 1 , ... , c m ) .
+Note that because decoding is incremental , we let ? ij = 0 if j > i in Eq. 11 to restrict self-attention to previously generated words .
+In each layer , after we gather all the hidden representations for each target word through selfattention , we perform target- to-source attention : c i = n j=1 ? ij P W V ( h j ) similar to self-attention , ? ij measures the similarity between h j and c i as in Eq. 11 .
+Training Simultaneous Transformer Simultaneous translation requires feeding the source words incrementally to the encoder , but a naive implementation of such incremental encoder / decoder is inefficient .
+Below we describe a faster implementation .
+For the encoder , during training time , we still feed the entire sentence at once to the encoder .
+But different from the self-attention layer in conventional Transformer ( Eq. 11 ) , we constrain each source word to attend to its predecessors only ( similar to decoder- side self-attention ) , effectively simulating an incremental encoder : ? ( t ) ij = ? ? ? exp e ( t ) ij g ( t ) l=1 exp e ( t ) il if i , j ? g ( t ) 0 otherwise e ( t ) ij = P W Q ( x i ) P W K ( x j ) T ? dx if i , j ? g ( t ) ? otherwise
+Then we have a newly defined hidden state sequence z ( t ) = ( z ( t ) 1 , ... , z ( t ) n ) at decoding step t : z ( t ) i = n j=1 ? ( t ) ij P W V ( x j ) ( 12 )
+When a new source word is received , all previous source words need to adjust their representations .
+6 Experiments English references .
+When translating from Chinese to English , we report 4 - reference BLEU scores , and in the reverse direction , we use the second among the four English references as the source text , and report 1 - reference BLEU scores .
+Our implementation is adapted from PyTorchbased OpenNMT ( Klein et al. , 2017 ) .
+Our Transformer is essentially the same as the base model from the original paper ( Vaswani et al. , 2017 ) .
+Quality and Latency of Wait-k Model Tab .
+1 shows the results of a model trained with wait -k but decoded with wait -k ( where ? means full-sentence ) .
+Our wait -k is the diagonal , and the last row is the " test- time wait - k " decoding .
+Also , the best results of wait -k decoding is often from a model trained with a slightly larger k .
+Figs.
+5 - 8 plot translation quality ( in BLEU ) against latency ( in AL and CW ) for full- sentence baselines , our wait -k , test- time wait -k ( using fullsentence models ) , and our adaptation of Gu et al . ( 2017 ) from RNN to Transformer 3 on the same Transformer baseline .
+In all these figures , we observe that , as k increases , ( a ) wait -k improves in BLEU score and worsens in latency , and ( b ) the We can see that while on BLEU - vs - AL plots , their models perform similarly to our test - time wait -k for de ?en and zh?en , and slightly better than our test - time wait -k for en?zh , which is reasonable as both use a full-sentence model at the very core .
+However , on BLEU - vs-CW plots , their models have much worse CWs , which is also consistent with results in their paper ( Gu , p.c. ) .
+This is because their R/W model prefers consecutive segments of READs and WRITEs ( e.g. , their model often produces R R R R R W W W W R R R W W W W R ...) while our wait -k translates concurrently with the input ( the initial segment has length k , and all others have length 1 , thus a much lower CW ) .
+We also found their training to be extremely brittle due to the use of RL whereas our work is very robust .
+Human Evaluation on Anticipation Tab .
+2 shows human evaluations on anticipation rates and accuracy on all four directions , using 100 examples in each language pair from the dev sets .
+As expected , we can see that , with increasing k , the anticipation rates decrease ( at both sentence and word levels ) , and the anticipation accuracy improves .
+Moreover , the anticipation rates are very different among the four directions , with en?zh > de?en > zh?en > en?de
+Interestingly , this order is exactly the same with the order of the BLEU - score gaps between our wait - 9 and full-sentence models : en?zh : 2.7 > de?en : 1.1 > zh?en : 1.6 ? > en?de : 0.3 Figure 9 : German-to- English example in the dev set with anticipation .
+The main verb in the embedded clause , " einigen " ( agree ) , is correctly predicted 3 words ahead of time ( with " sich " providing a strong hint ) , while the aux .
+verb " kann " ( can ) is predicted as " has " .
+The baseline translation is " but , while congressional action can not be agreed , several states are no longer waiting " .
+bs. : bunndesstaaten .
+jiang zemin meets president bush in china 's bid to visit china Figure 11 : Chinese- to - English example from online news .
+Our wait - 3 model correctly anticipates both " expressed " and " welcome " ( though missing " warm " ) , and moves the PP ( " to ... visit to china " ) to the very end which is fluent in the English word order .
+? : test - time wait -k produces nonsense translation .
+Figure 12 : ( a ) Chinese- to- English example from more recent news , clearly outside of our data .
+Both the verb " g?nd ?o " ( " feel " ) and the predicative " d?ny ? u " ( " concerned " ) are correctly anticipated , probably hinted by " missing " .
+( b) If we change the latter to b?m?n ( " dissatisfied " ) , the wait - 3 result remains the same ( which is wrong ) while wait - 5 translates conservatively without anticipation .
+? : test - time wait -k produces nonsense translation .
+Figure 13 : English - to - Chinese example in the dev set with incorrect anticipation due to mandatory long-distance reorderings .
+The English sentence - final clause " since the founding of new china " is incorrectly predicted in Chinese as " ?
+? ? ? " ( " in recent years " ) .
+Test - time wait - 3 produces translation in the English word order , which sounds odd in Chinese , and misses two other quantifiers ( " in the medical and health system " and " nationwide " ) , though without prediction errors .
+The full-sentence translation , " ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? " , is perfect .
+( ? : difference in 4 - ref BLEUs , which in our experience reduces by about half in 1 - ref BLEUs ) .
+We argue that this order roughly characterizes the relative difficulty of simultaneous translation in these directions .
+In our data , we found en?zh to be particularly difficult due to the mandatory long-distance reorderings of English sentencefinal temporal clauses ( such as " in recent years " ) to much earlier positions in Chinese ; see Fig. 13 for an example .
+It is also well - known that de?en is more challenging in simultaneous translation than en?de since SOV ?
+SVO involves prediction of the verb , while SVO ?
+SOV generally does not need prediction in our wait -k with a reasonable k , because V is often shorter than O .
+For example , human evaluation found only 1.4 % , 0.1 % , and 0 % word anticipations in en?de for k=3 , 5 and 7 , and 4.5 % , 1.5 % , and 0.6 % for de?en .
+Examples and Discussion
+We showcase some examples in de?en and zh?en from the dev sets and online news in Figs .
+9 to 12 .
+In all these examples except Fig. 12 ( b ) , our wait -k models can generally anticipate correctly , often producing translations as good as the full-sentence baseline .
+In Fig. 12 ( b ) , when we change the last word , the wait - 3 translation remains unchanged ( correct for ( a ) but wrong for ( b ) ) , but wait - 5 is more conservative and produces the correct translation without anticipation .
+Fig. 13 demonstrates a major limitation of our fixed wait -k policies , that is , sometimes it is just impossible to predict correctly and you have to wait for more source words .
+In this example , due to the required long-distance reordering between English and Chinese ( the sentence - final English clause has to be placed very early in Chinese ) , any wait -k model would not work , and a good policy should wait till the very end .
+Related Work
+The work of Gu et al . ( 2017 ) is different from ours in four ( 4 ) key aspects : ( a ) by design , their model does not anticipate ; ( b ) their model can not achieve any specified latency metric at test time while our wait -k model is guaranteed to have a k-word latency ; ( c ) their model is a combination of two models , using a full-sentence base model to translate , thus a mismatch between training and testing , while our work is a genuine simultaneous model , and ( d ) their training is also two -staged , using RL to update the R/W model , while we train from scratch .
+In a parallel work , Press and Smith ( 2018 ) propose an " eager translation " model which also outputs target - side words before the whole input sentence is fed in , but there are several crucial differences : ( a ) their work still aims to translate full sentences using beam search , and is therefore , as the authors admit , " not a simultaneous translation model " ; ( b ) their work does not anticipate future words ; and ( c ) they use word alignments to learn the reordering and achieve it in decoding by emitting the token , while our work integrates reordering into a single wait -k prediction model that is agnostic of , yet capable of , reordering .
+In another recent work , Alinejad et al . ( 2018 ) adds a prediction action to the work of Gu et al . ( 2017 ) . Unlike Grissom II et al. ( 2014 ) who predict the source verb which might come after several words , they instead predict the immediate next source words , which we argue is not as useful in SOV - to - SVO translation .
+4
+In any case , we are the first to predict directly on the target side , thus integrating anticipation in a single translation model .
+Jaitly et al. ( 2016 ) propose an online neural transducer for speech recognition that is conditioned on prefixes .
+This problem does not have reorderings and thus no anticipation is needed .
+Conclusions
+We have presented a prefix-to- prefix training and decoding framework for simultaneous translation with integrated anticipation , and a wait -k policy that can achieve arbitrary word - level latency while maintaining high translation quality .
+This prefixto- prefix architecture has the potential to be used in other sequence tasks outside of MT that involve simultaneity or incrementality .
+We leave many open questions to future work , e.g. , adaptive policy using a single model ( Zheng et al. , 2019 ) .
+As mentioned in Sec. 3 , the wait -k decoding is always k words behind the incoming source stream .
+In the ideal case where the input and output sentences have equal length , the translation will finish k steps after the source sentence finishes , i.e. , the tail length is also k .
+This is consistent with human interpreters who start and stop a few seconds after the speaker starts and stops .
+However , input and output sentences generally have different lengths .
+In some extreme directions such as Chinese to English , the target side is significantly longer than the source side , with an average gold tgt / src ratio , r = |y | /| x | , of around 1.25 ( Huang et al. , 2017 ; Yang et al. , 2018 ) .
+In this case , if we still follow the vanilla wait -k policy , the tail length will be 0.25 | x | + k which increases with input length .
+For example , given a 20 - word Chinese input sentence , the tail of wait - 3 policy will be 8 word long , almost half of the source length .
+This brings two negative effects : ( a ) as decoding progresses , the user will be effectively lagging behind further and further ( becomes each Chinese word in principle translates to 1.25 English words ) , rendering the user more and more out of sync with the speaker ; and ( b ) when a source sentence finishes , the rather long tail is displayed immediately , causing a cognitive burden on the user .
+5
+These problems become worse with longer input sentences ( see Fig. 14 ) .
+To address this problem , we devise a " wait - k+ catchup " policy so that the user is still k word behind the input in terms of real information content , i.e. , always k source words behind the ideal perfect synchronization policy denoted by the diagonal line in Fig. 14 .
+For example , assume the tgt / src ratio is r = 1.25 , we will output 5 target words for every 4 source words ; i.e. , the catchup frequency , denoted c = r ? 1 , is 0.25 .
+See Fig. 14 . More formally , with catchup frequency c , the new policy is : g wait -k , c ( t ) = min{k + t ? 1 ? ct , | x | } ( 13 ) and our decoding and training objectives change accordingly ( again , we train the model to catchup using this new policy ) .
+5
+It is true that the tail can in principle be displayed concurrently with the first k words of the next input , but the tail is now much longer than k.
+3 d + v X T t j F c V W D c K g 5 a 0 V x G N q k = " > A A A C A X i c b Z D L S s N A F I Y n X m u 9 R d 0 I b o J F q J u S i K D L o h u X F e w F m h A m 0 0 k 7 d D I J M y d i S e P G V 3 H j Q h G 3 v o U 7 3 8 Z p m 4 W 2 / j D w 8 Z 9 z m H P + I O F M g W 1 / G 0 v L K 6 t r 6 6 W N 8 u b W 9 s 6 u u b f f U n E q C W 2 S m M e y E 2 B F O R O 0 C Q w 4 7 S S S 4 i j g t B 0 M r y f 1 9 j 2 V i s X i D k Y J 9 S L c F y x k B I O 2 f P P Q B Z z 6 W d 8 n e X X s R h g G Q Z g 9 5 O N T 3 6 z Y N X s q a x G c A i q o U M M 3 v 9 x e T N K I C i A c K 9 V 1 7 A S 8 D E t g h N O 8 7 K a K J p g M c Z 9 2 N Q o c U e V l 0 w t y 6 0 Q 7 P S u M p X 4 C r K n 7 e y L D k V K j K N C d k x 3 V f G 1 i / l f r p h B e e h k T S Q p U k N l H Y c o t i K 1 J H F a P S U q A j z R g I p n e 1 S I D L D E B H V p Z h + D M n 7 w I r b O a o / n 2 v F K / K u I o o S N 0 j K r I Q R e o j m 5 Q A z U R Q Y / o G b 2 i N + P J e D H e j Y 9 Z 6 5 J R z B y g P z I + f w A W Y 5 d I < / l a t e x i t > < l a t e x i t s h a 1 _ b a s e 6 4 = " W W 3 d + v X T t j F c V W D c K g 5 a 0 V x G N q k = " > A A A C A X i c b Z D L S s N A F I Y n X m u 9 R d 0 I b o J F q J u S i K D L o h u X F e w F m h A m 0 0 k 7 d D I J M y d i S e P G V 3 H j Q h G 3 v o U 7 3 8 Z p m 4 W 2 / j D w 8 Z 9 z m H P + I O F M g W 1 / G 0 v L K 6 t r 6 6 W N 8 u b W 9 s 6 u u b f f U n E q C W 2 S m M e y E 2 B F O R O 0 C Q w 4 7 S S S 4 i j g t B 0 M r y f 1 9 j 2 V i s X i D k Y J 9 S L c F y x k B I O 2 f P P Q B Z z 6 W d 8 n e X X s R h g G Q Z g 9 5 O N T 3 6 z Y N X s q a x G c A i q o U M M 3 v 9 x e T N K I C i A c K 9 V 1 7 A S 8 D E t g h N O 8 7 K a K J p g M c Z 9 2 N Q o c U e V l 0 w t y 6 0 Q 7 P S u M p X 4 C r K n 7 e y L D k V K j K N C d k x 3 V f G 1 i / l f r p h B e e h k T S Q p U k N l H Y c o t i K 1 J H F a P S U q A j z R g I p n e 1 S I D L D E B H V p Z h + D M n 7 w I r b O a o / n 2 v F K / K u I o o S N 0 j K r I Q R e o j m 5 Q A z U R Q Y / o G b 2 i N + P J e D H e j Y 9 Z 6 5 J R z B y g P z I + f w A W Y 5 d I < / l a t e x i t > < l a t e x i t s h a 1 _ b a s e 6 4 = " W W 3 d + v X T t j F c V W D c K g 5 a 0 V x G N q k = " > A A A C A X i c b Z D L S s N A F I Y n X m u 9 R d 0 I b o J F q J u S i K D L o h u X F e w F m h A m 0 0 k 7 d D I J M y d i S e P G V 3 H j Q h G 3 v o U 7 3 8 Z p m 4 W 2 / j D w 8 Z 9 z m H P + I O F M g W 1 / G 0 v L K 6 t r 6 6 W N 8 u b W 9 s 6 u u b f f U n E q C W 2 S m M e y E 2 B F O R O 0 C Q w 4 7 S S S 4 i j g t B 0 M r y f 1 9 j 2 V i s X i D k Y J 9 S L c F y x k B I O 2 f P P Q B Z z 6 W d 8 n e X X s R h g G Q Z g 9 5 O N T 3 6 z Y N X s q a x G c A i q o U M M 3 v 9 x e T N K I C i A c K 9 V 1 7 A S 8 D E t g h N O 8 7 K a K J p g M c Z 9 2 N Q o c U e V l 0 w t y 6 0 Q 7 P S u M p X 4 C r K n 7 e y L D k V K j K N C d k x 3 V f G 1 i / l f r p h B e e h k T S Q p U k N l H Y c o t i K 1 J H F a P S U q A j z R g I p n e 1 S I D L D E B H V p Z h + D M n 7 w I r b O a o / n 2 v F K / K u I o o S N 0 j K r I Q R e o j m 5 Q A z U R Q Y / o G b 2 i N + P J e D H e j Y 9 Z 6 5 J R z B y g P z I + f w A W Y 5 d I < / l a t e x i t > < l a t e x i t s h a 1 _ b a s e 6 4 = " W W 3 d + v X T t j F c V W D c K g 5 a 0 V x G N q k = " > A A A C A X i c b Z D L S s N A F I Y n X m u 9 R d 0 I b o J F q J u S i K D L o h u X F e w F m h A m 0 0 k 7 d D I J M y d i S e P G V 3 H j Q h G 3 v o U 7 3 8 Z p m 4 W 2 / j D w 8 Z 9 z m H P + I O F M g W 1 / G 0 v L K 6 t r 6 6 W N 8 u b W 9 s 6 u u b f f U n E q C W 2 S m M e y E 2 B F O R O 0 C Q w 4 7 S S S 4 i j g t B 0 M r y f 1 9 j 2 V i s X i D k Y J 9 S L c F y x k B I O 2 f P P Q B Z z 6 W d 8 n e X X s R h g G Q Z g 9 5 O N T 3 6 z Y N X s q a x G c A i q o U M M 3 v 9 x e T N K I C i A c K 9 V 1 7 A S 8 D E t g h N O 8 7 K a K J p g M c Z 9 2 N Q o c U e V l 0 w t y 6 0 Q 7 P S u M p X 4 C r K n 7 e y L D k V K j K N C d k x 3 V f G 1 i / l f r p h B e e h k T S Q p U k N l H Y c o t i K 1 J H F a P S U q A j z R g I p n e 1 S I D L D E B H V p Z h + D M n 7 w I r b O a o / n 2 v F K / K u I o o S N 0 j K r I Q R e o j m 5 Q A z U R Q Y / o G b 2 i N + P J e D H e j Y 9 Z 6 5 J R z B y g P z I + f w A W Y 5 d I < / l a t e x i t > ? g ( | x | ) < l a t e x i t s h a 1 _ b a s e 6 4 = " d j g g B s Z y R N W / m 7 s X K h n w X 2 4 / V b o = " > A A A B / 3 i c b V D L S s N A F J 3 U V 6 2 v q O D G z W A R 6 q Y k I u i y 6 M Z l B f u A N o T J d N I O n T y Y u R F L m o W / 4 s a F I m 7 9 D X f + j Z M 2 C 2 0 9 M H A 4 5 1 7 u m e P F g i u w r G + j t L K 6 t r 5 R 3 q x s b e / s 7 p n 7 B 2 0 V J Z K y F o 1 E J L s e U U z w k L W A g 2 D d W D I S e I J 1 v P F N 7 n c e m F Q 8 C u 9 h E j M n I M O Q + 5 w S 0 J J r H v W B J G 4 6 z G r T f k B g 5 P n p Y z Y 9 c 8 2 q V b d m w M v E L k g V F W i 6 5 l d / E N E k Y C F Q Q Z T q 2 V Y M T k o k c C p Y V u k n i s W E j s m Q 9 T Q N S c C U k 8 7 y Z / h U K w P s R 1 K / E P B M / b 2 R k k C p S e D p y T y j W v R y 8 T + v l 4 B / 5 a Q 8 j B N g I Z 0 f 8 h O B I c J 5 G X j A J a M g J p o Q K r n O i u m I S E J B V 1 b R J d i L X 1 4 m 7 f O 6 r f n d R b V x X d R R R s f o B N W Q j S 5 R A 9 2 i J m o h i q b o G b 2 i N + P J e D H e j Y / 5 a M k o d g 7 R H x i f P 5 R W l n I = < / l a t e x i t > < l a t e x i t s h a 1 _ b a s e 6 4 = " d j g g B s Z y R N W / m 7 s X K h n w X 2 4 / V b o = " > A A A B / 3 i c b V D L S s N A F J 3 U V 6 2 v q O D G z W A R 6 q Y k I u i y 6 M Z l B f u A N o T J d N I O n T y Y u R F L m o W / 4 s a F I m 7 9 D X f + j Z M 2 C 2 0 9 M H A 4 5 1 7 u m e P F g i u w r G + j t L K 6 t r 5 R 3 q x s b e / s 7 p n 7 B 2 0 V J Z K y F o 1 E J L s e U U z w k L W A g 2 D d W D I S e I J 1 v P F N 7 n c e m F Q 8 C u 9 h E j M n I M O Q + 5 w S 0 J J r H v W B J G 4 6 z G r T f k B g 5 P n p Y z Y 9 c 8 2 q V b d m w M v E L k g V F W i 6 5 l d / E N E k Y C F Q Q Z T q 2 V Y M T k o k c C p Y V u k n i s W E j s m Q 9 T Q N S c C U k 8 7 y Z / h U K w P s R 1 K / E P B M / b 2 R k k C p S e D p y T y j W v R y 8 T + v l 4 B / 5 a Q 8 j B N g I Z 0 f 8 h O B I c J 5 G X j A J a M g J p o Q K r n O i u m I S E J B V 1 b R J d i L X 1 4 m 7 f O 6 r f n d R b V x X d R R R s f o B N W Q j S 5 R A 9 2 i J m o h i q b o G b 2 i N + P J e D H e j Y / 5 a M k o d g 7 R H x i f P 5 R W l n I = < / l a t e x i t > < l a t e x i t s h a 1 _ b a s e 6 4 = " d j g g B s Z y R N W / m 7 s X K h n w X 2 4 / V b o = " > A A A B / 3 i c b V D L S s N A F J 3 U V 6 2 v q O D G z W A R 6 q Y k I u i y 6 M Z l B f u A N o T J d N I O n T y Y u R F L m o W / 4 s a F I m 7 9 D X f + j Z M 2 C 2 0 9 M H A 4 5 1 7 u m e P F g i u w r G + j t L K 6 t r 5 R 3 q x s b e / s 7 p n 7 B 2 0 On the other hand , when translating from longer source sentences to shorter targets , e.g. , from English to Chinese , it is very possible that the decoder finishes generation before the encoder sees the entire source sentence , ignoring the " tail " on the source side .
+Therefore , we need " reverse " catchup , i.e. , catching up on encoder instead of decoder .
+For example , in English - to - Chinese translation , we encode one extra word every 4 steps , i.e. , encoding 5 English words per 4 Chinese words .
+In this case , the " decoding " catcup frequency c = r ? 1 = ?0.2 is negative but Eq. 13 still holds .
+Note that it works for any arbitrary c , such as 0.341 , where the catchup pattern is not as easy as " 1 in every 4 steps " , but still maintains a rough frequency of c catchups per source word .
+V J Z K y F o 1 E J L s e U U z w k L W A g 2 D d W D I S e I J 1 v P F N 7 n c e m F Q 8 C u 9 h E j M n I M O Q + 5 w S 0 J J r H v W B J G 4 6 z G r T f k B g 5 P n p Y z Y 9 c 8 2 q V b d m w M v E L k g V F W i 6 5 l d / E N E k Y C F Q Q Z T q 2 V Y M T k o k c C p Y V u k n i s W E j s m Q 9 T Q N S c C U k 8 7 y Z / h U K w P s R 1 K / E P B M / b 2 R k k C p S e D p y T y j W v R y 8 T + v l 4 B / 5 a Q 8 j B N g I Z 0 f 8 h O B I c J 5 G X j A J a M g J p o Q K r n O i u m I S E J B V 1 b R J d i L X 1 4 m 7 f O 6 r f n d R b V x X d R R R s f o B N W Q j S 5 R A 9 2 i J m o h i q b o G b 2 i N + P J e D H e j Y / 5 a M k o d g 7 R H x i f P 5 R W l n I = < / l a t e x i t > < l a t e x i t s h a 1 _ b a s e 6 4 = " d j g g B s Z y R N W / m 7 s X K h n w X 2 4 / V b o = " > A A A B / 3 i c b V D L S s N A F J 3 U V 6 2 v q O D G z W A R 6 q Y k I u i y 6 M Z l B f u A N o T J d N I O n T y Y u R F L m o W / 4 s a F I m 7 9 D X f + j Z M 2 C 2 0 9 M H A Fig. 15 shows the comparison between wait -k model and catchup policy which enables one extra word decoding on every 4 th step .
+For example , for wait - 3 policy with catchup , the policy is R R ( R W R W R W R W W ) + W + .
+B Supplemental Material : Evaluations with AP
+We also evaluate our work using Average Proportion ( AP ) on both de?en and zh?en translation comparing with full sentence translation and Gu et al . ( 2017 ) . Figure1 : Our wait -k model emits target word y t given source- side prefix x 1 ... x t+k? 1 , often before seeing the corresponding source word ( here k=2 , outputing y 3 =" met " before x 7 = " hu ?w ? " ) .
+Without anticipation , a 5 - word wait is needed ( dashed arrows ) .
+See also Fig.2 .
+Figure 3 : 3 Figure 3 : Seq-to-seq vs. our prefix-to- prefix frameworks ( showing wait - 2 as an example ) .
+Figure 4 : 4 Figure 4 : Illustration of our proposed Average Lagging latency metric .
+The left figure shows a simple case when | x| = |y | while the right figure shows a more general case when | x | = |y | .
+The red policy is wait - 4 , the yellow is wait - 1 , and the thick black is a policy whose AL is 0 .
+Figure 5 : 5 Figure 5 : Translation quality against latency metrics ( AL and CW ) on German- to - English simultaneous translation , showing wait -k and test-time wait -k results , full-sentence baselines , and our adaptation of Gu et al . ( 2017 ) ( : CW=2 ; : CW=5 ; : CW=8 ) , all based on the same Transformer .
+$ :full-sentence ( greedy and beam-search ) .
+Figure 6 : 6 Figure 6 : Translation quality against latency metrics on English-to - German simultaneous translation .
+Figure 7 : 7 Figure 7 : Translation quality against latency on Chinese-to- English simultaneous translation .
+Figure 8 : 8 Figure 8 : Translation quality against latency on English- to - Chinese , with encoder catchup ( see Appendix A ) .
+t e x i t s h a 1 _ b a s e 6 = " W W
+Figure14 : Left ( wait - 2 ) : it renders the user increasingly out of sync with the speaker ( the diagonal line denotes the perfect synchronization ) .
+Right ( + catchup ) : it shrinks the tail and is closer to the ideal diagonal , reducing the effective latency .
+Black and red arrows illustrate 2 and 4 words lagging behind the diagonal , resp .
+Figure 15 : 15 Figure 15 : BLEU scores and AL comparisons with different wait -k models on Chinese- to - English on dev set .
+and ? are decoded with tail beam search .
+$ and $ are greedy decoding and beam-search baselines .
+Figure 16 : Figure 17 : 1617
+Figure16 : Translation quality against AP on de?en simultaneous translation , showing wait -k models ( for k=1 , 3 , 5 , 7 , 9 ) , test - time wait -k results , full-sentence baselines , and our reimplementation of Gu et al . ( 2017 ) , all based on the same Transformer .
+$ :fullsentence ( greedy and beam-search ) , Gu et al . ( 2017 ) ::CW=2 ; :CW=5 ; :CW=8 .
+.... wait whole sentence ...... pres. bush met with putin in moscow ( c ) simultaneous : test- time wait - 2 ... wait 2 words ... pres. bush in moscow and pol-ite meeting ? ? ? ? ? ? ? ( d ) simultaneous : non-predictive ... wait 2 words ... pres. bush ..... wait 5 words ...... met with putin in moscow B ?sh? z?ngt?ng z?i M?s?k? y? P?j?ng hu ?w ?
+Bush president in Moscow with / and Putin meet ( a ) simultaneous : our wait - 2 ... wait 2 words ... pres. bush met with putin in moscow ( b ) non-simultaneous baseline ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ?.
+Table 2 : 2 Human evaluation for all four directions ( 100 examples each from dev sets ) .
+We report sentence - and word- level anticipation rates , and the word- level anticipation accuracy ( among anticipated words ) .
+gap between test-time wait -k and wait -k shrinks .
+Eventually , both wait -k and test-time wait -k approaches the full-sentence baseline as k ? ?.
+These results are consistent with our intuitions .
+We next compare our results with our adaptation of Gu et al . ( 2017 ) 's two -staged full-sentence model + reinforcement learning on Transformer . k=3 k=5 k=7 k=3 k=5 k=7 zh?en en?zh sent-level % 33 21 9 52 27 17 word-level % 2.5 1.5 0.6 5.8 3.4 1.4 accuracy 55.4 56.3 66.7 18.6 20.9 22.2 de?en en?de sent-level % 44 27 8 28 2 0 word-level % 4.5 1.5 0.6 1.4 0.1 0.0 accuracy 26.0 56.0 60.0 10.7 50.0 n/a
+Technically , German is SOV + V2 in main clauses , and SOV in embedded clauses ; Mandarin is a mix of SVO + SOV .
+However , it is worth noting that , despite our best efforts , we failed to reproduce their work on their original RNN , regardless of using their code or our own .
+That being said , our successful implementation of their work on Transformer is also a notable contribution of this work .
+By contrast , it is very easy to make wait -k work on either RNN or Transformer .
+Their codebase on Github is not runnable , and their baseline is inconsistent with Gu et al . ( 2017 ) which we compared to , so we did not include their results for comparison .

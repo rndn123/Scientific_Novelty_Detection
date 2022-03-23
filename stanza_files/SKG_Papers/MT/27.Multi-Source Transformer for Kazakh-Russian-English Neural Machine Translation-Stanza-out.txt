@@ -1,0 +1,116 @@
+title
+Multi-Source Transformer for Kazakh-Russian-English Neural Machine Translation
+abstract
+We describe the neural machine translation ( NMT ) system developed at the National Research Council of Canada ( NRC ) for the Kazakh - English news translation task of the Fourth Conference on Machine Translation ( WMT19 ) .
+Our submission is a multi-source NMT system taking both the original Kazakh sentence and its Russian translation as input for translating into English .
+Introduction
+The WMT19 ( Bojar et al. , 2019 ) Kazakh -English News Translation task presented a machine translation scenario in which parallel resources between the two languages ( ? 200 k sentences ) were considerably fewer than parallel resources between these languages and a third language , Russian ( ? 14 M English -Russian sentence pairs and ?5 M Kazakh - Russian pairs ) .
+The NRC team therefore explored machine translation pipelines that utilized the Russian resources , including : 1 . " Pivoting " through Russian : training an MT system from Kazakh to Russian , and another system from Russian to English ( Fig. 1a ) .
+2 . Creating a synthetic Kazakh - English parallel corpus by training a Russian - Kazakh MT system and using it to " cross-translate " 1 the Russian - English corpus ( Fig. 1 b ) .
+3 . Training a multi-encoder ( Libovick ?
+and Helcl , 2017 ; Libovick ?
+et al. , 2018 )
+Transformer system ( Vaswani et al. , 2017 ) from Kazakh / Russian to English that subsumes both of these approaches ( Fig. 1 c ) .
+Techniques ( 1 ) and ( 2 ) both involve the translation of genuine data into a synthetic translation ( into Russian in the first case , and into Kazakh in the second case ) .
+It is , however , possible to attend to both the original sentence and its translation using multi-source techniques ( Zoph and Knight , 2016 ; Libovick ?
+and Helcl , 2017 ; Nishimura et al. , 2018 ) ; we hypothesized that giving the system both the originals and " cross-translations " , in both directions ( Kazakh - to- Russian and Russianto - Kazakh ) , would allow the system to make use of the additional information available by seeing the sources before translation .
+Our multi-encoder Transformer approach performed best among our submitted systems by a considerable margin , outperforming pivoting by 4.2 BLEU and augmentation by one - way crosstranslation by 10.2 BLEU .
+2 2 Multilingual data
+Kazakh-English
+The raw bilingual Kazakh - English data provided for the constrained news translation task consists of web-crawled data , news commentary data and Wikipedia article titles .
+In total , they account for ?200 k sentence pairs .
+All these data were used to train the foundation systems for back - translation .
+Since the web-crawled data is very noisy , we removed all the web-crawled portion from the training data before training our final submitted system .
+For tuning and evaluating , we used the newsdev2019 - kken data set ; for SMT , we split it into two sets as our internal dev and devtest ; dev contains 1266 sentence pairs and devtest contains the remaining 800 sentence pairs .
+Kazakh-Russian
+The raw bilingual Kazakh -Russian data provided to assist in the news translation task is webcrawled data .
+In total , they account for ?5 M sentence pairs .
+All these data were used to train the foundation systems for cross-translation .
+For tuning and evaluating , we randomly selected 1000 sentence pairs each for the dev and devtest sets from the provided bilingual data .
+The remaining bilingual data is de-duplicated against the bag of 6 - grams collected from the dev and devtest sets .
+The de-duplicated bilingual data has ?4.2 M sentence pairs .
+Russian- English
+The raw bilingual Russian - English data we used in our systems consists of web-crawled data , news commentary data and Wikipedia article titles .
+In total they account for ?14 M sentence pairs .
+All these data were used to train the foundation systems for back - translation .
+Since the Paracrawl portion of the bilingual data is very noisy , before training our final submitted system we ran our parallel corpus filtering pipeline ( Lo et al. , 2018 ) with YiSi - 2 as the scoring function ( instead of MT + YiSi - 1 ) and trimmed the size of the Paracrawl portion from 12 M sentence pairs to 4 M sentence pairs .
+For tuning and evaluating , we used the newstest 2017 - enru data set as the dev set and the newstest 2018 - enru data set as the devtest set .
+3 Data preparation
+Cleaning and tokenization
+Our preprocessing pipeline begins by cleaning the UTF - 8 with both Moses ' cleaning script 3 and an in-house script that performs additional whitespace , hyphen , and control character normalization .
+We then proceed to normalize and tokenize the sentences with Moses ' punctuation normalization 4 and tokenization scripts 5 .
+Transliteration
+To mitigate some of the overall complexity , and allow greater sharing in joint BPE models and weight tying , we first converted the Kazakh and Russian text from Cyrillic to Roman , using official Romanization standards using spm normalize ( Kudo , 2018 ) and transliteration tables from Wiktionary for Kazakh 6 and Russian 7 .
+Byte-pair encoding Our BPE model is a joint one across transliterated Kazakh , transliterated Russian , and English .
+Using fastBPE 8 , we created a 90k- operation BPE model , balancing the three languages with ?8.2 M sentences of each , using : ? all available Kazakh from bilinugual kk-en ; ? all available Kazakh from bilinugual kk-ru ; ? all monolingual Kazakh news and wiki data ; ? all available English from bilingual kk-en ; ? a sample of ?8 M
+English sentences from bilingual ru-en and monolingual en ; ? all available Russian from bilinugual kk-ru ; ? a sample of ?3.2 M
+Russian sentences from bilingual ru-en and monolingual ru .
+A separate vocabulary was extracted for each language using the corpora used to create the BPE model .
+The BPE model was then applied to all training , dev and devtest data .
+Multi-encoder transformer
+We implemented a multi-source Transformer ( Vaswani et al. , 2017 ) architecture , in the Sockeye ( Hieber et al. , 2017 ) framework , that combines the output of two encoders ( one for Kazakh , one for Russian ) ; this architecture will be described in greater detail in a companion paper .
+Our encoder combination takes place during attention ( that is , the attention step in which information from the decoder and encoders are combined , rather than the self-attention steps inside each encoder and decoder ) ;
+Figure 2 illustrates the position in which the multiple sources are combined into a single representation .
+First , we perform multi-head scaled dot-product attention between the the decoder and each encoder separately .
+C ( s ) = MultiHead ( s ) D , H ( s ) , H ( s ) ( 1 ) MultiHead ( s ) ( Q , K , V ) = h i Head ( s ) i W O i ( s ) ( 2 ) Head ( s ) i ( Q , K , V , d k ) = A( QW Q i ( s ) , KW K i ( s ) , V W V i ( s ) , d k ) ( 3 ) A ( Q , K , V , d k ) = softmax QK ? d k V ( 4 ) where D = ( d 1 , d 2 , ? ? ? , d n ) , d i ?
+R d model repre- sents the decoder states , H = ( h 1 , h 2 , ? ? ? , h m ) , h i ?
+R d model represents the outputs of the encoder 's final self-attention layer , W Q i ( s ) ?
+R d model ?d k , W K i ( s ) ?
+R d model ?d k , W V i ( s ) ? C = S i C ( i) W C ( i ) ( 5 ) As this is essentially the same operation as the multi-head combination in Equation ( 2 ) , and no nonlinearities intervene , we can also conceptualize Equations ( 1 ) -( 5 ) as if they were a single multihead attention layer with S * h heads ( in this case 2 * 8 heads ) , in which each group of h heads is constrained to attend to the output of one encoder .
+We also experimented with a hierarchical attention mechanism along the lines of Libovick ?
+and Helcl ( 2017 ) and Libovick ?
+et al. ( 2018 ) , but as this did not outperform the simpler combination mechanism in ( 5 ) in internal testing , our submitted systems utilized the latter .
+5 Experiments and results
+NMT Setup
+Our code extends sockeye - 1.18.72 from Hieber et al . ( 2017 ) .
+Each source encoder has 6 layers and our decoder also has 6 layers , with a model dimension of d model = 512 and 2048 hidden units sub-layer feed - forward networks .
+We use weight tying , where the source embeddings , the target embeddings and the target softmax weights are tied , which implies a shared vocab .
+We trained employing a cross-entropy loss with Adam ( Kingma and Ba , 2014 ) , ? 1 = 0.9 , ? 2 = 0.999 , = 1e ? 8 and an initial learning rate of 0.0001 , decreasing the learning by 0.7 each time the development - set BLEU did not improve for 8 checkpoints .
+We optimized against BLEU using newsdev2019 - kken as the development set , stopping early if BLEU did not improve for 32 checkpoints of 1000 updates each .
+The inputs and output lengths were restricted to a maximum of 60 tokens , and mini-batches were of variable size depending on sentence length , with each mini- batch containing up to 4096 words .
+SMT Setup
+We trained en2kk , ru2kk and en2ru SMT systems using Portage ( Larkin et al. , 2010 ) , a conventional log-linear phrase - based SMT system , using the corresponding BPEed parallel corpora prepared as described in Section 3 .
+The translation model of each SMT system uses IBM4 word alignments ( Brown et al. , 1993 ) with grow-diag -finaland phrase extraction heuristics ( Koehn et al. , 2003 ) .
+The systems each have two n-gram language models : a 5 - gram language model ( LM ) ( a mixture LM in the kk2en case ) trained on the target-side of the corresponding parallel corpora using SRILM ( Stolcke , 2002 ) , and a pruned 6 gram LM trained on the monolingual training corpora ( for en2ru , trained just on news using KenLM ( Heafield , 2011 ) ; for ru2kk and en2 kk , a static mixture LM trained on all monolingual Kazakh data using SRILM ) .
+Each SMT system also includes a hierachical distortion model , a sparse feature model consisting of the standard sparse features proposed in Hopkins and May ( 2011 ) and sparse hierarchical distortion model features proposed in Cherry ( 2013 ) , and a neural network joint model , or NNJM , with 3 words of target context and 11 words of source context , effectively a 15 - gram LM ( Vaswani et al. , 2013 ; Devlin et al. , 2014 ) .
+The parameters of the log-linear model were tuned by optimizing BLEU on the development set using the batch variant of the margin infused relaxed algorithm ( MIRA ) by Cherry and Foster ( 2012 ) .
+Decoding uses the cube-pruning algorithm of Huang and Chiang ( 2007 ) with a 7 word distortion limit .
+We then used these SMT systems to backtranslate a ?2 M sentence subselection of monolingual English news into Kazakh and Russian , and a ?5 M sentence subselection of monolingual Russian news into Kazakh , as well as cross-translating the Russian of the ru-en parallel corpora into Kazakh .
+Building the NRC Submission System
+Our final submission involved several SMT components and several NMT components to produce back - translations and cross-translations needed for our multi-source submission system , as shown in Figure 3 .
+Synthetic cross-translations
+To synthesize cross-translations , we trained 3 systems using our filtered ?4.2 M sentences of bilingual Russian - Kazakh data .
+First , we trained a Russian - to - Kazakh ( ru2 kk ) SMT system and then used it to generate ?5 M sentences of synthetic Kazakh .
+Augmenting the bilingual data with the Kazakh back - translations , we trained a Kazakh-to - Russian NMT system to back translate ?800 k sentences of monolingual Kazakh news for a ru2 kk NMT system and to cross translate ?125 k kk-en sentences for one component of our final system .
+Finally , we trained a Russian - to - Kazkah NMT system using the bilingual data and the synthetic Russian to cross translate ?6 M for our second component of the final system .
+Synthetic back - translation
+A stack of another three MT systems was used to synthesize Kazakh from English using ?200 k of available English - Kazakh bilingual data for training .
+Starting with an English-to - Kazakh SMT system , ?2 M English sentences were backtranslated to Kazakh .
+Augmenting the bilingual data with the newly generated Kazakh , we trained a NMT Kazakh - to - English system and back translated ?800 k sentences of Kazakh news .
+The last English-to - Kazakh NMT system in that stack was trained using the bilingual data enlarged with the ?800 k previously generated back - translations .
+It generated our en2 kk back - translation of ?2 M sentences of English news .
+Our final component was accomplished by training an English-to - Russian SMT system using ?14.3 M bilingual sentences and back translating the ?2 M sentence subselection of English news into Russian .
+Putting it all together
+The box labelled " NRC 's Submission " in Figure 3 depicts how each sub-corpus was assembled into the final bilingual corpora used to train our multi-source NMT submission system .
+Each set of curly braces surrounds a pair of corresponding Kazakh and Russian sources .
+The first pair represents Kazakh and its cross-translation to Russian , the second is the cross-translation of Russian - to - Kazakh with the original Russian , and lastly we have our sub-selected corpus back - translated into both Kazakh and Russian .
+Results
+We can see in Table 1 that the full multisource , multi-encoder system with two -way crosstranslation ( both Kazakh - to- Russian and Russianto - Kazakh ) is significantly better than our other systems , outperforming the pivoting system ( on the fourth line ) by 4.2 BLEU and augmentation by one - way cross-translation ( on the third line ) by 10.2 BLEU .
+We believe this improvement over the other two methods is due to the model being able to attend to additional original data , to which the other systems do not have direct access .
+Both pivoting and one - way synthetic augmentation involve " discarding " genuine data , in that some of the original sentences - Kazakh sentences in the former , and Russian sentences in the later - are never seen by the downstream system , since they are only encountered in translation .
+Multi-source methods allow a system to attend to the original data in both directions , thus capturing information that would otherwise be lost in translation .
+Notable in this table is the comparative improvement of the test scores over the dev scores , between the pivoting ( line 4 ) and multi-source ( line 5 ) systems .
+This can be explained , we think , by a domain difference between the dev and test sets , where the dev set was sampled from the same news commentary dataset as the training data , whereas the test set comes from actual newswire text .
+The scores appear to show that the multi-source system has managed to generalize better to newswire text , possibly because it has seen synthetic newswire text ( synthesized from the English - Russian dataset ) and can respond more appropriately to it .
+9 Tables 2 and 3 compare our multi-source system to the other official submissions in the top 5 of the WMT19 competition .
+In automatic evaluation by BLEU , we were tied for third place , although with a slight edge when measured by YiSi - 1 ( Lo , 2019 ) ; in human evaluation , we were in a statistical tie for second place .
+Notably , our multi-source system was the top non-ensemble pure NMT system , with other higher - scoring systems either being ensembles or SMT / NMT hybrids .
+Conclusion and future work
+We present the NRC submission to the WMT19 Kazakh - English news translation shared task .
+Our submitted system is a multi-source , multi-encoder neural machine translation system that takes Russian as the second source in the system .
+The ad-vantages of using the multi-source NMT architecture are that it incorporates additional information obtained from 1 ) the Russian - English training data cross translated into Kazakh , and 2 ) the Russian cross translated from Kazakh in the Kazakh - Russian training data .
+The drawback of this approach is the comparative complexity of the pipeline , with separate systems being trained to create back - translations and cross-translations ( including back - translations to train those systems themselves ) .
+This complexity was difficult for a human team to manage when considered for three languages ; it would be prohibitive ( without additional automation ) when making systems that involve four or more languages .
+Making use of the multi-source architecture itself for creating back - and cross-translations together , and sharing encoders and decoders between systems that share languages , would considerably lessen the the complexity of the pipeline and the number of distinct systems that need to be trained .
+In other future work , we want to consider additional methods of multi-source attention , as well as other means of creating cross-linguistic synthetic data beyond machine translation , for lowerresource language pairs that do not have substantial parallel data but may be , for example , closely related .
+( a ) " Pivoting " : two systems ( sourceto - L3 and L3 - to-target ) executed in a pipeline ( b ) Augmentation of source / target corpus with " cross-translated " synthetic data ( c ) Multi-source system with augmentation by cross-translation in both directions

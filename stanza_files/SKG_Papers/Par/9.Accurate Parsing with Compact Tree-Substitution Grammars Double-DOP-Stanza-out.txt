@@ -1,0 +1,322 @@
+title
+Accurate Parsing with Compact Tree-Substitution Grammars : Double-DOP
+abstract
+We present a novel approach to Data-Oriented Parsing ( DOP ) .
+Like other DOP models , our parser utilizes syntactic fragments of arbitrary size from a treebank to analyze new sentences , but , crucially , it uses only those which are encountered at least twice .
+This criterion allows us to work with a relatively small but representative set of fragments , which can be employed as the symbolic backbone of several probabilistic generative models .
+For parsing we define a transform - backtransform approach that allows us to use standard PCFG technology , making our results easily replicable .
+According to standard Parseval metrics , our best model is on par with many state- ofthe - art parsers , while offering some complementary benefits : a simple generative probability model , and an explicit representation of the larger units of grammar .
+Introduction Data-oriented Parsing ( DOP ) is an approach to wide - coverage parsing based on assigning structures to new sentences using fragments of variable size extracted from a treebank .
+It was first proposed by Scha in 1990 and formalized by Bod ( 1992 ) , and preceded many developments in statistical parsing ( e.g. , the " treebank grammars " of Charniak 1997 ) and linguistic theory ( e.g. , the current popularity of " constructions " , Jackendoff 2002 ) .
+A rich literature on DOP has emerged since , yielding stateof - the - art results on the Penn treebank benchmark test ( Bod , 2001 ; Bansal and Klein , 2010 ) and inspiring developments in related frameworks includ-ing tree kernels ( Collins and Duffy , 2002 ) , reranking ( Charniak and Johnson , 2005 ) and Bayesian adaptor and fragment grammars ( e.g. , Johnson et al. , 2007 ; O'Donnell et al. , 2009 ; Cohn et al. , 2010 ) .
+By formalizing the idea of using large fragments of earlier language experience to analyze new sentences , DOP captures an important property of language cognition that has shaped natural language .
+It therefore complements approaches that have focused on properties like lexicalization or incrementality , and might bring supplementary strengths in other NLP tasks .
+Early versions of DOP ( e.g. , aimed at extracting all subtrees of all trees in the treebank .
+The total number of constructions , however , is prohibitively large for non-trivial treebanks : it grows exponentially with the length of the sentences , yielding the astronomically large number of approximately 10 48 for section 2 - 21 of the Penn WSJ corpus .
+These models thus rely on a big sample of fragments , which inevitably includes a substantial portion of overspecialized constructions .
+Later DOP models have used the Goodman transformation ( Goodman , 1996 ( Goodman , , 2003 to obtain a compact representation of all fragments in the treebank ( Bod , 2003 ; Bansal and Klein , 2010 ) .
+In this case the grammatical constructions are no longer explicitly represented , and substantial engineering effort is needed to optimally tune the models and make them efficient .
+In this paper we present a novel DOP model ( Double - DOP ) in which we extract a restricted yet representative subset of fragments : those recurring at least twice in the treebank .
+The explicit representation of the fragments allows us to derive simple ways of estimating probabilistic models on top of the symbolic grammar .
+This and other implementation choices aim at making the methodology transparent and easily replicable .
+The accuracy of Double - DOP is well within the range of state - of - the - art parsers currently used in other NLP - tasks , while offering the additional benefits of a simple generative probability model and an explicit representation of grammatical constructions .
+The contributions of this paper are summarized as follows : ( i ) we describe an efficient tree-kernel algorithm which allows us to extract all recurring fragments , reducing the set of potential elementary units from the astronomical 10 48 to around 10 6 . ( ii )
+We implement and compare different DOP estimation techniques to induce a probability model ( PTSG ) on top of the extracted symbolic grammar .
+( iii )
+We present a simple transformation of the extracted fragments into CFG - rules that allows us to use offthe-shelf PCFG parsing and inference .
+( iv ) We integrate Double - DOP with recent state-splitting approaches ( Petrov et al. , 2006 ) , yielding an even more accurate parser and a better understanding of the relation between DOP and state-splitting .
+The rest of the paper is structured as follows .
+In section 2 we describe the symbolic backbone of the grammar formalism that we will use for parsing .
+In section 3 we illustrate the probabilistic extension of the grammar , including our transformation of PTSGs to PCFGs that allows us to use a standard PCFG parser , and a different transform that allows us to use a standard implementation of the insideoutside algorithm .
+In section 4 we present the experimental setup and the results .
+The symbolic backbone
+The basic idea behind DOP is to allow arbitrarily large fragments from a treebank to be the elementary units of production of the grammar .
+Fragments can be combined through substitution to obtain the phrase -structure tree of a new sentence .
+Figure 1 shows an example of a complete syntactic tree obtained by combining three elementary fragments .
+As in previous work , two fragments f i and f j can be combined ( f i ? f j ) only if the leftmost substitution site X? in f i has the same label as the root node of f j ; in this case the resulting tree will correspond to f i with f j replacing X .
+The DOP formalism is discussed in detail in e.g. , .
+Finding Recurring Fragments
+The first step to build a DOP model is to define its symbolic grammar , i.e. the set of elementary fragments in the model .
+In the current work we explicitly extract a subset of fragments from the training treebank .
+To limit the fragment set size , we use a simple but heretofore unexplored constraint : we extract only those fragments that occur two or more times in the treebank 1 . Extracting this particular set of fragments is not trivial , though : a naive approach that filters a complete table of fragments together with their frequencies fails because that set , in a reasonably sized treebank , is astronomically large .
+Instead , we use a dynamic programming algorithm based on tree-kernel techniques ( Collins and Duffy , 2001 ; Moschitti , 2006 ; Sangati et al. , 2010 ) .
+The algorithm iterates over every pair of trees in
+S ? ? NP ? ? NNS VP ? ? VBP ? ? SBAR ? S ? ? NP ? ? NNP VP ? VBZ NP JJ ? NN .
+? ? ? Figure 2 : Left : example of two trees sharing a single maximum fragment , circled in the two trees .
+Right : the chart M which is used in the dynamic algorithm to extract all maximum fragments shared between the two trees .
+The highlighted cells in the chart are the ones which contribute to extract the shared fragment .
+The marked cells are those for which the corresponding nodes in the two tree have equivalent labels but differ in their lists of child nodes .
+the treebank to look for common fragments .
+Figure 2 shows an example of a pair of trees ? , ? being compared .
+The algorithm builds a chart M with one column for every indexed non-terminal node ?
+i in ? , and one row for every indexed non-terminal node ? j in ?.
+Each cell
+Mi , j identifies a set of indices corresponding to the largest fragment in common between the two trees starting from ?
+i and ? j .
+This set is empty if ?
+i and ?
+j differ in their labels , or they do n't have the same list of child nodes .
+Otherwise ( if both the labels and the lists of children match ) the set is computed recursively as follows : Mi , j = {?
+i } ? ? ? c= {1,2 , ..., |ch(? ) | } Mch (? i , c ) , ch (? j , c ) ? ? ( 1 ) where ch ( ? ) returns the indices of ?'s children , and ch ( ? , c ) the index of its c th child .
+After filling the chart , the algorithm extracts the set of recurring fragments , and stores them in a table to keep track of their counts .
+This is done by converting back each fragment implicitly defined in every cell-set 2 , and filtering out those that are properly contained in others .
+In a second pass over the treebank , exact counts are obtained for each fragment in the extracted set .
+2 A cell-set containing a single index corresponds to the fragment including the node with that index together with all its children .
+Parse trees in the training corpus are not necessarily covered entirely by recurring fragments ; to ensure coverage , we also include in the symbolic backbone of our Double - DOP model all PCFG - productions not included in the set of extracted fragments .
+Comparison with previous DOP work Explicit grammars
+The number of recurring fragments in our symbolic grammar , extracted from the training sections of the Penn WSJ treebank 3 , is around 1 million , and thus is significantly lower than previous work extracting explicit fragments ( e.g. , Bod , 2001 , used more than 5 million fragments up to depth 14 ) .
+When looking at the extracted fragments we ask if we could have predicted which fragments occur twice or more .
+Figure 3 attempts to tackle this question by reporting some statistics on the extracted fragments .
+The majority of fragments are rather small with a limited number of words or substitution sites in the frontier .
+Yet , there is a significant portion of fragments , in the tail of the distribution , with more than 10 words or substitution sites .
+Since the space of all fragments with such characteristics is enormously large , selecting big recurring fragments using random sampling technique is like finding a needle in a haystack .
+Hence , random sampling processes ( like Bod , 2001 ) , will tend to represent fre -
+? ? ? Figure 2 : Left : example of two trees sharing a single maximum fragment , circled in the two trees .
+Right : the chart M which is used in the dynamic algorithm to extract all maximum fragments shared between the two trees .
+The highlighted cells in the chart are the ones which contribute to extract the shared fragment .
+The marked cells are those for which the corresponding nodes in the two tree have equivalent labels but differ in their lists of child nodes .
+the treebank to look for common fragments .
+Figure 2 shows an example of a pair of trees ? , ? being compared .
+The algorithm builds a chart M with one column for every indexed non-terminal node ?
+i in ? , and one row for every indexed non-terminal node ? j in ?.
+Each cell
+Mi , j identifies a set of indices corresponding to the largest fragment in common between the two trees starting from ?
+i and ? j .
+This set is empty if ?
+i and ?
+j differ in their labels , or they do n't have the same list of child nodes .
+Otherwise ( if both the labels and the lists of children match ) the set is computed recursively as follows : Mi , j = {?
+i } ? ? ? c= {1,2 , ..., |ch(? ) | } Mch (? i , c ) , ch (? j , c ) ? ? ( 1 ) where ch ( ? ) returns the indices of ?'s children , and ch ( ? , c ) the index of its c th child .
+After filling the chart , the algorithm extracts the set of recurring fragments , and stores them in a table to keep track of their counts .
+This is done by converting back each fragment implicitly defined in every cell-set 2 , and filtering out those that are properly contained in others .
+In a second pass over the treebank , exact counts are obtained for each fragment in the extracted set .
+2 A cell-set containing a single index corresponds to the fragment including the node with that index together with all its children .
+Parse trees in the training corpus are not necessarily covered entirely by recurring fragments ; to ensure coverage , we also include in the symbolic backbone of our Double - DOP model all PCFG - productions not included in the set of extracted fragments .
+Comparison with previous DOP work Explicit grammars
+The number of recurring fragments in our symbolic grammar , extracted from the training sections of the Penn WSJ treebank 3 , is around 1 million , and thus is significantly lower than previous work extracting explicit fragments ( e.g. , Bod , 2001 , used more than 5 million fragments up to depth 14 ) .
+When looking at the extracted fragments we ask if we could have predicted which fragments occur twice or more .
+Figure 3 attempts to tackle this question by reporting some statistics on the extracted fragments .
+The majority of fragments are rather small with a limited number of words or substitution sites in the frontier .
+Yet , there is a significant portion of fragments , in the tail of the distribution , with more than 10 words or substitution sites .
+Since the space of all fragments with such characteristics is enormously large , selecting big recurring fragments using random sampling technique is like finding a needle in a haystack .
+Hence , random sampling processes ( like Bod , 2001 ) , will tend to represent fre - S NP PRP VP VBP SBAR S NP PRP VP VBP ADJP JJ . S ? ? NP ? ? NNS VP ? ? VBP ? ? SBAR ? S ? ? NP ? ? NNP VP ? VBZ NP JJ ? NN .
+? ? ? Figure 2 : Left : example of two trees sharing a single maximum fragment , circled in the two trees .
+Right : the chart M which is used in the dynamic algorithm to extract all maximum fragments shared between the two trees .
+The highlighted cells in the chart are the ones which contribute to extract the shared fragment .
+The marked cells are those for which the corresponding nodes in the two tree have equivalent labels but differ in their lists of child nodes .
+the treebank to look for common fragments .
+Figure 2 shows an example of a pair of trees ? , ? being compared .
+The algorithm builds a chart M with one column for every indexed non-terminal node ?
+i in ? , and one row for every indexed non-terminal node ? j in ?.
+Each cell M i , j identifies a set of indices corresponding to the largest fragment in common between the two trees starting from ?
+i and ? j .
+This set is empty if ?
+i and ?
+j differ in their labels , or they do n't have the same list of child nodes .
+Otherwise ( if both the labels and the lists of children match ) the set is computed recursively as follows : M i , j = {?
+i } ? ? ? c= {1,2 , ... , |ch( ? ) |} M ch (? i , c ) , ch (? j , c ) ? ? ( 1 ) where ch ( ? ) returns the indices of ?'s children , and ch ( ? , c ) the index of its c th child .
+After filling the chart , the algorithm extracts the set of recurring fragments , and stores them in a table to keep track of their counts .
+This is done by converting back each fragment implicitly defined in every cell-set 2 , and filtering out those that are properly contained in others .
+In a second pass over the treebank , exact counts are obtained for each fragment in the extracted set .
+2 A cell-set containing a single index corresponds to the fragment including the node with that index together with all its children .
+Parse trees in the training corpus are not necessarily covered entirely by recurring fragments ; to ensure coverage , we also include in the symbolic backbone of our Double - DOP model all PCFG - productions not included in the set of extracted fragments .
+Comparison with previous DOP work Explicit grammars
+The number of recurring fragments in our symbolic grammar , extracted from the training sections of the Penn WSJ treebank 3 , is around 1 million , and thus is significantly lower than previous work extracting explicit fragments ( e.g. , Bod , 2001 , used more than 5 million fragments up to depth 14 ) .
+When looking at the extracted fragments we ask if we could have predicted which fragments occur twice or more .
+Figure 3 attempts to tackle this question by reporting some statistics on the extracted fragments .
+The majority of fragments are rather small with a limited number of words or substitution sites in the frontier .
+Yet , there is a significant portion of fragments , in the tail of the distribution , with more than 10 words or substitution sites .
+Since the space of all fragments with such characteristics is enormously large , selecting big recurring fragments using random sampling technique is like finding a needle in a haystack .
+Hence , random sampling processes ( like Bod , 2001 ) , will tend to represent fre-quent recurring constructions such as from NP to NP or whether S or not , together with infrequent overspecialized fragments like from Houston to NP , while missing large generic constructions such as everything you always wanted to know about NP but were afraid to ask .
+These large constructions are excluded completely by models that only allow elementary trees up to a certain depth ( typically 4 or 5 ) into the symbolic grammar ( Zollmann and Sima'an , 2005 ; Zuidema , 2007 ; Borensztajn et al. , 2009 ) , or only elementary trees with exactly one lexical anchor ( Sangati and Zuidema , 2009 ) .
+Implicit grammars Goodman ( 1996 Goodman ( , 2003 defined a transformation for some versions of DOP to an equivalent PCFG - based model , with the number of rules extracted from each parse tree linear in the size of the trees .
+This transform , representing larger fragments only implicitly , is used in most recent DOP parsers ( e.g. , Bod , 2003 ; Bansal and Klein , 2010 ) .
+Bod has promoted the Goodman transform as the solution to the computational challenges of DOP ( e.g. , Bod , 2003 ) ; it 's important to realize , however , that the resulting grammars are still very large : WSJ sections 2 - 21 yield about 2.5 million rules in the basic version of Goodman 's transform .
+Moreover , the transformed grammars differ from untransformed DOP grammars in that larger fragments are no longer explicitly represented .
+Rather , informa-tion about their frequency is distributed over many CFG - rules : if a construction occurs n times and contains m context-free productions , Goodman 's transform uses the weights of 7 nm + m rules to encode this fact .
+Thus , the information that the idiomatic fragment ( PP ( IN " out " ) ( PP ( IN " of " ) ( NP ( NN " town " ) ) ) ) ) occurs 3 times in WSJ sections 2 - 21 , is distributed over 132 rules .
+This way , an attractive feature of DOP , viz .
+the explicit representation of the ' productive units ' of language , is lost 4 .
+In addition , grammars that implicitly encode all fragments found in a treebank are strongly biased to over-represent big constructions : the great majority of the entire set of fragments belongs in fact to the largest tree in the treebank 5 . DOP models relying on Goodman 's transform , need therefore to counteract this tendency .
+Bansal and Klein ( 2010 ) , for instance , rely on a sophisticated tuning technique to correctly adjust the weights of the rules in the grammar .
+In our Double - DOP approach , instead , the number of fragments extracted from each tree varies much less ( it ranges between 4 and 1,759 ) .
+This comparison is shown in figure 4 .
+The probabilistic model Like CFG grammars , our symbolic model produces extremely many parse trees for a given test sentence .
+We therefore need to disambiguate between the possible parses by means of a probability model that assigns probabilities to fragments , and defines a proper distribution over the set of possible full parse trees .
+For every nonterminal X in the treebank we have : f ?F X p( f ) = 1 ( 2 ) where F X is the set of fragments in our symbolic grammar rooted in X .
+A derivation d = f 1 , f 2 , . . . , f n of t is a sequence of the fragments that through left-most substitution produces t.
+The probability of a derivation is computed as the product of the probability of each of its fragments .
+P ( d ) = f ?d p( f ) ( 3 )
+In section 3.2 we describe ways of obtaining different probability distributions over the fragments in our grammar .
+In the following section we assume a given probabilistic model , and illustrate how to use standard PCFG parsing .
+Parsing
+It is possible to define a simple transform of our probabilistic fragment grammar , such that off -theshelf parsers can be used .
+In order to perform the PTSG / PCFG conversion , every fragment in our grammar must be mapped to a CFG rule which will keep the same probability as the original fragment .
+The corresponding rule will have as the left hand side the root of the fragment and as the right hand side its yield , i.e. , a sequence of terminals and nonterminals ( substitution sites ) .
+It might occur that several fragments are mapped to the same CFG rule 6 .
+These are interesting cases of syntactic ambiguity as shown in figure 5 .
+In order to resolve this problem we need to map each ambiguous fragment to two unique CFG rules chained by a unique artificial node , as shown at the bottom of the same figure .
+To the first CFG rule in the chain we assign the probability of the fragment , while the second will receive probability 1 , so the product gives back the original probability .
+The ambiguous and unambiguous PTSG / PCFG mappings need to be stored in a table , in order to convert back the compressed CFG derivations to the original PTSG model after parsing .
+Such a transformed PCFG will generate the same derivations as the original PTSG grammar with identical probabilities .
+In our experiment we use a standard PCFG parser to produce a list of k-best Viterbi derivations .
+These , in turn , will be used to maximize possible objectives as described in section 3.3 . " with " NP .
+The first fragment occurs 5 times in the training treebank , ( e.g. in the sentence was an executive with a manufacturing concern ) while the second fragment occurs 4 times ( e.g. in the sentence began this campaign with such high hopes ) .
+Below : the two pairs of CFG rules that are used to map the two fragments to separate CFG derivations .
+Inducing probability distributions Relative Frequency Estimate ( RFE )
+The simplest way to assign probabilities to fragments is to make them proportional to their counts 7 in the training set .
+When enforcing equation 2 , that gives the Relative Frequency Estimate ( RFE ) : p RFE ( f ) = count ( f ) f ? F root ( f ) count ( f ) ( 4 ) Unlike RFE for PCFGs , however , the RFE for PTSGs has no clear probabilistic interpretation .
+In particular , it does not yield the maximum likelihood solution , and when used as an estimator for an allfragments grammar , it is strongly biased since it assigns the great majority of the probability mass to big fragments ( Johnson , 2002 ) .
+As illustrated in figure 4 this bias is much weaker when restricting the set of fragments with our approach .
+Although this does not solve all theoretical issues , it makes RFE a reasonable first choice again .
+Equal Weights Estimate ( EWE ) Various other ways of choosing the weights of a DOP grammar have been worked out .
+The best empirical results have been reported by Bod ( 2003 ) with the EWE proposed by Goodman ( 2003 ) .
+Goodman defined it for grammars in the Goodman transform , but for explicit grammars it becomes : w EWE ( f ) = t?T
+B count ( f , t ) | { f ? t } | ( 5 ) p EWE ( f ) = w EWE ( f ) f ? F root ( f ) w EWE ( f ) ( 6 ) where the first sum is over all parse trees t in the treebank ( TB ) , count ( f , t ) gives the number of times fragment f occurs in t , and | { f ? t} | is the total number of subtrees of t that were included in the symbolic grammar .
+Maximum Likelihood ( ML )
+For reestimation , we can aim at maximizing the likelihood ( ML ) of the treebank .
+For this , it turns out that we can define another transformation of our PTSG , such that we can apply standard Inside - Outside algorithm for PCFGs ( Lari and Young , 1990 ) .
+The original version of IO is defined over string rewriting PCFGs , and maximizes the likelihood of the training set consisting of plain sentences .
+Reestimation shifts probability mass between alternative parse trees for a sentence .
+In contrast , our grammars consist of fragments of various size , and our training set consists of parse trees .
+Reestimation here shifts probability mass between alternative derivations for a parse tree .
+Our transformation approach is illustrated with an example in figure 6 .
+In step ( b ) the fragments in the grammar as well as the original parse trees in the treebank are " flattened " into bracket notation .
+In step ( c ) each fragment is transformed into a CFG rule in the transformed meta-grammar , whose righthand side is constituted by the bracket notation of the fragment .
+Each substitution site X? is raised to a meta-nonterminal X , and all other symbols , including parentheses , become meta-terminals .
+The left - hand side of the rule is constituted by the original root symbol R of the fragment raised to a metanonterminal R .
+The resulting PCFG generates trees in bracket notation , and we can run an of- the-shelf inside-outside algorithm by presenting it parse trees from the train corpus in bracket notation 8 .
+In the experiments that we report below we used the RFE from section 3 , to generate the initial weights for the grammar .
+Maximizing Objectives MPD
+The easiest objective in parsing , is to select the most probable derivation ( MPD ) , obtained by maximizing equation 3 . MPP A DOP grammar can often generate the same parse tree t through different derivations D( t ) = d 1 , d 2 , . . . d m .
+The probability of t is therefore obtained by summing the probabilities of all its possible derivations .
+P ( t ) = d?D( t ) p( d ) = d?D( t ) f ?d p( f ) ( 7 )
+An intuitive objective for a parser is to select , for a given sentence , the parse tree with highest probability according to equation 7 , i.e. , the most probable parse ( MPP ) : unfortunately , identifying the MPP is computationally intractable ( Sima'an , 1996 ) .
+However , we can approximate the MPP by deriving a list of k-best derivations , summing up the probabilities of those resulting in the same parse tree , and select the tree with maximum probability .
+MCP , MRS Following Goodman ( 1998 ) , Sima'an ( 1999 Sima'an ( , 2003 , and others , we also consider other objectives , in particular , the max constituent parse ( MCP ) , and the max rule sum ( MRS ) .
+MCP maximizes a weighted average of the expected labeled recall L/N C and ( approximated ) labeled precision L/N G under the given posterior distribution , where L is the number of correctly labeled constituents , N C the number of constituents in the correct tree , and N G the number of constituents in the guessed tree .
+Recall is easy to maximize since the estimated N C is constant .
+L/N
+C can be in fact maximized in : t = arg max t lc?t P ( lc ) ( 8 ) where lc ranges over all labeled constituents in t and P ( lc ) is the marginalized probability of all the derivation trees in the grammar yielding the sentence under consideration which contains lc .
+Precision , instead , is harder because the denominator N G depends on the chosen guessed tree .
+Goodman ( 1998 ) proposes to look at another metric which is strongly correlated with precision , which is the mistake rate ( N G ? L ) /N
+C that we want to minimize .
+We combine recall with mistake rate through linear interpolation : t = arg max t E ( L N C ? ? N G ? L N C ) ( 9 ) = arg max t lc?t P ( lc ) ? ?( 1 ? P ( lc ) ) ( 10 ) where 10 is obtained from 9 assuming N C constant , and the optimal level for ? has to be evaluated empirically .
+Unlike MPP , the MCP can be calculated efficiently using dynamic programming techniques over the parse forest .
+However , in line with the aims of this paper to produce an easily reproducible implementation of DOP , we developed an accurate approximation of the MCP using a list of k-best derivations , such as those that can be obtained with an offthe-shelf PCFG parser .
+We do so by building a standard CYK chart , where every cell corresponds to a specific span in the test sentence .
+We store in each cell the probability of seeing every label in the grammar yielding the corresponding span , by marginalizing the probabilities of all the parse trees in the obtained k-best derivations that contains that label covering the same span .
+We then compute the Viterbi-best parse maximizing equation 10 .
+We implement max rule sum ( MRS ) in a similar way , but do not only keep track of labels in every cell , but of each CFG rule that span the specific yield ( see also Sima'an , 1999 Sima'an , , 2003 .
+We have n't implemented the max rule product ( MRP ) where posteriors are multiplied instead of added ( Petrov and Klein , 2007 ; Bansal and Klein , 2010 ) .
+Experimental Setup
+In order to build and test our Double - DOP model 9 , we employ the Penn WSJ Treebank ( Marcus et al. , 1993 ) .
+We use sections 2 - 21 for training , section 24 for development and section 23 for testing .
+Treebank binarization
+We start with some preprocessing of the treebank , following standard prac- tice in WSJ parsing .
+We remove traces and functional tags .
+We apply a left binarization of the training treebank as in Matsuzaki et al . ( 2005 ) and Klein and Manning ( 2003 ) , setting the horizontal history H=1 and the parent labeling P=1 .
+This means that when a node has more than 2 children , the i th child ( for i ? 3 ) is conditioned on child i ?
+1 . Moreover the labels of all non-lexical nodes are enriched with the labels of their parent node .
+Figure 7 shows the binarized version of the tree structure in figure 1 . Unknown words
+We replace words appearing less than 5 times in the training data by one of 50 unknown word categories based on the presence of lexical features as implemented in Petrov ( 2009 ) .
+In some of the experiments we also perform a smoothing over the lexical elements assigning low counts ( = 0.01 ) to open-class words , PoS-tags pairs not encountered in the training corpus 10 . Fragment extraction
+We extract the symbolic grammar and fragment frequencies from this preprocessed treebank as explained in section 2 .
+This is the the most time - consuming step ( around 160 CPU hours 11 ) .
+In the extracted grammar we have in total 1,029,342 recurring fragments and 17,768 unseen CFG rules .
+We test several probability distributions over the fragments ( section 3.2 ) and various maximization objectives ( section 3.3 ) .
+11
+Although our code could still be optimized further , it does already allow for running the job on M CPUs in parallel , reducing the time required by a factor M ( 10 hours with 16 - CPUs ) .
+Parsing
+We convert our PTSG into a PCFG ( section 3.1 ) and use Bitpar 12 for parsing .
+For approximating MPP and other objectives we marginalize probabilities from the 1,000 best derivations .
+Results
+We start by presenting in figure 8 the results we obtain on the development set ( section 24 ) .
+Here we compare the maximizing objectives presented in section 3.3 , using RFE to obtain the probability distribution over the fragments .
+We conclude that , empirically , MCP for ? = 1.15 , is the best choice to maximize F1 , followed by MRS , MPP , and MPD .
+We also compare the various estimators presented in section 3.2 , on the same development set , keeping MCP with ? = 1.15 as the maximizing objective .
+We find that RFE is the best estimator ( 87.2 F1 13 ) followed by EWE ( 86.8 ) and ML ( 86.6 ) .
+Our best results with ML are obtained when removing fragments occurring less than 6 times ( apart from CFG - rules ) and when stopping at the second iteration .
+This filtering is done in order to limit the number of big fragments in the grammar .
+It is well known that IO for DOP tends to assign most of the probability mass to big fragments , quickly overfitting the training data .
+It is surprising that EWE and ML perform worse than RFE , in contrast to earlier findings ( Bod , 2003 ) .
+We also investigate how a further restriction on the set of extracted fragments influences the performance of our model .
+In figure 9 we illustrate the performance of Double - DOP when restricting the grammar to fragments having frequencies greater than 1 , 2 , . . . , 100 .
+We can notice a rather sharp decrease in performance as the grammar becomes more and more compact .
+Next , we present some results on various Double - DOP grammars extracted from the same training treebank after refining it using the Berkeley statesplitting model 14 ( Petrov et al. , 2006 ; Petrov and Klein , 2007 ) .
+In total we have 6 increasingly refined versions of the treebank , corresponding to the 6 cycles of the Berkeley model .
+We observe in figure 10 that our grammar is able to benefit from the state splits for the first four levels of refinement , reaching the maximum score at cycle 4 , where we improve over our base model .
+For the last two data points , the treebank gets too refined , and using Double - DOP model on top of it , no longer improves accuracy .
+We have also compared our best Double - DOP base model and the Berkeley parser on per-category performance .
+Here we observe an interesting trend : the Berkeley parser outperforms Double - DOP on very frequent categories , while Double - DOP performs better on infrequent ones .
+A detailed comparison is included in table 1 .
+Finally , in table 2 we present our results on the test set ( section 23 ) .
+Our best model ( according to the best settings on the development set ) performs slightly worse than the one by Bansal and Klein ( 2010 ) when trained on the original corpus , but outperforms it ( and the version of their model with additional refinements ) when trained on the refined version , in particular for the exact match score .
+Conclusions
+We have described Double - DOP , a novel DOP approach for parsing , which uses all constructions recurring at least twice in a treebank .
+This methodology is driven by the linguistic intuition that constructions included in the grammar should prove to be reusable in a representative corpus .
+The extracted set of fragments is significantly smaller than in previous approaches .
+Moreover constructions are explicitly represented , which makes them potentially good candidates as semantic or translation units to be used in other applications .
+NLP tasks : where other successful parsers often feature as components of machine translation , semantic role labeling , question - answering or speech recognition systems , DOP is conspicuously absent in these neighboring fields ( but for a possible application of closely related formalisms see , e.g. , Yamangil and Shieber , 2010 ) .
+The reasons for this are many , but most important are probably the computational inefficiency of many instances of the approach , the lack of downloadable software and the difficulties with replicating some of the key results .
+In this paper we have addressed all three obstacles : our efficient algorithm for identifying the recurrent fragments in a treebank runs in polynomial time .
+The transformation to PCFGs that we define allows us to use a standard PCFG parser , while retaining the benefit of explicitly representing larger fragments .
+A different transform also allows us to run the popular inside-outside algorithm .
+Although IO results are slightly worse than with the naive relative frequency estimate , it is important to establish that the standard method for dealing with latent information ( i.e. , the derivations of a given parse ) is not the best choice in this case .
+We expect that other re-estimation methods , for instance Vari- ational Bayesian techniques , could be formulated in the same manner .
+Finally , the availability of our programs , as well as the third party software that we use , also addresses the replicability issue .
+Where some researchers in the field have been skeptical of the DOP approach to parsing , we believe that our independent development of a DOP parser adds credibility to the idea that an approach that uses very many large subtrees , can lead to very accurate parsers .
+Figure 1 : 1 Figure 1 : An example of a derivation of a complete syntactic structure ( below ) obtained combining three elementary fragments ( above ) by means of the substitution operation ?.
+Substitution sites are marked with ?.
+Figure 3 : 3 Figure3 : Distribution of the recurring fragments types according to several features : depth , number of words , and number of substitution sites .
+Their corresponding curves peak at 4 ( depth ) , 1 ( words ) , and 4 ( substitution sites ) .
+Figure 4 : 4 Figure 4 : Number of fragments extracted from each tree in sections 2 - 21 of the WSJ treebank , when considering all-fragments ( dotted line ) and recurring -fragments ( solid line ) .
+Trees on the x-axis are ranked according to the number of fragments .
+Note the double logarithmic scale on the y-axis .
+Figure 5 : 5 Figure5 : Above : example of 2 ambiguous fragments mapping to the same CFG rule VP ? VBD DT NN " with " NP .
+The first fragment occurs 5 times in the training treebank , ( e.g. in the sentence was an executive with a manufacturing concern ) while the second fragment occurs 4 times ( e.g. in the sentence began this campaign with such high hopes ) .
+Below : the two pairs of CFG rules that are used to map the two fragments to separate CFG derivations .
+Figure 6 : 6 Figure 6 : Rule and tree transforms that turn PTSG reestimation into PCFG reestimation ; ( a ) a derivation of the sentence x y through successive substitutions of elementary trees from a PTSG ; ( b ) the same elementary trees and resulting parse tree in bracket notation ; ( c ) an equivalent derivation with the meta-grammar , where the original substitution sites reappear as meta-nonterminals ( marked with a prime ) and all other symbols as meta-terminals ; ( d ) the yield of the derivation in c .
+Figure 7 : 7 Figure 7 : The binarized version of the tree in figure 1 , with H=1 and P=1 .
+10 A PoS-tag is an open class if it rewrites to at least 50 different words in the training corpus .
+A word is an open class word if it has been seen only with open-class PoS-tags .
+Figure 8 : 8 Figure 8 : Double -DOP results on the development section ( ? 40 ) with different maximizing objectives .
+Figure 9 : 9 Figure9 : Performance ( on the development set ) and size of Double - DOP when considering only fragments whose occurring frequency in the training treebank is above a specific threshold ( x- axis ) .
+In all cases , all PCFG - rules are included in the grammars .
+For instance , at the righthand side of the plot a grammar is evaluated which included only 6754 fragments with a frequency > 100 as well as 39227 PCFG rules .
+Figure 10 : 10 Figure 10 : Comparison on section 24 between the performance of Double-DOP ( using RFE and MCP with ? = 1.15 , H=0 , P=0 ) and Berkeley parser on different stages of refinement of the treebank / grammar .
+14
+We use the Berkeley grammar labeler following the base settings for the WSJ : trees are right- binarized , H=0 , and P=0 .
+Berkeley parser package is available at http://code. 92 90 88 86 F1 82 84 80 78 Berkeley MRP Berkeley MPD 76 Double-DOP Double-DOP
+Lex smooth 74 1 2 3 4 5 6 Berkeley grammar / treebank refinement level google.com /p/ berkeleyparser /
+Table 1 : 1 Comparison of the performance ( per-category F1 score ) on the development set between the Berkeley parser and the best Double - DOP model .
+Despite earlier reported excellent results with DOP parsers , they are almost never used in other 92
+Table 2 : 2 Summary of the results of different parsers on the test set ( sec 23 ) .
+Double -DOP experiments use RFE , MCP with ? = 1.15 , H=1 , P=1 ; those on statesplitting ( Double - DOP - Sp ) use Berkeley cycle 4 , H=0 , P=0 .
+Results from Petrov and Klein ( 2007 ) already include smoothing which is performed similarly to our smoothing technique ( see section 4 ) .
+( * Results on a development set , with sentences up to length 20 . ) test ( ? 40 ) test ( all ) Parsing Model F1 EX F1 EX PCFG Baseline PCFG ( H=1 , P=1 ) 77.6 17.2 76.5 15.9 PCFG ( H=1 , P=1 ) Lex smooth .
+78.5 17.2 77.4 16.0 FRAGMENT -BASED PARSERS Zuidema ( 2007 ) *
+83.8 26.9 - - Cohn et al . ( 2010 ) MRS 85.4 27.2 84.7 25.8 Post and Gildea ( 2009 ) 82.6 - - - Bansal and Klein ( 2010 ) MCP 88.5 33.0 87.6 30.8 Bansal and Klein ( 2010 ) MCP 88.7 33.8 88.1 31.7 + Additional Refinement THIS PAPER Double-DOP 87.7 33.1 86.8 31.0 Double-DOP
+Lex smooth .
+Double-DOP -Sp 87.9 33.7 87.0 31.5 88.8 35.9 88.2 33.8 Double-DOP -Sp Lex smooth .
+89.7 38.3 89.1 36.1 REFINEMENT -BASED PARSERS Collins ( 1999 ) 88.6 - 88.2 - Petrov and Klein ( 2007 ) 90.6 39.1 90.1 37.1
+More precisely we extract only the largest shared fragments for all pairs of trees in the treebank .
+All subtrees of these extracted fragments necessarily also occur at least twice , but they are only explicitly represented in our extracted set if they happen to form a largest shared fragment from another pair of trees .
+Hence , if a large tree occurs twice in the treebank the algorithm will extract from this pair only the full tree as a fragment and not all its ( exponentially many ) subtrees .
+This is after the treebank has been preprocessed .
+See also section 4 .
+This is after the treebank has been preprocessed .
+See also section 4 .
+This is after the treebank has been preprocessed .
+See also section 4 .
+Bansal and Klein ( 2010 ) address this issue for contiguous constructions by extending the Goodman transform with a ' Packed Graph Encoding ' for fragments that " bottom out in terminals " .
+However , constructions with variable slots , such as whether S or not , are left unchanged .5
+In fact , the number of extracted fragments increase exponentially with the size of the tree .
+In our binarized treebank we have 31,465 fragments types that are ambiguous in this sense .
+We refer to the counts of each fragment as returned by our extraction algorithm in section 2.1 .
+However , the results with inside-outside reported in this paper were obtained with an earlier version of our code that uses an equivalent but special - purpose implementation .
+The software produced for running our model is publicly available and included in the supplementary material to this paper .
+To the best of our knowledge this is the first DOP software released that can be used to parse the WSJ PTB .
+http://www.ims.uni-stuttgart.de/tcl/ SOFTWARE / BitPar.html13
+We computed F1 scores with EvalB ( http://nlp.cs.
+nyu.edu/evalb / ) using parameter file new.prm .
