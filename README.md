@@ -16,3 +16,4 @@ We have to organize these phrases into triplets: subject, predicate, and object.
 
 
 # Credits
+**We would like to thank the following blog authors :**
