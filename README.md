@@ -1,23 +1,37 @@
 # Scientific Novelty Detection
 # SciND Dataset Structure
 There are 4 directories : 
+
 **Triplets** : Folder containing triplets in CSV files
+
 **PDF_Papers** : Folder containing Papers in PDF format
+
 **grobid_files** : Folder containing grobid text file
+
 **stanza_files** : Folder containing stanza text file
 
 In each directory there are 3 subdirectories
+
 **Blogs** : It contains blogs data for each domain
+
 **Novel_Papers** : It contains novel papers data for each domain
+
 **SKG** : It contains papers data used to build SKG for each domain
 
 **Number of Domains** 
+
 Dialog System - Dia
+
 Machine Translation - MT
+
 Question Answering - QA
+
 Sentiment Analysis - SA
+
 Summarization - Sum
+
 Natural Language Inference - NLI
+
 Parsing - Par
 
 # Steps of Dataset Creation
