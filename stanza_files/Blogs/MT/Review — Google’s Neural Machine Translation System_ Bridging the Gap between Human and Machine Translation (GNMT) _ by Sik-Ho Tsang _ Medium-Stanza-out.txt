@@ -1,0 +1,73 @@
+title
+abstract
+07/02/2022 , 17:31 Review - Google 's Neural Machine Translation System : Bridging the Gap between Human and Machine Tr ?
+https://sh-tsang.medium.com/review-googles-neural-machine-translation-system-bridging-the-gap-between-human-and-machin?
+3/8
+The structure of bi-directional connections in the first layer of the encoder
+The bottom encoder layer is bi-directional : the pink nodes gather information from left to right while the green nodes gather information from right to left .
+The other layers of the encoder are uni-directional .
+Attention
+The attention module is similar to the one in Attention Decoder .
+More specifically , let yi -1 be the decoder - RNN output from the past decoding time step .
+Attention context ai for the current time step is computed : where AttentionFunction in our implementation is a feed forward network with one hidden layer .
+where x=m +x before going into next LSTM .
+Model Parallelism
+The n replicas all share one copy of model parameters .
+n is often around 10 .
+Each replica works on a mini-batch of m sentence pairs at a time , which is often 128 in the experiments .
+The encoder and decoder networks are partitioned along the depth dimension and are placed on multiple GPUs , effectively running each layer on a different GPU , as shown in the figure of GNMT network architecture .
+Since all but the first encoder layer are uni-directional , layer i+ 1 can start its computation before layer i is fully finished .
+The softmax layer is also partitioned , with each partition responsible for a subset of symbols .
+( Please feel free to read the paper for more details . )
+Wordpiece Model or Mixed Word / Character Model
+Quantizable Model and Quantized Inference Neural machine translation is computationally intensive at inference , making low latency translation difficult , and high volume deployment computationally expensive .
+For quantized inference , GNMT explicitly constrains the values of these accumulators to be within [-? , ?] to guarantee a certain range that can be used for quantization later .
+The forward computation of an LSTM stack with residual connections is as follows :
+The weights of fixed - point integer operations are replaced with either 8 - bit or 16 - bit resolution .
+There is also softmax clipping ? :
+( Please feel free to read the paper for more details . )
+Experimental Results
+ML Training Models Single model results on WMT En > Fr ( newstest 2014 )
+The best vocabulary size for the mixed word- character model is 32K .
+The best model WPM - 32 K , achieves a BLEU score of 38.95 .
+Note that this BLEU score represents the averaged score of 8 models .
+The maximum BLEU score of the 8 models is higher at 39.37 .
+Google 's translation production corpora are two to three decimal orders of magnitudes bigger than the WMT corpora .
+GMNT reduces translation errors by more than 60 % compared to the PBMT model on these major pairs of languages .
+1.3 .
+Decoder 8 LSTM layers are used for the decoder .
+Beam search is used during decoding to find the sequence Y that maximizes a score function s( Y , X ) given a trained model .
+During beam search , 8 - 12 hypotheses are typically kept but it is found that using fewer ( 4 or 2 ) has only slight negative effects on BLEU scores .
+Two important refinements are used to the pure max-probability based beam search algorithm : a coverage penalty [ 42 ] and length normalization .
+This speeds up search by 30 % - 40 % when run on CPUs .
+( Please feel free to read the paper for more details . ) 1.4 . Residual Connections Open in app 07/02/2022 , 17:31 Review - Google 's Neural Machine Translation System : Bridging the Gap between Human and Machine Tr ?
+https://sh-tsang.medium.com/review-googles-neural-machine-translation-system-bridging-the-gap-between-human-and-machin?
+4/8 Left : Normal Stacked LSTM , Right : Stacked LSTM with Residual Connections Left : Deep normal stacked LSTMs are difficult to train due to exploding and vanishing gradient problems :
+It is found that simple stacked LSTM layers work well up to 4 layers , barely with 6 layers , and very poorly beyond 8 layers .
+Right : Residual connections greatly improve the gradient flow in the backward pass , 8 LSTM layers are used for the encoder and decoder :
+There are two categories : Word- based and character - based models .
+In this work , GMNT proposes wordpiece model .
+To be brief , word - based model predicts word by word , and rare words are difficult to handle .
+Character - based model predicts character by character , the meaning of words is somehow lost .
+An example of turning words into wordpieces :
+Word : Jet makers feud over seat width with big orders at stake Open in app 07/02/2022 , 17:31 Review - Google 's Neural Machine Translation System : Bridging the Gap between Human and Machine Tr ?
+https://sh-tsang.medium.com/review-googles-neural-machine-translation-system-bridging-the-gap-between-human-and-machin?
+5/8 Wordpieces : _J et _makers _fe ud _over _seat _width _with _big _orders _at _stake Wordpieces achieve a balance between the flexibility of characters and efficiency of words .
+( Please feel free to read the paper for more details . )
+4 . Model Training
+The standard maximum-likelihood ( ML ) training objective is used :
+But this does not directly improve the BLEU scores .
+In brief , model refinement is done using the expected reward objective by reinforcement learning ( RL ) : where r( Y , Y *( i ) ) denotes the per-sentence score , and we are computing an expectation over all of the output sentences Y , up to a certain length .
+To further stabilize training , a linear combination of ML and RL objectives is optimized as : Due to the disadvantage of BLEU score , GLEU score is proposed .
+'s Neural Machine Translation System : Bridging the Gap between Human and Machine Tr ?
+https://sh-tsang.medium.com/review-googles-neural-machine-translation-system-bridging-the-gap-between-human-and-machin?
+6/8
+During training of the model , full- precision is used .
+The only constraints added to the model during training are the clipping .
+Log perplexity vs. steps
+And it is shown that it does not affect the training at all .
+Model inference on CPU , GPU and TPU Inference using CPU is faster than the one in GPU due to data transfer .
+TPU is optimized which makes the inference much faster .
+'s Neural Machine Translation System : Bridging the Gap between Human and Machine Tr ?
+https://sh-tsang.medium.com/review-googles-neural-machine-translation-system-bridging-the-gap-between-human-and-machin? 8/86.4 .
+Results on Production DataHistogram of side- by-side scores on 500 sampled sentences from Wikipedia and news websites for a typical language pair , here English > Spanish ( PBMT blue , GNMT red , Human orange ) Mean of side- by- side scores on production data
