@@ -36,7 +36,7 @@ information_units = ['Results', 'Model', 'Experimental setup', 'Contribution', '
 # In[3]:
 
 
-df = pd.read_csv("JCDL_Triplets/KG/MT_triplets_weights.csv")
+df = pd.read_csv("Triplets/SKG/MT_triplets.csv")
 df.dropna(inplace = True)
 
 

@@ -39,7 +39,7 @@ def weights(df):
 	df['pred_weights'] = weights
 	
 	return df
-'''
+
 df1 = pd.read_csv("JCDL_Triplets/KG/MT_triplets_results.csv")
 df2 = pd.read_csv("JCDL_Triplets/Non_Novel/MT_PDF_triplets_results.csv")
 df = pd.concat([df1, df2])
@@ -54,7 +54,7 @@ df_blogs['sub'] = df_blogs['sub'].apply(remove)
 df_blogs['obj'] = df_blogs['obj'].apply(remove)
 df_blogs = weights(df_blogs)
 df_blogs.to_csv("JCDL_Triplets/Blogs/MT_Blogs_triplets_weights.csv", index = None)
-'''
+
 df_blogs = pd.read_csv("JCDL_Triplets/Novel/MT2021_triplets_results.csv")
 df_blogs['sub'] = df_blogs['sub'].apply(remove)
 df_blogs['obj'] = df_blogs['obj'].apply(remove)
