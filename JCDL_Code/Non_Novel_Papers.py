@@ -36,7 +36,7 @@ information_units = ['Results', 'Model', 'Experimental setup', 'Contribution', '
 # In[3]:
 
 
-df = pd.read_csv("Triplets/SKG/MT_triplets.csv")
+df = pd.read_csv("../Triplets/SKG/MT_triplets.csv")
 df.dropna(inplace = True)
 
 
@@ -65,7 +65,7 @@ for key in nodes:
 # In[ ]:
 
 
-df_blogs = pd.read_csv("JCDL_Triplets/Blogs/MT_Blogs_triplets_weights.csv")
+df_blogs = pd.read_csv("../Triplets/Blogs/MT_Blogs_triplets.csv")
 df_blogs = pd.concat([df_blogs, df_blogs.rename(columns = {"sub" : "obj", "obj" : "sub"})]).reset_index(drop = True)
 
 

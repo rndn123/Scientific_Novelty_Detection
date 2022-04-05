@@ -2,7 +2,7 @@
 
 **JCDL_Dataset_Statistics.ipynb** - Statistics of Triplets in a csv file, Input - triplets csv file path
 
-**JCDL_Classification_Algorithm.ipynb** - Classification of Papers into Novel and Non-Novel, Input - Ground truth Novel papers results csv file path, Ground truth Non-Novel papers results csv file path
+**JCDL_Classification_Algorithm.ipynb** - Classification of Papers into Novel and Non-Novel, Input - Novel papers results csv file path, Non-Novel papers (Blogs) results csv file path
 
 **Knowledge_Graph.ipynb** - Knowledge Graph Neo4j Visulation, Input - triplets csv file path
 
@@ -24,3 +24,18 @@ stanza_files - output stanza files will be stored here
 **Novel_Papers.py** - Processing Novel Papers Triplets
 
 **merge.py** - Merge All results for Novel Papers i.e. Merge Multiple Slots Novel Papers Results to one csv file
+
+
+# In directory Triplets there are preprocessed csv files
+
+In the current directory
+Create a JCDL_Results  directory to store the results
+
+Run the following .py files
+
+**python Non_Novel_Papers.py** - Generates the results of all Blogs \
+**python Novel_Papers.py** - Generates the results of Novel Papers numbered from start_paper to end_paper (excluded) \
+**python merge.py** - Merge all Novel Papers Results 
+
+Then run
+**JCDL_Classification_Algorithm.ipynb**

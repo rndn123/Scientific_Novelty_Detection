@@ -36,7 +36,7 @@ information_units = ['Results', 'Model', 'Experimental setup', 'Contribution', '
 # In[3]:
 
 
-df = pd.read_csv("Triplets/SKG/MT_triplets.csv")
+df = pd.read_csv("../Triplets/SKG/MT_triplets.csv")
 df.dropna(inplace = True)
 
 
@@ -69,7 +69,7 @@ slot = start_paper//3
 print(start_paper, end_paper, slot)
 
 
-df_blogs = pd.read_csv("JCDL_Triplets/Novel/MT2021_triplets_weights.csv")
+df_blogs = pd.read_csv("../Triplets/Novel/MT2021_triplets.csv")
 df_blogs = df_blogs[(df_blogs['paper_ID']>=start_paper) & (df_blogs['paper_ID']<end_paper)]
 df_blogs = pd.concat([df_blogs, df_blogs.rename(columns = {"sub" : "obj", "obj" : "sub"})]).reset_index(drop = True)
 
