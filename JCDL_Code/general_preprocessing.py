@@ -63,7 +63,7 @@ def full_sentence(lines):
 
 # In[6]:
 
-path = "stanza_files/MT/*-Stanza-out.txt"
+path = "../stanza_files/Blogs/SA/*-Stanza-out.txt"
 directory = glob.glob(path, recursive = True)
 print(directory, path)
 df = pd.DataFrame(columns = ['topic', 'paper_ID', 'text', 'main_heading', 'sub_heading', 
@@ -158,7 +158,7 @@ for i, dir_path in enumerate(directory):
 # In[7]:
 
 
-df = pd.DataFrame({"topic" : "translation", "paper_ID" : ID_list, "main_heading" : main_heading, "sub_heading" : sub_heading, 
+df = pd.DataFrame({"topic" : "summarization", "paper_ID" : ID_list, "main_heading" : main_heading, "sub_heading" : sub_heading, 
                    "text" : text, "pos1" : pos1, "pos2" : pos2, "pos3" : pos3, "length" : length, "masks" : masks})
 
 
@@ -247,5 +247,5 @@ df
 # In[14]:
 
 
-df.to_csv("MT_dataset.csv", index = None)
+df.to_csv("SA_dataset.csv", index = None)
 
